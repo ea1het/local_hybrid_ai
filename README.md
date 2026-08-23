@@ -461,5 +461,6 @@ This repository is licensed under the **Mozilla Public License 2.0 (MPL-2.0)**. 
 ## Related article
 
 **Local hybrid AI: be sovereign with your data**  
-Jonathan González (EA1HET) 
+Jonathan González (EA1HET)
+  
 https://www.linkedin.com/pulse/local-hybrid-ai-sovereign-your-data-jonathan-gonz%25C3%25A1lez-msc-ea1het--zhmoe
