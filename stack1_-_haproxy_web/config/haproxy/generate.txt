@@ -1,0 +1,17 @@
+#
+# GENERATE CERT
+#
+
+openssl req -x509 -newkey rsa:4096 \
+  -sha256 -days 3650 -nodes \
+  -out casa.lan.crt \
+  -keyout casa.lan.key \
+  -config minimal.cnf
+
+#
+# TEST CERT
+#
+
+openssl x509 -in casa.lan.crt -text -noout
+
+

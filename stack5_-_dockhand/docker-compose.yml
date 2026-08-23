@@ -1,0 +1,43 @@
+name: Stack5 - Dockhand
+
+services:
+
+  dockhand:
+    image: fnsys/dockhand:latest
+    container_name: dockhand
+    restart: unless-stopped
+
+    networks:
+      - redlocal
+
+    expose:
+      - "3000"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - dockhand_data:/app/data
+
+
+# ============================================================================
+# RED
+# ============================================================================
+
+networks:
+
+  redlocal:
+    external: true
+    name: redlocal
+
+
+# ============================================================================
+# VOLUMENES
+#
+# dockhand_data ya existe.
+# No lo crea ni lo elimina este stack.
+# ============================================================================
+
+volumes:
+
+  dockhand_data:
+    external: true
+    name: dockhand_data

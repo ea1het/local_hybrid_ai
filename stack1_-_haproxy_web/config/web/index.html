@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>CASA.LAN</title>
+
+    <!-- Favicon embebido: C blanca sobre fondo oscuro -->
+    <link
+        rel="icon"
+        type="image/svg+xml"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2315181d'/%3E%3Ctext x='32' y='45' text-anchor='middle' font-family='Arial,sans-serif' font-size='40' font-weight='700' fill='white'%3EC%3C/text%3E%3C/svg%3E"
+    >
+
+    <style>
+        :root {
+            --bg: #0b0d10;
+            --card: #15181d;
+            --card-hover: #1c2026;
+            --border: #282d35;
+            --text: #f3f4f6;
+            --muted: #8b949e;
+            --accent: #6ea8fe;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Roboto,
+                Helvetica,
+                Arial,
+                sans-serif;
+
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        main {
+            width: min(900px, 92%);
+            padding: 40px 0;
+        }
+
+        header {
+            margin-bottom: 35px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.2rem;
+            letter-spacing: -0.04em;
+        }
+
+        header p {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .service {
+            display: block;
+            padding: 22px;
+
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+
+            text-decoration: none;
+            color: inherit;
+
+            transition:
+                transform 0.15s ease,
+                background 0.15s ease,
+                border-color 0.15s ease;
+        }
+
+        .service:hover {
+            background: var(--card-hover);
+            border-color: #3a414c;
+            transform: translateY(-2px);
+        }
+
+        .service h2 {
+            margin: 0 0 8px;
+            font-size: 1.15rem;
+        }
+
+        .service p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .url {
+            display: block;
+            margin-top: 16px;
+
+            color: var(--accent);
+            font-size: 0.8rem;
+            word-break: break-all;
+        }
+
+        footer {
+            margin-top: 35px;
+            padding-top: 20px;
+
+            border-top: 1px solid var(--border);
+
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 600px) {
+            main {
+                width: 90%;
+                padding: 28px 0;
+            }
+
+            h1 {
+                font-size: 1.9rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<main>
+
+    <header>
+        <h1>CASA.LAN</h1>
+        <p>Servicios de la red local</p>
+    </header>
+
+    <section class="grid">
+
+        <a class="service" href="https://buscar.casa.lan">
+            <h2>🔎 SearXNG</h2>
+            <p>Buscador privado y metabuscador local.</p>
+            <span class="url">buscar.casa.lan</span>
+        </a>
+
+        <a class="service" href="https://gwia.casa.lan">
+            <h2>🧠 LiteLLM</h2>
+            <p>Gateway local para modelos y servicios de inteligencia artificial.</p>
+            <span class="url">gwia.casa.lan</span>
+        </a>
+
+        <a class="service" href="https://git.casa.lan">
+            <h2>⌘ Gitea</h2>
+            <p>Repositorios Git y desarrollo local.</p>
+            <span class="url">git.casa.lan</span>
+        </a>
+
+        <a class="service" href="https://homelab.casa.lan">
+            <h2>▣ Dockhand</h2>
+            <p>Administración y control de contenedores Docker.</p>
+            <span class="url">homelab.casa.lan</span>
+        </a>
+
+        <a class="service" href="https://casa.lan/haproxy">
+            <h2>⚙ HAProxy</h2>
+            <p>Estado y estadísticas del proxy inverso.</p>
+            <span class="url">casa.lan/haproxy</span>
+        </a>
+
+	<a class="service" href="https://agentia.casa.lan">
+            <h2>⚙ AgentIA</h2>
+            <p>Agente de IA local.</p>
+            <span class="url">agentia.casa.lan</span>
+        </a>
+
+        <a class="service" href="https://nas.casa.lan">
+            <h2>⚙ NAS</h2>
+            <p>Almacenamiento NAS en red local.</p>
+            <span class="url">nas.casa.lan</span>
+        </a>
+
+    </section>
+
+    <footer>
+        casa.lan · infraestructura local
+    </footer>
+
+</main>
+
+</body>
+</html>
+

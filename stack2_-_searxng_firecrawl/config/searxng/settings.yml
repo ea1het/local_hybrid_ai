@@ -1,0 +1,25 @@
+# Configuracion de SearXNG para uso local con Firecrawl.
+# 01-prepare.sh la instala en ${BASE_PATH}/service_-_searxng/config/settings.yml.
+
+use_default_settings: true
+
+server:
+  # secret_key y base_url se sobreescriben mediante variables de entorno
+  # desde docker-compose.yml.
+  secret_key: "ultrasecretkey"
+
+  # El limiter se mantiene desactivado porque esta instancia se usa como
+  # backend local/API. Con limiter=false no se necesita Valkey.
+  limiter: false
+  public_instance: false
+  image_proxy: true
+
+search:
+  # Firecrawl utiliza la salida JSON de SearXNG.
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: "duckduckgo"
+
+

@@ -1,0 +1,36 @@
+# =============================================================================
+# Stack3 - LiteLLM
+#
+# Configuracion base del proxy.
+#
+# Los modelos se gestionaran dinamicamente desde la Admin UI y se almacenaran
+# en PostgreSQL, por eso model_list comienza vacio.
+#
+# Las credenciales, DATABASE_URL y demas secretos se proporcionan mediante
+# variables de entorno desde docker-compose.yml.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Modelos
+# -----------------------------------------------------------------------------
+
+# No definimos modelos estaticamente.
+#
+# Los modelos se daran de alta desde la interfaz administrativa de LiteLLM
+# una vez conectado PostgreSQL.
+model_list: []
+
+
+# -----------------------------------------------------------------------------
+# Configuracion general del proxy
+# -----------------------------------------------------------------------------
+
+general_settings:
+
+  # Credencial administrativa principal de LiteLLM.
+  #
+  # El valor real vive exclusivamente en .env y sera inyectado por Docker.
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+

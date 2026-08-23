@@ -1,0 +1,74 @@
+name: Stack1 - HAProxy + Web
+
+services:
+
+  haproxy:
+    image: haproxy:3.0-alpine
+    container_name: haproxy
+    restart: unless-stopped
+
+    networks:
+      - redlocal
+
+    ports:
+      # HTTP público.
+      # HAProxy no sirve contenido aquí: redirige todo a HTTPS.
+      - "0.0.0.0:${HAPROXY_HTTP_PORT:-80}:8080"
+
+      # HTTPS público.
+      # Toda la terminación TLS se realiza en HAProxy.
+      - "0.0.0.0:${HAPROXY_HTTPS_PORT:-443}:8443"
+
+    volumes:
+      # Contiene:
+      #   haproxy.cfg
+      #   casa.lan.crt
+      #   casa.lan.key
+      #   minimal.cnf
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_haproxy/config:/usr/local/etc/haproxy:ro
+
+    environment:
+      ROOT_HOSTNAME: ${ROOT_HOSTNAME:-casa.lan}
+
+      WEB_TARGET: ${WEB_TARGET:-web:80}
+
+      SEARCH_HOSTNAME: ${SEARCH_HOSTNAME:-buscar}
+      SEARCH_TARGET: ${SEARCH_TARGET:-searxng:8080}
+
+      CHAT_HOSTNAME: ${CHAT_HOSTNAME:-chat}
+      CHAT_TARGET: ${CHAT_TARGET:-open-webui:8080}
+
+      GIT_HOSTNAME: ${GIT_HOSTNAME:-git}
+      GIT_TARGET: ${GIT_TARGET:-gitea:3000}
+
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+
+  web:
+    image: busybox:latest
+    container_name: web
+    restart: unless-stopped
+
+    command: httpd -f -p 80 -h /www
+
+    networks:
+      - redlocal
+
+    volumes:
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_web:/www:ro
+
+
+networks:
+
+  # Red Docker común de HAProxy y todos sus backends.
+  redlocal:
+    external: true
+    name: redlocal
+
+

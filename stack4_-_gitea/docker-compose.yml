@@ -1,0 +1,103 @@
+name: Stack4 - Gitea
+
+services:
+
+  gitea:
+    image: ${GITEA_IMAGE:?Set GITEA_IMAGE in .env}
+    container_name: ${GITEA_CONTAINER_NAME:-gitea}
+    restart: unless-stopped
+    init: true
+
+    environment:
+      TZ: ${GITEA_TIMEZONE:-Europe/Madrid}
+
+    volumes:
+      - type: bind
+        source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea/config
+        target: /etc/gitea
+
+      - type: bind
+        source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea/data
+        target: /var/lib/gitea
+
+      - type: bind
+        source: /etc/localtime
+        target: /etc/localtime
+        read_only: true
+
+    # SSH is the ONLY Gitea port exposed directly on the host.
+    ports:
+      - "${GITEA_SSH_BIND:-0.0.0.0}:${GITEA_SSH_PORT:-2222}:2222"
+
+    # IMPORTANT:
+    # Do NOT create a git.casa.lan alias here.
+    #
+    # Internally this container is reached as:
+    #     gitea:3000
+    #
+    # git.casa.lan must resolve to HAProxy, not directly to this container.
+    networks:
+      - redlocal
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:3000/api/healthz || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    stop_grace_period: 30s
+
+
+  gitea-runner:
+    image: ${GITEA_RUNNER_IMAGE:-docker.io/gitea/runner:3}
+    container_name: gitea-runner
+    restart: unless-stopped
+
+    environment:
+      CONFIG_FILE: /data/config.yaml
+
+      # Runner talks directly to Gitea through redlocal.
+      GITEA_INSTANCE_URL: ${GITEA_RUNNER_INSTANCE_URL:?Set GITEA_RUNNER_INSTANCE_URL in .env}
+
+      GITEA_RUNNER_REGISTRATION_TOKEN: ${GITEA_RUNNER_REGISTRATION_TOKEN:?Set a runner token in .env}
+      GITEA_RUNNER_NAME: ${GITEA_RUNNER_NAME:-runner-1}
+
+    volumes:
+      - type: bind
+        source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea-runner/data
+        target: /data
+
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+
+    networks:
+      - redlocal
+
+    depends_on:
+      gitea:
+        condition: service_healthy
+        restart: true
+
+    security_opt:
+      - no-new-privileges:true
+
+
+networks:
+  redlocal:
+    external: true
+    name: ${GITEA_DOCKER_NETWORK:-redlocal}
+
+
+
