@@ -1,0 +1,177 @@
+name: Stack6 - Hermes
+
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
+networks:
+  # Red compartida existente: HAProxy, LiteLLM, SearXNG, Firecrawl, etc.
+  redlocal:
+    external: true
+    name: ${NETWORK_NAME}
+
+  # Red privada exclusivamente entre Hermes y su executor.
+  # El sandbox NO pertenece a redlocal.
+  hermes-exec:
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------------------
+  # Hermes gateway / orchestrator
+  # ---------------------------------------------------------------------------
+  hermes:
+    image: ${HERMES_IMAGE}
+    container_name: ${HERMES_CONTAINER}
+    restart: unless-stopped
+    command: ["gateway", "run"]
+
+    environment:
+      TZ: ${TZ}
+      HERMES_TIMEZONE: ${TZ}
+      HERMES_UID: ${HERMES_UID}
+      HERMES_GID: ${HERMES_GID}
+      HERMES_MODEL: ${HERMES_MODEL}
+
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+
+      TERMINAL_TIMEOUT: ${TERMINAL_TIMEOUT}
+
+      HERMES_DASHBOARD: ${HERMES_DASHBOARD}
+      HERMES_DASHBOARD_HOST: ${HERMES_DASHBOARD_HOST}
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH}
+      HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET}
+      HERMES_DASHBOARD_BASIC_AUTH_TTL_SECONDS: ${HERMES_DASHBOARD_BASIC_AUTH_TTL_SECONDS}
+
+      API_SERVER_ENABLED: ${API_SERVER_ENABLED}
+      API_SERVER_HOST: ${API_SERVER_HOST}
+      API_SERVER_PORT: ${API_SERVER_PORT}
+      API_SERVER_KEY: ${API_SERVER_KEY}
+      API_SERVER_MODEL_NAME: ${API_SERVER_MODEL_NAME}
+      API_SERVER_CORS_ORIGINS: ${API_SERVER_CORS_ORIGINS}
+
+      SEARXNG_URL: ${SEARXNG_URL}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
+
+      BUZZ_CLI_PATH: ${BUZZ_CLI_PATH}
+      BUZZ_RELAY_URL: ${BUZZ_RELAY_URL}
+      BUZZ_PRIVATE_KEY: ${BUZZ_PRIVATE_KEY}
+      BUZZ_AUTH_TAG: ${BUZZ_AUTH_TAG}
+
+      TERMINAL_SSH_HOST: ${TERMINAL_SSH_HOST}
+      TERMINAL_SSH_USER: ${TERMINAL_SSH_USER}
+      TERMINAL_SSH_PORT: ${TERMINAL_SSH_PORT}
+      TERMINAL_SSH_KEY: ${TERMINAL_SSH_KEY}
+      TERMINAL_SSH_PERSISTENT: ${TERMINAL_SSH_PERSISTENT}
+
+    volumes:
+      # Hermes persistent state.
+      - ${BASE_PATH}/${HERMES_SERVICE}/data:/opt/data
+
+      # Managed config + private executor key.
+      - ${BASE_PATH}/${HERMES_SERVICE}/config/config.yaml:/opt/data/config.yaml
+      - ${BASE_PATH}/${HERMES_SERVICE}/config/ssh:/opt/data/ssh:ro
+
+      # Separate standard logs path.
+      - ${BASE_PATH}/${HERMES_SERVICE}/logs:/opt/data/logs
+
+    networks:
+      - redlocal
+      - hermes-exec
+
+    expose:
+      - "8642"
+      - "9119"
+
+    depends_on:
+      hermes-sandbox:
+        condition: service_healthy
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${API_SERVER_PORT}/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    logging: *logging
+
+  # ---------------------------------------------------------------------------
+  # Isolated execution sandbox
+  # ---------------------------------------------------------------------------
+  hermes-sandbox:
+    build:
+      context: ${BASE_PATH}/${SANDBOX_SERVICE}/config
+      dockerfile: Dockerfile
+      args:
+        SANDBOX_UID: ${SANDBOX_UID}
+        SANDBOX_GID: ${SANDBOX_GID}
+
+    image: ${SANDBOX_IMAGE}
+    container_name: ${SANDBOX_CONTAINER}
+    hostname: ${SANDBOX_CONTAINER}
+    restart: unless-stopped
+
+    environment:
+      TZ: ${TZ}
+
+    volumes:
+      # authorized_keys already lives below data/home/.ssh and arrives here
+      # through this single canonical mount. No second copy exists.
+      - ${BASE_PATH}/${SANDBOX_SERVICE}/data/home:/home/agent
+      - ${BASE_PATH}/${SANDBOX_SERVICE}/data/workspace:/workspace
+
+      # Persistent SSH host identity only.
+      - ${BASE_PATH}/${SANDBOX_SERVICE}/config/ssh-host:/etc/ssh/hostkeys:ro
+
+      - ${BASE_PATH}/${SANDBOX_SERVICE}/logs:/var/log/hermes-sandbox
+
+    networks:
+      - hermes-exec
+
+    expose:
+      - "2222"
+
+    read_only: true
+
+    tmpfs:
+      - /run:rw,nosuid,nodev,size=64m,mode=755
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+      - /var/tmp:rw,nosuid,nodev,size=256m,mode=1777
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+    cap_add:
+      # Kept from the already-tested sandbox policy. The entrypoint itself
+      # performs no chown/chmod/install operations.
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - SYS_CHROOT
+
+    pids_limit: ${SANDBOX_PIDS}
+    mem_limit: ${SANDBOX_MEMORY}
+    cpus: ${SANDBOX_CPU}
+    shm_size: ${SANDBOX_SHM_SIZE}
+
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+    logging: *logging

@@ -1,0 +1,90 @@
+_config_version: 38
+# =============================================================================
+# Hermes Agent - managed configuration
+# Source: stack6_-_hermes/config/hermes/config.yaml
+# Installed by 01-prepare.sh into service_-_hermes/config/config.yaml
+#
+# HERMES_MODEL remains the single source of truth in .env. 01-prepare.sh
+# renders only ${HERMES_MODEL} before deploying this file so Hermes never sees
+# the literal expression in gateway paths.
+# =============================================================================
+
+model:
+  default: ${HERMES_MODEL}
+  provider: custom
+  base_url: ${LITELLM_BASE_URL}
+  api_key: ${LITELLM_API_KEY}
+
+terminal:
+  backend: ssh
+  cwd: /workspace
+  timeout: ${TERMINAL_TIMEOUT}
+  persistent_shell: true
+  env_passthrough: []
+
+web:
+  search_backend: searxng
+  extract_backend: firecrawl
+
+tool_loop_guardrails:
+  hard_stop_enabled: true
+  hard_stop_after:
+    exact_failure: 5
+    idempotent_no_progress: 5
+
+fallback_providers: []
+
+moa:
+  default_preset: local-only
+  active_preset: ""
+  presets:
+    default:
+      reference_models:
+        - provider: custom
+          model: ${HERMES_MODEL}
+      aggregator:
+        provider: custom
+        model: ${HERMES_MODEL}
+      enabled: false
+
+    local-only:
+      reference_models:
+        - provider: custom
+          model: ${HERMES_MODEL}
+      aggregator:
+        provider: custom
+        model: ${HERMES_MODEL}
+      enabled: false
+
+auxiliary:
+  vision:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  web_extract:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  approval:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  session_search:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  skills_hub:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  mcp:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  flush_memories:
+    provider: main
+    model: ${HERMES_MODEL}
+
+compression:
+  summary_provider: main
+  summary_model: ${HERMES_MODEL}
