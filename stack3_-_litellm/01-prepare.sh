@@ -31,7 +31,7 @@ source "${ENV_FILE}"
 set +a
 
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
-for key in BASE_PATH LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD \
+for key in BASE_PATH LITELLM_IMAGE LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD \
            STORE_MODEL_IN_DB POSTGRES_HOST POSTGRES_PORT LITELLM_DB_NAME \
            LITELLM_DB_USER LITELLM_DB_PASSWORD; do
   require_env "${key}"
@@ -40,6 +40,8 @@ done
 [[ "${BASE_PATH}" = /* ]] || die "BASE_PATH debe ser una ruta absoluta"
 [[ "${STACK_DIR}" == "${BASE_PATH}/${STACK_NAME}" ]] || \
   die "este stack debe residir en ${BASE_PATH}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${LITELLM_IMAGE}" != *:latest ]] || die "LITELLM_IMAGE no debe usar :latest"
+[[ "${LITELLM_VERSION}" != "latest" ]] || die "LITELLM_VERSION no puede ser latest"
 
 NETWORK_NAME="redlocal"
 SERVICE_DIR="${BASE_PATH}/service_-_litellm"
@@ -70,6 +72,7 @@ rm -rf "${SERVICE_DIR}/config"
 mkdir -p "${SERVICE_DIR}/config"
 install -m 0644 "${CONFIG_SOURCE}" "${SERVICE_DIR}/config/config.yaml"
 log "config reescrita desde ${CONFIG_SOURCE}"
+log "imagen fijada: ${LITELLM_IMAGE}:${LITELLM_VERSION}"
 
 step "Validacion de Docker Compose"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
