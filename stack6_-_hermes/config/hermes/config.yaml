@@ -7,6 +7,9 @@ _config_version: 38
 # HERMES_MODEL remains the single source of truth in .env. 01-prepare.sh
 # renders only ${HERMES_MODEL} before deploying this file so Hermes never sees
 # the literal expression in gateway paths.
+#
+# LiteLLM is also the single MCP gateway. Individual MCP servers and their
+# client permissions are managed dynamically in LiteLLM/PostgreSQL.
 # =============================================================================
 
 model:
@@ -25,6 +28,28 @@ terminal:
 web:
   search_backend: searxng
   extract_backend: firecrawl
+
+# -----------------------------------------------------------------------------
+# MCP
+# -----------------------------------------------------------------------------
+# Hermes sees one MCP server only: the LiteLLM aggregate gateway. LiteLLM owns
+# discovery/routing/policy for Trivago and every future MCP integration.
+#
+# Mark the gateway untrusted so write-capable tools require approval unless
+# their MCP metadata explicitly marks them read-only.
+mcp_servers:
+  litellm_gateway:
+    url: ${LITELLM_MCP_URL}
+    headers:
+      Authorization: "Bearer ${LITELLM_MCP_API_KEY}"
+    enabled: true
+    timeout: 120
+    connect_timeout: 60
+    supports_parallel_tool_calls: false
+    trust: untrusted
+    tools:
+      resources: false
+      prompts: false
 
 tool_loop_guardrails:
   hard_stop_enabled: true

@@ -3,7 +3,7 @@ name: Stack3 - LiteLLM
 services:
 
   litellm:
-    image: ghcr.io/berriai/litellm-database:latest
+    image: ${LITELLM_IMAGE}:${LITELLM_VERSION}
     container_name: litellm
     restart: unless-stopped
 
@@ -65,4 +65,3 @@ networks:
   redlocal:
     external: true
     name: redlocal
-

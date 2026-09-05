@@ -1,0 +1,6 @@
+.env
+.lock
+
+# Deployment-specific TLS material generated locally.
+config/haproxy/casa.lan.crt
+config/haproxy/casa.lan.key

@@ -11,7 +11,6 @@ log()  { printf '  %s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-# El lock tiene prioridad absoluta: con lock el script no valida ni modifica nada.
 if [[ -e "${LOCK_FILE}" ]]; then
   printf 'Stack ya preparado. Existe %s; no se realiza ningun cambio.\n' "${LOCK_FILE}"
   exit 0
@@ -24,31 +23,28 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponi
 [[ -f "${COMPOSE_FILE}" ]] || die "falta ${COMPOSE_FILE}"
 
 grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})' "${ENV_FILE}" && \
-  die "${ENV_FILE} contiene valores saneados/incompletos; restaura los valores operativos antes de ejecutar el script"
+  die "${ENV_FILE} contiene valores saneados/incompletos"
 
 set -a
 # shellcheck disable=SC1090
 source "${ENV_FILE}"
 set +a
 
-require_env() {
-  local key="$1"
-  [[ -n "${!key:-}" ]] || die "falta un valor para ${key} en ${ENV_FILE}"
-}
-
-for key in BASE_PATH HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTNAME \
+require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
+for key in STACKS_ROOT BASE_PATH HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTNAME \
            WEB_TARGET SEARCH_HOSTNAME SEARCH_TARGET CHAT_HOSTNAME CHAT_TARGET \
            GIT_HOSTNAME GIT_TARGET; do
   require_env "${key}"
 done
 
-[[ "${BASE_PATH}" = /* ]] || die "BASE_PATH debe ser una ruta absoluta"
-[[ "${STACK_DIR}" == "${BASE_PATH}/${STACK_NAME}" ]] || \
-  die "este stack debe residir en ${BASE_PATH}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
+[[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
+  die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 
 NETWORK_NAME="redlocal"
-HAPROXY_SERVICE="${BASE_PATH}/service_-_haproxy"
-WEB_SERVICE="${BASE_PATH}/service_-_web"
+HAPROXY_SERVICE="${BASE_PATH%/}/service_-_haproxy"
+WEB_SERVICE="${BASE_PATH%/}/service_-_web"
 HAPROXY_SOURCE="${STACK_DIR}/config/haproxy"
 WEB_SOURCE="${STACK_DIR}/config/web"
 
@@ -57,16 +53,7 @@ for file in haproxy.cfg casa.lan.crt casa.lan.key minimal.cnf; do
 done
 [[ -f "${WEB_SOURCE}/index.html" ]] || die "falta ${WEB_SOURCE}/index.html"
 
-migrate_legacy_dir() {
-  local legacy="$1" target="$2"
-  [[ "${legacy}" == "${target}" ]] && return 0
-  if [[ -e "${legacy}" && -e "${target}" ]]; then
-    die "existen simultaneamente ${legacy} y ${target}; resuelve manualmente la migracion antes de continuar"
-  elif [[ -e "${legacy}" ]]; then
-    mv "${legacy}" "${target}"
-    log "migrado ${legacy} -> ${target}"
-  fi
-}
+mkdir -p "${BASE_PATH}"
 
 write_lock() {
   umask 022
@@ -75,10 +62,6 @@ write_lock() {
     printf 'prepared_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } > "${LOCK_FILE}"
 }
-
-step "Migracion de rutas antiguas"
-migrate_legacy_dir "${BASE_PATH}/haproxy" "${HAPROXY_SERVICE}"
-migrate_legacy_dir "${BASE_PATH}/web" "${WEB_SERVICE}"
 
 step "Red Docker ${NETWORK_NAME}"
 if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
@@ -98,14 +81,12 @@ cp -a "${HAPROXY_SOURCE}/." "${HAPROXY_SERVICE}/config/"
 chmod 0644 "${HAPROXY_SERVICE}/config/haproxy.cfg" "${HAPROXY_SERVICE}/config/casa.lan.crt" "${HAPROXY_SERVICE}/config/minimal.cnf"
 [[ -f "${HAPROXY_SERVICE}/config/generate.txt" ]] && chmod 0644 "${HAPROXY_SERVICE}/config/generate.txt"
 chmod 0640 "${HAPROXY_SERVICE}/config/casa.lan.key"
-log "reescrita desde ${HAPROXY_SOURCE}"
 
 step "Contenido web"
 rm -rf "${WEB_SERVICE}"
 mkdir -p "${WEB_SERVICE}"
 cp -a "${WEB_SOURCE}/." "${WEB_SERVICE}/"
 chmod 0644 "${WEB_SERVICE}/index.html"
-log "reescrito desde ${WEB_SOURCE}"
 
 step "Validacion de HAProxy"
 docker run --rm \
@@ -128,4 +109,3 @@ log "compose valido"
 write_lock
 step "Preparacion terminada"
 log "lock creado: ${LOCK_FILE}"
-log "arranque: docker compose --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d"

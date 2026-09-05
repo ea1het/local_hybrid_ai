@@ -10,6 +10,8 @@
 #   - data/, logs/, workspace and persistent binaries are never deleted here.
 #   - managed config is reconciled from the stack and strictly audited.
 #   - HERMES_MODEL is rendered at prepare time into the deployed config.yaml.
+#   - runtime variables required to start Hermes are validated here.
+#   - Git remote/branch validation belongs exclusively to 04-gitmem.sh.
 #   - .lock is created only after the complete filesystem audit succeeds.
 # =============================================================================
 
@@ -55,11 +57,13 @@ step "Validacion de .env (solo lectura)"
 
 ALL_KEYS=(
   BASE_PATH NETWORK_NAME TZ
-  HERMES_SERVICE SANDBOX_SERVICE
+  HERMES_SERVICE HERMES_MEMORY_SERVICE SANDBOX_SERVICE
   HERMES_CONTAINER SANDBOX_CONTAINER
-  HERMES_IMAGE SANDBOX_IMAGE
+  HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE
   HERMES_UID HERMES_GID
   HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
+  LITELLM_MCP_URL LITELLM_MCP_API_KEY
+  TELEGRAM_BOT_TOKEN
   HERMES_DASHBOARD HERMES_DASHBOARD_HOST
   API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY
   API_SERVER_MODEL_NAME API_SERVER_CORS_ORIGINS
@@ -81,11 +85,13 @@ set +a
 
 REQUIRED_NONEMPTY=(
   BASE_PATH NETWORK_NAME TZ
-  HERMES_SERVICE SANDBOX_SERVICE
+  HERMES_SERVICE HERMES_MEMORY_SERVICE SANDBOX_SERVICE
   HERMES_CONTAINER SANDBOX_CONTAINER
-  HERMES_IMAGE SANDBOX_IMAGE
+  HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE
   HERMES_UID HERMES_GID
   HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
+  LITELLM_MCP_URL LITELLM_MCP_API_KEY
+  TELEGRAM_BOT_TOKEN
   HERMES_DASHBOARD HERMES_DASHBOARD_HOST
   API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY
   API_SERVER_MODEL_NAME
@@ -100,20 +106,38 @@ for key in "${REQUIRED_NONEMPTY[@]}"; do
   value="${!key:-}"
   [[ -n "${value}" ]] || die "${key} esta vacia en .env"
   [[ "${value}" != CHANGE_ME* ]] || die "${key} sigue sin definir: ${value}"
+  [[ "${value}" != PUT_YOUR_* ]] || die "${key} sigue usando un placeholder: ${value}"
 done
 
 [[ ${#API_SERVER_KEY} -ge 8 ]] || die "API_SERVER_KEY debe tener al menos 8 caracteres"
+[[ ${#LITELLM_MCP_API_KEY} -ge 8 ]] || die "LITELLM_MCP_API_KEY debe tener al menos 8 caracteres"
+
+[[ "${HERMES_VERSION}" != "latest" ]] || die "HERMES_VERSION no puede ser latest"
+[[ "${HERMES_IMAGE}" != *:latest ]] || die "HERMES_IMAGE no puede incluir :latest"
+
+[[ "${LITELLM_MCP_URL}" =~ ^https?://[^[:space:]]+/mcp/?$ ]] \
+  || die "LITELLM_MCP_URL debe ser un endpoint HTTP(S) terminado en /mcp"
+
+[[ "${TELEGRAM_BOT_TOKEN}" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] \
+  || die "TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather"
+
 [[ "${BASE_PATH}" == /* ]] || die "BASE_PATH debe ser una ruta absoluta"
 
 BASE_PATH="${BASE_PATH%/}"
 [[ -n "${BASE_PATH}" && "${BASE_PATH}" != "/" ]] || die "BASE_PATH no puede ser /"
 
-[[ "${HERMES_SERVICE}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
-  || die "HERMES_SERVICE debe seguir el patron service_-_*"
-[[ "${SANDBOX_SERVICE}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
-  || die "SANDBOX_SERVICE debe seguir el patron service_-_*"
+for service_var in HERMES_SERVICE HERMES_MEMORY_SERVICE SANDBOX_SERVICE; do
+  service_value="${!service_var}"
+  [[ "${service_value}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
+    || die "${service_var} debe seguir el patron service_-_*"
+done
+
 [[ "${HERMES_SERVICE}" != "${SANDBOX_SERVICE}" ]] \
   || die "HERMES_SERVICE y SANDBOX_SERVICE no pueden ser iguales"
+[[ "${HERMES_SERVICE}" != "${HERMES_MEMORY_SERVICE}" ]] \
+  || die "HERMES_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
+[[ "${SANDBOX_SERVICE}" != "${HERMES_MEMORY_SERVICE}" ]] \
+  || die "SANDBOX_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
 
 HERMES_ROOT="${BASE_PATH}/${HERMES_SERVICE}"
 SANDBOX_ROOT="${BASE_PATH}/${SANDBOX_SERVICE}"
@@ -127,6 +151,10 @@ SANDBOX_DATA="${SANDBOX_ROOT}/data"
 SANDBOX_LOGS="${SANDBOX_ROOT}/logs"
 
 log ".env completo; no se ha modificado"
+log "Hermes fijado a ${HERMES_IMAGE}:${HERMES_VERSION}"
+log "memoria externa declarada: ${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data"
+log "MCP gateway: ${LITELLM_MCP_URL}"
+log "Telegram: token presente y formato valido"
 
 # -----------------------------------------------------------------------------
 # Source files
@@ -146,6 +174,11 @@ SANDBOX_ENTRYPOINT_SRC="${STACK_DIR}/config/sandbox/entrypoint.sh"
 # variable into the deployed config. Other ${...} expressions remain untouched.
 grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG_SRC}" \
   || die "config/hermes/config.yaml debe contener \${HERMES_MODEL}"
+
+grep -qF '${LITELLM_MCP_URL}' "${HERMES_CONFIG_SRC}" \
+  || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_URL}"
+grep -qF '${LITELLM_MCP_API_KEY}' "${HERMES_CONFIG_SRC}" \
+  || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_API_KEY}"
 
 [[ "${HERMES_MODEL}" =~ ^[A-Za-z0-9._:/+@-]+$ ]] \
   || die "HERMES_MODEL contiene caracteres no admitidos para render seguro: ${HERMES_MODEL}"
@@ -262,6 +295,7 @@ install -d -m 0700 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
 log "${HERMES_ROOT}/{config,data,logs}"
 log "${SANDBOX_ROOT}/{config,data,logs}"
 log "data/, logs/, workspace y data/bin se preservan"
+log "${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data sera preparado exclusivamente por 04-gitmem.sh"
 
 # -----------------------------------------------------------------------------
 # Shadow configuration
@@ -594,6 +628,7 @@ Stack preparado y auditado. No se ha arrancado ningun contenedor.
 Siguiente paso:
 
   cd ${STACK_DIR}
+  bash ./04-gitmem.sh
   docker compose up -d --build
   docker compose ps
 
@@ -608,6 +643,8 @@ La salida correcta del prepare incluye:
 
 IMPORTANTE:
   - eliminar .lock permite volver a ejecutar el prepare de forma deliberada.
+  - 01-prepare.sh no crea ni modifica service_-_hermes-memory/data.
+  - 04-gitmem.sh prepara y valida exclusivamente el working tree Git de memoria.
   - 01-prepare.sh no borra data/, logs/, workspace ni data/bin.
   - la limpieza/reset/factory-reset corresponde a 02-cleanup.sh.
   - .env no se modifica nunca.

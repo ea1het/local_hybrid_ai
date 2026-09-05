@@ -23,7 +23,7 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponi
 [[ -f "${COMPOSE_FILE}" ]] || die "falta ${COMPOSE_FILE}"
 
 grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})' "${ENV_FILE}" && \
-  die "${ENV_FILE} contiene valores saneados/incompletos; restaura los valores operativos antes de ejecutar el script"
+  die "${ENV_FILE} contiene valores saneados/incompletos"
 
 set -a
 # shellcheck disable=SC1090
@@ -31,28 +31,24 @@ source "${ENV_FILE}"
 set +a
 
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
-for key in BASE_PATH LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD \
+for key in STACKS_ROOT BASE_PATH LITELLM_IMAGE LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD \
            STORE_MODEL_IN_DB POSTGRES_HOST POSTGRES_PORT LITELLM_DB_NAME \
            LITELLM_DB_USER LITELLM_DB_PASSWORD; do
   require_env "${key}"
 done
 
-[[ "${BASE_PATH}" = /* ]] || die "BASE_PATH debe ser una ruta absoluta"
-[[ "${STACK_DIR}" == "${BASE_PATH}/${STACK_NAME}" ]] || \
-  die "este stack debe residir en ${BASE_PATH}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
+[[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
+  die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
+[[ "${LITELLM_IMAGE}" != *:latest ]] || die "LITELLM_IMAGE no debe usar :latest"
+[[ "${LITELLM_VERSION}" != "latest" ]] || die "LITELLM_VERSION no puede ser latest"
 
 NETWORK_NAME="redlocal"
-SERVICE_DIR="${BASE_PATH}/service_-_litellm"
+SERVICE_DIR="${BASE_PATH%/}/service_-_litellm"
 CONFIG_SOURCE="${STACK_DIR}/config/litellm/config.yaml"
 [[ -f "${CONFIG_SOURCE}" ]] || die "falta ${CONFIG_SOURCE}"
-
-step "Migracion de ruta antigua"
-if [[ -e "${BASE_PATH}/litellm" && -e "${SERVICE_DIR}" ]]; then
-  die "existen simultaneamente ${BASE_PATH}/litellm y ${SERVICE_DIR}; resuelve manualmente la migracion"
-elif [[ -e "${BASE_PATH}/litellm" ]]; then
-  mv "${BASE_PATH}/litellm" "${SERVICE_DIR}"
-  log "migrado ${BASE_PATH}/litellm -> ${SERVICE_DIR}"
-fi
+mkdir -p "${BASE_PATH}"
 
 step "Red Docker ${NETWORK_NAME}"
 if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
@@ -70,6 +66,7 @@ rm -rf "${SERVICE_DIR}/config"
 mkdir -p "${SERVICE_DIR}/config"
 install -m 0644 "${CONFIG_SOURCE}" "${SERVICE_DIR}/config/config.yaml"
 log "config reescrita desde ${CONFIG_SOURCE}"
+log "imagen fijada: ${LITELLM_IMAGE}:${LITELLM_VERSION}"
 
 step "Validacion de Docker Compose"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
