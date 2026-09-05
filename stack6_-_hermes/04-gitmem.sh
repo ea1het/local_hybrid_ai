@@ -25,7 +25,7 @@ die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecutar como root"
 
-for cmd in git docker install stat find realpath chown chmod sha256sum awk; do
+for cmd in git docker install stat find realpath chown chmod sha256sum awk cmp rmdir; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
 
@@ -41,6 +41,7 @@ set +a
 
 required=(
   BASE_PATH
+  HERMES_SERVICE
   HERMES_MEMORY_SERVICE
   HERMES_CONTAINER
   HERMES_UID
@@ -56,8 +57,12 @@ done
 BASE_PATH="${BASE_PATH%/}"
 [[ -n "${BASE_PATH}" && "${BASE_PATH}" != "/" ]] || die "BASE_PATH no puede ser /"
 
+[[ "${HERMES_SERVICE}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
+  || die "HERMES_SERVICE debe seguir el patron service_-_*"
 [[ "${HERMES_MEMORY_SERVICE}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
   || die "HERMES_MEMORY_SERVICE debe seguir el patron service_-_*"
+[[ "${HERMES_MEMORY_SERVICE}" != "${HERMES_SERVICE}" ]] \
+  || die "HERMES_MEMORY_SERVICE debe ser distinto de HERMES_SERVICE"
 [[ "${GITMEM_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]] \
   || die "GITMEM_BRANCH contiene caracteres no admitidos"
 
@@ -68,8 +73,10 @@ if [[ "${GITMEM_REPOSITORY}" =~ ^https?://[^/]*@ ]]; then
 fi
 
 BASE_REAL="$(realpath -m -- "${BASE_PATH}")"
+HERMES_ROOT="$(realpath -m -- "${BASE_REAL}/${HERMES_SERVICE}")"
 MEMORY_ROOT="$(realpath -m -- "${BASE_REAL}/${HERMES_MEMORY_SERVICE}")"
 MEMORY_DATA="${MEMORY_ROOT}/data"
+LEGACY_MEMORY="${HERMES_ROOT}/data/memories"
 
 case "${MEMORY_ROOT}" in
   "${BASE_REAL}"/service_-_*) ;;
@@ -109,12 +116,12 @@ fi
 
 GIT=(git -c "safe.directory=${MEMORY_DATA}" -C "${MEMORY_DATA}")
 
-origin="$(${GIT[@]} remote get-url origin 2>/dev/null || true)"
+origin="$("${GIT[@]}" remote get-url origin 2>/dev/null || true)"
 [[ -n "${origin}" ]] || die "el working tree no tiene remote origin"
 [[ "${origin}" == "${GITMEM_REPOSITORY}" ]] \
   || die "origin inesperado: '${origin}' (esperado '${GITMEM_REPOSITORY}')"
 
-branch="$(${GIT[@]} branch --show-current)"
+branch="$("${GIT[@]}" branch --show-current)"
 [[ "${branch}" == "${GITMEM_BRANCH}" ]] \
   || die "branch activa inesperada: '${branch}' (esperada '${GITMEM_BRANCH}')"
 
@@ -124,6 +131,23 @@ for file in MEMORY.md USER.md; do
   path="${MEMORY_DATA}/${file}"
   [[ -f "${path}" && ! -L "${path}" ]] \
     || die "el repositorio debe contener ${file} como fichero normal"
+done
+
+# Migration guard: before the new bind mount masks the old runtime memories,
+# refuse startup if an existing non-empty legacy memory differs from Git.
+# This makes the operator migrate/commit the current memory deliberately rather
+# than silently losing sight of it behind the new mount.
+step "Memoria legacy"
+for file in MEMORY.md USER.md; do
+  legacy="${LEGACY_MEMORY}/${file}"
+  current="${MEMORY_DATA}/${file}"
+  if [[ -f "${legacy}" && -s "${legacy}" ]]; then
+    cmp -s "${legacy}" "${current}" \
+      || die "${legacy} contiene memoria distinta de Git. Migra ese contenido al repositorio y vuelve a ejecutar 04-gitmem.sh"
+    log "${file}: legacy coincide con Git"
+  else
+    log "${file}: sin memoria legacy no vacia"
+  fi
 done
 
 # Hermes needs write access to its memory files and lock files. Keep the entire
