@@ -71,13 +71,22 @@ The normal deployment order is:
 
 ### Stack1
 
+TLS material is deployment-specific and is not stored in Git. Generate it locally before running `01-prepare.sh`:
+
 ```bash
 cd /opt/docker/stacks/stack1_-_haproxy_web
 cp .env.example .env
 # edit .env
+
+cd config/haproxy
+bash generate.txt
+cd ../..
+
 sudo ./01-prepare.sh
 docker compose up -d
 ```
+
+The generated `casa.lan.crt` and `casa.lan.key` files are intentionally ignored by Git.
 
 ### Stack2
 
@@ -180,7 +189,7 @@ git status --short
 git branch --show-current
 ```
 
-A healthy deployment checkout should have no tracked local modifications. Operational `.env` and runtime data must remain outside Git tracking.
+A healthy deployment checkout should have no tracked local modifications. Operational `.env`, `.lock`, generated TLS material and runtime data must remain outside Git tracking.
 
 After pulling a change, use the affected stack's documented prepare/recreate procedure rather than assuming that `docker restart` applies new configuration.
 
