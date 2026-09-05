@@ -24,59 +24,32 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponi
 [[ -f "${COMPOSE_FILE}" ]] || die "falta ${COMPOSE_FILE}"
 
 grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})' "${ENV_FILE}" && \
-  die "${ENV_FILE} contiene valores saneados/incompletos; restaura los valores operativos antes de ejecutar el script"
+  die "${ENV_FILE} contiene valores saneados/incompletos"
 
 set -a
 # shellcheck disable=SC1090
 source "${ENV_FILE}"
 set +a
 
-require_env() {
-  local key="$1"
-  [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"
-}
-
-for key in \
-  BASE_PATH \
-  SEARXNG_SECRET \
-  SEARXNG_BASE_URL \
-  REDIS_PASSWORD \
-  RABBITMQ_USER \
-  RABBITMQ_PASSWORD \
-  POSTGRES_USER \
-  POSTGRES_PASSWORD \
-  POSTGRES_DB
-do
+require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
+for key in STACKS_ROOT BASE_PATH SEARXNG_SECRET SEARXNG_BASE_URL REDIS_PASSWORD \
+           RABBITMQ_USER RABBITMQ_PASSWORD POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
   require_env "${key}"
 done
 
-[[ "${BASE_PATH}" = /* ]] || die "BASE_PATH debe ser una ruta absoluta"
-
-[[ "${STACK_DIR}" == "${BASE_PATH}/${STACK_NAME}" ]] || \
-  die "este stack debe residir en ${BASE_PATH}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
-
-[[ "${SEARXNG_BASE_URL}" == https://* ]] || \
-  die "SEARXNG_BASE_URL debe ser la URL publica HTTPS servida por HAProxy"
+[[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
+[[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
+  die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
+[[ "${SEARXNG_BASE_URL}" == https://* ]] || die "SEARXNG_BASE_URL debe ser HTTPS"
 
 NETWORK_NAME="redlocal"
-
 SETTINGS_SOURCE="${STACK_DIR}/config/searxng/settings.yml"
 LIMITER_SOURCE="${STACK_DIR}/config/searxng/limiter.toml"
-
 [[ -f "${SETTINGS_SOURCE}" ]] || die "falta ${SETTINGS_SOURCE}"
 [[ -f "${LIMITER_SOURCE}" ]] || die "falta ${LIMITER_SOURCE}"
 
-migrate_legacy_dir() {
-  local legacy="$1"
-  local target="$2"
-
-  if [[ -e "${legacy}" && -e "${target}" ]]; then
-    die "existen simultaneamente ${legacy} y ${target}; resuelve manualmente la migracion antes de continuar"
-  elif [[ -e "${legacy}" ]]; then
-    mv "${legacy}" "${target}"
-    log "migrado ${legacy} -> ${target}"
-  fi
-}
+mkdir -p "${BASE_PATH}"
 
 write_lock() {
   {
@@ -85,134 +58,59 @@ write_lock() {
   } > "${LOCK_FILE}"
 }
 
-step "Migracion de rutas antiguas"
-
-for svc in \
-  searxng \
-  firecrawl-redis \
-  firecrawl-rabbitmq \
-  firecrawl-postgres
-do
-  migrate_legacy_dir \
-    "${BASE_PATH}/${svc}" \
-    "${BASE_PATH}/service_-_${svc}"
-done
-
 step "Red Docker ${NETWORK_NAME}"
-
 if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
   driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
-
-  [[ "${driver}" == "bridge" ]] || \
-    die "${NETWORK_NAME} existe pero usa driver ${driver}, no bridge"
-
+  [[ "${driver}" == "bridge" ]] || die "${NETWORK_NAME} existe pero usa driver ${driver}, no bridge"
   log "existe y es bridge"
 else
-  docker network create \
-    --driver bridge \
-    "${NETWORK_NAME}" >/dev/null
-
+  docker network create --driver bridge "${NETWORK_NAME}" >/dev/null
   log "creada"
 fi
 
 step "Directorios persistentes"
-
 mkdir -p \
   "${BASE_PATH}/service_-_searxng/config" \
   "${BASE_PATH}/service_-_searxng/data" \
   "${BASE_PATH}/service_-_firecrawl-redis/data" \
   "${BASE_PATH}/service_-_firecrawl-rabbitmq/data" \
   "${BASE_PATH}/service_-_firecrawl-postgres/data"
-
-log "creados/verificados; ningun directorio data se vacia"
+log "runtime: ${BASE_PATH}"
 
 step "Configuracion de SearXNG"
-
 rm -rf "${BASE_PATH}/service_-_searxng/config"
-
-mkdir -p \
-  "${BASE_PATH}/service_-_searxng/config"
-
-install \
-  -m 0644 \
-  "${SETTINGS_SOURCE}" \
-  "${BASE_PATH}/service_-_searxng/config/settings.yml"
-
-install \
-  -m 0644 \
-  "${LIMITER_SOURCE}" \
-  "${BASE_PATH}/service_-_searxng/config/limiter.toml"
-
-log "config reescrita desde el stack (settings.yml + limiter.toml)"
+mkdir -p "${BASE_PATH}/service_-_searxng/config"
+install -m 0644 "${SETTINGS_SOURCE}" "${BASE_PATH}/service_-_searxng/config/settings.yml"
+install -m 0644 "${LIMITER_SOURCE}" "${BASE_PATH}/service_-_searxng/config/limiter.toml"
 
 step "Permisos de datos"
-
-image_uid() {
-  docker run \
-    --rm \
-    --entrypoint id \
-    "$1" \
-    -u 2>/dev/null || true
-}
-
-image_gid() {
-  docker run \
-    --rm \
-    --entrypoint id \
-    "$1" \
-    -g 2>/dev/null || true
-}
-
+image_uid() { docker run --rm --entrypoint id "$1" -u 2>/dev/null || true; }
+image_gid() { docker run --rm --entrypoint id "$1" -g 2>/dev/null || true; }
 declare -A IMAGE_OF=(
   [searxng]="docker.io/searxng/searxng:latest"
   [firecrawl-redis]="redis:alpine"
   [firecrawl-rabbitmq]="rabbitmq:3-alpine"
   [firecrawl-postgres]="ghcr.io/firecrawl/nuq-postgres:latest"
 )
-
 for svc in "${!IMAGE_OF[@]}"; do
   uid="$(image_uid "${IMAGE_OF[$svc]}")"
   gid="$(image_gid "${IMAGE_OF[$svc]}")"
-
   if [[ -z "${uid}" || -z "${gid}" ]]; then
-    warn "${svc}: no se pudo determinar UID/GID; se conserva el propietario actual"
+    warn "${svc}: no se pudo determinar UID/GID; se conserva propietario"
     continue
   fi
-
-  if [[ "${uid}" == "0" ]]; then
-    log "${svc}: imagen ejecutada como root; no se fuerza propietario"
-    continue
-  fi
-
+  [[ "${uid}" == "0" ]] && continue
   if [[ "${svc}" == "searxng" ]]; then
-    chown -R \
-      "${uid}:${gid}" \
-      "${BASE_PATH}/service_-_searxng/config" \
-      "${BASE_PATH}/service_-_searxng/data"
+    chown -R "${uid}:${gid}" "${BASE_PATH}/service_-_searxng/config" "${BASE_PATH}/service_-_searxng/data"
   else
-    chown -R \
-      "${uid}:${gid}" \
-      "${BASE_PATH}/service_-_${svc}/data"
+    chown -R "${uid}:${gid}" "${BASE_PATH}/service_-_${svc}/data"
   fi
-
-  log "${svc}: ${uid}:${gid}"
 done
 
 step "Validacion de Docker Compose"
-
-docker compose \
-  --env-file "${ENV_FILE}" \
-  -f "${COMPOSE_FILE}" \
-  config \
-  --quiet
-
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
 log "compose valido"
 
 write_lock
-
 step "Preparacion terminada"
-
 log "lock creado: ${LOCK_FILE}"
-log "arranque: docker compose --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d"
-
-
