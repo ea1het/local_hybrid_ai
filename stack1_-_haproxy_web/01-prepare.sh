@@ -31,20 +31,20 @@ source "${ENV_FILE}"
 set +a
 
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
-for key in STACKS_ROOT RUNTIME_ROOT HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTNAME \
+for key in STACKS_ROOT BASE_PATH HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTNAME \
            WEB_TARGET SEARCH_HOSTNAME SEARCH_TARGET CHAT_HOSTNAME CHAT_TARGET \
            GIT_HOSTNAME GIT_TARGET; do
   require_env "${key}"
 done
 
-[[ "${STACKS_ROOT}" = /* && "${RUNTIME_ROOT}" = /* ]] || die "STACKS_ROOT y RUNTIME_ROOT deben ser rutas absolutas"
+[[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
 [[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
   die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
-[[ "${STACKS_ROOT%/}" != "${RUNTIME_ROOT%/}" ]] || die "STACKS_ROOT y RUNTIME_ROOT deben ser distintos"
+[[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 
 NETWORK_NAME="redlocal"
-HAPROXY_SERVICE="${RUNTIME_ROOT%/}/service_-_haproxy"
-WEB_SERVICE="${RUNTIME_ROOT%/}/service_-_web"
+HAPROXY_SERVICE="${BASE_PATH%/}/service_-_haproxy"
+WEB_SERVICE="${BASE_PATH%/}/service_-_web"
 HAPROXY_SOURCE="${STACK_DIR}/config/haproxy"
 WEB_SOURCE="${STACK_DIR}/config/web"
 
@@ -53,7 +53,7 @@ for file in haproxy.cfg casa.lan.crt casa.lan.key minimal.cnf; do
 done
 [[ -f "${WEB_SOURCE}/index.html" ]] || die "falta ${WEB_SOURCE}/index.html"
 
-mkdir -p "${RUNTIME_ROOT}"
+mkdir -p "${BASE_PATH}"
 
 write_lock() {
   umask 022
