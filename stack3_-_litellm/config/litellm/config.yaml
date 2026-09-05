@@ -3,8 +3,12 @@
 #
 # Configuracion base del proxy.
 #
-# Los modelos se gestionaran dinamicamente desde la Admin UI y se almacenaran
+# Los modelos se gestionan dinamicamente desde la Admin UI y se almacenan
 # en PostgreSQL, por eso model_list comienza vacio.
+#
+# Los MCP servers, virtual keys, access groups y permisos MCP tambien se
+# gestionan dinamicamente desde LiteLLM/PostgreSQL. No se declaran aqui para
+# no convertir el stack estatico en un catalogo de clientes o integraciones.
 #
 # Las credenciales, DATABASE_URL y demas secretos se proporcionan mediante
 # variables de entorno desde docker-compose.yml.
@@ -32,5 +36,3 @@ general_settings:
   #
   # El valor real vive exclusivamente en .env y sera inyectado por Docker.
   master_key: os.environ/LITELLM_MASTER_KEY
-
-
