@@ -23,7 +23,7 @@ services:
   # Hermes gateway / orchestrator
   # ---------------------------------------------------------------------------
   hermes:
-    image: ${HERMES_IMAGE}:${HERMES_VERSION}
+    image: ${HERMES_IMAGE}:${HERMES_VERSION:?Set HERMES_VERSION in .env}
     container_name: ${HERMES_CONTAINER}
     restart: unless-stopped
     command: ["gateway", "run"]
@@ -41,11 +41,11 @@ services:
 
       # MCP gateway. This is a client-specific LiteLLM virtual key created
       # dynamically in the LiteLLM Admin UI, not a Stack3 static credential.
-      LITELLM_MCP_URL: ${LITELLM_MCP_URL}
-      LITELLM_MCP_API_KEY: ${LITELLM_MCP_API_KEY}
+      LITELLM_MCP_URL: ${LITELLM_MCP_URL:?Set LITELLM_MCP_URL in .env}
+      LITELLM_MCP_API_KEY: ${LITELLM_MCP_API_KEY:?Set LITELLM_MCP_API_KEY in .env}
 
       # Telegram uses outbound long polling because no webhook URL is defined.
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
 
       TERMINAL_TIMEOUT: ${TERMINAL_TIMEOUT}
 
@@ -84,7 +84,7 @@ services:
 
       # Git-backed memory is a separate lifecycle and source of truth.
       # 04-gitmem.sh must prepare this working tree before the container starts.
-      - ${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data:/opt/data/memories
+      - ${BASE_PATH}/${HERMES_MEMORY_SERVICE:?Set HERMES_MEMORY_SERVICE in .env}/data:/opt/data/memories
 
       # Managed config + private executor key.
       - ${BASE_PATH}/${HERMES_SERVICE}/config/config.yaml:/opt/data/config.yaml
