@@ -84,7 +84,13 @@ services:
 
       # Git-backed memory is a separate lifecycle and source of truth.
       # 04-gitmem.sh must prepare this working tree before the container starts.
-      - ${BASE_PATH}/${HERMES_MEMORY_SERVICE:?Set HERMES_MEMORY_SERVICE in .env}/data:/opt/data/memories
+      # create_host_path=false makes Compose fail instead of silently creating
+      # an empty directory when the Git worktree is missing.
+      - type: bind
+        source: ${BASE_PATH}/${HERMES_MEMORY_SERVICE:?Set HERMES_MEMORY_SERVICE in .env}/data
+        target: /opt/data/memories
+        bind:
+          create_host_path: false
 
       # Managed config + private executor key.
       - ${BASE_PATH}/${HERMES_SERVICE}/config/config.yaml:/opt/data/config.yaml
