@@ -110,7 +110,7 @@ Then stop Hermes and run:
 
 ```bash
 cd /opt/docker/stack6_-_hermes
-sudo ./04-gitmem.sh
+sudo bash ./04-gitmem.sh
 ```
 
 `04-gitmem.sh`:
@@ -185,7 +185,7 @@ Recommended Phase 1 order:
 6. Add the new Stack6 `.env` values, including Telegram token and the Hermes MCP virtual key.
 7. Create/seed the private Gitea memory repository.
 8. Stop Stack6, remove `.lock` deliberately and run `01-prepare.sh` using the normal lifecycle.
-9. Run `04-gitmem.sh`.
+9. Run `sudo bash ./04-gitmem.sh`.
 10. Start/recreate Stack6.
 11. Pair the Telegram user.
 12. Validate Hermes MCP discovery; use `/reload-mcp` if required.
