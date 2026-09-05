@@ -25,10 +25,12 @@ set -a
 source "${ENV_FILE}"
 set +a
 
+[[ -n "${STACKS_ROOT:-}" ]] || die "falta STACKS_ROOT en ${ENV_FILE}"
 [[ -n "${BASE_PATH:-}" ]] || die "falta BASE_PATH en ${ENV_FILE}"
-[[ "${BASE_PATH}" = /* ]] || die "BASE_PATH debe ser una ruta absoluta"
-[[ "${STACK_DIR}" == "${BASE_PATH}/${STACK_NAME}" ]] || \
-  die "este stack debe residir en ${BASE_PATH}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
+[[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
+  die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
+[[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 
 step "Red Docker redlocal"
 if docker network inspect redlocal >/dev/null 2>&1; then
@@ -56,4 +58,3 @@ log "compose valido"
 
 step "Preparacion terminada"
 log "lock creado: ${LOCK_FILE}"
-log "arranque: docker compose --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d"
