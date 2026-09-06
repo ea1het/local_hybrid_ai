@@ -131,6 +131,58 @@ SANDBOX_LOGS="${SANDBOX_ROOT}/logs"
 SANDBOX_HOME="${SANDBOX_DATA}/home"
 SANDBOX_WORKSPACE="${SANDBOX_DATA}/workspace"
 
+# Hermes owns data/.env as persistent runtime state. Cleanup preserves it, but
+# stack-managed routing/model/credential variables are forbidden there.
+RUNTIME_ENV_ALLOWED_KEYS=(
+    BROWSERBASE_ADVANCED_STEALTH
+    BROWSERBASE_PROXIES
+    BROWSER_INACTIVITY_TIMEOUT
+    BROWSER_SESSION_TIMEOUT
+    IMAGE_TOOLS_DEBUG
+    MOA_TOOLS_DEBUG
+    TERMINAL_LIFETIME_SECONDS
+    TERMINAL_MODAL_IMAGE
+    TERMINAL_TIMEOUT
+    VISION_TOOLS_DEBUG
+    WEB_TOOLS_DEBUG
+)
+
+runtime_env_key_allowed() {
+    local candidate="$1"
+    local allowed
+
+    for allowed in "${RUNTIME_ENV_ALLOWED_KEYS[@]}"; do
+        [[ "$candidate" == "$allowed" ]] && return 0
+    done
+
+    return 1
+}
+
+audit_runtime_env_safety() {
+    local runtime_env="${HERMES_DATA}/.env"
+    local key
+
+    [[ -e "$runtime_env" || -L "$runtime_env" ]] || return 0
+
+    [[ ! -L "$runtime_env" ]] \
+        || die "Runtime .env must not be a symlink: ${runtime_env}"
+    [[ -f "$runtime_env" ]] \
+        || die "Runtime .env is not a regular file: ${runtime_env}"
+
+    while IFS= read -r key; do
+        [[ -n "$key" ]] || continue
+
+        runtime_env_key_allowed "$key" && continue
+
+        if grep -qE "^${key}=" "$ENV_FILE"; then
+            die "Runtime .env redefines stack-managed variable: ${key}"
+        fi
+    done < <(
+        sed -nE             's/^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p'             "$runtime_env" |
+        LC_ALL=C sort -u
+    )
+}
+
 assert_service_root() {
     local path="$1"
     case "$path" in
@@ -220,10 +272,13 @@ wipe_hermes_data_except_bin() {
 cleanup_runtime() {
     log "Removing shadow configuration and stale runtime artifacts."
 
-    # Shadow configuration / dotenv files. These are especially dangerous in
-    # Docker because Hermes may load HERMES_HOME/.env and override Compose env.
-    remove_glob "${HERMES_DATA}/.env*"
-    remove_glob "${HERMES_DATA}/config.yaml*"
+    # Hermes-owned runtime .env and its backups are legitimate persistent
+    # state. Preserve them, but reject stack-reserved variables.
+    audit_runtime_env_safety
+
+    # Only the active runtime config shadow is removed. Historical
+    # config.yaml.bak-* files are preserved.
+    remove_path "${HERMES_DATA}/config.yaml"
     remove_path "${HERMES_DATA}/.hermes"
 
     # Runtime markers/state that are safe to regenerate.
@@ -325,8 +380,8 @@ audit_after_cleanup() {
         unexpected=1
     fi
     local forbidden_runtime=(
-        "${HERMES_DATA}/.env"
         "${HERMES_DATA}/.hermes"
+        "${HERMES_DATA}/config.yaml"
         "${HERMES_DATA}/gateway.pid"
         "${HERMES_DATA}/gateway.lock"
         "${HERMES_DATA}/gateway_state.json"
@@ -339,6 +394,9 @@ audit_after_cleanup() {
             unexpected=1
         fi
     done
+
+    # Preserved runtime dotenv must remain within the same safety contract.
+    audit_runtime_env_safety
 
     if [[ "$MODE" == "reset-state" ]]; then
         for path in \

@@ -298,33 +298,96 @@ log "data/, logs/, workspace y data/bin se preservan"
 log "${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data sera preparado exclusivamente por 04-gitmem.sh"
 
 # -----------------------------------------------------------------------------
-# Shadow configuration
+# Runtime / shadow configuration
 # -----------------------------------------------------------------------------
-step "Shadow configuration"
+step "Runtime / shadow configuration"
 
-SHADOW_FOUND=0
+# Hermes legitimately maintains /opt/data/.env at runtime. It is allowed to
+# contain Hermes-owned operational settings, but it must never take ownership
+# of stack-managed routing, model selection or credentials.
+RUNTIME_ENV_ALLOWED_KEYS=(
+  BROWSERBASE_ADVANCED_STEALTH
+  BROWSERBASE_PROXIES
+  BROWSER_INACTIVITY_TIMEOUT
+  BROWSER_SESSION_TIMEOUT
+  IMAGE_TOOLS_DEBUG
+  MOA_TOOLS_DEBUG
+  TERMINAL_LIFETIME_SECONDS
+  TERMINAL_MODAL_IMAGE
+  TERMINAL_TIMEOUT
+  VISION_TOOLS_DEBUG
+  WEB_TOOLS_DEBUG
+)
 
-for path in \
-  "${HERMES_DATA}/.hermes" \
-  "${HERMES_DATA}/config.yaml"
-do
-  if [[ -e "${path}" || -L "${path}" ]]; then
-    warn "configuracion shadow detectada: ${path}"
-    SHADOW_FOUND=1
+runtime_env_key_allowed() {
+  local candidate="$1"
+  local allowed
+
+  for allowed in "${RUNTIME_ENV_ALLOWED_KEYS[@]}"; do
+    [[ "${candidate}" == "${allowed}" ]] && return 0
+  done
+
+  return 1
+}
+
+audit_runtime_shadow_configuration() {
+  local runtime_env="${HERMES_DATA}/.env"
+  local runtime_config="${HERMES_DATA}/config.yaml"
+  local key
+
+  # Legacy .hermes remains a real shadow namespace.
+  if [[ -e "${HERMES_DATA}/.hermes" || -L "${HERMES_DATA}/.hermes" ]]; then
+    die "configuracion shadow detectada: ${HERMES_DATA}/.hermes; ejecutar 02-cleanup.sh"
   fi
-done
 
-shopt -s nullglob
-for path in "${HERMES_DATA}"/.env*; do
-  warn "dotenv shadow detectado: ${path}"
-  SHADOW_FOUND=1
-done
-shopt -u nullglob
+  # Hermes may leave an empty config.yaml below the bind-mounted managed
+  # config. An empty regular file is harmless; any content or symlink is not.
+  if [[ -L "${runtime_config}" ]]; then
+    die "configuracion shadow detectada (symlink): ${runtime_config}; ejecutar 02-cleanup.sh"
+  elif [[ -e "${runtime_config}" ]]; then
+    [[ -f "${runtime_config}" ]] \
+      || die "configuracion shadow invalida: ${runtime_config}; ejecutar 02-cleanup.sh"
 
-(( SHADOW_FOUND == 0 )) \
-  || die "hay configuracion runtime que puede pisar el despliegue; ejecutar 02-cleanup.sh"
+    if [[ -s "${runtime_config}" ]]; then
+      die "configuracion shadow activa y no vacia: ${runtime_config}; ejecutar 02-cleanup.sh"
+    fi
 
-log "sin data/.env*, data/.hermes ni data/config.yaml"
+    warn "data/config.yaml vacio permitido; queda oculto por el bind mount gestionado"
+  fi
+
+  # Runtime .env is legitimate Hermes state. Backups (.env.bak-*) are also
+  # legitimate historical state and are deliberately ignored here.
+  if [[ -L "${runtime_env}" ]]; then
+    die "runtime .env no puede ser un symlink: ${runtime_env}"
+  elif [[ -e "${runtime_env}" ]]; then
+    [[ -f "${runtime_env}" ]] \
+      || die "runtime .env no es un fichero regular: ${runtime_env}"
+
+    while IFS= read -r key; do
+      [[ -n "${key}" ]] || continue
+
+      # Known Hermes-owned runtime variables are explicitly allowed, even when
+      # a variable such as TERMINAL_TIMEOUT also exists in the stack .env.
+      runtime_env_key_allowed "${key}" && continue
+
+      # Any other runtime variable that collides with a stack-owned variable is
+      # rejected. Unknown Hermes-only runtime variables remain allowed so an
+      # upstream release can add internal settings without breaking prepare.
+      if grep -qE "^${key}=" "${ENV_FILE}"; then
+        die "runtime .env intenta redefinir variable gestionada por el stack: ${key}"
+      fi
+    done < <(
+      sed -nE         's/^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p'         "${runtime_env}" |
+      LC_ALL=C sort -u
+    )
+
+    log "data/.env runtime permitido; sin colisiones con variables gestionadas por el stack"
+  fi
+
+  log "shadow config: OK"
+}
+
+audit_runtime_shadow_configuration
 
 # -----------------------------------------------------------------------------
 # Managed configuration: stack -> service
@@ -572,20 +635,7 @@ host_public="$(awk '{print $1" "$2}' "${HOST_PUBLIC}")"
   || die "la pareja de host keys del sandbox no es coherente"
 log "claves SSH: OK"
 
-for path in \
-  "${HERMES_DATA}/.hermes" \
-  "${HERMES_DATA}/config.yaml"
-do
-  [[ ! -e "${path}" && ! -L "${path}" ]] \
-    || die "configuracion shadow detectada durante auditoria: ${path}"
-done
-
-shopt -s nullglob
-SHADOW_ENV=( "${HERMES_DATA}"/.env* )
-shopt -u nullglob
-
-(( ${#SHADOW_ENV[@]} == 0 )) \
-  || die "dotenv shadow detectado durante auditoria: ${SHADOW_ENV[*]}"
+audit_runtime_shadow_configuration
 
 if grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG}/config.yaml"; then
   die "config.yaml desplegado contiene \${HERMES_MODEL}"
