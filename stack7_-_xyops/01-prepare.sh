@@ -258,7 +258,8 @@ for path in \
     "${XYOPS_LOGS}" \
     "${XYSAT_ROOT}" \
     "${XYSAT_CONFIG}" \
-    "${XYSAT_LOGS}"
+    "${XYSAT_LOGS}" \
+    "${XYSAT_SSH}"
 do
     [[ -d "${path}" && ! -L "${path}" ]] \
         || die "auditoria runtime fallida: ${path}"
