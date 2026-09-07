@@ -87,10 +87,10 @@ step "Permisos de datos"
 image_uid() { docker run --rm --entrypoint id "$1" -u 2>/dev/null || true; }
 image_gid() { docker run --rm --entrypoint id "$1" -g 2>/dev/null || true; }
 declare -A IMAGE_OF=(
-  [searxng]="docker.io/searxng/searxng:latest"
+  [searxng]="docker.io/searxng/searxng:2026.9.5-c7f3080aa"
   [firecrawl-redis]="redis:alpine"
   [firecrawl-rabbitmq]="rabbitmq:3-alpine"
-  [firecrawl-postgres]="ghcr.io/firecrawl/nuq-postgres:latest"
+  [firecrawl-postgres]="ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6"
 )
 for svc in "${!IMAGE_OF[@]}"; do
   uid="$(image_uid "${IMAGE_OF[$svc]}")"

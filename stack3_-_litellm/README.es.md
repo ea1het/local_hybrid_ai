@@ -35,7 +35,10 @@ ${BASE_PATH}/service_-_litellm/config/config.yaml
 Variables actuales:
 
 ```text
+STACKS_ROOT
 BASE_PATH
+LITELLM_IMAGE
+LITELLM_VERSION
 LITELLM_MASTER_KEY
 LITELLM_SALT_KEY
 UI_USERNAME
@@ -61,11 +64,11 @@ Debe existir y estar arrancado `firecrawl-postgres`.
 ### 2. Preparar LiteLLM
 
 ```bash
-cd /opt/docker/stack3_-_litellm
+cd /opt/docker/stacks/stack3_-_litellm
 sudo ./01-prepare.sh
 ```
 
-Este paso valida `.env`, migra la antigua `/opt/docker/litellm` si procede, crea `redlocal` si falta y sustituye la configuración operativa de LiteLLM.
+Este paso valida `.env`, valida la separación source/runtime, crea `redlocal` si falta y sustituye la configuración operativa de LiteLLM.
 
 No crea `.lock`, porque falta todavía el provisionado PostgreSQL.
 
@@ -78,7 +81,7 @@ sudo ./02-postgres.sh
 `02-postgres.sh` lee directamente, solo durante el provisionado:
 
 ```text
-${BASE_PATH}/stack2_-_searxng_firecrawl/.env
+${STACKS_ROOT}/stack2_-_searxng_firecrawl/.env
 ```
 
 De ahí obtiene únicamente:

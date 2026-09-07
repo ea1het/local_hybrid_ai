@@ -41,6 +41,18 @@ services:
       GIT_HOSTNAME: ${GIT_HOSTNAME:-git}
       GIT_TARGET: ${GIT_TARGET:-gitea:3000}
 
+      GWIA_HOSTNAME: ${GWIA_HOSTNAME:-gwia}
+      GWIA_TARGET: ${GWIA_TARGET:-litellm:4000}
+
+      HOMELAB_HOSTNAME: ${HOMELAB_HOSTNAME:-homelab}
+      HOMELAB_TARGET: ${HOMELAB_TARGET:-dockhand:3000}
+
+      AGENTIA_HOSTNAME: ${AGENTIA_HOSTNAME:-agentia}
+      AGENTIA_TARGET: ${AGENTIA_TARGET:-hermes:9119}
+
+      XYOPS_HOSTNAME: ${XYOPS_HOSTNAME:-xyops}
+      XYOPS_TARGET: ${XYOPS_TARGET:-xyops:5522}
+
 
     logging:
       driver: "json-file"

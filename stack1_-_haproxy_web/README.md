@@ -33,13 +33,14 @@ ${BASE_PATH}/service_-_haproxy/config
 ${BASE_PATH}/service_-_web
 ```
 
-The script automatically migrates the old `/opt/docker/haproxy` and `/opt/docker/web` paths if the new destination does not yet exist.
+Runtime state is created under `${BASE_PATH}`. The current preparation script does not automatically migrate legacy paths.
 
 ## `.env`
 
 Must exist before running the script. Current variables:
 
 ```
+STACKS_ROOT
 BASE_PATH
 HAPROXY_HTTP_PORT
 HAPROXY_HTTPS_PORT
@@ -51,22 +52,30 @@ CHAT_HOSTNAME
 CHAT_TARGET
 GIT_HOSTNAME
 GIT_TARGET
+GWIA_HOSTNAME
+GWIA_TARGET
+HOMELAB_HOSTNAME
+HOMELAB_TARGET
+AGENTIA_HOSTNAME
+AGENTIA_TARGET
+XYOPS_HOSTNAME
+XYOPS_TARGET
 ```
 
-`GWIA` and `HOMELAB` continue to be defined via `presetenv` in the current `haproxy.cfg`. No variables have been added that Compose does not consume.
+`GWIA`, `HOMELAB`, `AGENTIA` and `XYOPS` are part of the explicit Stack1 environment contract and are passed by Compose to HAProxy.
 
 ## Initial preparation
 
 Place the stack at:
 
 ```
-/opt/docker/stack1_-_haproxy_web
+/opt/docker/stacks/stack1_-_haproxy_web
 ```
 
 Ensure `.env`, the certificate and the private key are the final/operative ones. Then:
 
 ```bash
-cd /opt/docker/stack1_-_haproxy_web
+cd /opt/docker/stacks/stack1_-_haproxy_web
 sudo ./01-prepare.sh
 ```
 
@@ -74,7 +83,7 @@ The script:
 
 1. exits without doing anything if `.lock` exists;
 2. validates `.env`;
-3. migrates old paths where appropriate;
+3. prepares the persistent runtime paths under `${BASE_PATH}`;
 4. creates/validates `redlocal`;
 5. fully rewrites HAProxy's operational configuration from `config/haproxy`;
 6. rewrites the web portal from `config/web`;

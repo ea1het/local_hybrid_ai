@@ -19,24 +19,25 @@ stack5_-_dockhand/
 └── README.md
 ```
 
-El `.env` solo contiene actualmente:
+El `.env` contiene el contrato común de source/runtime:
 
 ```text
-BASE_PATH=/opt/docker
+STACKS_ROOT=/opt/docker/stacks
+BASE_PATH=/opt/docker/runtime
 ```
 
-Se mantiene para que todos los stacks sigan el mismo contrato. Dockhand no necesita hoy variables de entorno de Compose.
+Dockhand no necesita variables adicionales específicas de la aplicación.
 
 ## Preparación
 
 ```bash
-cd /opt/docker/stack5_-_dockhand
+cd /opt/docker/stacks/stack5_-_dockhand
 sudo ./01-prepare.sh
 ```
 
 El script valida:
 
-- ubicación del stack respecto a `BASE_PATH`;
+- ubicación del stack respecto a `STACKS_ROOT`;
 - existencia/driver de `redlocal`;
 - existencia del volumen externo `dockhand_data`;
 - sintaxis/configuración del Compose.

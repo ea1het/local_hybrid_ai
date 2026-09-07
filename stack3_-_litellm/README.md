@@ -35,7 +35,10 @@ ${BASE_PATH}/service_-_litellm/config/config.yaml
 Current variables:
 
 ```text
+STACKS_ROOT
 BASE_PATH
+LITELLM_IMAGE
+LITELLM_VERSION
 LITELLM_MASTER_KEY
 LITELLM_SALT_KEY
 UI_USERNAME
@@ -61,11 +64,11 @@ All secrets must exist before running `01-prepare.sh`. In particular, `LITELLM_S
 ### 2. Prepare LiteLLM
 
 ```bash
-cd /opt/docker/stack3_-_litellm
+cd /opt/docker/stacks/stack3_-_litellm
 sudo ./01-prepare.sh
 ```
 
-This step validates `.env`, migrates the old `/opt/docker/litellm` if needed, creates `redlocal` if missing, and replaces LiteLLM's operational configuration.
+This step validates `.env`, validates the source/runtime layout, creates `redlocal` if missing, and replaces LiteLLM's operational configuration.
 
 It does not create `.lock`, because PostgreSQL provisioning is still pending.
 
@@ -78,7 +81,7 @@ sudo ./02-postgres.sh
 `02-postgres.sh` reads directly, only during provisioning:
 
 ```text
-${BASE_PATH}/stack2_-_searxng_firecrawl/.env
+${STACKS_ROOT}/stack2_-_searxng_firecrawl/.env
 ```
 
 From there it only reads:

@@ -28,6 +28,7 @@ stack2_-_searxng_firecrawl/
 Variables actuales:
 
 ```text
+STACKS_ROOT
 BASE_PATH
 SEARXNG_SECRET
 SEARXNG_BASE_URL
@@ -59,14 +60,14 @@ ${BASE_PATH}/service_-_firecrawl-rabbitmq/data
 ${BASE_PATH}/service_-_firecrawl-postgres/data
 ```
 
-El script migra las antiguas rutas sin prefijo `service_-_` cuando el destino no existe. Si detecta origen y destino simultáneamente, para para evitar elegir automáticamente entre dos posibles conjuntos de datos.
+El script de preparación actual trabaja exclusivamente con las rutas runtime bajo `${BASE_PATH}` y no migra automáticamente directorios antiguos.
 
 Los directorios `data` nunca se borran. Solo pueden crearse y ajustarse sus propietarios.
 
 ## Preparación
 
 ```bash
-cd /opt/docker/stack2_-_searxng_firecrawl
+cd /opt/docker/stacks/stack2_-_searxng_firecrawl
 sudo ./01-prepare.sh
 ```
 
