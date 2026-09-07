@@ -1,0 +1,153 @@
+name: Stack7 - xyOps
+
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
+networks:
+  redlocal:
+    external: true
+    name: ${NETWORK_NAME}
+
+services:
+
+  # ===========================================================================
+  # xyOps conductor
+  #
+  # UI + API + scheduler + persistent database.
+  # It does NOT execute host jobs.
+  # ===========================================================================
+  xyops:
+    image: ${XYOPS_IMAGE}:${XYOPS_VERSION:?Set XYOPS_VERSION in .env}
+    container_name: ${XYOPS_CONTAINER}
+    hostname: ${XYOPS_HOSTNAME}
+    restart: unless-stopped
+    init: true
+
+    environment:
+      TZ: ${TZ}
+
+      XYOPS_hostname: ${XYOPS_HOSTNAME}
+      XYOPS_masters: ${XYOPS_MASTERS}
+      XYOPS_base_app_url: ${XYOPS_BASE_APP_URL}
+
+      # Dedicated xySat workers connect through Docker DNS, not LAN DNS.
+      XYOPS_satellite__config__host: xyops
+      XYOPS_satellite__config__port: "5522"
+      XYOPS_satellite__config__secure: "false"
+
+      # Dedicated external xySat only.
+
+    volumes:
+      - type: bind
+        source: ${BASE_PATH}/${XYOPS_SERVICE}/data
+        target: /opt/xyops/data
+
+      - type: bind
+        source: ${BASE_PATH}/${XYOPS_SERVICE}/conf
+        target: /opt/xyops/conf
+
+      - type: bind
+        source: ${BASE_PATH}/${XYOPS_SERVICE}/logs
+        target: /opt/xyops/logs
+
+    expose:
+      - "${XYOPS_HTTP_PORT}"
+      - "${XYOPS_HTTPS_PORT}"
+
+    networks:
+      redlocal:
+        aliases:
+          - ${XYOPS_HOSTNAME}
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:${XYOPS_HTTP_PORT}/api/app/ping >/dev/null || exit 1"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+    logging: *logging
+
+
+  # ===========================================================================
+  # xySat dedicated worker
+  #
+  # Not started during conductor bootstrap.
+  #
+  # Start later with:
+  #
+  #   docker compose --profile worker up -d xysat
+  #
+  # config.json is generated/enrolled through xyOps and lives exclusively
+  # under runtime/.
+  # ===========================================================================
+  xysat:
+    profiles:
+      - worker
+
+    image: ${XYSAT_IMAGE}:${XYSAT_VERSION:?Set XYSAT_VERSION in .env}
+    container_name: ${XYSAT_CONTAINER}
+    restart: unless-stopped
+    init: true
+
+    environment:
+      TZ: ${TZ}
+      XYSAT_config_file: ${XYSAT_CONFIG_FILE}
+
+    volumes:
+      # Mutable xySat identity/auth/config generated during enrollment.
+      - type: bind
+        source: ${BASE_PATH}/${XYSAT_SERVICE}/config
+        target: /etc/xysat
+
+      # Scheduler-controlled scripts.  xySat may execute but never modify them.
+      - type: bind
+        source: ${STACKS_ROOT}/stack7_-_xyops/jobs
+        target: /opt/xyops/jobs
+        read_only: true
+
+      # Hermes Git-backed memory: the only Stack6 runtime writable by this worker.
+      - type: bind
+        source: ${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data
+        target: /work/hermes-memory
+
+      # Dedicated Gitea SSH identity and pinned host key.
+      - type: bind
+        source: ${BASE_PATH}/${XYSAT_SERVICE}/ssh
+        target: /run/hermes-memory-ssh
+        read_only: true
+
+      # Hermes sandbox workspace housekeeping.
+      # Audit-only initially: no destructive access until transient paths
+      # have an explicit lifecycle contract.
+      - type: bind
+        source: ${BASE_PATH}/${HERMES_SANDBOX_SERVICE}/data/workspace
+        target: /work/hermes-sandbox
+        read_only: true
+
+      - type: bind
+        source: ${BASE_PATH}/${XYSAT_SERVICE}/logs
+        target: /opt/xyops/satellite/logs
+
+    networks:
+      - redlocal
+
+    depends_on:
+      xyops:
+        condition: service_healthy
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging: *logging
