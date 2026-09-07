@@ -30,7 +30,7 @@ services:
   #   http://searxng:8080
   # -------------------------------------------------------------------------
   searxng:
-    image: docker.io/searxng/searxng:latest
+    image: docker.io/searxng/searxng:2026.9.5-c7f3080aa
     container_name: searxng
     restart: unless-stopped
 
@@ -52,7 +52,7 @@ services:
   # Firecrawl API + workers
   # -------------------------------------------------------------------------
   firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl:latest
+    image: ghcr.io/firecrawl/firecrawl@sha256:1910ef022706238c7d13c0e191b9a080efcf10aab049d776ba321abd8dc512ca
     container_name: firecrawl-api
     restart: unless-stopped
 
@@ -114,7 +114,7 @@ services:
   # Playwright para Firecrawl
   # -------------------------------------------------------------------------
   firecrawl-playwright:
-    image: ghcr.io/firecrawl/playwright-service:latest
+    image: ghcr.io/firecrawl/playwright-service@sha256:df1a393ce8bfc3801570a826a9b0dcc400ae48789adb4a0ad9d6cbf0229b059b
     container_name: firecrawl-playwright
     restart: unless-stopped
 
@@ -214,7 +214,7 @@ services:
   # No publica el puerto 5432 en el host.
   # -------------------------------------------------------------------------
   firecrawl-postgres:
-    image: ghcr.io/firecrawl/nuq-postgres:latest
+    image: ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
     container_name: firecrawl-postgres
     restart: unless-stopped
 

@@ -39,6 +39,7 @@ The two files under `config/` are the real source files for the stack. `01-prepa
 It contains configuration and secrets for both Compose and the scripts. Among others:
 
 ```text
+STACKS_ROOT
 BASE_PATH
 GITEA_IMAGE
 GITEA_CONTAINER_NAME
@@ -74,23 +75,15 @@ ${BASE_PATH}/service_-_gitea-runner/data
 
 The runner keeps its `.runner` identity and `config.yaml` in its `data` directory.
 
-## Migration from the previous structure
+## Runtime policy
 
-`01-prepare.sh` migrates, if they exist and the destination is free:
+`01-prepare.sh` works on the current runtime layout under `${BASE_PATH}` and does not automatically migrate legacy directories.
 
-```text
-/opt/docker/gitea/data   -> /opt/docker/service_-_gitea/data
-/opt/docker/gitea/runner -> /opt/docker/service_-_gitea-runner/data
-```
-
-It then replaces the configuration completely. The old runner `ca-certificates.crt` and `certificates.txt` are removed because they belong to the previous TLS architecture.
-
-It never deletes `service_-_gitea/data` or the persistent `.runner` identity.
-
+It replaces the managed configuration while preserving `service_-_gitea/data` and the persistent runner `.runner` identity. Legacy runner `ca-certificates.crt` and `certificates.txt` files are removed because they belong to the previous TLS architecture.
 ## Installation / refactor
 
 ```bash
-cd /opt/docker/stack4_-_gitea
+cd /opt/docker/stacks/stack4_-_gitea
 sudo ./01-prepare.sh
 sudo ./02-run.sh
 ```

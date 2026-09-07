@@ -33,7 +33,11 @@ set +a
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
 for key in STACKS_ROOT BASE_PATH HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTNAME \
            WEB_TARGET SEARCH_HOSTNAME SEARCH_TARGET CHAT_HOSTNAME CHAT_TARGET \
-           GIT_HOSTNAME GIT_TARGET; do
+           GIT_HOSTNAME GIT_TARGET \
+           GWIA_HOSTNAME GWIA_TARGET \
+           HOMELAB_HOSTNAME HOMELAB_TARGET \
+           AGENTIA_HOSTNAME AGENTIA_TARGET \
+           XYOPS_HOSTNAME XYOPS_TARGET; do
   require_env "${key}"
 done
 
@@ -99,6 +103,14 @@ docker run --rm \
   -e CHAT_TARGET="${CHAT_TARGET}" \
   -e GIT_HOSTNAME="${GIT_HOSTNAME}" \
   -e GIT_TARGET="${GIT_TARGET}" \
+  -e GWIA_HOSTNAME="${GWIA_HOSTNAME}" \
+  -e GWIA_TARGET="${GWIA_TARGET}" \
+  -e HOMELAB_HOSTNAME="${HOMELAB_HOSTNAME}" \
+  -e HOMELAB_TARGET="${HOMELAB_TARGET}" \
+  -e AGENTIA_HOSTNAME="${AGENTIA_HOSTNAME}" \
+  -e AGENTIA_TARGET="${AGENTIA_TARGET}" \
+  -e XYOPS_HOSTNAME="${XYOPS_HOSTNAME}" \
+  -e XYOPS_TARGET="${XYOPS_TARGET}" \
   haproxy:3.0-alpine haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg >/dev/null
 log "haproxy.cfg valida"
 
