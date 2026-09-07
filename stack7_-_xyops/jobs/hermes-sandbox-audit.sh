@@ -7,7 +7,7 @@ WORKSPACE="/work/hermes-sandbox"
 log()  { printf '[hermes-sandbox-audit] %s\n' "$*"; }
 die()  { printf '[hermes-sandbox-audit] ERROR: %s\n' "$*" >&2; exit 1; }
 
-for cmd in find du stat df awk sort; do
+for cmd in find du stat df awk sort wc; do
     command -v "$cmd" >/dev/null 2>&1 ||
         die "falta comando requerido: $cmd"
 done

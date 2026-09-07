@@ -64,6 +64,7 @@ step "Validacion de .env (solo lectura)"
 ALL_KEYS=(
     STACKS_ROOT BASE_PATH NETWORK_NAME TZ
     XYOPS_SERVICE XYSAT_SERVICE
+    HERMES_MEMORY_SERVICE HERMES_SANDBOX_SERVICE
     XYOPS_CONTAINER XYSAT_CONTAINER
     XYOPS_IMAGE XYOPS_VERSION
     XYSAT_IMAGE XYSAT_VERSION
@@ -103,7 +104,8 @@ BASE_PATH="${BASE_PATH%/}"
 [[ "${STACK_DIR}" == "${STACKS_ROOT}/stack7_-_xyops" ]] \
     || die "el stack debe residir en ${STACKS_ROOT}/stack7_-_xyops"
 
-for service_var in XYOPS_SERVICE XYSAT_SERVICE; do
+for service_var in     XYOPS_SERVICE     XYSAT_SERVICE     HERMES_MEMORY_SERVICE     HERMES_SANDBOX_SERVICE
+do
     service_value="${!service_var}"
     [[ "${service_value}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
         || die "${service_var} debe seguir el patron service_-_*"
@@ -185,6 +187,7 @@ XYOPS_LOGS="${XYOPS_ROOT}/logs"
 
 XYSAT_CONFIG="${XYSAT_ROOT}/config"
 XYSAT_LOGS="${XYSAT_ROOT}/logs"
+XYSAT_SSH="${XYSAT_ROOT}/ssh"
 XYSAT_CONFIG_JSON="${XYSAT_CONFIG}/config.json"
 
 assert_not_symlink() {
@@ -216,6 +219,7 @@ ensure_directory "${XYOPS_LOGS}" 0750
 ensure_directory "${XYSAT_ROOT}" 0750
 ensure_directory "${XYSAT_CONFIG}" 0700
 ensure_directory "${XYSAT_LOGS}" 0750
+ensure_directory "${XYSAT_SSH}" 0700
 
 log "runtime xyOps preparado: ${XYOPS_ROOT}"
 log "runtime xySat preparado: ${XYSAT_ROOT}"

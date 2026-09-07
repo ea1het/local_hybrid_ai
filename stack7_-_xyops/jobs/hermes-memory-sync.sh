@@ -19,7 +19,7 @@ restore_permissions() {
     chown -R "${HERMES_UID}:${HERMES_GID}" "${REPO}" || true
 
     [[ -d "${REPO}" ]] &&
-        chmod 0700 "${REPO}" || true
+        chmod 0750 "${REPO}" || true
 
     for file in MEMORY.md USER.md; do
         [[ -f "${REPO}/${file}" ]] &&
