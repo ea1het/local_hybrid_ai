@@ -3,7 +3,7 @@ name: Stack5 - Dockhand
 services:
 
   dockhand:
-    image: fnsys/dockhand:latest
+    image: fnsys/dockhand:v1.0.40
     container_name: dockhand
     restart: unless-stopped
 

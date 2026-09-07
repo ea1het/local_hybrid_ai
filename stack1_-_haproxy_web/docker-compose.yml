@@ -51,7 +51,7 @@ services:
 
 
   web:
-    image: busybox:latest
+    image: busybox:1.38.0
     container_name: web
     restart: unless-stopped
 
