@@ -4,8 +4,8 @@
   "directory": "stack6_-_hermes",
   "name": "Hermes agent platform",
   "kind": "application",
-  "atomic": false,
-  "requires": [0, 2, 3],
+  "atomic": true,
+  "requires": [0, 3],
   "target_requires": [0, 3],
   "optional": [2, 4],
   "provides": ["ai.agent", "ai.sandbox", "ai.memory"],
@@ -21,9 +21,5 @@
     "runtime:service_-_hermes-memory-sync",
     "runtime:service_-_hermes-sandbox"
   ],
-  "blockers": [
-    "01-prepare.sh still requires local SearXNG and Firecrawl dependencies",
-    "Stack6 preparation contract does not yet validate every current sidecar variable/source",
-    "Memory-sync SSH bootstrap remains an external prerequisite"
-  ]
+  "blockers": []
 }
