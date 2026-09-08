@@ -160,6 +160,7 @@ services:
     logging: *logging
 
   hermes-memory-sync:
+    profiles: ["git-memory"]
     build:
       context: ${STACKS_ROOT}/stack6_-_hermes/config/memory-sync
       dockerfile: Dockerfile
