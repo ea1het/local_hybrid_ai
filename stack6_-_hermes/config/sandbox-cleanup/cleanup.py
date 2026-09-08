@@ -18,6 +18,7 @@ QUARANTINE_DAYS = int(os.environ.get("SANDBOX_CLEANUP_QUARANTINE_DAYS", "1"))
 DB_RETENTION_DAYS = int(os.environ.get("SANDBOX_CLEANUP_DB_RETENTION_DAYS", "90"))
 SWEEP_HOUR = int(os.environ.get("SANDBOX_CLEANUP_SWEEP_HOUR", "3"))
 SWEEP_MINUTE = int(os.environ.get("SANDBOX_CLEANUP_SWEEP_MINUTE", "30"))
+MARKER = WORKSPACE / ".sandbox-generation"
 QUARANTINE = WORKSPACE / ".cleanup-quarantine"
 
 _LOCK = threading.Lock()
@@ -42,9 +43,23 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def read_marker() -> str:
+    if MARKER.is_symlink() or not MARKER.is_file():
+        raise RuntimeError(
+            "sandbox generation marker missing/invalid; run 02-cleanup.sh --reset-sandbox"
+        )
+    value = MARKER.read_text(encoding="utf-8").strip()
+    if not value:
+        raise RuntimeError(
+            "sandbox generation marker is empty; run 02-cleanup.sh --reset-sandbox"
+        )
+    return value
+
+
 def validate_state() -> str:
-    if not STATE_DB.is_file():
-        raise RuntimeError(f"state database missing: {STATE_DB}")
+    marker_generation = read_marker()
+    if STATE_DB.is_symlink() or not STATE_DB.is_file():
+        raise RuntimeError(f"state database missing/invalid: {STATE_DB}")
     conn = connect()
     try:
         check = conn.execute("PRAGMA integrity_check").fetchone()
@@ -54,6 +69,8 @@ def validate_state() -> str:
         schema = conn.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
         if not generation or not schema or schema[0] != "1":
             raise RuntimeError("state.db metadata invalid; run 02-cleanup.sh --reset-sandbox")
+        if generation[0] != marker_generation:
+            raise RuntimeError("sandbox generation mismatch; run 02-cleanup.sh --reset-sandbox")
         return generation[0]
     finally:
         conn.close()
@@ -242,6 +259,27 @@ def quarantine_candidate(conn: sqlite3.Connection, name: str, last_activity: str
     return True
 
 
+def quarantine_matches(name: str) -> list[Path]:
+    matches: list[Path] = []
+    if not QUARANTINE.is_dir() or QUARANTINE.is_symlink():
+        return matches
+    for candidate in QUARANTINE.iterdir():
+        parts = candidate.name.rsplit(".", 2)
+        if len(parts) != 3:
+            continue
+        base, stamp, inode = parts
+        valid_stamp = (
+            len(stamp) == 16
+            and stamp[8:9] == "T"
+            and stamp.endswith("Z")
+            and stamp[:8].isdigit()
+            and stamp[9:15].isdigit()
+        )
+        if base == name and valid_stamp and inode.isdigit():
+            matches.append(candidate)
+    return sorted(matches, key=lambda path: path.name)
+
+
 def delete_quarantined(conn: sqlite3.Connection) -> int:
     cutoff = now_utc() - timedelta(days=QUARANTINE_DAYS)
     rows = conn.execute(
@@ -251,8 +289,7 @@ def delete_quarantined(conn: sqlite3.Connection) -> int:
     for name, quarantined_at in rows:
         if parse_iso(quarantined_at) > cutoff:
             continue
-        matches = sorted(QUARANTINE.glob(f"{name}.*"))
-        for path in matches:
+        for path in quarantine_matches(name):
             safe_remove(path)
         conn.execute(
             "UPDATE objects SET state='DELETED', deleted_at=? WHERE path=?",
