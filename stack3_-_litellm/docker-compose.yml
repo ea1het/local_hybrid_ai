@@ -1,6 +1,40 @@
 name: Stack3 - LiteLLM
 
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    compress: "true"
+
 services:
+
+  litellm-postgres:
+    image: postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    container_name: litellm-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_DB: postgres
+
+    volumes:
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm-postgres/data:/var/lib/postgresql/data
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm-postgres/secret/postgres_admin_password:/run/secrets/postgres_admin_password:ro
+
+    networks:
+      - redlocal
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+    logging: *logging
+
 
   litellm:
     image: ${LITELLM_IMAGE}:${LITELLM_VERSION}
@@ -16,36 +50,24 @@ services:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm/config/config.yaml:/app/config.yaml:ro
 
     environment:
-
-      # -----------------------------------------------------------------------
-      # LiteLLM
-      # -----------------------------------------------------------------------
-
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
       LITELLM_SALT_KEY: "${LITELLM_SALT_KEY}"
-
       UI_USERNAME: "${UI_USERNAME}"
       UI_PASSWORD: "${UI_PASSWORD}"
-
       STORE_MODEL_IN_DB: "${STORE_MODEL_IN_DB}"
-
-      # Oculta en la UI el mensaje que sugiere las credenciales por defecto.
       LITELLM_HIDE_DEFAULT_CREDENTIALS_HINT: "true"
 
-
-      # -----------------------------------------------------------------------
-      # PostgreSQL
-      #
-      # PostgreSQL pertenece a Stack2.
-      # Stack3 accede exclusivamente con su usuario y base propios.
-      # -----------------------------------------------------------------------
-
-      DATABASE_URL: "postgresql://${LITELLM_DB_USER}:${LITELLM_DB_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${LITELLM_DB_NAME}"
-
+      # Stack3 owns its PostgreSQL service. These overrides are intentionally
+      # outside the normal .env contract and are used only for controlled
+      # migration/rollback to the former Stack2 database.
+      DATABASE_URL: "postgresql://${LITELLM_DB_USER}:${LITELLM_DB_PASSWORD}@${LITELLM_POSTGRES_HOST:-litellm-postgres}:${LITELLM_POSTGRES_PORT:-5432}/${LITELLM_DB_NAME}"
 
     networks:
       - redlocal
 
+    depends_on:
+      litellm-postgres:
+        condition: service_healthy
 
     healthcheck:
       test:
@@ -53,15 +75,15 @@ services:
           "CMD-SHELL",
           "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\""
         ]
-
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
+    logging: *logging
+
 
 networks:
-
   redlocal:
     external: true
-    name: redlocal
+    name: ${NETWORK_NAME:-redlocal}

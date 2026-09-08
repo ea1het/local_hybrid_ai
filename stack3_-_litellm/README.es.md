@@ -1,42 +1,37 @@
 # Stack3 — LiteLLM
 
-LiteLLM actúa como gateway de IA y utiliza el PostgreSQL ya desplegado por Stack2. La infraestructura PostgreSQL es compartida, pero LiteLLM tiene usuario, contraseña y base de datos propios.
+LiteLLM actúa como gateway de modelos y MCP. Stack3 pasa a ser propietario de su propio servicio PostgreSQL y deja de depender de Stack2 para la infraestructura de base de datos.
 
-LiteLLM no termina TLS. Su endpoint interno es:
+Endpoints internos:
 
 ```text
 http://litellm:4000
+postgresql://litellm-postgres:5432/<LITELLM_DB_NAME>
 ```
 
-La publicación `https://gwia.casa.lan` corresponde a HAProxy.
+La publicación `https://gwia.casa.lan` corresponde a HAProxy cuando Stack1 está instalado.
 
-## Estructura
+## Propiedad
+
+Stack3 posee:
 
 ```text
-stack3_-_litellm/
-├── .env
-├── docker-compose.yml
-├── 01-prepare.sh
-├── 02-postgres.sh
-├── README.md
-└── config/
-    └── litellm/
-        └── config.yaml
+contenedor: litellm
+contenedor: litellm-postgres
+runtime:    ${BASE_PATH}/service_-_litellm
+runtime:    ${BASE_PATH}/service_-_litellm-postgres
 ```
 
-Ruta operativa:
+Su única dependencia dura de otro stack es Stack0.
 
-```text
-${BASE_PATH}/service_-_litellm/config/config.yaml
-```
+## Entorno
 
-## `.env`
-
-Variables actuales:
+Stack3 consume el `.env` raíz mediante el enlace gestionado `./.env -> ../.env`. Las variables relevantes son:
 
 ```text
 STACKS_ROOT
 BASE_PATH
+NETWORK_NAME
 LITELLM_IMAGE
 LITELLM_VERSION
 LITELLM_MASTER_KEY
@@ -44,74 +39,50 @@ LITELLM_SALT_KEY
 UI_USERNAME
 UI_PASSWORD
 STORE_MODEL_IN_DB
-POSTGRES_HOST
-POSTGRES_PORT
 LITELLM_DB_NAME
 LITELLM_DB_USER
 LITELLM_DB_PASSWORD
 ```
 
-Se han eliminado `STACK2_ENV_STATE` y `LITELLM_PORT`, porque pertenecían al proceso de instalación antiguo y no son necesarios en el Compose actual.
+El host y puerto PostgreSQL son detalles internos de Stack3: `litellm-postgres:5432`.
 
-Todos los secretos deben existir antes de ejecutar `01-prepare.sh`. En especial, `LITELLM_SALT_KEY` debe conservarse de forma estable una vez LiteLLM tenga datos cifrados en PostgreSQL.
+`LITELLM_SALT_KEY` debe preservarse una vez LiteLLM tenga estado cifrado en PostgreSQL.
 
-## Contrato del lock de preparación
+## Lock de preparación
 
-`.lock` significa únicamente que `01-prepare.sh` terminó correctamente y el stack está preparado. No significa que PostgreSQL esté provisionado, que LiteLLM esté arrancado ni que el servicio esté healthy.
+`.lock` significa únicamente que `01-prepare.sh` terminó correctamente. No significa que PostgreSQL o LiteLLM estén arrancados o healthy.
 
-`01-prepare.sh` crea `.lock`. Las fases posteriores de instalación lo requieren, pero no lo crean ni son propietarias de él.
-
-## Proceso de instalación
-
-### 1. Stack2 debe estar operativo
-
-Debe existir y estar arrancado `firecrawl-postgres`.
-
-### 2. Preparar LiteLLM
+## Instalación nueva
 
 ```bash
 cd /opt/docker/stacks/stack3_-_litellm
 sudo ./01-prepare.sh
-```
-
-Este paso valida `.env`, valida la separación source/runtime, crea `redlocal` si falta, sustituye la configuración operativa de LiteLLM y crea `.lock` después de completar correctamente la preparación.
-
-### 3. Provisionar PostgreSQL
-
-```bash
 sudo ./02-postgres.sh
-```
-
-`02-postgres.sh` requiere `.lock` y lee directamente, solo durante el provisionado:
-
-```text
-${STACKS_ROOT}/stack2_-_searxng_firecrawl/.env
-```
-
-De ahí obtiene únicamente:
-
-```text
-POSTGRES_USER
-POSTGRES_PASSWORD
-POSTGRES_DB
-```
-
-Esas credenciales **no se copian ni se escriben** en el `.env` de Stack3. El script crea o actualiza el rol de LiteLLM, crea su base si falta, asegura el propietario y comprueba una conexión usando las credenciales definitivas de LiteLLM.
-
-### 4. Arrancar LiteLLM
-
-```bash
-docker compose up -d
+docker compose up -d litellm
 docker compose ps
-docker compose logs -f litellm
 ```
 
-## Reconstrucción deliberada
+`02-postgres.sh` arranca y valida el PostgreSQL propiedad de Stack3. En un directorio de datos nuevo, la imagen oficial de PostgreSQL inicializa la base e identidad configuradas para LiteLLM.
+
+## Migración desde el antiguo PostgreSQL de Stack2
+
+Los despliegues existentes anteriores a la atomicidad de Stack3 conservan el estado de LiteLLM dentro de `firecrawl-postgres`. Para ellos existe un helper de migración de una sola vez:
 
 ```bash
-rm .lock
-sudo ./01-prepare.sh
-sudo ./02-postgres.sh
+sudo ./90-migrate-postgres-from-stack2.sh
 ```
 
-`02-postgres.sh` es seguro respecto a la persistencia: crea/actualiza la identidad PostgreSQL de LiteLLM, pero no elimina la base de datos ni sus tablas.
+El helper:
+
+1. verifica que el LiteLLM actualmente desplegado sigue apuntando a `firecrawl-postgres`;
+2. arranca el PostgreSQL destino vacío de Stack3;
+3. detiene LiteLLM para congelar escrituras;
+4. genera un `pg_dump` en formato custom bajo `/root/litellm-postgres-migration-*`;
+5. restaura en `litellm-postgres`;
+6. compara el inventario de tablas de usuario;
+7. recrea LiteLLM contra la nueva base y espera a que alcance `healthy`;
+8. conserva intacta la antigua base LiteLLM dentro de `firecrawl-postgres` como rollback.
+
+Si se produce un fallo después de detener LiteLLM, el helper intenta recrear LiteLLM automáticamente contra la base legacy de Stack2.
+
+La base antigua no debe eliminarse hasta validar operativamente el nuevo servicio y cerrar de forma deliberada la ventana de rollback.
