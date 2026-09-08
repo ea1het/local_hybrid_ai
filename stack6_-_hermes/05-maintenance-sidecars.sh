@@ -46,8 +46,11 @@ cat <<EOF
 
 Maintenance sidecars prepared.
 
-Next:
-  docker compose config --quiet
-  docker compose up -d --build hermes-sandbox hermes hermes-memory-sync hermes-sandbox-cleanup
+Git memory remains opt-in. To enable only the memory-sync sidecar after 04-gitmem.sh:
+  docker compose --profile git-memory up -d --build hermes-memory-sync
+  docker compose --profile git-memory ps
+
+The default Stack6 deployment remains:
+  docker compose up -d --build
   docker compose ps
 EOF
