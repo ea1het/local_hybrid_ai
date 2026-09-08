@@ -61,6 +61,7 @@ POSTGRES_DIR="${BASE_PATH%/}/service_-_litellm-postgres"
 POSTGRES_SECRET_DIR="${POSTGRES_DIR}/secret"
 POSTGRES_ADMIN_PASSWORD_FILE="${POSTGRES_SECRET_DIR}/postgres_admin_password"
 CONFIG_SOURCE="${STACK_DIR}/config/litellm/config.yaml"
+CONFIG_DIR="${SERVICE_DIR}/config"
 [[ -f "${CONFIG_SOURCE}" ]] || die "falta ${CONFIG_SOURCE}"
 
 step "Runtime de Stack3"
@@ -82,10 +83,16 @@ fi
 log "PostgreSQL dedicado: ${POSTGRES_DIR}/data"
 
 step "Configuracion de LiteLLM"
-rm -rf "${SERVICE_DIR}/config"
-mkdir -p "${SERVICE_DIR}/config"
-install -m 0644 "${CONFIG_SOURCE}" "${SERVICE_DIR}/config/config.yaml"
-log "config reescrita desde ${CONFIG_SOURCE}"
+if [[ -e "${CONFIG_DIR}" || -L "${CONFIG_DIR}" ]]; then
+  [[ -d "${CONFIG_DIR}" && ! -L "${CONFIG_DIR}" ]] || \
+    die "config runtime invalida: ${CONFIG_DIR} debe ser un directorio real"
+  log "directorio config existente: identidad preservada"
+else
+  install -d -m 0750 -o 0 -g 0 "${CONFIG_DIR}"
+  log "directorio config creado"
+fi
+install -m 0644 -o 0 -g 0 "${CONFIG_SOURCE}" "${CONFIG_DIR}/config.yaml"
+log "config.yaml sincronizado desde ${CONFIG_SOURCE} sin reemplazar el directorio bind"
 log "imagen fijada: ${LITELLM_IMAGE}:${LITELLM_VERSION}"
 
 step "Validacion de Docker Compose"
