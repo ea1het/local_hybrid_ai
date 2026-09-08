@@ -10,9 +10,10 @@ IFS=$'\n\t'
 #   - Stack6 must already have been prepared successfully (.lock exists).
 #   - Hermes must be stopped while the memory working tree is adopted/validated.
 #   - service_-_hermes-memory/data keeps its directory identity.
-#   - MEMORY.md and USER.md are the only files managed by the Git memory repo.
+#   - MEMORY.md and USER.md are the only mutable files managed by Hermes sync.
+#   - Additional tracked repository files are allowed but must remain unchanged.
 #   - Existing local memory is never silently overwritten.
-#   - If local and remote both contain different non-empty content, fail closed.
+#   - If local and remote both contain different non-empty memory, fail closed.
 #   - This script NEVER pulls, merges, rebases, commits, pushes or force-resets.
 #   - Git credentials are external to this stack and are never stored in .env.
 # =============================================================================
@@ -27,7 +28,7 @@ die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecutar como root"
 
-for cmd in git docker install stat find realpath chown chmod sha256sum awk cmp mktemp cp mv rm; do
+for cmd in git docker install stat find realpath chown chmod sha256sum awk cmp mktemp cp mv rm dirname; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
 
@@ -137,10 +138,29 @@ else
   git clone --single-branch --branch "${GITMEM_BRANCH}" -- "${GITMEM_REPOSITORY}" "${TMP_CLONE}"
 
   TMP_GIT=(git -c "safe.directory=${TMP_CLONE}" -C "${TMP_CLONE}")
-  tracked="$("${TMP_GIT[@]}" ls-files | LC_ALL=C sort)"
-  expected=$'MEMORY.md\nUSER.md'
-  [[ "${tracked}" == "${expected}" ]] \
-    || die "el repositorio Git memory debe contener exactamente MEMORY.md y USER.md como ficheros versionados"
+
+  for file in MEMORY.md USER.md; do
+    "${TMP_GIT[@]}" ls-files --error-unmatch -- "${file}" >/dev/null 2>&1 \
+      || die "el repositorio Git memory debe versionar ${file}"
+  done
+
+  while IFS= read -r tracked_file; do
+    [[ -n "${tracked_file}" ]] || continue
+    case "${tracked_file}" in
+      MEMORY.md|USER.md) continue ;;
+    esac
+
+    source_file="${TMP_CLONE}/${tracked_file}"
+    target_file="${MEMORY_DATA}/${tracked_file}"
+    [[ -f "${source_file}" && ! -L "${source_file}" ]] \
+      || die "fichero estatico versionado no admitido: ${tracked_file} debe ser fichero normal"
+    [[ ! -e "${target_file}" ]] \
+      || die "fichero local inesperado colisiona con fichero estatico remoto: ${tracked_file}"
+
+    install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "$(dirname -- "${target_file}")"
+    cp -- "${source_file}" "${target_file}"
+    log "${tracked_file}: fichero estatico adoptado desde Git"
+  done < <("${TMP_GIT[@]}" ls-files | LC_ALL=C sort)
 
   for file in MEMORY.md USER.md; do
     local_file="${MEMORY_DATA}/${file}"
@@ -178,12 +198,9 @@ branch="$("${GIT[@]}" branch --show-current)"
 [[ "${branch}" == "${GITMEM_BRANCH}" ]] \
   || die "branch activa inesperada: '${branch}' (esperada '${GITMEM_BRANCH}')"
 
-tracked="$("${GIT[@]}" ls-files | LC_ALL=C sort)"
-expected=$'MEMORY.md\nUSER.md'
-[[ "${tracked}" == "${expected}" ]] \
-  || die "Git memory debe gestionar exactamente MEMORY.md y USER.md"
-
 for file in MEMORY.md USER.md; do
+  "${GIT[@]}" ls-files --error-unmatch -- "${file}" >/dev/null 2>&1 \
+    || die "Git memory debe versionar ${file}"
   path="${MEMORY_DATA}/${file}"
   [[ -f "${path}" && ! -L "${path}" ]] \
     || die "el repositorio debe contener ${file} como fichero normal"
@@ -240,7 +257,8 @@ LOCK_SHA256_AFTER="$(sha256sum "${LOCK_FILE}" | awk '{print $1}')"
 log "working tree: ${MEMORY_DATA}"
 log "origin: ${origin}"
 log "branch: ${branch}"
-log "MEMORY.md / USER.md: OK"
+log "MEMORY.md / USER.md: versionados y validos"
+log "ficheros estaticos versionados: permitidos solo si permanecen sin cambios"
 if [[ -n "${changed_paths}" ]]; then
   log "cambios locales de memoria preservados; el sidecar podra sincronizarlos de forma conservadora"
 else
