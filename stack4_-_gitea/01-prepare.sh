@@ -17,8 +17,9 @@ if [[ -e "${LOCK_FILE}" ]]; then
 fi
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-command -v docker >/dev/null 2>&1 || die "docker no esta instalado"
-command -v sed >/dev/null 2>&1 || die "sed no esta instalado"
+for cmd in docker sed openssl install; do
+  command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
+done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
 [[ -f "${ENV_FILE}" ]] || die "falta ${ENV_FILE}"
 [[ -f "${COMPOSE_FILE}" ]] || die "falta ${COMPOSE_FILE}"
@@ -31,12 +32,11 @@ source "${ENV_FILE}"
 set +a
 
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
-for key in STACKS_ROOT BASE_PATH GITEA_IMAGE GITEA_CONTAINER_NAME GITEA_UID GITEA_GID \
+for key in STACKS_ROOT BASE_PATH NETWORK_NAME GITEA_IMAGE GITEA_CONTAINER_NAME GITEA_UID GITEA_GID \
            GITEA_SSH_BIND GITEA_SSH_PORT GITEA_DOCKER_NETWORK GITEA_DOMAIN \
            GITEA_ROOT_URL GITEA_SSH_DOMAIN GITEA_TIMEZONE GITEA_INTERNAL_TOKEN \
            GITEA_JWT_SECRET GITEA_ADMIN_USERNAME GITEA_ADMIN_EMAIL GITEA_ADMIN_PASSWORD \
-           GITEA_RUNNER_IMAGE GITEA_RUNNER_NAME GITEA_RUNNER_INSTANCE_URL \
-           GITEA_RUNNER_REGISTRATION_TOKEN; do
+           GITEA_RUNNER_IMAGE GITEA_RUNNER_NAME GITEA_RUNNER_INSTANCE_URL; do
   require_env "${key}"
 done
 
@@ -46,9 +46,12 @@ done
 [[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 [[ "${GITEA_ROOT_URL}" == "https://${GITEA_DOMAIN}/" ]] || die "GITEA_ROOT_URL debe ser https://${GITEA_DOMAIN}/"
 [[ "${GITEA_RUNNER_INSTANCE_URL}" == "http://gitea:3000/" ]] || die "GITEA_RUNNER_INSTANCE_URL debe ser http://gitea:3000/"
+[[ "${GITEA_DOCKER_NETWORK}" == "${NETWORK_NAME}" ]] || die "GITEA_DOCKER_NETWORK debe coincidir con NETWORK_NAME (${NETWORK_NAME})"
 
 GITEA_SERVICE="${BASE_PATH%/}/service_-_gitea"
 RUNNER_SERVICE="${BASE_PATH%/}/service_-_gitea-runner"
+RUNNER_SECRET_DIR="${RUNNER_SERVICE}/secret"
+RUNNER_TOKEN_FILE="${RUNNER_SECRET_DIR}/registration-token"
 APP_SOURCE="${STACK_DIR}/config/gitea/app.ini"
 RUNNER_SOURCE="${STACK_DIR}/config/gitea-runner/config.yaml"
 APP_TARGET="${GITEA_SERVICE}/config/app.ini"
@@ -56,15 +59,32 @@ RUNNER_TARGET="${RUNNER_SERVICE}/data/config.yaml"
 
 [[ -f "${APP_SOURCE}" ]] || die "falta ${APP_SOURCE}"
 [[ -f "${RUNNER_SOURCE}" ]] || die "falta ${RUNNER_SOURCE}"
-mkdir -p "${BASE_PATH}" "${GITEA_SERVICE}/data" "${RUNNER_SERVICE}/data"
+install -d -m 0750 "${BASE_PATH}" "${GITEA_SERVICE}/data" "${RUNNER_SERVICE}/data"
+install -d -m 0750 -o 0 -g "${GITEA_GID}" "${RUNNER_SECRET_DIR}"
 
-step "Red Docker ${GITEA_DOCKER_NETWORK}"
-if docker network inspect "${GITEA_DOCKER_NETWORK}" >/dev/null 2>&1; then
-  driver="$(docker network inspect -f '{{.Driver}}' "${GITEA_DOCKER_NETWORK}")"
-  [[ "${driver}" == "bridge" ]] || die "${GITEA_DOCKER_NETWORK} existe pero usa driver ${driver}, no bridge"
+step "Red Docker compartida ${GITEA_DOCKER_NETWORK}"
+docker network inspect "${GITEA_DOCKER_NETWORK}" >/dev/null 2>&1 || \
+  die "falta ${GITEA_DOCKER_NETWORK}; instala/prepara primero Stack0"
+driver="$(docker network inspect -f '{{.Driver}}' "${GITEA_DOCKER_NETWORK}")"
+[[ "${driver}" == "bridge" ]] || die "${GITEA_DOCKER_NETWORK} usa driver ${driver}, no bridge"
+log "red de Stack0 verificada"
+
+step "Token persistente del runner"
+if [[ -s "${RUNNER_TOKEN_FILE}" ]]; then
+  log "token existente preservado"
 else
-  docker network create --driver bridge "${GITEA_DOCKER_NETWORK}" >/dev/null
+  umask 077
+  if [[ -n "${GITEA_RUNNER_REGISTRATION_TOKEN:-}" && "${GITEA_RUNNER_REGISTRATION_TOKEN}" != PUT_YOUR_* ]]; then
+    printf '%s\n' "${GITEA_RUNNER_REGISTRATION_TOKEN}" >"${RUNNER_TOKEN_FILE}"
+    log "token legacy de .env adoptado en runtime"
+  else
+    openssl rand -hex 24 >"${RUNNER_TOKEN_FILE}"
+    log "token generado una vez en runtime"
+  fi
 fi
+[[ -s "${RUNNER_TOKEN_FILE}" ]] || die "no se pudo preparar ${RUNNER_TOKEN_FILE}"
+chown 0:"${GITEA_GID}" "${RUNNER_TOKEN_FILE}"
+chmod 0440 "${RUNNER_TOKEN_FILE}"
 
 escape_sed_replacement() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
 render_file() {
@@ -107,4 +127,5 @@ log "compose valido"
 
 step "Preparacion terminada"
 log "lock creado: ${LOCK_FILE}"
+log "runner token: runtime persistente, no requerido en .env"
 log "ejecuta ./02-run.sh para migrar Gitea, asegurar el administrador y arrancar el stack"

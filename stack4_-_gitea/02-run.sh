@@ -24,7 +24,7 @@ set +a
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
 for key in STACKS_ROOT BASE_PATH GITEA_DOMAIN GITEA_ROOT_URL GITEA_SSH_DOMAIN GITEA_SSH_PORT \
            GITEA_ADMIN_USERNAME GITEA_ADMIN_EMAIL GITEA_ADMIN_PASSWORD \
-           GITEA_RUNNER_INSTANCE_URL GITEA_RUNNER_REGISTRATION_TOKEN; do
+           GITEA_RUNNER_INSTANCE_URL GITEA_RUNNER_NAME; do
   require_env "${key}"
 done
 
@@ -32,9 +32,13 @@ done
   die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
 
 APP_INI="${BASE_PATH%/}/service_-_gitea/config/app.ini"
-RUNNER_CONFIG="${BASE_PATH%/}/service_-_gitea-runner/data/config.yaml"
+RUNNER_SERVICE="${BASE_PATH%/}/service_-_gitea-runner"
+RUNNER_CONFIG="${RUNNER_SERVICE}/data/config.yaml"
+RUNNER_TOKEN_FILE="${RUNNER_SERVICE}/secret/registration-token"
+RUNNER_STATE_FILE="${RUNNER_SERVICE}/data/.runner"
 [[ -f "${APP_INI}" ]] || die "falta ${APP_INI}; ejecuta primero ./01-prepare.sh"
 [[ -f "${RUNNER_CONFIG}" ]] || die "falta ${RUNNER_CONFIG}; ejecuta primero ./01-prepare.sh"
+[[ -s "${RUNNER_TOKEN_FILE}" ]] || die "falta el token runtime del runner; ejecuta primero ./01-prepare.sh"
 
 compose=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 
@@ -61,7 +65,20 @@ fi
 
 step "Arranque"
 "${compose[@]}" up -d
+
+step "Validacion del runner"
+for attempt in $(seq 1 30); do
+  runner_running="$(docker inspect -f '{{.State.Running}}' gitea-runner 2>/dev/null || true)"
+  if [[ "${runner_running}" == "true" && -s "${RUNNER_STATE_FILE}" ]]; then
+    log "runner registrado con identidad persistente"
+    break
+  fi
+  [[ "${attempt}" -lt 30 ]] || die "el runner no creo/recupero su identidad persistente"
+  sleep 2
+done
+
 "${compose[@]}" ps
 
 step "Instalacion terminada"
 log "Gitea publico: ${GITEA_ROOT_URL}"
+log "runner: ${GITEA_RUNNER_NAME}"
