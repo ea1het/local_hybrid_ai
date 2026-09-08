@@ -13,6 +13,8 @@ The objective is not to force every workload offline. The objective is to make t
 - **Local inference first.** Applications target a local OpenAI-compatible runtime whenever possible.
 - **One model-policy boundary.** LiteLLM owns model routing and optional cloud escalation.
 - **One MCP boundary.** Hermes reaches upstream MCP servers through the LiteLLM MCP gateway.
+- **One platform bootstrap.** Stack0 owns shared environment links, network bootstrap, PKI lifecycle and dependency-manifest validation.
+- **Atomic application ownership.** A stack owns its application-specific persistent state instead of provisioning inside another stack.
 - **No Docker socket for the agent.** Hermes executes through a dedicated SSH sandbox.
 - **Scratch is not storage.** Sandbox artifacts are disposable unless explicitly persisted elsewhere.
 - **Native agent scheduling for agentic work.** Future intelligent work uses Hermes native Cron.
@@ -22,18 +24,27 @@ The objective is not to force every workload offline. The objective is to make t
 
 ## Current architecture
 
-The current source tree contains six operational stacks:
+The current source tree contains one mandatory platform/bootstrap stack and six application stacks:
 
 | Stack | Responsibility |
 |---|---|
+| `stack0_-_platform` | Platform bootstrap, manifest/dependency registry, shared network, central `.env` links and PKI lifecycle |
 | `stack1_-_haproxy_web` | HAProxy ingress, TLS routing and static web service |
-| `stack2_-_searxng_firecrawl` | Local/private search and web extraction |
-| `stack3_-_litellm` | Model policy/routing and MCP gateway |
+| `stack2_-_searxng_firecrawl` | Local/private search and web extraction, including Firecrawl-owned PostgreSQL |
+| `stack3_-_litellm` | Model policy/routing and MCP gateway, with dedicated LiteLLM PostgreSQL |
 | `stack4_-_gitea` | Local Git service and runner |
 | `stack5_-_dockhand` | Container-management tooling |
 | `stack6_-_hermes` | Hermes, native Cron, isolated sandbox, Git-backed memory and maintenance sidecars |
 
+Stack0 does not run an application container. It is the mandatory platform foundation for application-stack preparation and for future dependency-driven installation.
+
 There is **no standalone scheduling stack**. Deferred agentic work is handled by Hermes native Cron. Mechanical maintenance is handled inside Stack6 by `hermes-memory-sync` and `hermes-sandbox-cleanup`.
+
+### Dependency model
+
+Each stack contains a machine-readable `manifest.json`. Stack0 discovers those manifests and validates the dependency graph instead of maintaining a hard-coded stack table.
+
+Stack3 is now atomic and requires only Stack0. Stack6 is still in transition: its current graph includes Stack2 because the current prepare script hard-checks the local web services, while the target minimum is Stack0 + Stack3. Stack2 and Stack4 are intended to remain optional capability providers for Hermes.
 
 ### Logical data flow
 
@@ -80,6 +91,8 @@ Hermes -> LiteLLM MCP Gateway -> upstream MCP servers
 ```
 
 Cloud inference, when configured, belongs behind LiteLLM policy. Hermes is intentionally not configured with silent provider fallback outside that boundary.
+
+LiteLLM now owns a dedicated PostgreSQL service inside Stack3. Firecrawl keeps its own PostgreSQL inside Stack2; no application database is shared across those stack boundaries.
 
 ## Agent execution boundary
 
@@ -211,7 +224,7 @@ The next sandbox boot creates a fresh logical generation.
 
 ## Network model
 
-`redlocal` is the shared infrastructure network used by services that must communicate across stacks, including HAProxy, Hermes, LiteLLM, SearXNG, Firecrawl, Gitea and `hermes-memory-sync`.
+`redlocal` is the shared infrastructure network created/validated by Stack0 and used by services that must communicate across stacks, including HAProxy, Hermes, LiteLLM, SearXNG, Firecrawl, Gitea and `hermes-memory-sync`.
 
 Hermes and the sandbox additionally share the private `hermes-exec` bridge. The sandbox is not attached to `redlocal`.
 
@@ -222,6 +235,7 @@ Hermes and the sandbox additionally share the private `hermes-exec` bridge. The 
 ```text
 /opt/docker/
 ├── stacks/                         # Git checkout / source only
+│   ├── stack0_-_platform/
 │   ├── stack1_-_haproxy_web/
 │   ├── stack2_-_searxng_firecrawl/
 │   ├── stack3_-_litellm/
@@ -229,11 +243,13 @@ Hermes and the sandbox additionally share the private `hermes-exec` bridge. The 
 │   ├── stack5_-_dockhand/
 │   └── stack6_-_hermes/
 └── runtime/                        # persistent runtime only
+    ├── service_-_platform/
     ├── service_-_haproxy/
     ├── service_-_web/
     ├── service_-_searxng/
     ├── service_-_firecrawl-*/
     ├── service_-_litellm/
+    ├── service_-_litellm-postgres/
     ├── service_-_gitea/
     ├── service_-_gitea-runner/
     ├── service_-_hermes/
@@ -242,14 +258,15 @@ Hermes and the sandbox additionally share the private `hermes-exec` bridge. The 
     └── service_-_hermes-sandbox/
 ```
 
-Every operational stack follows:
+The shared platform context is:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
 BASE_PATH=/opt/docker/runtime
+NETWORK_NAME=redlocal
 ```
 
-`STACKS_ROOT` is source. `BASE_PATH` is mutable persistent state.
+`STACKS_ROOT` is source. `BASE_PATH` is mutable persistent state. Stack0 owns the shared network and platform runtime.
 
 ## Stack6 service ownership
 
@@ -267,7 +284,10 @@ The cleanup sidecar owns no separate persistent runtime directory.
 The current architecture has been validated on the reference homelab with the following boundaries exercised independently:
 
 ```text
+Stack0 -> central env links + redlocal + PKI bootstrap
+Stack3 -> dedicated PostgreSQL 17.10 persistence
 LiteLLM -> local inference
+Hermes -> LiteLLM virtual-key authentication after Stack3 DB migration
 Hermes -> LiteLLM -> local inference
 Hermes -> SSH -> hermes-sandbox
 Hermes -> SearXNG / Firecrawl
@@ -276,7 +296,7 @@ hermes-memory-sync -> Gitea fetch + write authorization
 sandbox -> generation initialization + normal restart persistence
 sandbox-cleanup -> inotify + audit + quarantine + deletion
 --reset-sandbox -> fresh logical generation
-HAProxy -> current six-stack service routes
+HAProxy -> current service routes
 ```
 
 The deployment no longer depends on a separate scheduler runtime.
@@ -296,7 +316,14 @@ The repository retains the temporary `TERMINAL_TIMEOUT` workaround while the cor
 
 Full installation instructions are in [`INSTALLATION.md`](INSTALLATION.md). Stack6-specific operational details are in [`stack6_-_hermes/README.md`](stack6_-_hermes/README.md).
 
-The Stack6 prepare/start sequence is:
+Bootstrap Stack0 before preparing any application stack:
+
+```bash
+cd /opt/docker/stacks
+sudo ./stack0_-_platform/install.sh
+```
+
+The manifest resolver shows current/target dependency plans. The Stack6 prepare/start sequence remains:
 
 ```bash
 cd /opt/docker/stacks/stack6_-_hermes

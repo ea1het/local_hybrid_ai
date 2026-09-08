@@ -12,6 +12,7 @@ The repository is deployed as one Git working tree. Mutable application state, c
 │   ├── .git/
 │   ├── .env                 # operational deployment environment, NOT Git
 │   ├── .env.template        # tracked central variable contract
+│   ├── stack0_-_platform/
 │   ├── stack1_-_haproxy_web/
 │   ├── stack2_-_searxng_firecrawl/
 │   ├── stack3_-_litellm/
@@ -20,6 +21,10 @@ The repository is deployed as one Git working tree. Mutable application state, c
 │   └── stack6_-_hermes/
 │
 └── runtime/                 # persistent runtime only
+    ├── service_-_platform/
+    │   ├── pki/
+    │   ├── state/
+    │   └── logs/
     ├── service_-_haproxy/
     ├── service_-_web/
     ├── service_-_searxng/
@@ -27,6 +32,7 @@ The repository is deployed as one Git working tree. Mutable application state, c
     ├── service_-_firecrawl-rabbitmq/
     ├── service_-_firecrawl-postgres/
     ├── service_-_litellm/
+    ├── service_-_litellm-postgres/
     ├── service_-_gitea/
     ├── service_-_gitea-runner/
     ├── service_-_hermes/
@@ -37,18 +43,42 @@ The repository is deployed as one Git working tree. Mutable application state, c
 
 `dockhand_data` remains an external Docker volume.
 
-The shared deployment context remains:
+The shared deployment context is:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
 BASE_PATH=/opt/docker/runtime
+NETWORK_NAME=redlocal
 ```
 
-`STACKS_ROOT` is Git-managed source. `BASE_PATH` is mutable persistent state.
+`STACKS_ROOT` is Git-managed source. `BASE_PATH` is mutable persistent state. Stack0 owns creation/validation of the shared Docker network.
+
+## Stack0 platform contract
+
+`stack0_-_platform` is the mandatory bootstrap layer. It does not run an application service and does not require a Compose project.
+
+It owns shared platform concerns:
+
+- validates the root operational `.env` and its permissions;
+- creates/validates application-stack `.env -> ../.env` compatibility symlinks;
+- creates/validates the shared Docker network;
+- creates `${BASE_PATH}/service_-_platform` runtime state;
+- owns the centralized PKI lifecycle;
+- validates the stack manifest registry and dependency graph.
+
+Every application stack requires Stack0. In the target local/hybrid architecture, Stack6 additionally requires Stack3 as its mandatory AI gateway/policy boundary.
+
+## Manifest and dependency contract
+
+Every stack contains `manifest.json`. Stack0 discovers these manifests rather than hard-coding stack dependencies.
+
+The current dependency graph is represented by `requires`; optional integrations use `optional`. During an atomicity refactor a manifest may temporarily expose `target_requires`, but once the blocker is removed `requires` becomes the final contract.
+
+Stack3 is now atomic and requires only Stack0. Stack6 is still transitional: its current `requires` includes Stack2 because `01-prepare.sh` still hard-checks SearXNG/Firecrawl, while its `target_requires` is Stack0 + Stack3. Stack2 and Stack4 are intended to become optional capability providers for Stack6 once that blocker is removed.
 
 ## Central environment contract
 
-The deployment now has one operational environment file:
+The deployment has one operational environment file:
 
 ```text
 /opt/docker/stacks/.env
@@ -60,15 +90,15 @@ and one tracked reference template:
 /opt/docker/stacks/.env.template
 ```
 
-The root `.env.template` is the single documented variable contract for all six stacks. Variables are grouped by stack and document their current consumers, secret status and lifecycle expectations.
+The root `.env.template` is the single documented variable contract for the platform and all application stacks. Variables are grouped by ownership/consumer boundary and document their consumers, secret status and lifecycle expectations.
 
-The operational `.env` contains real values and secrets and must never be committed. Recommended ownership and permissions:
+The operational `.env` contains real values and secrets and must never be committed. Required ownership and permissions on the reference deployment are:
 
 ```text
 root:root 0600
 ```
 
-During the current manual-operation phase, each stack keeps a local symlink so the existing commands and scripts continue to resolve `.env` exactly where they already expect it:
+Stack0 creates/validates the application-stack compatibility symlinks:
 
 ```text
 stack1_-_haproxy_web/.env       -> ../.env
@@ -104,7 +134,7 @@ Later scripts may require `.lock`, but they do not own or create it.
 
 ## Architecture after the scheduler migration
 
-The deployed platform contains six source stacks. There is no standalone scheduler stack.
+The deployed platform contains Stack0 plus six application stacks. There is no standalone scheduler stack.
 
 Deferred intelligent work uses **Hermes native Cron**. Stack6 also contains two deterministic maintenance sidecars:
 
@@ -135,36 +165,34 @@ sudo chmod 0600 .env
 sudo editor .env
 ```
 
-Create the stack-local compatibility symlinks:
+Bootstrap the shared platform before any application stack:
 
 ```bash
-for d in \
-  stack1_-_haproxy_web \
-  stack2_-_searxng_firecrawl \
-  stack3_-_litellm \
-  stack4_-_gitea \
-  stack5_-_dockhand \
-  stack6_-_hermes; do
-  sudo ln -sfn ../.env "$d/.env"
-done
+cd /opt/docker/stacks
+sudo ./stack0_-_platform/install.sh
 ```
 
-Before preparing any stack, verify that all symlinks resolve to the root environment:
+Stack0 creates/validates the `.env` compatibility symlinks, shared network and central PKI runtime.
+
+The manifest resolver can show both the current and target dependency order. For example:
 
 ```bash
-for d in stack*_*/; do
-  test "$(readlink -f "${d}.env")" = "/opt/docker/stacks/.env" || exit 1
-done
+python3 stack0_-_platform/manifests.py plan 3
+python3 stack0_-_platform/manifests.py plan 6
+python3 stack0_-_platform/manifests.py plan 6 --target
 ```
 
-Normal deployment order:
+At this stage, the current Stack6 plan still includes Stack2; the target plan resolves to Stack0 + Stack3 + Stack6 after Stack6's web-dependency blocker is removed.
 
-1. Stack1 — HAProxy and static web
-2. Stack2 — SearXNG and Firecrawl
-3. Stack3 — LiteLLM
-4. Stack4 — Gitea
-5. Stack5 — Dockhand
-6. Stack6 — Hermes, native Cron, isolated sandbox, Git-backed memory and maintenance sidecars
+A conventional full manual deployment order remains:
+
+1. Stack0 — platform/bootstrap
+2. Stack1 — HAProxy and static web
+3. Stack2 — SearXNG and Firecrawl
+4. Stack3 — LiteLLM + dedicated PostgreSQL
+5. Stack4 — Gitea
+6. Stack5 — Dockhand
+7. Stack6 — Hermes, native Cron, isolated sandbox, Git-backed memory and maintenance sidecars
 
 ## Stack1 — HAProxy + web
 
@@ -178,7 +206,7 @@ docker compose up -d
 docker compose ps
 ```
 
-HAProxy is the internal TLS/reverse-proxy boundary. Keep deployment-specific TLS private material outside Git.
+HAProxy is the internal TLS/reverse-proxy boundary. Stack0 now owns the canonical platform PKI lifecycle. Stack1's remaining certificate-consumption transition is tracked separately from this Stack3 database refactor; do not rotate or delete the currently deployed certificate during that transition.
 
 ## Stack2 — SearXNG + Firecrawl
 
@@ -189,7 +217,9 @@ docker compose up -d
 docker compose ps
 ```
 
-## Stack3 — LiteLLM
+Stack2 owns its Firecrawl PostgreSQL instance and database state. No other stack depends on `firecrawl-postgres` for application persistence.
+
+## Stack3 — LiteLLM + dedicated PostgreSQL
 
 ```bash
 cd /opt/docker/stacks/stack3_-_litellm
@@ -203,7 +233,18 @@ LiteLLM is both the model-routing boundary and the shared MCP gateway.
 
 Applications and Hermes should target LiteLLM rather than provider-specific endpoints.
 
-`02-postgres.sh` still reads the Stack2 `.env` path for the PostgreSQL administrative identity; because Stack2 `.env` is now a symlink, it resolves to the same central deployment environment.
+Stack3 owns its own PostgreSQL service:
+
+```text
+litellm-postgres
+/opt/docker/runtime/service_-_litellm-postgres/data
+```
+
+The PostgreSQL image is pinned to the validated PostgreSQL 17.10 Alpine digest. `01-prepare.sh` generates the PostgreSQL administrative password once under Stack3 runtime state, outside `.env`. `LITELLM_DB_*` remains the unprivileged LiteLLM application database identity.
+
+Stack3 does not read Stack2's `.env`, credentials or PostgreSQL service during normal preparation, provisioning or operation.
+
+`90-migrate-postgres-from-stack2.sh` exists only for the one-time migration of deployments created before Stack3 became atomic. It is not part of a clean installation.
 
 ## Stack4 — Gitea
 
@@ -433,7 +474,7 @@ git switch main
 git pull --ff-only
 ```
 
-The root `.env` and stack-local `.env` symlinks are deployment state and remain untouched by Git updates.
+The root `.env`, stack-local `.env` symlinks and runtime state remain untouched by Git updates.
 
 After pulling changes, use the affected stack's prepare/recreate procedure. A plain `docker restart` does not apply changed container environment or rebuilt images.
 
@@ -464,10 +505,14 @@ The repository contains source configuration and the safe central `.env.template
 
 ## Reference deployment validation
 
-The current six-stack architecture has been validated on the reference host for:
+The current Stack0 + six-application-stack architecture has been validated on the reference host for:
 
 ```text
+Stack0 -> environment/symlink/network/PKI bootstrap
+Stack3 -> dedicated PostgreSQL 17.10
+LiteLLM -> dedicated litellm-postgres persistence
 LiteLLM -> local inference
+Hermes -> LiteLLM virtual-key authentication after DB migration
 Hermes -> LiteLLM -> local inference
 Hermes -> SSH -> hermes-sandbox
 Hermes -> SearXNG / Firecrawl
