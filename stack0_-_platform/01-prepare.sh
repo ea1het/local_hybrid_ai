@@ -75,7 +75,7 @@ elif group_line="$(getent group "${PLATFORM_PKI_GID}" 2>/dev/null)"; then
   existing_name="$(printf '%s\n' "${group_line}" | cut -d: -f1)"
   die "GID ${PLATFORM_PKI_GID} is already used by group ${existing_name}; choose another PLATFORM_PKI_GID"
 else
-  groupadd --system --gid "${PLATFORM_PKI_GID}" "${PLATFORM_PKI_GROUP}"
+  groupadd --gid "${PLATFORM_PKI_GID}" "${PLATFORM_PKI_GROUP}"
   log "created ${PLATFORM_PKI_GROUP} (gid ${PLATFORM_PKI_GID})"
 fi
 log "PKI consumer group: ${PLATFORM_PKI_GROUP} (${PLATFORM_PKI_GID})"
