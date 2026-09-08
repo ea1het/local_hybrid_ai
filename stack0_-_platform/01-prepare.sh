@@ -14,7 +14,7 @@ step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "run as root"
-for cmd in docker python3 openssl install ln readlink stat chmod chown; do
+for cmd in docker python3 openssl install ln readlink stat chmod chown getent groupadd cut; do
   command -v "${cmd}" >/dev/null 2>&1 || die "missing required command: ${cmd}"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
@@ -37,6 +37,11 @@ done
 [[ "${ROOT_DIR}" == "${STACKS_ROOT%/}" ]] || die "worktree must be ${STACKS_ROOT}; current path: ${ROOT_DIR}"
 [[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT and BASE_PATH must differ"
 [[ "${NETWORK_NAME}" =~ ^[A-Za-z0-9_.-]+$ ]] || die "NETWORK_NAME contains unsupported characters"
+
+PLATFORM_PKI_GROUP="local-hybrid-pki"
+PLATFORM_PKI_GID="${PLATFORM_PKI_GID:-1999}"
+[[ "${PLATFORM_PKI_GID}" =~ ^[0-9]+$ && "${PLATFORM_PKI_GID}" -gt 0 ]] || \
+  die "PLATFORM_PKI_GID must be a positive integer"
 
 step "Manifest registry"
 python3 "${MANIFEST_TOOL}" validate
@@ -61,12 +66,27 @@ while IFS= read -r directory; do
   fi
 done < <(python3 "${MANIFEST_TOOL}" directories)
 
+step "Platform PKI consumer group"
+if group_line="$(getent group "${PLATFORM_PKI_GROUP}" 2>/dev/null)"; then
+  existing_gid="$(printf '%s\n' "${group_line}" | cut -d: -f3)"
+  [[ "${existing_gid}" == "${PLATFORM_PKI_GID}" ]] || \
+    die "${PLATFORM_PKI_GROUP} exists with GID ${existing_gid}, expected ${PLATFORM_PKI_GID}"
+elif group_line="$(getent group "${PLATFORM_PKI_GID}" 2>/dev/null)"; then
+  existing_name="$(printf '%s\n' "${group_line}" | cut -d: -f1)"
+  die "GID ${PLATFORM_PKI_GID} is already used by group ${existing_name}; choose another PLATFORM_PKI_GID"
+else
+  groupadd --system --gid "${PLATFORM_PKI_GID}" "${PLATFORM_PKI_GROUP}"
+  log "created ${PLATFORM_PKI_GROUP} (gid ${PLATFORM_PKI_GID})"
+fi
+log "PKI consumer group: ${PLATFORM_PKI_GROUP} (${PLATFORM_PKI_GID})"
+
 step "Platform runtime"
 PLATFORM_ROOT="${BASE_PATH%/}/service_-_platform"
 PLATFORM_CERT="${PLATFORM_ROOT}/pki/tls.crt"
 PLATFORM_KEY="${PLATFORM_ROOT}/pki/tls.key"
 install -d -m 0750 -o 0 -g 0 "${BASE_PATH}" "${PLATFORM_ROOT}"
-install -d -m 0700 -o 0 -g 0 "${PLATFORM_ROOT}/pki" "${PLATFORM_ROOT}/state"
+install -d -m 0750 -o 0 -g "${PLATFORM_PKI_GID}" "${PLATFORM_ROOT}/pki"
+install -d -m 0700 -o 0 -g 0 "${PLATFORM_ROOT}/state"
 install -d -m 0750 -o 0 -g 0 "${PLATFORM_ROOT}/logs"
 log "runtime: ${PLATFORM_ROOT}"
 
