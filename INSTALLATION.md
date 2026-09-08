@@ -150,6 +150,14 @@ MEMORY.md
 USER.md
 ```
 
+`hermes-memory-sync` uses a dedicated SSH identity under:
+
+```text
+/opt/docker/runtime/service_-_hermes-memory-sync/ssh/
+```
+
+Provision and authorize that identity for the configured Gitea memory repository before running `05-maintenance-sidecars.sh`. The preparation script validates the SSH material but does not create or replace credentials.
+
 Prepare in this order:
 
 ```bash
@@ -165,7 +173,7 @@ docker compose ps
 
 `04-gitmem.sh` prepares and validates the memory working tree but does not modify Git history.
 
-`05-maintenance-sidecars.sh` prepares the dedicated memory-sync SSH runtime and the sandbox lifecycle-state directory. During migration from the retired xySat deployment, it can copy the already-authorized xySat SSH identity into `service_-_hermes-memory-sync/ssh`; it does not delete the legacy runtime.
+`05-maintenance-sidecars.sh` validates the dedicated memory-sync SSH runtime and prepares the sandbox lifecycle-state directory.
 
 Expected services are:
 
@@ -234,28 +242,6 @@ sudo ./02-cleanup.sh --reset-sandbox
 ```
 
 This deletes only the current sandbox workspace generation and its lifecycle DB. It preserves Hermes state, Git-backed memory, sandbox home/SSH identity and managed configuration. The next sandbox boot creates a new generation and database.
-
-## Retiring legacy xyOps / xySat runtime
-
-Do **not** delete the old runtime before validating the new sidecars.
-
-First confirm:
-
-```text
-hermes-memory-sync -> successful fetch/commit/push -> Gitea
-hermes-sandbox -> state.db initialized and integrity-check passes
-hermes-sandbox-cleanup -> watcher + sweep healthy
-Hermes native Cron -> real future task executes
-```
-
-Only after that validation may the old runtime be removed deliberately:
-
-```text
-/opt/docker/runtime/service_-_xyops/
-/opt/docker/runtime/service_-_xysat/
-```
-
-The source repository no longer contains `stack7_-_xyops` and HAProxy no longer exposes `xyops.casa.lan`.
 
 ## Deployment state
 
