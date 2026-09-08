@@ -42,6 +42,10 @@ for key in STACKS_ROOT BASE_PATH NETWORK_NAME HAPROXY_HTTP_PORT HAPROXY_HTTPS_PO
   require_env "${key}"
 done
 
+PLATFORM_PKI_GID="${PLATFORM_PKI_GID:-1999}"
+[[ "${PLATFORM_PKI_GID}" =~ ^[0-9]+$ && "${PLATFORM_PKI_GID}" -gt 0 ]] || \
+  die "PLATFORM_PKI_GID debe ser un entero positivo"
+
 [[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
 [[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
   die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
@@ -100,6 +104,7 @@ chmod 0644 "${WEB_SERVICE}/index.html"
 
 step "Validacion de HAProxy"
 docker run --rm \
+  --group-add "${PLATFORM_PKI_GID}" \
   -v "${HAPROXY_SERVICE}/config:/usr/local/etc/haproxy:ro" \
   -v "${PLATFORM_PKI}:/etc/platform-pki:ro" \
   -e ROOT_HOSTNAME="${ROOT_HOSTNAME}" \
