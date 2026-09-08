@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": 6,
+  "directory": "stack6_-_hermes",
+  "name": "Hermes agent platform",
+  "kind": "application",
+  "atomic": false,
+  "requires": [0, 2, 3],
+  "target_requires": [0, 3],
+  "optional": [2, 4],
+  "provides": ["ai.agent", "ai.sandbox", "ai.memory"],
+  "consumes": ["ai.gateway", "ai.mcp-gateway"],
+  "optional_consumes": ["web.search", "web.extract", "git.remote"],
+  "owns": [
+    "container:hermes",
+    "container:hermes-sandbox",
+    "container:hermes-memory-sync",
+    "container:hermes-sandbox-cleanup",
+    "runtime:service_-_hermes",
+    "runtime:service_-_hermes-memory",
+    "runtime:service_-_hermes-memory-sync",
+    "runtime:service_-_hermes-sandbox"
+  ],
+  "blockers": [
+    "01-prepare.sh still requires local SearXNG and Firecrawl dependencies",
+    "Stack6 preparation contract does not yet validate every current sidecar variable/source",
+    "Memory-sync SSH bootstrap remains an external prerequisite"
+  ]
+}
