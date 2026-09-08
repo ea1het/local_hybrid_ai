@@ -2,303 +2,145 @@
 
 **A local-first, hybrid AI reference implementation focused on data sovereignty, controlled routing, isolated agent execution and deliberately scoped automation.**
 
-This repository is the practical companion to the article **Local hybrid AI: be sovereign with your data**.
-
-The core idea is simple:
-
 > **Local first. Cloud when necessary. The decision should belong to you.**
 
-The objective is not to force every workload offline. It is to make the boundary between local and cloud **explicit, technically enforceable and controlled by the operator**.
+## Current architecture
 
----
+The platform combines:
 
-## What this repository contains
+- **LM Studio / oMLX** — local OpenAI-compatible inference runtimes;
+- **LiteLLM** — single model-routing, policy and MCP gateway boundary;
+- **Hermes Agent** — interactive/autonomous agent runtime and native deferred-work scheduler;
+- **Hermes sandbox** — isolated execution over SSH, never Docker socket access;
+- **Hermes memory sync sidecar** — deterministic Git synchronization of long-term memory;
+- **Hermes sandbox cleanup sidecar** — SQLite/inotify lifecycle management for disposable workspace data;
+- **SearXNG + Firecrawl** — private/local search and extraction;
+- **HAProxy** — internal TLS/reverse proxy;
+- **Gitea** — private/local Git;
+- **Dockhand** — container-management tooling;
+- **Telegram / Buzz** — optional Hermes messaging interfaces;
+- **Open WebUI** — optional human chat/model interface.
 
-The repository contains Docker stacks, configuration patterns, deployment scripts and operational lessons from a real local/hybrid AI lab.
-
-The current architecture combines:
-
-- **LM Studio / oMLX** as local OpenAI-compatible inference runtimes.
-- **LiteLLM** as the single model-routing, policy and MCP gateway boundary.
-- **Hermes Agent** as the autonomous / interactive agent runtime.
-- **An isolated Hermes execution sandbox**, reached over SSH rather than Docker socket access.
-- **Telegram** as an optional Hermes messaging interface using outbound long polling.
-- **Buzz** as an optional messaging interface to Hermes.
-- **Open WebUI** for general chat / model interaction where used.
-- **SearXNG** for local/private metasearch.
-- **Firecrawl** for web extraction and content acquisition.
-- **HAProxy** as the TLS-terminating reverse proxy for internal services.
-- **Gitea** as local/private Git infrastructure.
-- **Dockhand** as container-management tooling.
-- **xyOps + xySat** as the dedicated scheduling and controlled operational-automation layer.
-
-The `stackXX_*` directories are deployment units. The numeric prefix reflects the organisation of this lab; it is not intended as a universal dependency model.
-
----
+There is no separate scheduling stack. Deferred intelligent work uses **Hermes native Cron**; deterministic maintenance stays in small purpose-built Stack6 sidecars.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    U[User / Browser] --> HAP[HAProxy<br/>TLS termination]
-    TG[Telegram] -. optional / long polling .-> HA[Hermes Agent]
-    BUZZ[Buzz] -. optional .-> HA
+    U[User / Browser] --> HAP[HAProxy]
+    TG[Telegram] -.-> H[Hermes]
+    BUZZ[Buzz] -.-> H
 
     HAP --> OW[Open WebUI]
-    HAP --> HA
+    HAP --> H
     HAP --> LL[LiteLLM]
     HAP --> SX[SearXNG]
-    HAP --> XO[xyOps]
 
-    HA --> LL
+    H --> LL
     OW --> LL
+    LL --> LM[LM Studio / oMLX]
+    LL -. explicit policy .-> CLOUD[Optional cloud APIs]
+    LL --> MCP[MCP servers]
 
-    LL --> LMS[LM Studio / oMLX<br/>Local models]
-    LL -. optional / policy controlled .-> CLOUD[Cloud model APIs]
-    LL --> MCP[MCP servers<br/>Trivago / future integrations]
+    H --> SX
+    H --> FC[Firecrawl]
+    H -->|SSH only| SB[Hermes Sandbox]
+    H --> CRON[Hermes native Cron]
+    H --> MEM[Git-backed memory]
 
-    HA --> SX
-    HA --> FC[Firecrawl]
-    HA -->|SSH only| SB[Hermes Sandbox<br/>isolated execution]
+    MS[hermes-memory-sync] --> MEM
+    MS --> G[Gitea]
 
-    XO --> XS[xySat<br/>dedicated worker]
-    XS --> GM[Hermes Git-backed memory]
-    XS -. read-only audit .-> SW[Hermes Sandbox workspace]
-    XS --> G[Gitea]
+    SC[hermes-sandbox-cleanup] --> SB
+    SC --> DB[(sandbox state.db)]
 ```
 
-### Model boundary
+## Model and MCP boundary
 
-Applications and agents do **not** need direct credentials for every model provider.
-
-The intended model path is:
-
-```mermaid
-flowchart TD
-    A[Application / Agent]
-    L[LiteLLM]
-    LM[Local model runtime]
-    C[Optional cloud provider<br/>only when explicitly configured]
-
-    A --> L
-    L --> LM
-    L -. explicit policy .-> C
-```
-
-For Hermes specifically:
+Applications and agents target LiteLLM rather than provider-specific endpoints:
 
 ```text
-Hermes -> LiteLLM -> selected model
+Application / Hermes -> LiteLLM -> selected model
+Hermes -> LiteLLM MCP Gateway -> upstream MCP servers
 ```
 
-Hermes is deliberately configured without provider-level fallback outside LiteLLM. Any cloud use belongs at the LiteLLM policy layer rather than silently inside the agent runtime.
-
-### MCP boundary
-
-LiteLLM is also the shared MCP gateway.
-
-Hermes connects to one MCP definition:
-
-```text
-Hermes -> LiteLLM MCP Gateway -> upstream MCP server
-```
-
-Upstream MCP servers, MCP access groups and client-scoped virtual keys are managed dynamically in LiteLLM rather than committed into Stack6.
-
-The validated first upstream is Trivago. A separate Hermes MCP virtual key is used instead of reusing the model-inference key.
-
-The end-to-end path to validate is:
-
-```text
-Telegram -> Hermes -> LiteLLM MCP Gateway -> Trivago -> Hermes -> Telegram
-```
-
----
-
-## Why LiteLLM is central
-
-LiteLLM is more than an API-compatibility layer. It is the **model and MCP policy boundary**.
-
-It lets the rest of the environment target stable endpoints while the operator decides which model or MCP capability is actually available to each client.
-
-This makes it possible to:
-
-- keep normal workloads local;
-- expose stable model aliases to clients;
-- swap or upgrade local runtimes without reconfiguring every application;
-- issue per-application virtual keys;
-- constrain which models a client may use;
-- centralise logging, budgets, routing and provider policy;
-- expose MCP tools behind one shared gateway;
-- keep MCP client permissions separate from model-inference credentials;
-- add cloud providers later without giving every application direct provider credentials.
-
-A useful consequence is that an agent can be prevented from deciding on its own to fall back to an external provider.
-
----
-
-## Local inference
-
-The local inference layer is designed around OpenAI-compatible runtimes such as **LM Studio** and **oMLX**.
-
-The architecture does not depend conceptually on one local runtime. The important contract is that the inference layer sits behind LiteLLM.
-
-The objective is to find the point where **capability, privacy, latency, cost, power consumption, noise and independence** are acceptable together.
-
----
+Cloud use, if configured, belongs at the LiteLLM policy layer. Hermes is intentionally configured without silent provider fallback outside LiteLLM.
 
 ## Agent isolation
 
-Giving an AI agent shell access is useful. Giving it unrestricted access to the Docker host is not.
-
-Hermes therefore uses a separate execution container:
+Hermes terminal execution is:
 
 ```text
 Hermes -> SSH -> hermes-sandbox
 ```
 
-The sandbox is intended for activities such as:
+The sandbox has no Docker socket, no privileged mode, no host networking and no arbitrary host filesystem mounts.
 
-- shell commands;
-- Python and virtual environments;
-- Node.js / npm;
-- Git;
-- compiling and testing code;
-- document generation and conversion;
-- PDF processing;
-- spreadsheets;
-- Word-compatible documents;
-- PowerPoint-compatible presentations;
-- LibreOffice / Pandoc workflows.
+The sandbox is explicitly **ephemeral scratch space, not durable storage**. Hermes' managed system prompt instructs the agent to persist any artifact needed by future work outside the sandbox.
 
-Hermes and its sandbox are intentionally designed without:
+## Deferred work
 
-- `/var/run/docker.sock`;
-- Docker-in-Docker;
-- privileged mode;
-- host networking;
-- arbitrary host filesystem mounts.
+Hermes native Cron is the sole agentic scheduling mechanism.
 
-The sandbox does not receive Hermes provider credentials, LiteLLM keys, messaging secrets or the Docker host filesystem.
+The managed policy distinguishes current failures from real future dependencies. Future cron prompts must be self-contained because scheduled runs use fresh agent sessions.
 
-Hermes reaches the sandbox through a dedicated private Docker bridge and SSH key pair.
+## Git-backed Hermes memory
 
----
+Long-term memory is a dedicated Git working tree:
 
-## Messaging integrations
+```text
+/opt/docker/runtime/service_-_hermes-memory/data/
+├── .git/
+├── MEMORY.md
+└── USER.md
+```
 
-### Telegram
+`hermes-memory-sync` runs every 15 minutes by default and performs conservative fetch / fast-forward / commit / push operations. It refuses ambiguous divergence and never force-pushes.
 
-Telegram is optional and uses outbound long polling; no public webhook endpoint is required.
+Its SSH identity is separate from Hermes and lives under:
 
-Authorization remains deny-by-default until a user is paired or explicitly allowlisted.
+```text
+/opt/docker/runtime/service_-_hermes-memory-sync/ssh/
+```
 
-The Telegram bot token is runtime-only and must never be committed.
+## Sandbox lifecycle
 
-### Buzz
+The sandbox owns its lifecycle database:
 
-Buzz remains an optional messaging channel to Hermes and follows the same principle: messaging credentials remain runtime secrets rather than source configuration.
+```text
+/opt/docker/runtime/service_-_hermes-sandbox/data/state/state.db
+```
 
----
+Before accepting SSH work, the sandbox initializes or validates the SQLite generation state.
 
-## Operational automation boundary
+`hermes-sandbox-cleanup`:
 
-Stack7 adds scheduling without turning the scheduler into a privileged host-management service.
+- watches `/workspace` using inotify;
+- reconciles missed activity during daily sweeps;
+- protects the initial generation baseline;
+- tracks post-baseline top-level objects as disposable units;
+- quarantines objects inactive for 7 days by default;
+- deletes them after a 1-day grace period;
+- retains deleted DB records for 90 days by default;
+- has no network access.
 
-> **A scheduler is not the Docker host, and a scheduler is not the Docker daemon.**
+Fast recovery from a corrupt lifecycle DB is:
 
-The xyOps conductor coordinates schedules and job history. A dedicated xySat worker executes only explicitly approved jobs.
+```bash
+sudo ./02-cleanup.sh --reset-sandbox
+```
 
-The Stack7 worker is intentionally deployed without:
-
-- `/var/run/docker.sock`;
-- `privileged: true`;
-- host networking;
-- an unrestricted `/opt/docker` mount;
-- the host root filesystem.
-
-Access is granted path-by-path and only to the degree required by a job.
-
-### Validated jobs
-
-Two jobs are currently integrated:
-
-1. **Hermes Memory Sync**
-   - runs every 10 minutes;
-   - commits and pushes controlled changes to the Git-backed Hermes memory repository;
-   - refuses automatic merge/rebase when history is divergent or when the remote is ahead while unsaved local memory exists;
-   - never force-pushes.
-
-2. **Hermes Sandbox Audit**
-   - runs daily at 03:30 `Europe/Madrid`;
-   - mounts the sandbox workspace read-only;
-   - reports size, filesystem use, symlinks, file age and unclassified top-level objects;
-   - performs no automatic deletion.
-
----
+This destroys only the sandbox workspace generation and its lifecycle DB. Hermes state, Git-backed memory, sandbox home/SSH identity and managed configuration remain intact.
 
 ## Network model
 
-### `redlocal`
+`redlocal` is the shared infrastructure network for HAProxy, Hermes, LiteLLM, SearXNG, Firecrawl, Gitea and `hermes-memory-sync`.
 
-`redlocal` is the shared external Docker bridge for infrastructure services that need to communicate internally, including:
+Hermes and the sandbox additionally share the private `hermes-exec` bridge. The sandbox is not attached to `redlocal`.
 
-```text
-HAProxy
-Hermes
-LiteLLM
-SearXNG
-Firecrawl
-Gitea
-xyOps
-xySat
-```
+`hermes-sandbox-cleanup` uses `network_mode: none`.
 
-Internal application ports generally do not need to be published directly on the Docker host. HAProxy and other internal clients can reach services by Docker DNS.
-
-### `hermes-exec`
-
-Hermes and its sandbox additionally share a private execution network:
-
-```text
-Hermes <-> hermes-sandbox
-```
-
-The sandbox is intentionally **not** attached to `redlocal`.
-
----
-
-## Reverse proxy and TLS
-
-HAProxy is the ingress point for web-facing services.
-
-Typical internal routing looks conceptually like:
-
-```text
-https://chat.example.lan      -> open-webui:8080
-https://ai-gateway.example    -> litellm:4000
-https://search.example        -> searxng:8080
-https://agent.example         -> hermes:9119
-https://xyops.example         -> xyops:5522
-```
-
-TLS terminates at HAProxy. Backend application ports can remain private to the Docker network.
-
-For the deployed scheduler:
-
-```text
-Human/browser path:
-https://xyops.casa.lan -> HAProxy -> xyops:5522
-
-xySat internal path:
-xysat -> redlocal -> xyops:5522
-```
-
----
-
-## Deployment layout v2
-
-Source configuration and persistent runtime state are deliberately separated.
+## Deployment layout
 
 ```text
 /opt/docker/
@@ -308,8 +150,7 @@ Source configuration and persistent runtime state are deliberately separated.
 │   ├── stack3_-_litellm/
 │   ├── stack4_-_gitea/
 │   ├── stack5_-_dockhand/
-│   ├── stack6_-_hermes/
-│   └── stack7_-_xyops/
+│   └── stack6_-_hermes/
 └── runtime/
     ├── service_-_haproxy/
     ├── service_-_web/
@@ -319,256 +160,93 @@ Source configuration and persistent runtime state are deliberately separated.
     ├── service_-_gitea/
     ├── service_-_gitea-runner/
     ├── service_-_hermes/
-    ├── service_-_hermes-sandbox/
     ├── service_-_hermes-memory/
-    ├── service_-_xyops/
-    └── service_-_xysat/
+    ├── service_-_hermes-memory-sync/
+    └── service_-_hermes-sandbox/
 ```
 
-The platform-wide contract is:
+Platform contract:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
 BASE_PATH=/opt/docker/runtime
 ```
 
-`STACKS_ROOT` contains source / Git-controlled stack definitions.
-
-`BASE_PATH` contains deployed and persistent runtime state.
-
-### Source of truth
-
-The stack directory is the source definition.
-
-The `service_-_*` runtime directory is not an independent source of truth. Managed configuration should be changed in the stack and deployed through the stack's preparation process.
-
-### `.env`
-
-`.env` contains deployment-specific values and secrets.
-
-Preparation scripts may **read and validate** `.env`, but should not silently generate, append to or rewrite operational values.
-
-### `.lock`
-
-Preparation scripts use `.lock` to make state-changing preparation explicit.
-
-A lock is created only after preparation and audit complete successfully.
-
----
-
 ## Stack map
 
 | Stack | Purpose |
 |---|---|
-| `stack1_-_haproxy_web` | HAProxy / web ingress and internal TLS routing |
+| `stack1_-_haproxy_web` | HAProxy / web ingress and TLS routing |
 | `stack2_-_searxng_firecrawl` | Local/private search and extraction |
-| `stack3_-_litellm` | Model gateway, policy boundary and MCP gateway |
+| `stack3_-_litellm` | Model policy and MCP gateway |
 | `stack4_-_gitea` | Local Git service and runner |
 | `stack5_-_dockhand` | Container-management tooling |
-| `stack6_-_hermes` | Hermes agent, isolated sandbox, messaging integrations and Git-backed memory |
-| `stack7_-_xyops` | xyOps conductor and dedicated xySat scheduler worker |
+| `stack6_-_hermes` | Hermes, native Cron, isolated sandbox, memory and maintenance sidecars |
 
----
-
-## Effective configuration must be tested
-
-A container can be recreated correctly while **persistent runtime state continues to override the configuration you think you deployed**.
-
-Examples encountered during Hermes integration include:
-
-- runtime-generated `.env` values overriding container environment;
-- session state retaining old model/provider choices;
-- built-in presets referencing external providers;
-- different code paths resolving configuration values differently;
-- runtime shadow configuration surviving normal container recreation.
-
-> **Treat effective runtime configuration as something that must be tested, not assumed.**
-
-This is why preparation, cleanup, runtime-state auditing and explicit end-to-end validation are separate concerns.
-
----
-
-## Restart is not recreate
-
-When an environment variable changes:
-
-```bash
-docker restart <container>
-```
-
-does not rebuild the container environment.
-
-A Compose-managed service normally needs recreation:
-
-```bash
-docker compose up -d --force-recreate <service>
-```
-
-Even recreation may not be sufficient when an application reloads conflicting values from persistent state.
-
----
-
-## Hermes model policy
-
-Hermes uses a custom provider pointing to LiteLLM.
-
-The intended policy is:
-
-- no direct OpenAI/Codex provider from Hermes;
-- no automatic OpenRouter fallback;
-- no external provider fallback inside Hermes;
-- auxiliary model calls follow the same LiteLLM-controlled boundary.
-
-Failure should be visible. Fallback should be explicit.
-
-The currently validated Hermes image is pinned to:
+## Hermes version policy
 
 ```dotenv
 HERMES_IMAGE=nousresearch/hermes-agent
 HERMES_VERSION=v2026.8.31
 ```
 
-For that validated version, the repository retains the temporary `TERMINAL_TIMEOUT` workaround in Stack6 until the corresponding upstream issue is resolved.
+The repository retains the temporary `TERMINAL_TIMEOUT` workaround until the corresponding upstream issue is resolved for the deployed version.
 
----
+## Stack6 deployment sequence
 
-## Git-backed Hermes memory
+```bash
+cd /opt/docker/stacks/stack6_-_hermes
+sudo ./01-prepare.sh
+sudo ./04-gitmem.sh
+sudo ./05-maintenance-sidecars.sh
 
-Hermes memory is maintained as a dedicated Git working tree under:
-
-```text
-/opt/docker/runtime/service_-_hermes-memory/data
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
 ```
 
-The repository contains at least:
+The one-time maintenance-sidecar preparation can migrate the already-authorized legacy xySat Git identity into the dedicated memory-sync runtime without deleting the old runtime.
+
+## Retired xyOps / xySat
+
+The former Stack7 scheduling layer has been removed from source. Its useful responsibilities are replaced by:
 
 ```text
-MEMORY.md
-USER.md
+agentic deferred work  -> Hermes native Cron
+memory synchronization -> hermes-memory-sync
+sandbox housekeeping   -> hermes-sandbox-cleanup
 ```
 
-Periodic synchronization is delegated to Stack7 rather than hidden inside Stack6 preparation.
+HAProxy no longer exposes `xyops.casa.lan`.
 
-The scheduler performs controlled fetch / fast-forward / commit / push operations and refuses to automatically resolve ambiguous divergence.
+Legacy runtime directories must be deleted only after validating the replacements on the real host:
 
----
+```text
+/opt/docker/runtime/service_-_xyops/
+/opt/docker/runtime/service_-_xysat/
+```
 
 ## Security and secrets
 
-This repository is public. Real deployments must keep credentials outside Git.
-
-Never commit real values for:
-
-- `.env` files;
-- LiteLLM master, inference or MCP virtual keys;
-- LM Studio / local-runtime API tokens;
-- cloud-provider API keys;
-- Telegram bot tokens;
-- Buzz private keys / auth tags;
-- TLS private keys;
-- SSH private keys;
-- database passwords;
-- xySat `config.json`;
-- xySat auth tokens;
-- xyOps bootstrap tokens;
-- xyOps runtime secret keys;
-- runtime databases containing credentials or session information.
-
-Stack-specific `.gitignore` rules exclude operational files such as `.env` and `.lock`.
-
----
+This repository is public. Never commit real `.env` files, provider/MCP keys, messaging credentials, TLS/SSH private keys, Hermes runtime databases/auth/session state, the memory-sync SSH identity or sandbox lifecycle databases.
 
 ## Validation strategy
 
-Debugging this system is easier when each boundary is tested independently.
-
-A representative sequence is:
+Validate each boundary independently:
 
 ```text
 1. Local inference runtime works.
-2. LiteLLM can call the local inference runtime.
-3. A request using an application-specific LiteLLM virtual key succeeds.
-4. Hermes can call LiteLLM.
-5. Hermes can reach the isolated sandbox over SSH.
-6. SearXNG and Firecrawl paths work.
-7. Telegram / Buzz messaging paths are validated when enabled.
-8. LiteLLM discovers the configured MCP tools.
-9. A real Hermes -> LiteLLM MCP Gateway -> MCP server call succeeds.
-10. xyOps conductor is healthy behind HAProxy.
-11. xySat reaches xyops:5522 over redlocal.
-12. Scheduler jobs are validated manually before their automatic triggers are enabled.
+2. LiteLLM can call it.
+3. Hermes can call LiteLLM.
+4. Hermes can reach the isolated sandbox over SSH.
+5. SearXNG / Firecrawl work.
+6. Messaging works where enabled.
+7. LiteLLM MCP discovery/tool execution works.
+8. Hermes native Cron executes a real future task.
+9. hermes-memory-sync performs a real Gitea synchronization.
+10. sandbox state.db initializes and survives a normal restart.
+11. sandbox cleanup watcher/sweep/quarantine operate as designed.
+12. --reset-sandbox creates a fresh sandbox generation.
 ```
 
-Validated Stack7 paths include:
-
-```text
-xyOps -> xySat -> hermes-memory-sync.sh -> Gitea
-xyOps -> xySat -> hermes-sandbox-audit.sh
-```
-
-The remaining integration target is the full messaging-to-MCP path:
-
-```text
-Telegram -> Hermes -> LiteLLM MCP Gateway -> Trivago -> Hermes -> Telegram
-```
-
----
-
-## What "hybrid" means here
-
-Hybrid does **not** mean sending every request to both local and cloud models.
-
-It means maintaining an architecture in which the operator can make an explicit decision:
-
-```mermaid
-flowchart TD
-    P[Privacy / confidentiality / independence<br/>low marginal cost]
-    L[Local model]
-
-    C[Additional capability genuinely required]
-    X[Explicitly approved cloud model]
-
-    P --> L
-    C --> X
-```
-
-Cloud capability can be useful. Dependency should not be invisible.
-
----
-
-## Project status
-
-This repository represents a **real, evolving lab implementation** rather than a finished commercial distribution.
-
-Stacks are cleaned, documented and published progressively. Some conventions will continue to improve as operational edge cases are discovered.
-
-The objective is reproducibility and transparency: show not only which containers run, but also the security boundaries, deployment discipline, routing decisions, MCP boundary, scheduler boundary and failure modes required to make a local/hybrid AI environment reliable.
-
----
-
-## Contributing
-
-Issues, corrections, architectural alternatives and pull requests are welcome.
-
-Particularly useful contributions include:
-
-- stronger isolation patterns;
-- reproducible local-model routing;
-- provider-independent model gateways;
-- safer secret handling;
-- controlled operational automation;
-- better deployment validation;
-- local-first agent tooling;
-- improvements that reduce unnecessary cloud dependency without pretending cloud services have no value.
-
----
-
-## License
-
-This repository is licensed under the Mozilla Public License 2.0 (MPL-2.0).
-
----
-
-## Core principle
-
-> **Local first. Cloud when necessary. The decision should belong to you.**
+> **Treat effective runtime configuration as something that must be tested, not assumed.**
