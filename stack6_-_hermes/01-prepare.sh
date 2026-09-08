@@ -56,10 +56,10 @@ ENV_SHA256_BEFORE="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
 step "Validacion de .env (solo lectura)"
 
 ALL_KEYS=(
-  BASE_PATH NETWORK_NAME TZ
-  HERMES_SERVICE HERMES_MEMORY_SERVICE SANDBOX_SERVICE
-  HERMES_CONTAINER SANDBOX_CONTAINER
-  HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE
+  STACKS_ROOT BASE_PATH NETWORK_NAME TZ
+  HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE
+  HERMES_CONTAINER MEMORY_SYNC_CONTAINER SANDBOX_CONTAINER SANDBOX_CLEANUP_CONTAINER
+  HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE MEMORY_SYNC_IMAGE SANDBOX_CLEANUP_IMAGE
   HERMES_UID HERMES_GID
   HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
   LITELLM_MCP_URL LITELLM_MCP_API_KEY
@@ -72,6 +72,10 @@ ALL_KEYS=(
   TERMINAL_SSH_PERSISTENT TERMINAL_TIMEOUT
   SANDBOX_UID SANDBOX_GID SANDBOX_CPU SANDBOX_MEMORY SANDBOX_PIDS
   SANDBOX_SHM_SIZE
+  MEMORY_SYNC_INTERVAL_SECONDS GITMEM_REPOSITORY GITMEM_BRANCH
+  SANDBOX_CLEANUP_RETENTION_DAYS SANDBOX_CLEANUP_QUARANTINE_DAYS
+  SANDBOX_CLEANUP_DB_RETENTION_DAYS SANDBOX_CLEANUP_SWEEP_HOUR
+  SANDBOX_CLEANUP_SWEEP_MINUTE
 )
 
 for key in "${ALL_KEYS[@]}"; do
@@ -84,10 +88,10 @@ source "${ENV_FILE}"
 set +a
 
 REQUIRED_NONEMPTY=(
-  BASE_PATH NETWORK_NAME TZ
-  HERMES_SERVICE HERMES_MEMORY_SERVICE SANDBOX_SERVICE
-  HERMES_CONTAINER SANDBOX_CONTAINER
-  HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE
+  STACKS_ROOT BASE_PATH NETWORK_NAME TZ
+  HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE
+  HERMES_CONTAINER MEMORY_SYNC_CONTAINER SANDBOX_CONTAINER SANDBOX_CLEANUP_CONTAINER
+  HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE MEMORY_SYNC_IMAGE SANDBOX_CLEANUP_IMAGE
   HERMES_UID HERMES_GID
   HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
   LITELLM_MCP_URL LITELLM_MCP_API_KEY
@@ -95,11 +99,14 @@ REQUIRED_NONEMPTY=(
   HERMES_DASHBOARD HERMES_DASHBOARD_HOST
   API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY
   API_SERVER_MODEL_NAME
-  SEARXNG_URL FIRECRAWL_API_URL
   TERMINAL_SSH_HOST TERMINAL_SSH_USER TERMINAL_SSH_PORT TERMINAL_SSH_KEY
   TERMINAL_SSH_PERSISTENT TERMINAL_TIMEOUT
   SANDBOX_UID SANDBOX_GID SANDBOX_CPU SANDBOX_MEMORY SANDBOX_PIDS
   SANDBOX_SHM_SIZE
+  MEMORY_SYNC_INTERVAL_SECONDS
+  SANDBOX_CLEANUP_RETENTION_DAYS SANDBOX_CLEANUP_QUARANTINE_DAYS
+  SANDBOX_CLEANUP_DB_RETENTION_DAYS SANDBOX_CLEANUP_SWEEP_HOUR
+  SANDBOX_CLEANUP_SWEEP_MINUTE
 )
 
 for key in "${REQUIRED_NONEMPTY[@]}"; do
@@ -121,12 +128,21 @@ done
 [[ "${TELEGRAM_BOT_TOKEN}" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] \
   || die "TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather"
 
+[[ "${STACKS_ROOT}" == /* ]] || die "STACKS_ROOT debe ser una ruta absoluta"
 [[ "${BASE_PATH}" == /* ]] || die "BASE_PATH debe ser una ruta absoluta"
 
+STACKS_ROOT="${STACKS_ROOT%/}"
 BASE_PATH="${BASE_PATH%/}"
+
+[[ -n "${STACKS_ROOT}" && "${STACKS_ROOT}" != "/" ]] || die "STACKS_ROOT no puede ser /"
 [[ -n "${BASE_PATH}" && "${BASE_PATH}" != "/" ]] || die "BASE_PATH no puede ser /"
 
-for service_var in HERMES_SERVICE HERMES_MEMORY_SERVICE SANDBOX_SERVICE; do
+[[ "${STACK_DIR}" == "${STACKS_ROOT}/stack6_-_hermes" ]]   || die "Stack6 debe residir en ${STACKS_ROOT}/stack6_-_hermes; ruta actual: ${STACK_DIR}"
+
+STACK0_LOCK="${STACKS_ROOT}/stack0_-_platform/.lock"
+[[ -f "${STACK0_LOCK}" ]]   || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
+
+for service_var in HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE; do
   service_value="${!service_var}"
   [[ "${service_value}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
     || die "${service_var} debe seguir el patron service_-_*"
@@ -140,6 +156,8 @@ done
   || die "SANDBOX_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
 
 HERMES_ROOT="${BASE_PATH}/${HERMES_SERVICE}"
+MEMORY_ROOT="${BASE_PATH}/${HERMES_MEMORY_SERVICE}"
+MEMORY_DATA="${MEMORY_ROOT}/data"
 SANDBOX_ROOT="${BASE_PATH}/${SANDBOX_SERVICE}"
 
 HERMES_CONFIG="${HERMES_ROOT}/config"
@@ -164,10 +182,25 @@ step "Ficheros fuente del stack"
 HERMES_CONFIG_SRC="${STACK_DIR}/config/hermes/config.yaml"
 SANDBOX_DOCKERFILE_SRC="${STACK_DIR}/config/sandbox/Dockerfile"
 SANDBOX_ENTRYPOINT_SRC="${STACK_DIR}/config/sandbox/entrypoint.sh"
+SANDBOX_STATE_INIT_SRC="${STACK_DIR}/config/sandbox/state-init.py"
+CLEANUP_DOCKERFILE_SRC="${STACK_DIR}/config/sandbox-cleanup/Dockerfile"
+CLEANUP_SOURCE="${STACK_DIR}/config/sandbox-cleanup/cleanup.py"
+MEMORY_SYNC_DOCKERFILE_SRC="${STACK_DIR}/config/memory-sync/Dockerfile"
+MEMORY_SYNC_ENTRYPOINT_SRC="${STACK_DIR}/config/memory-sync/entrypoint.sh"
+MEMORY_SYNC_SOURCE="${STACK_DIR}/config/memory-sync/hermes-memory-sync.sh"
 
-[[ -s "${HERMES_CONFIG_SRC}" ]] || die "falta o esta vacio ${HERMES_CONFIG_SRC}"
-[[ -s "${SANDBOX_DOCKERFILE_SRC}" ]] || die "falta o esta vacio ${SANDBOX_DOCKERFILE_SRC}"
-[[ -s "${SANDBOX_ENTRYPOINT_SRC}" ]] || die "falta o esta vacio ${SANDBOX_ENTRYPOINT_SRC}"
+for source in \
+  "${HERMES_CONFIG_SRC}" \
+  "${SANDBOX_DOCKERFILE_SRC}" \
+  "${SANDBOX_ENTRYPOINT_SRC}" \
+  "${SANDBOX_STATE_INIT_SRC}" \
+  "${CLEANUP_DOCKERFILE_SRC}" \
+  "${CLEANUP_SOURCE}" \
+  "${MEMORY_SYNC_DOCKERFILE_SRC}" \
+  "${MEMORY_SYNC_ENTRYPOINT_SRC}" \
+  "${MEMORY_SYNC_SOURCE}"; do
+  [[ -s "${source}" ]] || die "falta o esta vacio ${source}"
+done
 
 # HERMES_MODEL is the single source of truth for model selection. The source
 # config intentionally contains ${HERMES_MODEL}; prepare renders ONLY that
@@ -237,19 +270,16 @@ fi
 log "fuentes presentes y coherentes"
 
 # -----------------------------------------------------------------------------
-# Docker network
+# Docker network - owned exclusively by Stack0
 # -----------------------------------------------------------------------------
 step "Red Docker ${NETWORK_NAME}"
 
-if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
-  driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
-  [[ "${driver}" == "bridge" ]] \
-    || die "la red ${NETWORK_NAME} existe pero usa driver '${driver}', no bridge"
-  log "existe y es bridge"
-else
-  docker network create --driver bridge "${NETWORK_NAME}" >/dev/null
-  log "creada como bridge"
-fi
+docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1   || die "falta la red compartida ${NETWORK_NAME}; debe crearla Stack0"
+
+driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
+[[ "${driver}" == "bridge" ]]   || die "la red ${NETWORK_NAME} existe pero usa driver '${driver}', no bridge"
+
+log "existe, es bridge y permanece propiedad de Stack0"
 
 # -----------------------------------------------------------------------------
 # Containers must be stopped. Cleanup is handled by 02-cleanup.sh.
@@ -276,7 +306,9 @@ install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" \
   "${HERMES_ROOT}" \
   "${HERMES_CONFIG}" \
   "${HERMES_DATA}" \
-  "${HERMES_LOGS}"
+  "${HERMES_LOGS}" \
+  "${MEMORY_ROOT}" \
+  "${MEMORY_DATA}"
 install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" \
   "${HERMES_CONFIG}/ssh"
 
@@ -289,13 +321,35 @@ install -d -m 0750 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
   "${SANDBOX_DATA}/home" \
   "${SANDBOX_DATA}/workspace" \
   "${SANDBOX_LOGS}"
+install -d -m 0700 -o 0 -g 0 \
+  "${SANDBOX_DATA}/state"
 install -d -m 0700 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
   "${SANDBOX_DATA}/home/.ssh"
 
+for file in MEMORY.md USER.md; do
+  path="${MEMORY_DATA}/${file}"
+
+  if [[ -e "${path}" ]]; then
+    [[ -f "${path}" && ! -L "${path}" ]] \
+      || die "${path} debe ser un fichero regular"
+    log "memoria existente preservada: ${file}"
+  else
+    install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" /dev/null "${path}"
+    log "memoria local inicial creada: ${file}"
+  fi
+
+  chown "${HERMES_UID}:${HERMES_GID}" "${path}"
+  chmod 0640 "${path}"
+done
+
+chown "${HERMES_UID}:${HERMES_GID}" "${MEMORY_ROOT}" "${MEMORY_DATA}"
+chmod 0750 "${MEMORY_ROOT}" "${MEMORY_DATA}"
+
 log "${HERMES_ROOT}/{config,data,logs}"
+log "${MEMORY_DATA}: memoria persistente local"
 log "${SANDBOX_ROOT}/{config,data,logs}"
-log "data/, logs/, workspace y data/bin se preservan"
-log "${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data sera preparado exclusivamente por 04-gitmem.sh"
+log "data/, logs/, workspace, memoria y data/bin se preservan"
+log "Git memory-sync es opcional y no forma parte del Stack6 minimo"
 
 # -----------------------------------------------------------------------------
 # Runtime / shadow configuration
@@ -490,7 +544,7 @@ log "host key sandbox: ${HOST_PRIVATE}"
 # -----------------------------------------------------------------------------
 step "Dependencias existentes"
 
-for container in litellm searxng firecrawl-api; do
+for container in litellm; do
   docker inspect "${container}" >/dev/null 2>&1 \
     || die "no existe el contenedor requerido '${container}'"
 
@@ -595,7 +649,11 @@ assert_dir "${HERMES_CONFIG}"                  "${HERMES_UID}"  "${HERMES_GID}" 
 assert_dir "${HERMES_CONFIG}/ssh"              "${HERMES_UID}"  "${HERMES_GID}" 700
 assert_dir "${HERMES_DATA}"                    "${HERMES_UID}"  "${HERMES_GID}" 750
 assert_dir "${HERMES_LOGS}"                    "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_file "${HERMES_CONFIG}/config.yaml"      "${HERMES_UID}"  "${HERMES_GID}" 640
+assert_dir "${MEMORY_ROOT}"                      "${HERMES_UID}"  "${HERMES_GID}" 750
+assert_dir "${MEMORY_DATA}"                      "${HERMES_UID}"  "${HERMES_GID}" 750
+assert_file "${MEMORY_DATA}/MEMORY.md"           "${HERMES_UID}"  "${HERMES_GID}" 640
+assert_file "${MEMORY_DATA}/USER.md"             "${HERMES_UID}"  "${HERMES_GID}" 640
+assert_file "${HERMES_CONFIG}/config.yaml"       "${HERMES_UID}"  "${HERMES_GID}" 640
 assert_file "${SSH_PRIVATE}"                    "${HERMES_UID}"  "${HERMES_GID}" 600
 assert_file "${SSH_PUBLIC}"                     "${HERMES_UID}"  "${HERMES_GID}" 644
 
@@ -611,7 +669,8 @@ assert_dir "${SANDBOX_DATA}/home"              "${SANDBOX_UID}" "${SANDBOX_GID}"
 assert_dir "${SANDBOX_DATA}/home/.ssh"         "${SANDBOX_UID}" "${SANDBOX_GID}" 700
 assert_file "${AUTHORIZED_KEYS}"                "${SANDBOX_UID}" "${SANDBOX_GID}" 600
 assert_dir "${SANDBOX_DATA}/workspace"         "${SANDBOX_UID}" "${SANDBOX_GID}" 750
-assert_dir "${SANDBOX_LOGS}"                   "${SANDBOX_UID}" "${SANDBOX_GID}" 750
+assert_dir "${SANDBOX_DATA}/state"               0 0 700
+assert_dir "${SANDBOX_LOGS}"                     "${SANDBOX_UID}" "${SANDBOX_GID}" 750
 log "propietarios/permisos: OK"
 
 cmp -s "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml" \
@@ -678,9 +737,15 @@ Stack preparado y auditado. No se ha arrancado ningun contenedor.
 Siguiente paso:
 
   cd ${STACK_DIR}
-  bash ./04-gitmem.sh
   docker compose up -d --build
+  bash ./06-reconcile-capabilities.sh --restart
   docker compose ps
+
+Git-backed memory es opcional. Para habilitarla posteriormente:
+
+  bash ./04-gitmem.sh
+  bash ./05-maintenance-sidecars.sh
+  docker compose --profile git-memory up -d --build hermes-memory-sync
 
 La salida correcta del prepare incluye:
 
@@ -692,10 +757,11 @@ La salida correcta del prepare incluye:
   .env inmutable: OK
 
 IMPORTANTE:
-  - eliminar .lock permite volver a ejecutar el prepare de forma deliberada.
-  - 01-prepare.sh no crea ni modifica service_-_hermes-memory/data.
-  - 04-gitmem.sh prepara y valida exclusivamente el working tree Git de memoria.
-  - 01-prepare.sh no borra data/, logs/, workspace ni data/bin.
+  - .lock significa PREPARED; no significa desplegado ni healthy.
+  - 01-prepare.sh crea o conserva la memoria persistente local de Stack6.
+  - 04-gitmem.sh habilita/valida opcionalmente el working tree Git de memoria.
+  - 06-reconcile-capabilities.sh adapta la configuracion a providers opcionales.
+  - 01-prepare.sh no borra data/, logs/, workspace, memoria, state.db ni data/bin.
   - la limpieza/reset/factory-reset corresponde a 02-cleanup.sh.
   - .env no se modifica nunca.
 EOF2
