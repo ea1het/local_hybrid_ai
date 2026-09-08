@@ -7,6 +7,12 @@ services:
     container_name: haproxy
     restart: unless-stopped
 
+    # Official haproxy image runs as uid/gid 99. Stack0 keeps the private key
+    # root-owned and grants read access only through a dedicated supplementary
+    # platform PKI group.
+    group_add:
+      - "${PLATFORM_PKI_GID:-1999}"
+
     networks:
       - redlocal
 
