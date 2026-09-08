@@ -80,6 +80,13 @@ El runner mantiene en su `data` la identidad `.runner` además de `config.yaml`.
 `01-prepare.sh` trabaja sobre el layout runtime actual bajo `${BASE_PATH}` y no migra automáticamente directorios antiguos.
 
 Sustituye la configuración gestionada preservando `service_-_gitea/data` y la identidad persistente `.runner` del runner. Los antiguos `ca-certificates.crt` y `certificates.txt` se eliminan porque pertenecen a la arquitectura TLS anterior.
+
+## Contrato del lock de preparación
+
+`.lock` significa únicamente que `01-prepare.sh` terminó correctamente y el stack está preparado. No significa que se hayan ejecutado las migraciones, que el administrador esté asegurado ni que Gitea/runner estén arrancados.
+
+`01-prepare.sh` crea `.lock`. `02-run.sh` lo requiere y ejecuta el resto de la instalación/arranque sin ser propietario del lock ni reescribirlo.
+
 ## Instalación / refactor
 
 ```bash
@@ -88,18 +95,16 @@ sudo ./01-prepare.sh
 sudo ./02-run.sh
 ```
 
-`01-prepare.sh` no crea `.lock`, porque aún falta el segundo paso.
+`01-prepare.sh` valida y renderiza la configuración gestionada y después crea `.lock`.
 
 `02-run.sh`:
 
-1. valida el Compose;
-2. descarga las imágenes;
-3. ejecuta las migraciones de Gitea;
-4. asegura que existe el administrador configurado;
-5. arranca Gitea y el runner;
-6. crea `.lock`.
-
-Con `.lock` presente, ambos scripts salen inmediatamente sin modificar nada.
+1. requiere el lock de preparación;
+2. valida Compose;
+3. descarga las imágenes;
+4. ejecuta las migraciones de Gitea;
+5. asegura que existe el administrador configurado;
+6. arranca Gitea y el runner.
 
 ## Operación normal
 
