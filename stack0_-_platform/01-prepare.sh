@@ -63,6 +63,8 @@ done < <(python3 "${MANIFEST_TOOL}" directories)
 
 step "Platform runtime"
 PLATFORM_ROOT="${BASE_PATH%/}/service_-_platform"
+PLATFORM_CERT="${PLATFORM_ROOT}/pki/tls.crt"
+PLATFORM_KEY="${PLATFORM_ROOT}/pki/tls.key"
 install -d -m 0750 -o 0 -g 0 "${BASE_PATH}" "${PLATFORM_ROOT}"
 install -d -m 0700 -o 0 -g 0 "${PLATFORM_ROOT}/pki" "${PLATFORM_ROOT}/state"
 install -d -m 0750 -o 0 -g 0 "${PLATFORM_ROOT}/logs"
@@ -79,7 +81,26 @@ else
 fi
 
 step "Platform PKI"
-bash "${PKI_TOOL}" create
+if [[ ! -e "${PLATFORM_CERT}" && ! -e "${PLATFORM_KEY}" ]]; then
+  LEGACY_RUNTIME_CERT="${BASE_PATH%/}/service_-_haproxy/config/casa.lan.crt"
+  LEGACY_RUNTIME_KEY="${BASE_PATH%/}/service_-_haproxy/config/casa.lan.key"
+  LEGACY_SOURCE_CERT="${ROOT_DIR}/stack1_-_haproxy_web/config/haproxy/casa.lan.crt"
+  LEGACY_SOURCE_KEY="${ROOT_DIR}/stack1_-_haproxy_web/config/haproxy/casa.lan.key"
+
+  if [[ -e "${LEGACY_RUNTIME_CERT}" || -e "${LEGACY_RUNTIME_KEY}" ]]; then
+    [[ -s "${LEGACY_RUNTIME_CERT}" && -s "${LEGACY_RUNTIME_KEY}" ]] || die "partial legacy HAProxy runtime PKI detected"
+    bash "${PKI_TOOL}" import "${LEGACY_RUNTIME_CERT}" "${LEGACY_RUNTIME_KEY}"
+    log "adopted existing HAProxy runtime certificate"
+  elif [[ -e "${LEGACY_SOURCE_CERT}" || -e "${LEGACY_SOURCE_KEY}" ]]; then
+    [[ -s "${LEGACY_SOURCE_CERT}" && -s "${LEGACY_SOURCE_KEY}" ]] || die "partial legacy HAProxy source PKI detected"
+    bash "${PKI_TOOL}" import "${LEGACY_SOURCE_CERT}" "${LEGACY_SOURCE_KEY}"
+    log "adopted existing HAProxy source certificate"
+  else
+    bash "${PKI_TOOL}" create
+  fi
+else
+  bash "${PKI_TOOL}" create
+fi
 
 {
   printf 'stack=%s\n' "stack0_-_platform"
