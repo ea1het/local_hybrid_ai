@@ -11,21 +11,17 @@ services:
       - redlocal
 
     ports:
-      # HTTP público.
-      # HAProxy no sirve contenido aquí: redirige todo a HTTPS.
       - "0.0.0.0:${HAPROXY_HTTP_PORT:-80}:8080"
-
-      # HTTPS público.
-      # Toda la terminación TLS se realiza en HAProxy.
       - "0.0.0.0:${HAPROXY_HTTPS_PORT:-443}:8443"
 
     volumes:
-      # Contiene:
-      #   haproxy.cfg
-      #   casa.lan.crt
-      #   casa.lan.key
-      #   minimal.cnf
+      # Stack1 owns only HAProxy configuration.
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_haproxy/config:/usr/local/etc/haproxy:ro
+
+      # Stack0 owns the shared TLS certificate/key lifecycle.
+      # Mount the directory rather than individual files so renewed/recreated
+      # files remain visible to the container after a controlled HAProxy reload.
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_platform/pki:/etc/platform-pki:ro
 
     environment:
       ROOT_HOSTNAME: ${ROOT_HOSTNAME:-casa.lan}
@@ -50,7 +46,6 @@ services:
       AGENTIA_HOSTNAME: ${AGENTIA_HOSTNAME:-agentia}
       AGENTIA_TARGET: ${AGENTIA_TARGET:-hermes:9119}
 
-
     logging:
       driver: "json-file"
       options:
@@ -74,10 +69,6 @@ services:
 
 
 networks:
-
-  # Red Docker común de HAProxy y todos sus backends.
   redlocal:
     external: true
-    name: redlocal
-
-
+    name: ${NETWORK_NAME:-redlocal}
