@@ -4,11 +4,16 @@
   "directory": "stack3_-_litellm",
   "name": "LiteLLM model and MCP gateway",
   "kind": "application",
-  "atomic": false,
-  "requires": [0, 2],
+  "atomic": true,
+  "requires": [0],
   "target_requires": [0],
   "optional": [1],
   "provides": ["ai.gateway", "ai.mcp-gateway"],
-  "owns": ["container:litellm", "runtime:service_-_litellm"],
-  "blockers": ["LiteLLM PostgreSQL is currently provisioned inside Stack2 firecrawl-postgres"]
+  "owns": [
+    "container:litellm",
+    "container:litellm-postgres",
+    "runtime:service_-_litellm",
+    "runtime:service_-_litellm-postgres"
+  ],
+  "blockers": []
 }
