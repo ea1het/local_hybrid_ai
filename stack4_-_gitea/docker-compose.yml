@@ -10,6 +10,7 @@ services:
 
     environment:
       TZ: ${GITEA_TIMEZONE:-Europe/Madrid}
+      GITEA_CUSTOM: /etc/gitea
       GITEA_RUNNER_REGISTRATION_TOKEN_FILE: /run/secrets/gitea-runner-registration-token
 
     volumes:
