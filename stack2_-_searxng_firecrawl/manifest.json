@@ -9,6 +9,17 @@
   "target_requires": [0],
   "optional": [1],
   "provides": ["web.search", "web.extract"],
-  "owns": ["container:searxng", "container:firecrawl-api", "container:firecrawl-playwright", "container:firecrawl-redis", "container:firecrawl-rabbitmq", "container:firecrawl-postgres"],
+  "owns": [
+    "container:searxng",
+    "container:firecrawl-api",
+    "container:firecrawl-playwright",
+    "container:firecrawl-redis",
+    "container:firecrawl-rabbitmq",
+    "container:firecrawl-postgres",
+    "runtime:service_-_searxng",
+    "runtime:service_-_firecrawl-redis",
+    "runtime:service_-_firecrawl-rabbitmq",
+    "runtime:service_-_firecrawl-postgres"
+  ],
   "blockers": []
 }
