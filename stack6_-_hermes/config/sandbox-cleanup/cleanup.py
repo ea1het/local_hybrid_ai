@@ -69,6 +69,62 @@ def top_level(path: Path) -> str | None:
     return rel.parts[0]
 
 
+def latest_activity(path: Path) -> datetime:
+    latest_ns = path.lstat().st_mtime_ns
+    if path.is_dir() and not path.is_symlink():
+        for root, dirs, files in os.walk(path, followlinks=False):
+            for name in dirs + files:
+                candidate = Path(root) / name
+                try:
+                    latest_ns = max(latest_ns, candidate.lstat().st_mtime_ns)
+                except FileNotFoundError:
+                    pass
+    return datetime.fromtimestamp(latest_ns / 1_000_000_000, tz=timezone.utc)
+
+
+def reconcile_top_level(conn: sqlite3.Connection) -> None:
+    seen: set[str] = set()
+    now = now_utc()
+    for entry in WORKSPACE.iterdir():
+        name = entry.name
+        if name == ".cleanup-quarantine":
+            continue
+        seen.add(name)
+        try:
+            stat = entry.lstat()
+            activity = latest_activity(entry)
+        except FileNotFoundError:
+            continue
+        row = conn.execute(
+            "SELECT protected,state,last_activity_at FROM objects WHERE path=?", (name,)
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO objects(path,inode,first_seen_at,last_activity_at,state,protected) VALUES(?,?,?,?, 'ACTIVE',0)",
+                (name, stat.st_ino, iso(now), iso(activity)),
+            )
+            print(f"[sandbox-cleanup] DISCOVER path={name}")
+            continue
+        protected, state, last_activity = row
+        if protected:
+            continue
+        if state == "ACTIVE" and activity > parse_iso(last_activity):
+            conn.execute(
+                "UPDATE objects SET inode=?, last_activity_at=? WHERE path=?",
+                (stat.st_ino, iso(activity), name),
+            )
+
+    rows = conn.execute("SELECT path,protected,state FROM objects").fetchall()
+    for name, protected, state in rows:
+        if protected or state in {"DELETED", "QUARANTINED"}:
+            continue
+        if name not in seen:
+            conn.execute(
+                "UPDATE objects SET state='DELETED', deleted_at=? WHERE path=?",
+                (iso(now), name),
+            )
+
+
 def mark_activity(name: str) -> None:
     if name == ".cleanup-quarantine":
         return
@@ -159,22 +215,24 @@ def quarantine_candidate(conn: sqlite3.Connection, name: str, last_activity: str
         conn.execute("UPDATE objects SET state='DELETED', deleted_at=? WHERE path=?", (iso(), name))
         return False
 
-    before = src.lstat()
     cutoff = now_utc() - timedelta(days=RETENTION_DAYS)
     if parse_iso(last_activity) > cutoff:
         return False
 
-    time.sleep(0.02)
+    before = latest_activity(src)
+    time.sleep(0.05)
     try:
-        after = src.lstat()
+        after = latest_activity(src)
     except FileNotFoundError:
         return False
-    if (before.st_ino, before.st_mtime_ns, before.st_size) != (after.st_ino, after.st_mtime_ns, after.st_size):
+    if after != before:
+        conn.execute("UPDATE objects SET last_activity_at=? WHERE path=?", (iso(after), name))
         print(f"[sandbox-cleanup] SKIP changed-during-scan path={name}")
         return False
 
+    inode = src.lstat().st_ino
     stamp = now_utc().strftime("%Y%m%dT%H%M%SZ")
-    dest = QUARANTINE / f"{name}.{stamp}.{before.st_ino}"
+    dest = QUARANTINE / f"{name}.{stamp}.{inode}"
     src.rename(dest)
     conn.execute(
         "UPDATE objects SET state='QUARANTINED', quarantined_at=?, last_activity_at=? WHERE path=?",
@@ -235,6 +293,7 @@ def sweep() -> None:
     with _LOCK:
         conn = connect()
         try:
+            reconcile_top_level(conn)
             audit(conn)
             rows = conn.execute(
                 "SELECT path,last_activity_at FROM objects WHERE protected=0 AND state='ACTIVE'"
