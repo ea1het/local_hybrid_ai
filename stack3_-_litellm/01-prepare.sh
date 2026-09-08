@@ -17,7 +17,9 @@ if [[ -e "${LOCK_FILE}" ]]; then
 fi
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-command -v docker >/dev/null 2>&1 || die "docker no esta instalado"
+for cmd in docker openssl install; do
+  command -v "${cmd}" >/dev/null 2>&1 || die "${cmd} no esta instalado"
+done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
 [[ -f "${ENV_FILE}" ]] || die "falta ${ENV_FILE}"
 [[ -f "${COMPOSE_FILE}" ]] || die "falta ${COMPOSE_FILE}"
@@ -56,12 +58,27 @@ driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
 
 SERVICE_DIR="${BASE_PATH%/}/service_-_litellm"
 POSTGRES_DIR="${BASE_PATH%/}/service_-_litellm-postgres"
+POSTGRES_SECRET_DIR="${POSTGRES_DIR}/secret"
+POSTGRES_ADMIN_PASSWORD_FILE="${POSTGRES_SECRET_DIR}/postgres_admin_password"
 CONFIG_SOURCE="${STACK_DIR}/config/litellm/config.yaml"
 [[ -f "${CONFIG_SOURCE}" ]] || die "falta ${CONFIG_SOURCE}"
 
 step "Runtime de Stack3"
 install -d -m 0750 -o 0 -g 0 "${BASE_PATH}" "${SERVICE_DIR}" "${POSTGRES_DIR}"
-install -d -m 0700 -o 0 -g 0 "${POSTGRES_DIR}/data"
+install -d -m 0700 -o 0 -g 0 "${POSTGRES_DIR}/data" "${POSTGRES_SECRET_DIR}"
+if [[ -e "${POSTGRES_ADMIN_PASSWORD_FILE}" ]]; then
+  [[ -f "${POSTGRES_ADMIN_PASSWORD_FILE}" && ! -L "${POSTGRES_ADMIN_PASSWORD_FILE}" && -s "${POSTGRES_ADMIN_PASSWORD_FILE}" ]] || \
+    die "estado invalido del secreto PostgreSQL: ${POSTGRES_ADMIN_PASSWORD_FILE}"
+  chown 0:0 "${POSTGRES_ADMIN_PASSWORD_FILE}"
+  chmod 0600 "${POSTGRES_ADMIN_PASSWORD_FILE}"
+  log "secreto administrativo PostgreSQL existente: preservado"
+else
+  umask 077
+  openssl rand -hex 32 >"${POSTGRES_ADMIN_PASSWORD_FILE}"
+  chown 0:0 "${POSTGRES_ADMIN_PASSWORD_FILE}"
+  chmod 0600 "${POSTGRES_ADMIN_PASSWORD_FILE}"
+  log "secreto administrativo PostgreSQL: generado una vez"
+fi
 log "PostgreSQL dedicado: ${POSTGRES_DIR}/data"
 
 step "Configuracion de LiteLLM"
