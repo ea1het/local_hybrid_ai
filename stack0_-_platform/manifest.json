@@ -4,7 +4,9 @@
   "directory": "stack0_-_platform",
   "name": "Platform foundation",
   "kind": "foundation",
+  "atomic": true,
   "requires": [],
+  "target_requires": [],
   "optional": [],
   "provides": [
     "platform.foundation",
@@ -17,5 +19,6 @@
     "stack:.env-symlinks",
     "docker-network:redlocal",
     "runtime:service_-_platform"
-  ]
+  ],
+  "blockers": []
 }
