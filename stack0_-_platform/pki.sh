@@ -52,26 +52,29 @@ DNS.2 = ${ROOT_HOSTNAME}
 EOF
 }
 
-validate_pair() {
-  [[ -s "${CERT_FILE}" && ! -L "${CERT_FILE}" ]] || die "missing or invalid certificate: ${CERT_FILE}"
-  [[ -s "${KEY_FILE}" && ! -L "${KEY_FILE}" ]] || die "missing or invalid private key: ${KEY_FILE}"
-  openssl x509 -in "${CERT_FILE}" -noout >/dev/null 2>&1 || die "invalid X.509 certificate"
-  openssl pkey -in "${KEY_FILE}" -noout >/dev/null 2>&1 || die "invalid private key"
+validate_external_pair() {
+  local cert="$1" key="$2" tmpdir cert_pub key_pub
+  [[ -s "${cert}" && ! -L "${cert}" ]] || die "missing or invalid certificate: ${cert}"
+  [[ -s "${key}" && ! -L "${key}" ]] || die "missing or invalid private key: ${key}"
+  openssl x509 -in "${cert}" -noout >/dev/null 2>&1 || die "invalid X.509 certificate: ${cert}"
+  openssl pkey -in "${key}" -noout >/dev/null 2>&1 || die "invalid private key: ${key}"
 
-  local tmpdir cert_pub key_pub
   tmpdir="$(mktemp -d "${PKI_ROOT}/.validate.XXXXXX")"
-  trap 'rm -rf "${tmpdir}"' RETURN
   cert_pub="${tmpdir}/cert.pub"
   key_pub="${tmpdir}/key.pub"
-  openssl x509 -in "${CERT_FILE}" -pubkey -noout >"${cert_pub}"
-  openssl pkey -in "${KEY_FILE}" -pubout >"${key_pub}"
-  cmp -s "${cert_pub}" "${key_pub}" || die "certificate and private key do not match"
+  openssl x509 -in "${cert}" -pubkey -noout >"${cert_pub}"
+  openssl pkey -in "${key}" -pubout >"${key_pub}"
+  cmp -s "${cert_pub}" "${key_pub}" || { rm -rf "${tmpdir}"; die "certificate and private key do not match"; }
   rm -rf "${tmpdir}"
-  trap - RETURN
+}
+
+validate_pair() {
+  validate_external_pair "${CERT_FILE}" "${KEY_FILE}"
 }
 
 install_pair() {
   local cert_source="$1" key_source="$2"
+  validate_external_pair "${cert_source}" "${key_source}"
   install -m 0644 -o 0 -g 0 "${cert_source}" "${CERT_FILE}"
   install -m 0600 -o 0 -g 0 "${key_source}" "${KEY_FILE}"
   validate_pair
@@ -117,11 +120,13 @@ usage() {
 Usage:
   pki.sh status
   pki.sh create
+  pki.sh import CERT KEY
   pki.sh renew
   pki.sh recreate --yes
   pki.sh delete --yes
 
 create    Create a self-signed platform certificate only when no PKI exists.
+import    Adopt an existing certificate/key pair only when no platform PKI exists.
 renew     Issue a new certificate while preserving the current private key.
 recreate  Replace both certificate and private key; explicit confirmation required.
 delete    Remove both certificate and private key; explicit confirmation required.
@@ -130,7 +135,6 @@ EOF
 }
 
 action="${1:-}"
-confirm="${2:-}"
 case "${action}" in
   status)
     status
@@ -145,18 +149,26 @@ case "${action}" in
       log "PKI created for ${ROOT_HOSTNAME}"
     fi
     ;;
+  import)
+    source_cert="${2:-}"
+    source_key="${3:-}"
+    [[ -n "${source_cert}" && -n "${source_key}" ]] || die "import requires CERT and KEY paths"
+    [[ ! -e "${CERT_FILE}" && ! -e "${KEY_FILE}" ]] || die "platform PKI already exists; refusing import"
+    install_pair "${source_cert}" "${source_key}"
+    log "existing PKI adopted without changing certificate identity"
+    ;;
   renew)
     validate_pair
     renew_cert
     log "certificate renewed; private key preserved"
     ;;
   recreate)
-    [[ "${confirm}" == "--yes" ]] || die "recreate requires --yes"
+    [[ "${2:-}" == "--yes" ]] || die "recreate requires --yes"
     create_pair
     log "PKI recreated with a new private key"
     ;;
   delete)
-    [[ "${confirm}" == "--yes" ]] || die "delete requires --yes"
+    [[ "${2:-}" == "--yes" ]] || die "delete requires --yes"
     rm -f -- "${CERT_FILE}" "${KEY_FILE}"
     log "PKI deleted"
     ;;
