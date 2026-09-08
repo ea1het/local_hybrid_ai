@@ -95,7 +95,6 @@ REQUIRED_NONEMPTY=(
   HERMES_UID HERMES_GID
   HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
   LITELLM_MCP_URL LITELLM_MCP_API_KEY
-  TELEGRAM_BOT_TOKEN
   HERMES_DASHBOARD HERMES_DASHBOARD_HOST
   API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY
   API_SERVER_MODEL_NAME
@@ -125,8 +124,16 @@ done
 [[ "${LITELLM_MCP_URL}" =~ ^https?://[^[:space:]]+/mcp/?$ ]] \
   || die "LITELLM_MCP_URL debe ser un endpoint HTTP(S) terminado en /mcp"
 
-[[ "${TELEGRAM_BOT_TOKEN}" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] \
-  || die "TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather"
+TELEGRAM_ENABLED=false
+if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  [[ "${TELEGRAM_BOT_TOKEN}" != CHANGE_ME* ]] \
+    || die "TELEGRAM_BOT_TOKEN sigue sin definir"
+  [[ "${TELEGRAM_BOT_TOKEN}" != PUT_YOUR_* ]] \
+    || die "TELEGRAM_BOT_TOKEN sigue usando un placeholder"
+  [[ "${TELEGRAM_BOT_TOKEN}" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] \
+    || die "TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather"
+  TELEGRAM_ENABLED=true
+fi
 
 [[ "${STACKS_ROOT}" == /* ]] || die "STACKS_ROOT debe ser una ruta absoluta"
 [[ "${BASE_PATH}" == /* ]] || die "BASE_PATH debe ser una ruta absoluta"
@@ -172,7 +179,11 @@ log ".env completo; no se ha modificado"
 log "Hermes fijado a ${HERMES_IMAGE}:${HERMES_VERSION}"
 log "memoria externa declarada: ${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data"
 log "MCP gateway: ${LITELLM_MCP_URL}"
-log "Telegram: token presente y formato valido"
+if "${TELEGRAM_ENABLED}"; then
+  log "Telegram: habilitado; token presente y formato valido"
+else
+  log "Telegram: deshabilitado; TELEGRAM_BOT_TOKEN vacio"
+fi
 
 # -----------------------------------------------------------------------------
 # Source files
