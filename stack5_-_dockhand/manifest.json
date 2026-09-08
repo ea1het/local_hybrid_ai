@@ -4,11 +4,9 @@
   "directory": "stack5_-_dockhand",
   "name": "Dockhand",
   "kind": "application",
-  "atomic": false,
+  "atomic": true,
   "requires": [0],
-  "target_requires": [0],
   "optional": [1],
   "provides": ["containers.management"],
-  "owns": ["container:dockhand", "volume:dockhand_data"],
-  "blockers": ["dockhand_data must currently exist before Stack5 preparation"]
+  "owns": ["container:dockhand", "volume:dockhand_data"]
 }
