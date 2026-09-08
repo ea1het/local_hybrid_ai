@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": 4,
+  "directory": "stack4_-_gitea",
+  "name": "Gitea and runner",
+  "kind": "application",
+  "atomic": false,
+  "requires": [0],
+  "target_requires": [0],
+  "optional": [1],
+  "provides": ["git.remote", "git.runner"],
+  "owns": ["container:gitea", "container:gitea-runner", "runtime:service_-_gitea", "runtime:service_-_gitea-runner"],
+  "blockers": ["Runner registration token is still an external bootstrap prerequisite"]
+}

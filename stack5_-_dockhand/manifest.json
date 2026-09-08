@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": 5,
+  "directory": "stack5_-_dockhand",
+  "name": "Dockhand",
+  "kind": "application",
+  "atomic": false,
+  "requires": [0],
+  "target_requires": [0],
+  "optional": [1],
+  "provides": ["containers.management"],
+  "owns": ["container:dockhand", "volume:dockhand_data"],
+  "blockers": ["dockhand_data must currently exist before Stack5 preparation"]
+}
