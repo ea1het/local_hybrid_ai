@@ -11,14 +11,10 @@ log()  { printf '  %s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-if [[ -e "${LOCK_FILE}" ]]; then
-  printf 'Stack ya preparado. Existe %s; no se realiza ningun cambio.\n' "${LOCK_FILE}"
-  exit 0
-fi
-
 command -v docker >/dev/null 2>&1 || die "docker no esta instalado"
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
 [[ -f "${ENV_FILE}" ]] || die "falta ${ENV_FILE}"
+[[ -f "${LOCK_FILE}" ]] || die "Stack3 no esta preparado: falta ${LOCK_FILE}; ejecuta primero ./01-prepare.sh"
 
 grep -Eq '^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})' "${ENV_FILE}" && \
   die "${ENV_FILE} contiene valores saneados/incompletos"
@@ -110,10 +106,5 @@ docker exec -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${POSTGRES_HOST}" \
 step "Validacion de Docker Compose"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
 
-{
-  printf 'stack=%s\n' "${STACK_NAME}"
-  printf 'prepared_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} > "${LOCK_FILE}"
-
 step "Provisionado terminado"
-log "lock creado: ${LOCK_FILE}"
+log "PostgreSQL de LiteLLM provisionado y validado"
