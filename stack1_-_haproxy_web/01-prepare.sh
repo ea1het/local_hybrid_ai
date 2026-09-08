@@ -17,7 +17,7 @@ if [[ -e "${LOCK_FILE}" ]]; then
 fi
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-for cmd in docker openssl cmp; do
+for cmd in docker openssl cmp ln; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
@@ -88,7 +88,9 @@ mkdir -p "${HAPROXY_SERVICE}"
 rm -rf "${HAPROXY_SERVICE}/config"
 mkdir -p "${HAPROXY_SERVICE}/config"
 install -m 0644 "${HAPROXY_SOURCE}/haproxy.cfg" "${HAPROXY_SERVICE}/config/haproxy.cfg"
-log "configuracion desplegada sin copiar material TLS"
+ln -s /etc/platform-pki/tls.crt "${HAPROXY_SERVICE}/config/casa.lan.crt"
+ln -s /etc/platform-pki/tls.key "${HAPROXY_SERVICE}/config/casa.lan.key"
+log "configuracion desplegada; TLS enlazado a Stack0 sin copiar material secreto"
 
 step "Contenido web"
 rm -rf "${WEB_SERVICE}"
