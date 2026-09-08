@@ -8,20 +8,14 @@ x-logging: &logging
     compress: "true"
 
 networks:
-  # Red compartida existente: HAProxy, LiteLLM, SearXNG, Firecrawl, etc.
   redlocal:
     external: true
     name: ${NETWORK_NAME}
 
-  # Red privada exclusivamente entre Hermes y su executor.
-  # El sandbox NO pertenece a redlocal.
   hermes-exec:
     driver: bridge
 
 services:
-  # ---------------------------------------------------------------------------
-  # Hermes gateway / orchestrator
-  # ---------------------------------------------------------------------------
   hermes:
     image: ${HERMES_IMAGE}:${HERMES_VERSION:?Set HERMES_VERSION in .env}
     container_name: ${HERMES_CONTAINER}
@@ -34,44 +28,31 @@ services:
       HERMES_UID: ${HERMES_UID}
       HERMES_GID: ${HERMES_GID}
       HERMES_MODEL: ${HERMES_MODEL}
-
-      # Model gateway.
       LITELLM_BASE_URL: ${LITELLM_BASE_URL}
       LITELLM_API_KEY: ${LITELLM_API_KEY}
-
-      # MCP gateway. This is a client-specific LiteLLM virtual key created
-      # dynamically in the LiteLLM Admin UI, not a Stack3 static credential.
       LITELLM_MCP_URL: ${LITELLM_MCP_URL:?Set LITELLM_MCP_URL in .env}
       LITELLM_MCP_API_KEY: ${LITELLM_MCP_API_KEY:?Set LITELLM_MCP_API_KEY in .env}
-
-      # Telegram uses outbound long polling because no webhook URL is defined.
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
-
       TERMINAL_TIMEOUT: ${TERMINAL_TIMEOUT}
-
       HERMES_DASHBOARD: ${HERMES_DASHBOARD}
       HERMES_DASHBOARD_HOST: ${HERMES_DASHBOARD_HOST}
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME}
       HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH}
       HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET}
       HERMES_DASHBOARD_BASIC_AUTH_TTL_SECONDS: ${HERMES_DASHBOARD_BASIC_AUTH_TTL_SECONDS}
-
       API_SERVER_ENABLED: ${API_SERVER_ENABLED}
       API_SERVER_HOST: ${API_SERVER_HOST}
       API_SERVER_PORT: ${API_SERVER_PORT}
       API_SERVER_KEY: ${API_SERVER_KEY}
       API_SERVER_MODEL_NAME: ${API_SERVER_MODEL_NAME}
       API_SERVER_CORS_ORIGINS: ${API_SERVER_CORS_ORIGINS}
-
       SEARXNG_URL: ${SEARXNG_URL}
       FIRECRAWL_API_URL: ${FIRECRAWL_API_URL}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
-
       BUZZ_CLI_PATH: ${BUZZ_CLI_PATH}
       BUZZ_RELAY_URL: ${BUZZ_RELAY_URL}
       BUZZ_PRIVATE_KEY: ${BUZZ_PRIVATE_KEY}
       BUZZ_AUTH_TAG: ${BUZZ_AUTH_TAG}
-
       TERMINAL_SSH_HOST: ${TERMINAL_SSH_HOST}
       TERMINAL_SSH_USER: ${TERMINAL_SSH_USER}
       TERMINAL_SSH_PORT: ${TERMINAL_SSH_PORT}
@@ -79,24 +60,14 @@ services:
       TERMINAL_SSH_PERSISTENT: ${TERMINAL_SSH_PERSISTENT}
 
     volumes:
-      # Hermes persistent runtime state.
       - ${BASE_PATH}/${HERMES_SERVICE}/data:/opt/data
-
-      # Git-backed memory is a separate lifecycle and source of truth.
-      # 04-gitmem.sh must prepare this working tree before the container starts.
-      # create_host_path=false makes Compose fail instead of silently creating
-      # an empty directory when the Git worktree is missing.
       - type: bind
         source: ${BASE_PATH}/${HERMES_MEMORY_SERVICE:?Set HERMES_MEMORY_SERVICE in .env}/data
         target: /opt/data/memories
         bind:
           create_host_path: false
-
-      # Managed config + private executor key.
       - ${BASE_PATH}/${HERMES_SERVICE}/config/config.yaml:/opt/data/config.yaml
       - ${BASE_PATH}/${HERMES_SERVICE}/config/ssh:/opt/data/ssh:ro
-
-      # Separate standard logs path.
       - ${BASE_PATH}/${HERMES_SERVICE}/logs:/opt/data/logs
 
     networks:
@@ -123,9 +94,6 @@ services:
 
     logging: *logging
 
-  # ---------------------------------------------------------------------------
-  # Isolated execution sandbox
-  # ---------------------------------------------------------------------------
   hermes-sandbox:
     build:
       context: ${BASE_PATH}/${SANDBOX_SERVICE}/config
@@ -141,16 +109,14 @@ services:
 
     environment:
       TZ: ${TZ}
+      SANDBOX_WORKSPACE: /workspace
+      SANDBOX_STATE_DIR: /var/lib/hermes-sandbox-state
 
     volumes:
-      # authorized_keys already lives below data/home/.ssh and arrives here
-      # through this single canonical mount. No second copy exists.
       - ${BASE_PATH}/${SANDBOX_SERVICE}/data/home:/home/agent
       - ${BASE_PATH}/${SANDBOX_SERVICE}/data/workspace:/workspace
-
-      # Persistent SSH host identity only.
+      - ${BASE_PATH}/${SANDBOX_SERVICE}/data/state:/var/lib/hermes-sandbox-state
       - ${BASE_PATH}/${SANDBOX_SERVICE}/config/ssh-host:/etc/ssh/hostkeys:ro
-
       - ${BASE_PATH}/${SANDBOX_SERVICE}/logs:/var/log/hermes-sandbox
 
     networks:
@@ -172,8 +138,6 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      # Kept from the already-tested sandbox policy. The entrypoint itself
-      # performs no chown/chmod/install operations.
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
@@ -192,5 +156,91 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+    logging: *logging
+
+  hermes-memory-sync:
+    build:
+      context: ${BASE_PATH}/${MEMORY_SYNC_SERVICE}/config
+      dockerfile: Dockerfile
+      args:
+        MEMORY_SYNC_UID: ${HERMES_UID}
+        MEMORY_SYNC_GID: ${HERMES_GID}
+
+    image: ${MEMORY_SYNC_IMAGE}
+    container_name: ${MEMORY_SYNC_CONTAINER}
+    restart: unless-stopped
+
+    environment:
+      TZ: ${TZ}
+      MEMORY_SYNC_INTERVAL_SECONDS: ${MEMORY_SYNC_INTERVAL_SECONDS}
+      MEMORY_SYNC_BRANCH: ${GITMEM_BRANCH}
+      MEMORY_SYNC_EXPECTED_ORIGIN: ${GITMEM_REPOSITORY}
+      MEMORY_SYNC_REPO: /work/hermes-memory
+      MEMORY_SYNC_SSH_CONFIG: /run/hermes-memory-ssh/ssh_config
+
+    volumes:
+      - type: bind
+        source: ${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data
+        target: /work/hermes-memory
+      - type: bind
+        source: ${BASE_PATH}/${MEMORY_SYNC_SERVICE}/ssh
+        target: /run/hermes-memory-ssh
+        read_only: true
+
+    networks:
+      - redlocal
+
+    security_opt:
+      - no-new-privileges:true
+
+    depends_on:
+      hermes:
+        condition: service_healthy
+
+    logging: *logging
+
+  hermes-sandbox-cleanup:
+    build:
+      context: ${BASE_PATH}/${SANDBOX_CLEANUP_SERVICE}/config
+      dockerfile: Dockerfile
+
+    image: ${SANDBOX_CLEANUP_IMAGE}
+    container_name: ${SANDBOX_CLEANUP_CONTAINER}
+    restart: unless-stopped
+
+    environment:
+      TZ: ${TZ}
+      SANDBOX_CLEANUP_WORKSPACE: /workspace
+      SANDBOX_CLEANUP_STATE_DB: /state/state.db
+      SANDBOX_CLEANUP_RETENTION_DAYS: ${SANDBOX_CLEANUP_RETENTION_DAYS}
+      SANDBOX_CLEANUP_QUARANTINE_DAYS: ${SANDBOX_CLEANUP_QUARANTINE_DAYS}
+      SANDBOX_CLEANUP_DB_RETENTION_DAYS: ${SANDBOX_CLEANUP_DB_RETENTION_DAYS}
+      SANDBOX_CLEANUP_SWEEP_HOUR: ${SANDBOX_CLEANUP_SWEEP_HOUR}
+      SANDBOX_CLEANUP_SWEEP_MINUTE: ${SANDBOX_CLEANUP_SWEEP_MINUTE}
+
+    volumes:
+      - type: bind
+        source: ${BASE_PATH}/${SANDBOX_SERVICE}/data/workspace
+        target: /workspace
+      - type: bind
+        source: ${BASE_PATH}/${SANDBOX_SERVICE}/data/state
+        target: /state
+
+    network_mode: none
+    read_only: true
+
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    depends_on:
+      hermes-sandbox:
+        condition: service_healthy
 
     logging: *logging
