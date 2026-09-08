@@ -18,24 +18,15 @@ services:
       - dockhand_data:/app/data
 
 
-# ============================================================================
-# RED
-# ============================================================================
-
 networks:
 
   redlocal:
     external: true
-    name: redlocal
+    name: ${NETWORK_NAME:-redlocal}
 
 
-# ============================================================================
-# VOLUMENES
-#
-# dockhand_data ya existe.
-# No lo crea ni lo elimina este stack.
-# ============================================================================
-
+# Stack5 owns the lifecycle of this named volume. 01-prepare.sh creates it only
+# when absent and never deletes or recreates an existing volume.
 volumes:
 
   dockhand_data:
