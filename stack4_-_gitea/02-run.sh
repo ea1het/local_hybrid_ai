@@ -11,14 +11,10 @@ log()  { printf '  %s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-if [[ -e "${LOCK_FILE}" ]]; then
-  printf 'Stack ya preparado. Existe %s; no se realiza ningun cambio.\n' "${LOCK_FILE}"
-  exit 0
-fi
-
 command -v docker >/dev/null 2>&1 || die "docker no esta instalado"
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
 [[ -f "${ENV_FILE}" ]] || die "falta ${ENV_FILE}"
+[[ -f "${LOCK_FILE}" ]] || die "Stack4 no esta preparado: falta ${LOCK_FILE}; ejecuta primero ./01-prepare.sh"
 
 set -a
 # shellcheck disable=SC1090
@@ -67,11 +63,5 @@ step "Arranque"
 "${compose[@]}" up -d
 "${compose[@]}" ps
 
-{
-  printf 'stack=%s\n' "${STACK_NAME}"
-  printf 'prepared_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} > "${LOCK_FILE}"
-
 step "Instalacion terminada"
 log "Gitea publico: ${GITEA_ROOT_URL}"
-log "lock creado: ${LOCK_FILE}"
