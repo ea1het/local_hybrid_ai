@@ -36,8 +36,7 @@ for key in STACKS_ROOT BASE_PATH HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTN
            GIT_HOSTNAME GIT_TARGET \
            GWIA_HOSTNAME GWIA_TARGET \
            HOMELAB_HOSTNAME HOMELAB_TARGET \
-           AGENTIA_HOSTNAME AGENTIA_TARGET \
-           XYOPS_HOSTNAME XYOPS_TARGET; do
+           AGENTIA_HOSTNAME AGENTIA_TARGET; do
   require_env "${key}"
 done
 
@@ -109,8 +108,6 @@ docker run --rm \
   -e HOMELAB_TARGET="${HOMELAB_TARGET}" \
   -e AGENTIA_HOSTNAME="${AGENTIA_HOSTNAME}" \
   -e AGENTIA_TARGET="${AGENTIA_TARGET}" \
-  -e XYOPS_HOSTNAME="${XYOPS_HOSTNAME}" \
-  -e XYOPS_TARGET="${XYOPS_TARGET}" \
   haproxy:3.0-alpine haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg >/dev/null
 log "haproxy.cfg valida"
 
