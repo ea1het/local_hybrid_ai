@@ -53,6 +53,7 @@ Stack1 consumes the central deployment environment through `.env -> ../.env`, in
 STACKS_ROOT
 BASE_PATH
 NETWORK_NAME
+PLATFORM_PKI_GID
 HAPROXY_HTTP_PORT
 HAPROXY_HTTPS_PORT
 ROOT_HOSTNAME
@@ -70,6 +71,8 @@ HOMELAB_TARGET
 AGENTIA_HOSTNAME
 AGENTIA_TARGET
 ```
+
+`PLATFORM_PKI_GID` defaults to `1999`. Stack0 owns the `local-hybrid-pki` group and PKI permissions; HAProxy receives this numeric supplementary group in both validation and Compose. The private key remains root-owned with mode `0640`.
 
 The backend stacks are optional from Stack1's installation perspective. HAProxy uses Docker DNS with `init-addr last,none`, so a backend may be absent when Stack1 starts.
 
@@ -95,13 +98,24 @@ sudo ./01-prepare.sh
 2. verifies the shared Docker network from Stack0 without creating it;
 3. validates the Stack0 certificate/private-key pair;
 4. deploys only `haproxy.cfg` into Stack1 runtime;
-5. creates runtime symlinks for HAProxy's historical certificate filenames, pointing to the Stack0 PKI mount;
+5. creates or replaces runtime symlinks for HAProxy's historical certificate filenames, pointing to the Stack0 PKI mount;
 6. deploys the static web content;
 7. validates HAProxy using the same central PKI mount used at runtime;
 8. validates Compose;
 9. creates `.lock`.
 
-`.lock` means only PREPARED.
+`.lock` means only PREPARED. If it already exists, preparation exits without changes.
+
+Preparation preserves the existing HAProxy config and web directories so running bind mounts remain attached to the current content. It updates source files and TLS links without deleting those directories. Other existing files are retained; removing obsolete files is a separate, deliberate operation.
+
+For a deliberate re-preparation:
+
+```bash
+rm .lock
+sudo ./01-prepare.sh
+```
+
+Updating files does not reload HAProxy configuration. Apply configuration changes with a controlled HAProxy reload/recreation when needed. Changes to Compose mounts or supplementary groups require container recreation. Static web content updates do not require recreating `web`.
 
 ## Start and normal operation
 

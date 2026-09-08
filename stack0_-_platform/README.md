@@ -26,6 +26,8 @@ ${BASE_PATH}/service_-_platform/
 └── logs/
 ```
 
+Stack0 creates the dedicated `local-hybrid-pki` group with `PLATFORM_PKI_GID` (default `1999`). The PKI directory is `root:<PKI GID> 0750`, the certificate `0644` and the private key `0640`. HAProxy consumes the directory read-only with that supplementary group. Existing group/GID conflicts stop preparation.
+
 The current PKI is self-signed and covers both `ROOT_HOSTNAME` and `*.ROOT_HOSTNAME`.
 
 ## Preparation
@@ -68,7 +70,7 @@ python3 manifests.py plan all
 
 The registry deliberately distinguishes the **current** dependency graph from the **target atomic** graph while refactoring is in progress.
 
-For example, Stack3 currently still requires Stack2 because LiteLLM uses PostgreSQL inside Stack2. Its target manifest dependency is only Stack0. Stack6 currently still requires Stack2 because its preparation flow hard-requires local web services; its target graph requires only Stack0 and Stack3.
+Stack3 owns its dedicated PostgreSQL and requires only Stack0. Stack6 currently still requires Stack2 because its preparation flow hard-requires local web services; its target graph requires only Stack0 and Stack3.
 
 This makes the remaining atomicity blockers explicit and machine-readable instead of hiding them inside installation scripts.
 

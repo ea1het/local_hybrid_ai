@@ -87,17 +87,25 @@ cmp -s \
   <(openssl pkey -in "${PLATFORM_KEY}" -pubout) || die "certificado y clave de Stack0 no coinciden"
 log "PKI de Stack0 verificada"
 
+step "Directorios montados de Stack1"
+# Preserve directory identity: running containers keep these bind mounts.
+for directory in "${HAPROXY_SERVICE}" "${HAPROXY_SERVICE}/config" "${WEB_SERVICE}"; do
+  [[ ! -L "${directory}" ]] || die "directorio runtime no puede ser un symlink: ${directory}"
+  [[ ! -e "${directory}" || -d "${directory}" ]] || die "ruta runtime no es un directorio: ${directory}"
+done
+for file in casa.lan.crt casa.lan.key; do
+  target="${HAPROXY_SERVICE}/config/${file}"
+  [[ ! -d "${target}" || -L "${target}" ]] || die "ruta TLS no puede ser un directorio: ${target}"
+done
+
 step "Configuracion de HAProxy"
-mkdir -p "${HAPROXY_SERVICE}"
-rm -rf "${HAPROXY_SERVICE}/config"
 mkdir -p "${HAPROXY_SERVICE}/config"
 install -m 0644 "${HAPROXY_SOURCE}/haproxy.cfg" "${HAPROXY_SERVICE}/config/haproxy.cfg"
-ln -s /etc/platform-pki/tls.crt "${HAPROXY_SERVICE}/config/casa.lan.crt"
-ln -s /etc/platform-pki/tls.key "${HAPROXY_SERVICE}/config/casa.lan.key"
+ln -sfn /etc/platform-pki/tls.crt "${HAPROXY_SERVICE}/config/casa.lan.crt"
+ln -sfn /etc/platform-pki/tls.key "${HAPROXY_SERVICE}/config/casa.lan.key"
 log "configuracion desplegada; TLS enlazado a Stack0 sin copiar material secreto"
 
 step "Contenido web"
-rm -rf "${WEB_SERVICE}"
 mkdir -p "${WEB_SERVICE}"
 cp -a "${WEB_SOURCE}/." "${WEB_SERVICE}/"
 chmod 0644 "${WEB_SERVICE}/index.html"
