@@ -7,12 +7,12 @@ x-logging: &logging
     max-file: "3"
     compress: "true"
 
-# Todos los servicios usan la red bridge externa ya existente en el host.
-# 01-prepare.sh la crea si no existe y valida que sea de tipo bridge.
+# Todos los servicios usan la red bridge externa propiedad de Stack0.
+# 01-prepare.sh exige que exista y valida que sea de tipo bridge; nunca la crea.
 networks:
   redlocal:
     external: true
-    name: redlocal
+    name: ${NETWORK_NAME:?Set NETWORK_NAME in .env}
 
 services:
 
@@ -237,5 +237,3 @@ services:
       start_period: 30s
 
     logging: *logging
-
-
