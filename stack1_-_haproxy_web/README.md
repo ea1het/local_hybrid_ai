@@ -58,11 +58,9 @@ HOMELAB_HOSTNAME
 HOMELAB_TARGET
 AGENTIA_HOSTNAME
 AGENTIA_TARGET
-XYOPS_HOSTNAME
-XYOPS_TARGET
 ```
 
-`GWIA`, `HOMELAB`, `AGENTIA` and `XYOPS` are part of the explicit Stack1 environment contract and are passed by Compose to HAProxy.
+`GWIA`, `HOMELAB` and `AGENTIA` are part of the explicit Stack1 environment contract and are passed by Compose to HAProxy.
 
 ## Initial preparation
 

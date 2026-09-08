@@ -65,9 +65,10 @@ RUN apt-get update \
         --create-home \
         --shell /bin/bash \
         agent \
-    && mkdir -p /workspace /run/sshd /home/agent/.ssh \
+    && mkdir -p /workspace /run/sshd /home/agent/.ssh /var/lib/hermes-sandbox-state \
     && chown -R agent:agent /workspace /home/agent \
     && chmod 0700 /home/agent/.ssh \
+    && chmod 0700 /var/lib/hermes-sandbox-state \
     && printf '%s\n' \
         'Port 2222' \
         'Protocol 2' \
@@ -90,11 +91,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /usr/local/bin/hermes-sandbox-entrypoint
-RUN chmod 0755 /usr/local/bin/hermes-sandbox-entrypoint
+COPY state-init.py /usr/local/bin/hermes-sandbox-state-init
+RUN chmod 0755 \
+    /usr/local/bin/hermes-sandbox-entrypoint \
+    /usr/local/bin/hermes-sandbox-state-init
 
 WORKDIR /workspace
 EXPOSE 2222
 
 ENTRYPOINT ["/usr/local/bin/hermes-sandbox-entrypoint"]
 CMD ["/usr/sbin/sshd", "-D", "-e"]
-

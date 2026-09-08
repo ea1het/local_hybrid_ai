@@ -15,9 +15,13 @@ if [[ ! -s "${AUTHORIZED_KEYS}" ]]; then
   exit 1
 fi
 
+# Initialize or validate the persistent lifecycle ledger before sshd accepts
+# any Hermes execution. A corrupted/incomplete DB fails closed and is repaired
+# explicitly with 02-cleanup.sh --reset-sandbox.
+/usr/local/bin/hermes-sandbox-state-init
+
 # /run is a tmpfs supplied by Compose. Runtime preparation is intentionally
-# limited to this transient sshd directory: no persistent ownership or keys
-# are created or changed inside the container.
+# limited to transient sshd state plus lifecycle validation above.
 mkdir -p /run/sshd
 
 exec "$@"

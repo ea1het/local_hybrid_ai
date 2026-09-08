@@ -15,10 +15,9 @@ The repository is deployed as one Git working tree and persistent application st
 │   ├── stack3_-_litellm/
 │   ├── stack4_-_gitea/
 │   ├── stack5_-_dockhand/
-│   ├── stack6_-_hermes/
-│   └── stack7_-_xyops/
+│   └── stack6_-_hermes/
 │
-└── runtime/                 # persistent runtime only
+└── runtime/
     ├── service_-_haproxy/
     ├── service_-_web/
     ├── service_-_searxng/
@@ -29,10 +28,9 @@ The repository is deployed as one Git working tree and persistent application st
     ├── service_-_gitea/
     ├── service_-_gitea-runner/
     ├── service_-_hermes/
-    ├── service_-_hermes-sandbox/
     ├── service_-_hermes-memory/
-    ├── service_-_xyops/
-    └── service_-_xysat/
+    ├── service_-_hermes-memory-sync/
+    └── service_-_hermes-sandbox/
 ```
 
 `dockhand_data` remains an external Docker volume.
@@ -46,13 +44,11 @@ STACKS_ROOT=/opt/docker/stacks
 BASE_PATH=/opt/docker/runtime
 ```
 
-`STACKS_ROOT` is source code only. `BASE_PATH` is persistent runtime only.
+`STACKS_ROOT` is source only. `BASE_PATH` is persistent runtime only.
 
 Operational `.env` files contain deployment-specific values and secrets and must not be committed.
 
 ## Clean installation
-
-Clone the repository once:
 
 ```bash
 sudo mkdir -p /opt/docker
@@ -61,8 +57,6 @@ sudo git clone https://github.com/ea1het/local_hybrid_ai.git stacks
 cd /opt/docker/stacks
 ```
 
-For each stack, create its operational `.env` from the supplied example/template and edit the deployment-specific values. Never commit those operational `.env` files.
-
 The normal deployment order is:
 
 1. Stack1 — HAProxy and static web
@@ -70,27 +64,20 @@ The normal deployment order is:
 3. Stack3 — LiteLLM
 4. Stack4 — Gitea
 5. Stack5 — Dockhand
-6. Stack6 — Hermes, isolated sandbox and Git-backed memory
-7. Stack7 — xyOps conductor and dedicated xySat scheduler worker
+6. Stack6 — Hermes, native Cron, isolated sandbox and maintenance sidecars
 
 ### Stack1
-
-TLS material is deployment-specific and is not stored in Git. Generate it locally before running `01-prepare.sh`:
 
 ```bash
 cd /opt/docker/stacks/stack1_-_haproxy_web
 cp .env.example .env
 # edit .env
-
 cd config/haproxy
 bash generate.txt
 cd ../..
-
 sudo ./01-prepare.sh
 docker compose up -d
 ```
-
-The generated `casa.lan.crt` and `casa.lan.key` files are intentionally ignored by Git.
 
 ### Stack2
 
@@ -102,11 +89,7 @@ sudo ./01-prepare.sh
 docker compose up -d
 ```
 
-Wait until the Firecrawl dependencies are healthy before continuing.
-
 ### Stack3
-
-LiteLLM is pinned by image and version in the operational `.env`.
 
 ```bash
 cd /opt/docker/stacks/stack3_-_litellm
@@ -117,9 +100,7 @@ sudo ./02-postgres.sh
 docker compose up -d --force-recreate litellm
 ```
 
-Validate the local inference route before adding optional MCP integrations.
-
-LiteLLM is also the shared MCP policy boundary. Upstream MCP servers and MCP-scoped virtual keys are managed dynamically in LiteLLM rather than committed to Stack3 source configuration.
+LiteLLM is both the model-routing boundary and the shared MCP gateway.
 
 ### Stack4
 
@@ -143,9 +124,9 @@ docker compose up -d
 
 ### Stack6
 
-Stack6 depends on the model gateway and, when enabled, external integration configuration. Stack7 is deployed afterwards because it schedules controlled maintenance against Stack6 runtime state.
+Create the operational `.env` from `.env.template` and configure the deployment-specific values and secrets.
 
-Create the operational environment from `.env.template`, then configure at least:
+Important non-secret defaults include:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
@@ -153,174 +134,122 @@ BASE_PATH=/opt/docker/runtime
 HERMES_IMAGE=nousresearch/hermes-agent
 HERMES_VERSION=v2026.8.31
 HERMES_MEMORY_SERVICE=service_-_hermes-memory
-LITELLM_MCP_URL=http://litellm:4000/mcp
-GITMEM_BRANCH=main
+MEMORY_SYNC_SERVICE=service_-_hermes-memory-sync
+MEMORY_SYNC_INTERVAL_SECONDS=900
+SANDBOX_CLEANUP_RETENTION_DAYS=7
+SANDBOX_CLEANUP_QUARANTINE_DAYS=1
+SANDBOX_CLEANUP_DB_RETENTION_DAYS=90
+SANDBOX_CLEANUP_SWEEP_HOUR=3
+SANDBOX_CLEANUP_SWEEP_MINUTE=30
 ```
 
-Secrets such as LiteLLM keys, Telegram tokens and Git credentials remain outside Git.
-
-The configured private Git memory repository must already contain regular files named:
+The configured private Git memory repository must already contain regular files:
 
 ```text
 MEMORY.md
 USER.md
 ```
 
-Then:
+`hermes-memory-sync` uses a dedicated SSH identity under:
+
+```text
+/opt/docker/runtime/service_-_hermes-memory-sync/ssh/
+```
+
+Provision and authorize that identity for the configured Gitea memory repository before running `05-maintenance-sidecars.sh`. The preparation script validates the SSH material but does not create or replace credentials.
+
+Prepare in this order:
 
 ```bash
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./01-prepare.sh
 sudo ./04-gitmem.sh
+sudo ./05-maintenance-sidecars.sh
+
+docker compose config --quiet
 docker compose up -d --build
 docker compose ps
 ```
 
-`04-gitmem.sh` prepares and validates the Git-backed memory working tree. It does not pull, merge, rebase, commit or push. Periodic synchronization belongs to Stack7.
+`04-gitmem.sh` prepares and validates the memory working tree but does not modify Git history.
 
-For the currently validated Hermes version, apply the temporary terminal-timeout workaround after the containers are healthy:
+`05-maintenance-sidecars.sh` validates the dedicated memory-sync SSH runtime and prepares the sandbox lifecycle-state directory.
+
+Expected services are:
+
+```text
+hermes
+hermes-sandbox
+hermes-memory-sync
+hermes-sandbox-cleanup
+```
+
+For the currently validated Hermes version, retain the terminal-timeout workaround while required:
 
 ```bash
 sudo ./03-temporary-fix-issue-74116-terminal-timeout.sh
 ```
 
-Keep this workaround only while the corresponding upstream Hermes issue remains unresolved for the deployed version.
+## Scheduling policy
 
-If Telegram is enabled, pair or allowlist the intended user after Stack6 is healthy. If MCP is enabled, validate discovery first and then perform a real end-to-end MCP tool call through LiteLLM.
+Deferred intelligent work uses Hermes native Cron. There is no separate scheduler stack.
 
-### Stack7
+The managed Hermes prompt teaches the agent to:
 
-Stack7 adds scheduling without giving the scheduler the Docker socket, privileged mode, host networking or unrestricted host filesystem access.
+- defer work only when a future time/event genuinely matters;
+- create self-contained future cron tasks;
+- avoid duplicate/meaningless scheduling;
+- treat `/workspace` as ephemeral scratch space;
+- persist artifacts required by future work to durable storage outside the sandbox.
 
-Create the operational environment:
+The durable-storage backend is intentionally generic until a specific integration is selected.
+
+## Memory synchronization
+
+`hermes-memory-sync` runs every 15 minutes by default and performs conservative Git synchronization of `MEMORY.md` and `USER.md`.
+
+It refuses automatic conflict resolution and never force-pushes.
+
+Its dedicated SSH identity lives under:
+
+```text
+/opt/docker/runtime/service_-_hermes-memory-sync/ssh/
+```
+
+## Sandbox lifecycle
+
+The sandbox owns a persistent lifecycle ledger:
+
+```text
+/opt/docker/runtime/service_-_hermes-sandbox/data/state/state.db
+```
+
+The database is initialized or validated before `sshd` starts.
+
+The cleanup sidecar watches the workspace with inotify and performs a daily sweep. New post-baseline top-level objects are disposable. After the configured inactivity period they are quarantined, then deleted after the grace period.
+
+The cleanup sidecar has no network access.
+
+### Fast sandbox repair
+
+If `state.db` is corrupt or the sandbox generation must be discarded:
+
+1. Stop Hermes, the sandbox and cleanup sidecar.
+2. Run:
 
 ```bash
-cd /opt/docker/stacks/stack7_-_xyops
-cp .env.example .env
-chmod 600 .env
-# review .env
-sudo ./01-prepare.sh
+sudo ./02-cleanup.sh --reset-sandbox
 ```
 
-The validated image pins are currently:
-
-```dotenv
-XYOPS_IMAGE=ghcr.io/pixlcore/xyops
-XYOPS_VERSION=v1.0.96
-XYSAT_IMAGE=ghcr.io/pixlcore/xysat
-XYSAT_VERSION=v1.0.45
-```
-
-Start the conductor first:
-
-```bash
-docker compose up -d xyops
-docker compose ps xyops
-
-docker exec xyops \
-  curl -fsS http://127.0.0.1:5522/api/app/ping
-```
-
-Expected response:
-
-```json
-{"code":0}
-```
-
-Browser access is through HAProxy at:
-
-```text
-https://xyops.casa.lan
-```
-
-The conductor itself remains internal at `xyops:5522` on `redlocal`.
-
-#### Enroll xySat
-
-Enroll the dedicated xySat worker only after the conductor is operational.
-
-Use the temporary bootstrap flow generated by the xyOps UI. The bootstrap token is sensitive and temporary: do not commit it, store it in `.env`, or paste it into documentation.
-
-The resulting permanent worker identity must be stored at:
-
-```text
-/opt/docker/runtime/service_-_xysat/config/config.json
-```
-
-with mode:
-
-```text
-0600
-```
-
-The active worker path must resolve to:
-
-```text
-host   = xyops
-port   = 5522
-secure = false
-```
-
-Once enrolled, start the worker profile:
-
-```bash
-docker compose --profile worker up -d xysat
-docker compose --profile worker ps
-
-docker exec xysat getent hosts xyops
-docker exec xysat curl -fsS http://xyops:5522/api/app/ping
-```
-
-The worker should appear Online in the xyOps Servers UI.
-
-#### Scheduler-specific Gitea identity
-
-Before enabling the memory-sync job, provision a dedicated scheduler SSH identity under:
-
-```text
-/opt/docker/runtime/service_-_xysat/ssh/
-```
-
-The worker must use scheduler-specific `id_ed25519`, `known_hosts` and `ssh_config` material rather than mounting `/root/.ssh`. Authorize only the access required for the Hermes memory repository and keep strict host-key checking enabled.
-
-#### Create the validated jobs
-
-Create the following xyOps events against the dedicated scheduler worker:
-
-```text
-Hermes Memory Sync
-  Manual trigger
-  Every 10 minutes
-  Maximum concurrent jobs: 1
-  Maximum runtime: 300 seconds
-
-Hermes Sandbox Audit
-  Manual trigger
-  Daily at 03:30 Europe/Madrid
-  Maximum concurrent jobs: 1
-  Maximum runtime: 300 seconds
-```
-
-The corresponding scripts are:
-
-```text
-/opt/xyops/jobs/hermes-memory-sync.sh
-/opt/xyops/jobs/hermes-sandbox-audit.sh
-```
-
-Validate both jobs manually before relying on their automatic triggers.
-
-The memory job may write only to the Git-backed Hermes memory worktree. The sandbox audit sees only the sandbox workspace and sees it read-only. The audit performs no automatic deletion.
+This deletes only the current sandbox workspace generation and its lifecycle DB. It preserves Hermes state, Git-backed memory, sandbox home/SSH identity and managed configuration. The next sandbox boot creates a new generation and database.
 
 ## Deployment state
 
-Preparation scripts create a local `.lock` only after their audits succeed. Operational `.env` and `.lock` files are deployment state, not source configuration.
+Preparation scripts create local `.lock` files only after their audits succeed. Operational `.env` and `.lock` files are deployment state, not source configuration.
 
-Persistent application data must stay below `/opt/docker/runtime`; do not copy databases, generated runtime configuration, session state or secrets into `/opt/docker/stacks`.
+Persistent application data belongs below `/opt/docker/runtime`.
 
 ## Updating the checkout
-
-Treat `/opt/docker/stacks` as an ordinary Git working tree. Do not edit tracked deployment files directly on the server unless the change is intentionally going back to Git.
 
 Before updating:
 
@@ -330,26 +259,21 @@ git status --short
 git branch --show-current
 ```
 
-A healthy deployment checkout should have no tracked local modifications. Operational `.env`, `.lock`, generated TLS material and runtime data must remain outside Git tracking.
-
-After pulling a change, use the affected stack's documented prepare/recreate procedure rather than assuming that `docker restart` applies new configuration.
+After pulling a change, use the affected stack's documented prepare/recreate process. `docker restart` does not apply changed container environment or rebuilt images.
 
 ## Security boundary
 
 Never commit real values for:
 
 - operational `.env` files
-- LiteLLM master, inference or MCP virtual keys
-- local-model API tokens
-- Telegram bot tokens
-- Buzz private keys or auth tags
-- TLS private keys generated for a real deployment
+- LiteLLM inference/MCP keys
+- local/cloud model API tokens
+- Telegram/Buzz credentials
+- TLS private keys
 - SSH private keys
 - database passwords
 - Hermes runtime databases, sessions or auth state
-- xySat `config.json`
-- xySat auth tokens
-- xyOps bootstrap tokens
-- xyOps runtime secret keys or persisted security-sensitive configuration
+- memory-sync SSH identity
+- sandbox lifecycle databases
 
-The repository contains source configuration and safe examples only. Persistent runtime state belongs under `/opt/docker/runtime`.
+The repository contains source configuration and safe templates only.

@@ -50,9 +50,6 @@ services:
       AGENTIA_HOSTNAME: ${AGENTIA_HOSTNAME:-agentia}
       AGENTIA_TARGET: ${AGENTIA_TARGET:-hermes:9119}
 
-      XYOPS_HOSTNAME: ${XYOPS_HOSTNAME:-xyops}
-      XYOPS_TARGET: ${XYOPS_TARGET:-xyops:5522}
-
 
     logging:
       driver: "json-file"
