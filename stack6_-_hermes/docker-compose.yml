@@ -96,7 +96,7 @@ services:
 
   hermes-sandbox:
     build:
-      context: ${BASE_PATH}/${SANDBOX_SERVICE}/config
+      context: ${STACKS_ROOT}/stack6_-_hermes/config/sandbox
       dockerfile: Dockerfile
       args:
         SANDBOX_UID: ${SANDBOX_UID}
@@ -161,7 +161,7 @@ services:
 
   hermes-memory-sync:
     build:
-      context: ${BASE_PATH}/${MEMORY_SYNC_SERVICE}/config
+      context: ${STACKS_ROOT}/stack6_-_hermes/config/memory-sync
       dockerfile: Dockerfile
       args:
         MEMORY_SYNC_UID: ${HERMES_UID}
@@ -202,7 +202,7 @@ services:
 
   hermes-sandbox-cleanup:
     build:
-      context: ${BASE_PATH}/${SANDBOX_CLEANUP_SERVICE}/config
+      context: ${STACKS_ROOT}/stack6_-_hermes/config/sandbox-cleanup
       dockerfile: Dockerfile
 
     image: ${SANDBOX_CLEANUP_IMAGE}
