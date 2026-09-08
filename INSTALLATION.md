@@ -66,7 +66,7 @@ It owns shared platform concerns:
 - owns the centralized PKI lifecycle;
 - validates the stack manifest registry and dependency graph.
 
-Every application stack requires Stack0. Stack6 additionally requires Stack3 in the supported local/hybrid architecture.
+Every application stack requires Stack0. In the target local/hybrid architecture, Stack6 additionally requires Stack3 as its mandatory AI gateway/policy boundary.
 
 ## Manifest and dependency contract
 
@@ -74,7 +74,7 @@ Every stack contains `manifest.json`. Stack0 discovers these manifests rather th
 
 The current dependency graph is represented by `requires`; optional integrations use `optional`. During an atomicity refactor a manifest may temporarily expose `target_requires`, but once the blocker is removed `requires` becomes the final contract.
 
-For example, Stack3 is now atomic and requires only Stack0. Stack6's minimum supported dependency set is Stack0 + Stack3; Stack2 and Stack4 remain optional capability providers.
+Stack3 is now atomic and requires only Stack0. Stack6 is still transitional: its current `requires` includes Stack2 because `01-prepare.sh` still hard-checks SearXNG/Firecrawl, while its `target_requires` is Stack0 + Stack3. Stack2 and Stack4 are intended to become optional capability providers for Stack6 once that blocker is removed.
 
 ## Central environment contract
 
@@ -174,14 +174,15 @@ sudo ./stack0_-_platform/install.sh
 
 Stack0 creates/validates the `.env` compatibility symlinks, shared network and central PKI runtime.
 
-The manifest resolver can show the effective dependency order. For example:
+The manifest resolver can show both the current and target dependency order. For example:
 
 ```bash
 python3 stack0_-_platform/manifests.py plan 3
 python3 stack0_-_platform/manifests.py plan 6
+python3 stack0_-_platform/manifests.py plan 6 --target
 ```
 
-The supported minimum for Stack6 resolves through Stack0 and Stack3. Optional capability stacks may be installed independently when required.
+At this stage, the current Stack6 plan still includes Stack2; the target plan resolves to Stack0 + Stack3 + Stack6 after Stack6's web-dependency blocker is removed.
 
 A conventional full manual deployment order remains:
 
