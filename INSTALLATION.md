@@ -10,6 +10,8 @@ The repository is deployed as one Git working tree. Mutable application state, c
 /opt/docker/
 ├── stacks/                  # Git checkout / source only
 │   ├── .git/
+│   ├── .env                 # operational deployment environment, NOT Git
+│   ├── .env.template        # tracked central variable contract
 │   ├── stack1_-_haproxy_web/
 │   ├── stack2_-_searxng_firecrawl/
 │   ├── stack3_-_litellm/
@@ -35,7 +37,7 @@ The repository is deployed as one Git working tree. Mutable application state, c
 
 `dockhand_data` remains an external Docker volume.
 
-Every stack follows:
+The shared deployment context remains:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
@@ -44,7 +46,61 @@ BASE_PATH=/opt/docker/runtime
 
 `STACKS_ROOT` is Git-managed source. `BASE_PATH` is mutable persistent state.
 
-Operational `.env` files are deployment state and must not be committed.
+## Central environment contract
+
+The deployment now has one operational environment file:
+
+```text
+/opt/docker/stacks/.env
+```
+
+and one tracked reference template:
+
+```text
+/opt/docker/stacks/.env.template
+```
+
+The root `.env.template` is the single documented variable contract for all six stacks. Variables are grouped by stack and document their current consumers, secret status and lifecycle expectations.
+
+The operational `.env` contains real values and secrets and must never be committed. Recommended ownership and permissions:
+
+```text
+root:root 0600
+```
+
+During the current manual-operation phase, each stack keeps a local symlink so the existing commands and scripts continue to resolve `.env` exactly where they already expect it:
+
+```text
+stack1_-_haproxy_web/.env       -> ../.env
+stack2_-_searxng_firecrawl/.env -> ../.env
+stack3_-_litellm/.env           -> ../.env
+stack4_-_gitea/.env             -> ../.env
+stack5_-_dockhand/.env          -> ../.env
+stack6_-_hermes/.env            -> ../.env
+```
+
+These symlinks are deployment state and are not tracked in Git.
+
+This preserves the existing manual workflow:
+
+```bash
+cd /opt/docker/stacks/stackN_...
+docker compose up -d
+```
+
+while removing duplicated environment definitions from the repository.
+
+## `.lock` contract
+
+Every stack uses the same meaning:
+
+```text
+.lock = PREPARED
+```
+
+A `.lock` is created by that stack's `01-prepare.sh` only after successful preparation. It does **not** mean that later provisioning, startup, health checks or end-to-end validation have completed.
+
+Later scripts may require `.lock`, but they do not own or create it.
 
 ## Architecture after the scheduler migration
 
@@ -70,6 +126,37 @@ sudo git clone https://github.com/ea1het/local_hybrid_ai.git stacks
 cd /opt/docker/stacks
 ```
 
+Create the operational environment from the central template:
+
+```bash
+sudo cp .env.template .env
+sudo chown root:root .env
+sudo chmod 0600 .env
+sudo editor .env
+```
+
+Create the stack-local compatibility symlinks:
+
+```bash
+for d in \
+  stack1_-_haproxy_web \
+  stack2_-_searxng_firecrawl \
+  stack3_-_litellm \
+  stack4_-_gitea \
+  stack5_-_dockhand \
+  stack6_-_hermes; do
+  sudo ln -sfn ../.env "$d/.env"
+done
+```
+
+Before preparing any stack, verify that all symlinks resolve to the root environment:
+
+```bash
+for d in stack*_*/; do
+  test "$(readlink -f "${d}.env")" = "/opt/docker/stacks/.env" || exit 1
+done
+```
+
 Normal deployment order:
 
 1. Stack1 — HAProxy and static web
@@ -83,8 +170,6 @@ Normal deployment order:
 
 ```bash
 cd /opt/docker/stacks/stack1_-_haproxy_web
-cp .env.example .env
-# edit .env
 cd config/haproxy
 bash generate.txt
 cd ../..
@@ -99,8 +184,6 @@ HAProxy is the internal TLS/reverse-proxy boundary. Keep deployment-specific TLS
 
 ```bash
 cd /opt/docker/stacks/stack2_-_searxng_firecrawl
-cp .env.example .env
-# edit .env
 sudo ./01-prepare.sh
 docker compose up -d
 docker compose ps
@@ -110,8 +193,6 @@ docker compose ps
 
 ```bash
 cd /opt/docker/stacks/stack3_-_litellm
-cp .env.example .env
-# edit .env
 sudo ./01-prepare.sh
 sudo ./02-postgres.sh
 docker compose up -d --force-recreate litellm
@@ -122,12 +203,12 @@ LiteLLM is both the model-routing boundary and the shared MCP gateway.
 
 Applications and Hermes should target LiteLLM rather than provider-specific endpoints.
 
+`02-postgres.sh` still reads the Stack2 `.env` path for the PostgreSQL administrative identity; because Stack2 `.env` is now a symlink, it resolves to the same central deployment environment.
+
 ## Stack4 — Gitea
 
 ```bash
 cd /opt/docker/stacks/stack4_-_gitea
-cp .env.example .env
-# edit .env
 sudo ./01-prepare.sh
 sudo ./02-run.sh
 ```
@@ -138,8 +219,6 @@ Gitea provides local Git infrastructure, including the Hermes memory repository.
 
 ```bash
 cd /opt/docker/stacks/stack5_-_dockhand
-cp .env.example .env
-# edit .env
 sudo ./01-prepare.sh
 docker compose up -d
 docker compose ps
@@ -147,7 +226,7 @@ docker compose ps
 
 ## Stack6 — Hermes
 
-Create the operational `.env` from `.env.template` and set all deployment-specific values and secrets.
+Stack6 consumes its variables from the same root environment through `stack6_-_hermes/.env -> ../.env`.
 
 Important non-secret defaults include:
 
@@ -354,13 +433,15 @@ git switch main
 git pull --ff-only
 ```
 
+The root `.env` and stack-local `.env` symlinks are deployment state and remain untouched by Git updates.
+
 After pulling changes, use the affected stack's prepare/recreate procedure. A plain `docker restart` does not apply changed container environment or rebuilt images.
 
 ## Deployment state
 
-Preparation scripts create local `.lock` files only after successful audits.
+Preparation scripts create local `.lock` files only after successful `01-prepare.sh` completion.
 
-Operational `.env`, `.lock`, generated credentials, databases and service state are deployment data, not source configuration.
+The root operational `.env`, stack-local `.env` symlinks, `.lock`, generated credentials, databases and service state are deployment data, not source configuration.
 
 Persistent application data belongs below `/opt/docker/runtime`.
 
@@ -368,7 +449,7 @@ Persistent application data belongs below `/opt/docker/runtime`.
 
 Never commit real values for:
 
-- operational `.env` files;
+- the root operational `.env`;
 - LiteLLM inference/MCP keys;
 - provider API tokens;
 - Telegram/Buzz credentials;
@@ -379,7 +460,7 @@ Never commit real values for:
 - memory-sync SSH identity;
 - sandbox lifecycle databases or generation state.
 
-The repository contains source configuration and safe templates only.
+The repository contains source configuration and the safe central `.env.template` only.
 
 ## Reference deployment validation
 
