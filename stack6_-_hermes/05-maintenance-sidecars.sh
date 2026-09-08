@@ -18,54 +18,21 @@ set -a
 source "${ENV_FILE}"
 set +a
 
-required=(
-  BASE_PATH HERMES_UID HERMES_GID
-  MEMORY_SYNC_SERVICE SANDBOX_SERVICE SANDBOX_CLEANUP_SERVICE
-)
+required=(BASE_PATH HERMES_UID HERMES_GID MEMORY_SYNC_SERVICE SANDBOX_SERVICE)
 for key in "${required[@]}"; do
   [[ -n "${!key:-}" ]] || die "missing ${key} in .env"
 done
 
 MEMORY_SYNC_ROOT="${BASE_PATH}/${MEMORY_SYNC_SERVICE}"
-SANDBOX_ROOT="${BASE_PATH}/${SANDBOX_SERVICE}"
-SANDBOX_CLEANUP_ROOT="${BASE_PATH}/${SANDBOX_CLEANUP_SERVICE}"
-
-MEMORY_SYNC_CONFIG="${MEMORY_SYNC_ROOT}/config"
 MEMORY_SYNC_SSH="${MEMORY_SYNC_ROOT}/ssh"
-SANDBOX_CONFIG="${SANDBOX_ROOT}/config"
-SANDBOX_STATE="${SANDBOX_ROOT}/data/state"
-SANDBOX_CLEANUP_CONFIG="${SANDBOX_CLEANUP_ROOT}/config"
+SANDBOX_STATE="${BASE_PATH}/${SANDBOX_SERVICE}/data/state"
 
 install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_ROOT}"
-install -d -m 0750 -o 0 -g 0 "${MEMORY_SYNC_CONFIG}"
 install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_SSH}"
 install -d -m 0700 -o 0 -g 0 "${SANDBOX_STATE}"
-install -d -m 0750 -o 0 -g 0 "${SANDBOX_CLEANUP_ROOT}" "${SANDBOX_CLEANUP_CONFIG}"
-
-install -m 0644 -o 0 -g 0 \
-  "${STACK_DIR}/config/memory-sync/Dockerfile" \
-  "${MEMORY_SYNC_CONFIG}/Dockerfile"
-install -m 0755 -o 0 -g 0 \
-  "${STACK_DIR}/config/memory-sync/entrypoint.sh" \
-  "${MEMORY_SYNC_CONFIG}/entrypoint.sh"
-install -m 0755 -o 0 -g 0 \
-  "${STACK_DIR}/config/memory-sync/hermes-memory-sync.sh" \
-  "${MEMORY_SYNC_CONFIG}/hermes-memory-sync.sh"
-
-install -m 0755 -o 0 -g 0 \
-  "${STACK_DIR}/config/sandbox/state-init.py" \
-  "${SANDBOX_CONFIG}/state-init.py"
-
-install -m 0644 -o 0 -g 0 \
-  "${STACK_DIR}/config/sandbox-cleanup/Dockerfile" \
-  "${SANDBOX_CLEANUP_CONFIG}/Dockerfile"
-install -m 0755 -o 0 -g 0 \
-  "${STACK_DIR}/config/sandbox-cleanup/cleanup.py" \
-  "${SANDBOX_CLEANUP_CONFIG}/cleanup.py"
 
 # One-time migration path: reuse the already-authorized xySat deploy identity.
-# This preserves the Gitea authorization while decoupling the new sidecar from
-# Stack7 runtime. Nothing is removed from the legacy path here.
+# This preserves Gitea authorization while decoupling memory sync from Stack7.
 if [[ ! -s "${MEMORY_SYNC_SSH}/ssh_config" ]]; then
   LEGACY_SSH="${BASE_PATH}/service_-_xysat/ssh"
   if [[ -s "${LEGACY_SSH}/ssh_config" && -s "${LEGACY_SSH}/id_ed25519" && -s "${LEGACY_SSH}/known_hosts" ]]; then
@@ -86,7 +53,7 @@ done
 
 log "memory-sync runtime: ${MEMORY_SYNC_ROOT}"
 log "sandbox lifecycle state: ${SANDBOX_STATE}"
-log "sandbox-cleanup runtime: ${SANDBOX_CLEANUP_ROOT}"
+log "sidecar images build directly from Stack6 source"
 log "legacy xySat runtime has NOT been removed"
 
 cat <<EOF
