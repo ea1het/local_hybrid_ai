@@ -15,7 +15,7 @@ step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-for cmd in docker cmp date install; do
+for cmd in docker cmp date install sort; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
@@ -46,6 +46,13 @@ fi
 step "PostgreSQL destino de Stack3"
 bash "${STACK_DIR}/02-postgres.sh"
 
+SOURCE_MAJOR="$(docker exec -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${SOURCE_CONTAINER}" \
+  psql -At -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" -c "SHOW server_version_num;" | cut -c1-2)"
+TARGET_MAJOR="$(docker exec -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${TARGET_CONTAINER}" \
+  psql -At -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" -c "SHOW server_version_num;" | cut -c1-2)"
+[[ "${SOURCE_MAJOR}" == "${TARGET_MAJOR}" ]] || die "major PostgreSQL distinto: origen=${SOURCE_MAJOR}, destino=${TARGET_MAJOR}"
+log "major PostgreSQL origen/destino: ${SOURCE_MAJOR}"
+
 TARGET_TABLES="$(docker exec -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${TARGET_CONTAINER}" \
   psql -At -h 127.0.0.1 -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
   -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema');")"
@@ -56,6 +63,8 @@ install -d -m 0700 "${BACKUP_ROOT}"
 DUMP_FILE="${BACKUP_ROOT}/litellm.dump"
 SOURCE_TABLES_FILE="${BACKUP_ROOT}/source-tables.txt"
 TARGET_TABLES_FILE="${BACKUP_ROOT}/target-tables.txt"
+SOURCE_ROWS_FILE="${BACKUP_ROOT}/source-row-counts.txt"
+TARGET_ROWS_FILE="${BACKUP_ROOT}/target-row-counts.txt"
 
 step "Congelacion de escrituras"
 docker stop "${LITELLM_CONTAINER}" >/dev/null
@@ -91,6 +100,29 @@ docker exec -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${TARGET_CONTAINER}" \
   psql -At -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" -c "${TABLE_QUERY}" >"${TARGET_TABLES_FILE}"
 cmp -s "${SOURCE_TABLES_FILE}" "${TARGET_TABLES_FILE}" || die "la lista de tablas origen/destino no coincide"
 log "estructura de tablas: OK"
+
+write_row_counts() {
+  local container="$1" output="$2"
+  docker exec -i -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${container}" \
+    psql -At -v ON_ERROR_STOP=1 -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" <<'SQL' | sort >"${output}"
+SELECT format(
+  'SELECT %L || ''|'' || count(*)::text FROM %I.%I;',
+  schemaname || '.' || tablename,
+  schemaname,
+  tablename
+)
+FROM pg_tables
+WHERE schemaname NOT IN ('pg_catalog','information_schema')
+ORDER BY schemaname, tablename
+\gexec
+SQL
+}
+
+step "Validacion exacta de filas"
+write_row_counts "${SOURCE_CONTAINER}" "${SOURCE_ROWS_FILE}"
+write_row_counts "${TARGET_CONTAINER}" "${TARGET_ROWS_FILE}"
+cmp -s "${SOURCE_ROWS_FILE}" "${TARGET_ROWS_FILE}" || die "los conteos de filas origen/destino no coinciden"
+log "conteos de filas: OK"
 
 step "Cutover de LiteLLM"
 "${compose[@]}" up -d --force-recreate litellm
