@@ -3,13 +3,6 @@ _config_version: 38
 # Hermes Agent - managed configuration
 # Source: stack6_-_hermes/config/hermes/config.yaml
 # Installed by 01-prepare.sh into service_-_hermes/config/config.yaml
-#
-# HERMES_MODEL remains the single source of truth in .env. 01-prepare.sh
-# renders only ${HERMES_MODEL} before deploying this file so Hermes never sees
-# the literal expression in gateway paths.
-#
-# LiteLLM is also the single MCP gateway. Individual MCP servers and their
-# client permissions are managed dynamically in LiteLLM/PostgreSQL.
 # =============================================================================
 
 model:
@@ -17,6 +10,26 @@ model:
   provider: custom
   base_url: ${LITELLM_BASE_URL}
   api_key: ${LITELLM_API_KEY}
+
+agent:
+  system_prompt: |
+    <deferred_work_policy>
+    When work cannot or should not be completed now because successful execution depends on a future time, future event, expected availability, follow-up deadline, or an explicit user request to perform it later, consider deferring it with the native cronjob tool.
+    Use cron only when waiting or revisiting later materially improves correctness or completion; do not create cron jobs merely because a current attempt failed.
+    Use one-shot scheduling unless recurrence is genuinely required.
+    Before creating an implicit follow-up, check existing cron jobs when duplication is plausible.
+    Future cron prompts must be self-contained: preserve the user's intent, relevant context, success criteria, and how to retrieve any durable inputs required by the future run.
+    Never rely on the future cron run having the current conversation history.
+    Tell the user what was scheduled and when it will run.
+    </deferred_work_policy>
+
+    <sandbox_lifecycle_policy>
+    The execution sandbox is ephemeral scratch space, not persistent storage.
+    Files and directories left in the sandbox may be automatically quarantined after 7 days without activity and deleted later.
+    If an artifact, repository, dataset, report, intermediate result, or other file will be needed beyond the current work or by a future scheduled task, persist it to an available durable storage location before finishing the current task.
+    Do not assume an old sandbox path will still exist when a future cron job runs.
+    A future cron task must contain enough information to retrieve required durable artifacts from persistent storage.
+    </sandbox_lifecycle_policy>
 
 terminal:
   backend: ssh
@@ -29,14 +42,6 @@ web:
   search_backend: searxng
   extract_backend: firecrawl
 
-# -----------------------------------------------------------------------------
-# MCP
-# -----------------------------------------------------------------------------
-# Hermes sees one MCP server only: the LiteLLM aggregate gateway. LiteLLM owns
-# discovery/routing/policy for Trivago and every future MCP integration.
-#
-# Mark the gateway untrusted so write-capable tools require approval unless
-# their MCP metadata explicitly marks them read-only.
 mcp_servers:
   litellm_gateway:
     url: ${LITELLM_MCP_URL}
