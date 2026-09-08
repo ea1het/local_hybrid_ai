@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": 2,
+  "directory": "stack2_-_searxng_firecrawl",
+  "name": "SearXNG and Firecrawl",
+  "kind": "application",
+  "requires": [0],
+  "optional": [1],
+  "provides": ["web.search", "web.extract"],
+  "owns": ["container:searxng", "container:firecrawl-api", "container:firecrawl-playwright", "container:firecrawl-redis", "container:firecrawl-rabbitmq", "container:firecrawl-postgres"]
+}
