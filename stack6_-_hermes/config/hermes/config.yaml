@@ -3,6 +3,7 @@ _config_version: 38
 # Hermes Agent - managed configuration
 # Source: stack6_-_hermes/config/hermes/config.yaml
 # Installed by 01-prepare.sh into service_-_hermes/config/config.yaml
+# Reconciled by 06-reconcile-capabilities.sh when optional providers change.
 # =============================================================================
 
 model:
@@ -12,6 +13,10 @@ model:
   api_key: ${LITELLM_API_KEY}
 
 agent:
+  # Safe minimum: web tools are disabled until the optional web.search and
+  # web.extract capabilities are both verified. 06-reconcile-capabilities.sh
+  # is the only Stack6 operation allowed to switch this managed value to [].
+  disabled_toolsets: [web]
   system_prompt: |
     <deferred_work_policy>
     When work cannot or should not be completed now because successful execution depends on a future time, future event, expected availability, follow-up deadline, or an explicit user request to perform it later, consider deferring it with the native cronjob tool.
@@ -38,6 +43,9 @@ terminal:
   persistent_shell: true
   env_passthrough: []
 
+# These backend selections are inert while the web toolset is disabled.
+# Stack6 never falls back to an alternate provider: reconciliation enables the
+# toolset only after the configured local SearXNG + Firecrawl provider is valid.
 web:
   search_backend: searxng
   extract_backend: firecrawl
