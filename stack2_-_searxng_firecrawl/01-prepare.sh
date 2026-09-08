@@ -32,7 +32,7 @@ source "${ENV_FILE}"
 set +a
 
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
-for key in STACKS_ROOT BASE_PATH SEARXNG_SECRET SEARXNG_BASE_URL REDIS_PASSWORD \
+for key in STACKS_ROOT BASE_PATH NETWORK_NAME SEARXNG_SECRET SEARXNG_BASE_URL REDIS_PASSWORD \
            RABBITMQ_USER RABBITMQ_PASSWORD POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB; do
   require_env "${key}"
 done
@@ -43,45 +43,63 @@ done
 [[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 [[ "${SEARXNG_BASE_URL}" == https://* ]] || die "SEARXNG_BASE_URL debe ser HTTPS"
 
-NETWORK_NAME="redlocal"
+STACK0_LOCK="${STACKS_ROOT%/}/stack0_-_platform/.lock"
 SETTINGS_SOURCE="${STACK_DIR}/config/searxng/settings.yml"
 LIMITER_SOURCE="${STACK_DIR}/config/searxng/limiter.toml"
+SEARXNG_SERVICE="${BASE_PATH%/}/service_-_searxng"
+SEARXNG_CONFIG="${SEARXNG_SERVICE}/config"
+SEARXNG_DATA="${SEARXNG_SERVICE}/data"
+
+[[ -f "${STACK0_LOCK}" ]] || die "falta ${STACK0_LOCK}; prepara primero Stack0"
 [[ -f "${SETTINGS_SOURCE}" ]] || die "falta ${SETTINGS_SOURCE}"
 [[ -f "${LIMITER_SOURCE}" ]] || die "falta ${LIMITER_SOURCE}"
 
 mkdir -p "${BASE_PATH}"
 
 write_lock() {
+  umask 022
   {
     printf 'stack=%s\n' "${STACK_NAME}"
     printf 'prepared_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } > "${LOCK_FILE}"
 }
 
-step "Red Docker ${NETWORK_NAME}"
-if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
-  driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
-  [[ "${driver}" == "bridge" ]] || die "${NETWORK_NAME} existe pero usa driver ${driver}, no bridge"
-  log "existe y es bridge"
-else
-  docker network create --driver bridge "${NETWORK_NAME}" >/dev/null
-  log "creada"
-fi
+step "Red Docker compartida ${NETWORK_NAME}"
+docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || \
+  die "falta ${NETWORK_NAME}; instala/prepara primero Stack0"
+driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
+[[ "${driver}" == "bridge" ]] || die "${NETWORK_NAME} usa driver ${driver}, no bridge"
+log "existe, es bridge y permanece propiedad de Stack0"
 
 step "Directorios persistentes"
+for directory in \
+  "${SEARXNG_SERVICE}" \
+  "${SEARXNG_CONFIG}" \
+  "${SEARXNG_DATA}" \
+  "${BASE_PATH}/service_-_firecrawl-redis/data" \
+  "${BASE_PATH}/service_-_firecrawl-rabbitmq/data" \
+  "${BASE_PATH}/service_-_firecrawl-postgres/data"; do
+  [[ ! -L "${directory}" ]] || die "directorio runtime no puede ser un symlink: ${directory}"
+  [[ ! -e "${directory}" || -d "${directory}" ]] || die "ruta runtime no es un directorio: ${directory}"
+done
+
 mkdir -p \
-  "${BASE_PATH}/service_-_searxng/config" \
-  "${BASE_PATH}/service_-_searxng/data" \
+  "${SEARXNG_CONFIG}" \
+  "${SEARXNG_DATA}" \
   "${BASE_PATH}/service_-_firecrawl-redis/data" \
   "${BASE_PATH}/service_-_firecrawl-rabbitmq/data" \
   "${BASE_PATH}/service_-_firecrawl-postgres/data"
-log "runtime: ${BASE_PATH}"
+log "runtime preservado: ${BASE_PATH}"
 
 step "Configuracion de SearXNG"
-rm -rf "${BASE_PATH}/service_-_searxng/config"
-mkdir -p "${BASE_PATH}/service_-_searxng/config"
-install -m 0644 "${SETTINGS_SOURCE}" "${BASE_PATH}/service_-_searxng/config/settings.yml"
-install -m 0644 "${LIMITER_SOURCE}" "${BASE_PATH}/service_-_searxng/config/limiter.toml"
+for target in \
+  "${SEARXNG_CONFIG}/settings.yml" \
+  "${SEARXNG_CONFIG}/limiter.toml"; do
+  [[ ! -d "${target}" || -L "${target}" ]] || die "ruta de configuracion no puede ser un directorio: ${target}"
+done
+install -m 0644 "${SETTINGS_SOURCE}" "${SEARXNG_CONFIG}/settings.yml"
+install -m 0644 "${LIMITER_SOURCE}" "${SEARXNG_CONFIG}/limiter.toml"
+log "directorio bind-mounted preservado; solo se reconcilian ficheros gestionados"
 
 step "Permisos de datos"
 image_uid() { docker run --rm --entrypoint id "$1" -u 2>/dev/null || true; }
@@ -101,7 +119,7 @@ for svc in "${!IMAGE_OF[@]}"; do
   fi
   [[ "${uid}" == "0" ]] && continue
   if [[ "${svc}" == "searxng" ]]; then
-    chown -R "${uid}:${gid}" "${BASE_PATH}/service_-_searxng/config" "${BASE_PATH}/service_-_searxng/data"
+    chown -R "${uid}:${gid}" "${SEARXNG_CONFIG}" "${SEARXNG_DATA}"
   else
     chown -R "${uid}:${gid}" "${BASE_PATH}/service_-_${svc}/data"
   fi
@@ -114,3 +132,4 @@ log "compose valido"
 write_lock
 step "Preparacion terminada"
 log "lock creado: ${LOCK_FILE}"
+log "red compartida consumida desde Stack0; no se crea ni se modifica"
