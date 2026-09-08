@@ -31,30 +31,16 @@ install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_ROOT}"
 install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_SSH}"
 install -d -m 0700 -o 0 -g 0 "${SANDBOX_STATE}"
 
-# One-time migration path: reuse the already-authorized xySat deploy identity.
-# This preserves Gitea authorization while decoupling memory sync from Stack7.
-if [[ ! -s "${MEMORY_SYNC_SSH}/ssh_config" ]]; then
-  LEGACY_SSH="${BASE_PATH}/service_-_xysat/ssh"
-  if [[ -s "${LEGACY_SSH}/ssh_config" && -s "${LEGACY_SSH}/id_ed25519" && -s "${LEGACY_SSH}/known_hosts" ]]; then
-    log "migrating existing xySat SSH identity into dedicated memory-sync runtime"
-    install -m 0600 -o "${HERMES_UID}" -g "${HERMES_GID}" "${LEGACY_SSH}/id_ed25519" "${MEMORY_SYNC_SSH}/id_ed25519"
-    [[ -s "${LEGACY_SSH}/id_ed25519.pub" ]] && \
-      install -m 0644 -o "${HERMES_UID}" -g "${HERMES_GID}" "${LEGACY_SSH}/id_ed25519.pub" "${MEMORY_SYNC_SSH}/id_ed25519.pub"
-    install -m 0644 -o "${HERMES_UID}" -g "${HERMES_GID}" "${LEGACY_SSH}/known_hosts" "${MEMORY_SYNC_SSH}/known_hosts"
-    install -m 0600 -o "${HERMES_UID}" -g "${HERMES_GID}" "${LEGACY_SSH}/ssh_config" "${MEMORY_SYNC_SSH}/ssh_config"
-  else
-    die "memory-sync SSH identity missing and no reusable legacy xySat identity found at ${LEGACY_SSH}"
-  fi
-fi
-
+# The memory-sync sidecar owns a dedicated, already-authorized SSH identity.
+# Preparation never creates, copies or replaces credentials implicitly.
 for file in ssh_config id_ed25519 known_hosts; do
-  [[ -s "${MEMORY_SYNC_SSH}/${file}" ]] || die "missing ${MEMORY_SYNC_SSH}/${file}"
+  [[ -s "${MEMORY_SYNC_SSH}/${file}" ]] || \
+    die "missing dedicated memory-sync SSH material: ${MEMORY_SYNC_SSH}/${file}"
 done
 
 log "memory-sync runtime: ${MEMORY_SYNC_ROOT}"
 log "sandbox lifecycle state: ${SANDBOX_STATE}"
 log "sidecar images build directly from Stack6 source"
-log "legacy xySat runtime has NOT been removed"
 
 cat <<EOF
 
