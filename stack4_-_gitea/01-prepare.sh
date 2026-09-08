@@ -17,7 +17,7 @@ if [[ -e "${LOCK_FILE}" ]]; then
 fi
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-for cmd in docker sed openssl install; do
+for cmd in docker sed openssl install ln readlink; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
@@ -55,6 +55,7 @@ RUNNER_TOKEN_FILE="${RUNNER_SECRET_DIR}/registration-token"
 APP_SOURCE="${STACK_DIR}/config/gitea/app.ini"
 RUNNER_SOURCE="${STACK_DIR}/config/gitea-runner/config.yaml"
 APP_TARGET="${GITEA_SERVICE}/config/app.ini"
+APP_DEFAULT_TARGET="${GITEA_SERVICE}/config/conf/app.ini"
 RUNNER_TARGET="${RUNNER_SERVICE}/data/config.yaml"
 
 [[ -f "${APP_SOURCE}" ]] || die "falta ${APP_SOURCE}"
@@ -101,14 +102,29 @@ render_file() {
 }
 
 step "Configuracion de Gitea"
-rm -rf "${GITEA_SERVICE}/config"
-mkdir -p "${GITEA_SERVICE}/config"
+[[ ! -L "${GITEA_SERVICE}/config" ]] || die "${GITEA_SERVICE}/config no puede ser symlink"
+[[ ! -e "${GITEA_SERVICE}/config" || -d "${GITEA_SERVICE}/config" ]] || \
+  die "${GITEA_SERVICE}/config existe pero no es un directorio"
+install -d -m 0750 -o "${GITEA_UID}" -g "${GITEA_GID}" \
+  "${GITEA_SERVICE}/config" "${GITEA_SERVICE}/config/conf"
+
 render_file "${APP_SOURCE}" "${APP_TARGET}" \
   GITEA_DOMAIN "${GITEA_DOMAIN}" GITEA_ROOT_URL "${GITEA_ROOT_URL}" \
   GITEA_SSH_DOMAIN "${GITEA_SSH_DOMAIN}" GITEA_SSH_PORT "${GITEA_SSH_PORT}" \
   GITEA_INTERNAL_TOKEN "${GITEA_INTERNAL_TOKEN}" GITEA_JWT_SECRET "${GITEA_JWT_SECRET}"
 chmod 0640 "${APP_TARGET}"
+
+if [[ -L "${APP_DEFAULT_TARGET}" ]]; then
+  [[ "$(readlink -- "${APP_DEFAULT_TARGET}")" == "../app.ini" ]] || \
+    die "${APP_DEFAULT_TARGET} es un symlink inesperado"
+elif [[ -e "${APP_DEFAULT_TARGET}" ]]; then
+  die "${APP_DEFAULT_TARGET} existe y no es el alias gestionado esperado"
+else
+  ln -s -- ../app.ini "${APP_DEFAULT_TARGET}"
+fi
+
 chown -R "${GITEA_UID}:${GITEA_GID}" "${GITEA_SERVICE}/config" "${GITEA_SERVICE}/data"
+log "config bind preservado; app.ini disponible tambien en custom/conf/app.ini"
 
 step "Configuracion del runner"
 rm -f "${RUNNER_SERVICE}/data/ca-certificates.crt" "${RUNNER_SERVICE}/data/certificates.txt"
