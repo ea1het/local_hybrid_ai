@@ -55,7 +55,13 @@ Se han eliminado `STACK2_ENV_STATE` y `LITELLM_PORT`, porque pertenecían al pro
 
 Todos los secretos deben existir antes de ejecutar `01-prepare.sh`. En especial, `LITELLM_SALT_KEY` debe conservarse de forma estable una vez LiteLLM tenga datos cifrados en PostgreSQL.
 
-## Nuevo proceso de instalación
+## Contrato del lock de preparación
+
+`.lock` significa únicamente que `01-prepare.sh` terminó correctamente y el stack está preparado. No significa que PostgreSQL esté provisionado, que LiteLLM esté arrancado ni que el servicio esté healthy.
+
+`01-prepare.sh` crea `.lock`. Las fases posteriores de instalación lo requieren, pero no lo crean ni son propietarias de él.
+
+## Proceso de instalación
 
 ### 1. Stack2 debe estar operativo
 
@@ -68,9 +74,7 @@ cd /opt/docker/stacks/stack3_-_litellm
 sudo ./01-prepare.sh
 ```
 
-Este paso valida `.env`, valida la separación source/runtime, crea `redlocal` si falta y sustituye la configuración operativa de LiteLLM.
-
-No crea `.lock`, porque falta todavía el provisionado PostgreSQL.
+Este paso valida `.env`, valida la separación source/runtime, crea `redlocal` si falta, sustituye la configuración operativa de LiteLLM y crea `.lock` después de completar correctamente la preparación.
 
 ### 3. Provisionar PostgreSQL
 
@@ -78,7 +82,7 @@ No crea `.lock`, porque falta todavía el provisionado PostgreSQL.
 sudo ./02-postgres.sh
 ```
 
-`02-postgres.sh` lee directamente, solo durante el provisionado:
+`02-postgres.sh` requiere `.lock` y lee directamente, solo durante el provisionado:
 
 ```text
 ${STACKS_ROOT}/stack2_-_searxng_firecrawl/.env
@@ -93,8 +97,6 @@ POSTGRES_DB
 ```
 
 Esas credenciales **no se copian ni se escriben** en el `.env` de Stack3. El script crea o actualiza el rol de LiteLLM, crea su base si falta, asegura el propietario y comprueba una conexión usando las credenciales definitivas de LiteLLM.
-
-Al terminar correctamente crea `.lock`.
 
 ### 4. Arrancar LiteLLM
 
