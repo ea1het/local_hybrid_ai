@@ -2,7 +2,7 @@
 
 Stack6 provides the agent/orchestration layer for `local_hybrid_ai`.
 
-Its responsibilities are now deliberately split:
+Its responsibilities are deliberately split:
 
 - **Hermes Agent** — reasoning, tools, messaging and native deferred scheduling;
 - **hermes-sandbox** — isolated SSH execution environment;
@@ -36,7 +36,7 @@ hermes-sandbox-cleanup
 
 ## Hermes native Cron
 
-Deferred intelligent work uses Hermes' native `cronjob` capability. Stack6 does not implement a custom scheduler API and does not depend on xyOps/xySat.
+Deferred intelligent work uses Hermes' native `cronjob` capability. Stack6 does not implement a custom scheduler API.
 
 The managed Hermes system prompt contains two policies:
 
@@ -75,7 +75,7 @@ The sidecar:
 - verifies local and remote heads match after success;
 - uses a dedicated SSH identity under `service_-_hermes-memory-sync/ssh`.
 
-`05-maintenance-sidecars.sh` can migrate the already-authorized legacy xySat SSH identity once, without deleting the old runtime.
+`05-maintenance-sidecars.sh` validates that dedicated SSH identity and prepares sandbox lifecycle state. It does not create, copy or replace credentials.
 
 ## Sandbox lifecycle
 
@@ -100,6 +100,7 @@ Before `sshd` starts, `hermes-sandbox` initializes or validates `state.db`:
 
 - SQLite integrity check must pass;
 - schema/generation metadata must be valid;
+- `.sandbox-generation` must exist and match the database generation ID;
 - the first generation captures existing top-level workspace objects as protected baseline;
 - `.cleanup-quarantine` is protected;
 - a normal container restart preserves the generation and database;
@@ -180,7 +181,7 @@ The cleanup sidecar intentionally owns no separate persistent runtime directory;
 
 ## Deployment
 
-After creating/updating the operational `.env`:
+After creating/updating the operational `.env`, provision the dedicated memory-sync SSH identity under `service_-_hermes-memory-sync/ssh` and authorize it for the configured Gitea memory repository. Then:
 
 ```bash
 cd /opt/docker/stacks/stack6_-_hermes
@@ -228,23 +229,18 @@ None of the Stack6 services receives `/var/run/docker.sock` or privileged mode.
 
 Do not commit operational `.env`, private SSH keys, Hermes/LiteLLM/Telegram credentials, runtime databases or other deployment secrets.
 
-## Validated / to validate
+## Validated boundaries
 
-Existing validated paths remain:
+The deployed host has validated:
 
 ```text
 Hermes -> LiteLLM -> local inference
 Hermes -> SSH -> hermes-sandbox
 Hermes -> SearXNG / Firecrawl
 Hermes -> Git-backed memory
-```
-
-Before removing the legacy xyOps/xySat runtime, validate the new paths on the host:
-
-```text
 Hermes native Cron -> future AIAgent run
-hermes-memory-sync -> Gitea
-hermes-sandbox -> state.db generation initialization
-hermes-sandbox-cleanup -> inotify / audit / quarantine lifecycle
-02-cleanup.sh --reset-sandbox -> new generation
+hermes-memory-sync -> Gitea fetch/write authorization
+hermes-sandbox -> state.db generation initialization and restart persistence
+hermes-sandbox-cleanup -> inotify / audit / quarantine / deletion lifecycle
+02-cleanup.sh --reset-sandbox -> fresh generation recovery
 ```
