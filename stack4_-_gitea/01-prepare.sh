@@ -100,5 +100,11 @@ step "Validacion de Docker Compose"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
 log "compose valido"
 
-step "Paso 1 terminado"
+{
+  printf 'stack=%s\n' "${STACK_NAME}"
+  printf 'prepared_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "${LOCK_FILE}"
+
+step "Preparacion terminada"
+log "lock creado: ${LOCK_FILE}"
 log "ejecuta ./02-run.sh para migrar Gitea, asegurar el administrador y arrancar el stack"
