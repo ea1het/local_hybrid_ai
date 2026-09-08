@@ -586,6 +586,13 @@ assert_file() {
     || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"
 }
 
+assert_regular_file() {
+  local path="$1" uid="$2" gid="$3" mode="$4"
+  [[ -f "${path}" && ! -L "${path}" ]] || die "fichero ausente o invalido: ${path}"
+  [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] \
+    || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"
+}
+
 assert_exact_tree() {
   local root="$1" expected="$2" actual
   actual="$(find "${root}" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"
@@ -651,8 +658,8 @@ assert_dir "${HERMES_DATA}"                    "${HERMES_UID}"  "${HERMES_GID}" 
 assert_dir "${HERMES_LOGS}"                    "${HERMES_UID}"  "${HERMES_GID}" 750
 assert_dir "${MEMORY_ROOT}"                      "${HERMES_UID}"  "${HERMES_GID}" 750
 assert_dir "${MEMORY_DATA}"                      "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_file "${MEMORY_DATA}/MEMORY.md"           "${HERMES_UID}"  "${HERMES_GID}" 640
-assert_file "${MEMORY_DATA}/USER.md"             "${HERMES_UID}"  "${HERMES_GID}" 640
+assert_regular_file "${MEMORY_DATA}/MEMORY.md"   "${HERMES_UID}"  "${HERMES_GID}" 640
+assert_regular_file "${MEMORY_DATA}/USER.md"     "${HERMES_UID}"  "${HERMES_GID}" 640
 assert_file "${HERMES_CONFIG}/config.yaml"       "${HERMES_UID}"  "${HERMES_GID}" 640
 assert_file "${SSH_PRIVATE}"                    "${HERMES_UID}"  "${HERMES_GID}" 600
 assert_file "${SSH_PUBLIC}"                     "${HERMES_UID}"  "${HERMES_GID}" 644
