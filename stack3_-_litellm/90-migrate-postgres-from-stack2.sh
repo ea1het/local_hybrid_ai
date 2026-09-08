@@ -15,7 +15,7 @@ step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-for cmd in docker cmp mktemp date install; do
+for cmd in docker cmp date install; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 no esta disponible"
@@ -38,21 +38,13 @@ for container in "${SOURCE_CONTAINER}" "${LITELLM_CONTAINER}"; do
   [[ "$(docker inspect -f '{{.State.Running}}' "${container}")" == "true" ]] || die "${container} no esta arrancado"
 done
 
-# Confirm that the currently deployed LiteLLM still points at the legacy DB.
 if ! docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "${LITELLM_CONTAINER}" \
      | grep '^DATABASE_URL=' | grep -q '@firecrawl-postgres:'; then
   die "LiteLLM no apunta a firecrawl-postgres; no hay una migracion legacy segura que ejecutar"
 fi
 
 step "PostgreSQL destino de Stack3"
-"${compose[@]}" up -d "${TARGET_CONTAINER}"
-for attempt in $(seq 1 40); do
-  if docker exec "${TARGET_CONTAINER}" pg_isready -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" >/dev/null 2>&1; then
-    break
-  fi
-  [[ "${attempt}" -lt 40 ]] || die "${TARGET_CONTAINER} no esta disponible"
-  sleep 2
-done
+bash "${STACK_DIR}/02-postgres.sh"
 
 TARGET_TABLES="$(docker exec -e PGPASSWORD="${LITELLM_DB_PASSWORD}" "${TARGET_CONTAINER}" \
   psql -At -h 127.0.0.1 -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
