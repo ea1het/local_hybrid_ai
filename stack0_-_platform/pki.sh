@@ -24,13 +24,17 @@ set +a
 [[ "${BASE_PATH}" == /* ]] || die "BASE_PATH must be absolute"
 [[ "${ROOT_HOSTNAME}" =~ ^[A-Za-z0-9.-]+$ ]] || die "ROOT_HOSTNAME contains unsupported characters"
 
+PLATFORM_PKI_GID="${PLATFORM_PKI_GID:-1999}"
+[[ "${PLATFORM_PKI_GID}" =~ ^[0-9]+$ && "${PLATFORM_PKI_GID}" -gt 0 ]] || \
+  die "PLATFORM_PKI_GID must be a positive integer"
+
 PKI_ROOT="${BASE_PATH%/}/service_-_platform/pki"
 CERT_FILE="${PKI_ROOT}/tls.crt"
 KEY_FILE="${PKI_ROOT}/tls.key"
 CERT_DAYS="${PLATFORM_CERT_DAYS:-3650}"
 
 [[ "${CERT_DAYS}" =~ ^[0-9]+$ && "${CERT_DAYS}" -gt 0 ]] || die "PLATFORM_CERT_DAYS must be a positive integer"
-install -d -m 0700 -o 0 -g 0 "${PKI_ROOT}"
+install -d -m 0750 -o 0 -g "${PLATFORM_PKI_GID}" "${PKI_ROOT}"
 
 write_config() {
   local path="$1"
@@ -72,12 +76,19 @@ validate_pair() {
   validate_external_pair "${CERT_FILE}" "${KEY_FILE}"
 }
 
+normalize_permissions() {
+  install -d -m 0750 -o 0 -g "${PLATFORM_PKI_GID}" "${PKI_ROOT}"
+  [[ -e "${CERT_FILE}" ]] && { chown 0:"${PLATFORM_PKI_GID}" "${CERT_FILE}"; chmod 0644 "${CERT_FILE}"; }
+  [[ -e "${KEY_FILE}" ]] && { chown 0:"${PLATFORM_PKI_GID}" "${KEY_FILE}"; chmod 0640 "${KEY_FILE}"; }
+}
+
 install_pair() {
   local cert_source="$1" key_source="$2"
   validate_external_pair "${cert_source}" "${key_source}"
-  install -m 0644 -o 0 -g 0 "${cert_source}" "${CERT_FILE}"
-  install -m 0600 -o 0 -g 0 "${key_source}" "${KEY_FILE}"
+  install -m 0644 -o 0 -g "${PLATFORM_PKI_GID}" "${cert_source}" "${CERT_FILE}"
+  install -m 0640 -o 0 -g "${PLATFORM_PKI_GID}" "${key_source}" "${KEY_FILE}"
   validate_pair
+  normalize_permissions
 }
 
 create_pair() {
@@ -99,9 +110,10 @@ renew_cert() {
   write_config "${config}"
   openssl req -x509 -new -key "${KEY_FILE}" -sha256 -days "${CERT_DAYS}" \
     -out "${tmpdir}/tls.crt" -config "${config}" >/dev/null 2>&1
-  install -m 0644 -o 0 -g 0 "${tmpdir}/tls.crt" "${CERT_FILE}"
+  install -m 0644 -o 0 -g "${PLATFORM_PKI_GID}" "${tmpdir}/tls.crt" "${CERT_FILE}"
   rm -rf "${tmpdir}"
   validate_pair
+  normalize_permissions
 }
 
 status() {
@@ -143,6 +155,7 @@ case "${action}" in
     if [[ -e "${CERT_FILE}" || -e "${KEY_FILE}" ]]; then
       [[ -s "${CERT_FILE}" && -s "${KEY_FILE}" ]] || die "partial PKI state exists; use recreate --yes after inspection"
       validate_pair
+      normalize_permissions
       log "PKI already exists and is valid; preserved"
     else
       create_pair

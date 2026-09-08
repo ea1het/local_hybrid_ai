@@ -4,11 +4,9 @@
   "directory": "stack1_-_haproxy_web",
   "name": "HAProxy and static web",
   "kind": "application",
-  "atomic": false,
+  "atomic": true,
   "requires": [0],
-  "target_requires": [0],
   "optional": [2, 3, 4, 5, 6],
   "provides": ["ingress.https", "web.static"],
-  "owns": ["container:haproxy", "container:web", "runtime:service_-_haproxy", "runtime:service_-_web"],
-  "blockers": ["TLS certificate ownership still lives in the Stack1 preparation flow instead of Stack0 platform PKI"]
+  "owns": ["container:haproxy", "container:web", "runtime:service_-_haproxy", "runtime:service_-_web"]
 }

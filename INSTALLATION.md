@@ -198,15 +198,14 @@ A conventional full manual deployment order remains:
 
 ```bash
 cd /opt/docker/stacks/stack1_-_haproxy_web
-cd config/haproxy
-bash generate.txt
-cd ../..
 sudo ./01-prepare.sh
 docker compose up -d
 docker compose ps
 ```
 
-HAProxy is the internal TLS/reverse-proxy boundary. Stack0 now owns the canonical platform PKI lifecycle. Stack1's remaining certificate-consumption transition is tracked separately from this Stack3 database refactor; do not rotate or delete the currently deployed certificate during that transition.
+HAProxy consumes Stack0's PKI directory through a read-only mount at `/etc/platform-pki`. Stack1 maintains compatibility symlinks in its own configuration directory and does not generate or copy certificates. Stack0 provides the `local-hybrid-pki` group (`PLATFORM_PKI_GID=1999` by default); both HAProxy validation and Compose use this supplementary group.
+
+Preparation preserves the mounted HAProxy configuration and web directories while updating their contents. Existing deployments adopting the central PKI mount must recreate HAProxy after validation to apply the mount and group. Preserve the current certificate and compare its served fingerprint before and after that transition.
 
 ## Stack2 — SearXNG + Firecrawl
 
