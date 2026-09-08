@@ -205,27 +205,6 @@ docker compose up -d --build
 docker compose ps
 ```
 
-The one-time maintenance-sidecar preparation can migrate the already-authorized legacy xySat Git identity into the dedicated memory-sync runtime without deleting the old runtime.
-
-## Retired xyOps / xySat
-
-The former Stack7 scheduling layer has been removed from source. Its useful responsibilities are replaced by:
-
-```text
-agentic deferred work  -> Hermes native Cron
-memory synchronization -> hermes-memory-sync
-sandbox housekeeping   -> hermes-sandbox-cleanup
-```
-
-HAProxy no longer exposes `xyops.casa.lan`.
-
-Legacy runtime directories must be deleted only after validating the replacements on the real host:
-
-```text
-/opt/docker/runtime/service_-_xyops/
-/opt/docker/runtime/service_-_xysat/
-```
-
 ## Security and secrets
 
 This repository is public. Never commit real `.env` files, provider/MCP keys, messaging credentials, TLS/SSH private keys, Hermes runtime databases/auth/session state, the memory-sync SSH identity or sandbox lifecycle databases.
