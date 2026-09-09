@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Manifest-driven disaster-recovery planner for local_hybrid_ai.
+"""Manifest-driven disaster-recovery engine for local_hybrid_ai.
 
-Phase 1 intentionally implements planning only. It reads the normalized recovery
-contracts already validated by stack0_-_platform/manifests.py and produces the
-effective recovery plan without touching Docker, runtime state, secrets, backup
-artifacts, or application services.
+Current milestones:
+- plan: read-only recovery classification and dependency closure.
+- backup --dry-run: read-only backup-set planning and artifact layout.
+
+No adapter executes yet. The command intentionally does not touch Docker,
+runtime state, secrets, backup artifacts, or application services.
 """
 from __future__ import annotations
 
@@ -17,6 +19,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
+BACKUP_SET_SCHEMA_VERSION = 1
+ARTIFACT_EXTENSIONS = {
+    "archive": ".tar",
+    "postgres-custom-dump": ".dump",
+    "gitea-native-dump": ".zip",
+}
 
 
 class RecoveryError(RuntimeError):
@@ -46,6 +54,44 @@ class RecoveryEntry:
             "sensitive": self.sensitive,
             "restore_phase": self.restore_phase,
             "disposition": self.disposition,
+        }
+
+
+@dataclass(frozen=True)
+class BackupArtifactPlan:
+    stack_id: int
+    resource_id: str
+    strategy: str
+    sensitive: bool
+    restore_phase: str | None
+    relative_path: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "stack_id": self.stack_id,
+            "resource_id": self.resource_id,
+            "strategy": self.strategy,
+            "sensitive": self.sensitive,
+            "restore_phase": self.restore_phase,
+            "relative_path": self.relative_path,
+        }
+
+
+@dataclass(frozen=True)
+class BackupPrerequisitePlan:
+    stack_id: int
+    resource_id: str
+    kind: str
+    strategy: str
+    sensitive: bool
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "stack_id": self.stack_id,
+            "resource_id": self.resource_id,
+            "kind": self.kind,
+            "strategy": self.strategy,
+            "sensitive": self.sensitive,
         }
 
 
@@ -89,6 +135,23 @@ def resolve_plan(selectors: list[str], *, target: bool = False) -> list[int]:
     if not isinstance(raw, list) or not all(isinstance(value, int) for value in raw):
         raise RecoveryError("manifest dependency plan is invalid")
     return raw
+
+
+def git_head() -> str:
+    cp = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if cp.returncode != 0:
+        raise RecoveryError("cannot determine Git HEAD for backup-set provenance")
+    head = cp.stdout.strip()
+    if len(head) != 40:
+        raise RecoveryError("unexpected Git HEAD format")
+    return head
 
 
 def disposition_for(resource_class: str, strategy: str) -> str:
@@ -159,6 +222,84 @@ def build_plan_entries(plan: list[int], manifests: dict[int, dict]) -> list[Reco
     return entries
 
 
+def artifact_relative_path(entry: RecoveryEntry) -> str:
+    if entry.disposition != "BACKUP" or entry.resource_id is None or entry.strategy is None:
+        raise RecoveryError("artifact path requested for non-backup recovery entry")
+    extension = ARTIFACT_EXTENSIONS.get(entry.strategy)
+    if extension is None:
+        raise RecoveryError(f"strategy {entry.strategy} has no artifact extension contract")
+    return f"artifacts/stack{entry.stack_id}/{entry.resource_id}{extension}"
+
+
+def build_backup_plan(
+    entries: list[RecoveryEntry],
+) -> tuple[list[BackupArtifactPlan], list[BackupPrerequisitePlan]]:
+    artifacts: list[BackupArtifactPlan] = []
+    prerequisites: list[BackupPrerequisitePlan] = []
+
+    for entry in entries:
+        if entry.disposition == "BACKUP":
+            if (
+                entry.resource_id is None
+                or entry.strategy is None
+                or entry.sensitive is None
+            ):
+                raise RecoveryError("backup entry is missing normalized recovery fields")
+            artifacts.append(
+                BackupArtifactPlan(
+                    stack_id=entry.stack_id,
+                    resource_id=entry.resource_id,
+                    strategy=entry.strategy,
+                    sensitive=entry.sensitive,
+                    restore_phase=entry.restore_phase,
+                    relative_path=artifact_relative_path(entry),
+                )
+            )
+        elif entry.disposition in {"REQUIRE", "EXTERNAL"}:
+            if (
+                entry.resource_id is None
+                or entry.strategy is None
+                or entry.sensitive is None
+            ):
+                raise RecoveryError("prerequisite entry is missing normalized recovery fields")
+            prerequisites.append(
+                BackupPrerequisitePlan(
+                    stack_id=entry.stack_id,
+                    resource_id=entry.resource_id,
+                    kind=entry.disposition,
+                    strategy=entry.strategy,
+                    sensitive=entry.sensitive,
+                )
+            )
+
+    return artifacts, prerequisites
+
+
+def backup_plan_payload(
+    selectors: list[str],
+    resolved_stacks: list[int],
+    artifacts: list[BackupArtifactPlan],
+    prerequisites: list[BackupPrerequisitePlan],
+    *,
+    source_commit: str,
+) -> dict[str, object]:
+    return {
+        "schema_version": BACKUP_SET_SCHEMA_VERSION,
+        "kind": "local-hybrid-ai-backup-plan",
+        "source_commit": source_commit,
+        "requested": selectors,
+        "resolved_stacks": resolved_stacks,
+        "layout": {
+            "metadata": "backup.json",
+            "checksums": "checksums.sha256",
+            "artifact_root": "artifacts/",
+        },
+        "artifacts": [artifact.as_dict() for artifact in artifacts],
+        "prerequisites": [prerequisite.as_dict() for prerequisite in prerequisites],
+        "changes_made": False,
+    }
+
+
 def print_human(selectors: list[str], plan: list[int], entries: list[RecoveryEntry]) -> None:
     print("Requested:", " ".join(selectors))
     print("Resolved dependency plan:", " -> ".join(f"stack{sid}" for sid in plan))
@@ -193,10 +334,45 @@ def print_json(selectors: list[str], plan: list[int], entries: list[RecoveryEntr
     print(json.dumps(payload, indent=2))
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Manifest-driven disaster-recovery planner (planning only)"
+def print_backup_human(payload: dict[str, object]) -> None:
+    print("Backup dry-run")
+    print("Source commit:", payload["source_commit"])
+    print("Requested:", " ".join(payload["requested"]))
+    print(
+        "Resolved dependency plan:",
+        " -> ".join(f"stack{sid}" for sid in payload["resolved_stacks"]),
     )
+    print("Planned backup-set layout:")
+    layout = payload["layout"]
+    print(f"- metadata: {layout['metadata']}")
+    print(f"- checksums: {layout['checksums']}")
+    print(f"- artifacts: {layout['artifact_root']}")
+    print("Artifacts:")
+    for artifact in payload["artifacts"]:
+        sensitivity = "sensitive" if artifact["sensitive"] else "non-sensitive"
+        phase = (
+            f"; restore={artifact['restore_phase']}"
+            if artifact["restore_phase"]
+            else ""
+        )
+        print(
+            f"- stack{artifact['stack_id']} {artifact['resource_id']}: "
+            f"{artifact['relative_path']} [{artifact['strategy']}; {sensitivity}{phase}]"
+        )
+    print("Prerequisites:")
+    for prerequisite in payload["prerequisites"]:
+        sensitivity = "sensitive" if prerequisite["sensitive"] else "non-sensitive"
+        print(
+            f"- stack{prerequisite['stack_id']} {prerequisite['resource_id']}: "
+            f"{prerequisite['kind']} [{prerequisite['strategy']}; {sensitivity}]"
+        )
+    print()
+    print("No changes made.")
+    print("No directories, metadata files, checksums, dumps, archives, or secrets were created/read.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Manifest-driven disaster-recovery engine")
     sub = parser.add_subparsers(dest="command", required=True)
 
     plan_parser = sub.add_parser("plan", help="show effective recovery plan")
@@ -212,12 +388,52 @@ def main() -> int:
     )
     plan_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
+    backup_parser = sub.add_parser("backup", help="plan a backup set; execution is not implemented yet")
+    backup_parser.add_argument(
+        "stacks",
+        nargs="+",
+        help="stack ids, stackN, directory names, or all",
+    )
+    backup_parser.add_argument(
+        "--target",
+        action="store_true",
+        help="use target dependency graph",
+    )
+    backup_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="required in the current milestone; plan layout without creating artifacts",
+    )
+    backup_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
     args = parser.parse_args()
+
+    if args.command == "backup" and not args.dry_run:
+        print(
+            "ERROR: backup execution is not implemented yet; use --dry-run",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         manifests = load_manifests()
         plan = resolve_plan(args.stacks, target=args.target)
         entries = build_plan_entries(plan, manifests)
+
+        if args.command == "backup":
+            artifacts, prerequisites = build_backup_plan(entries)
+            payload = backup_plan_payload(
+                args.stacks,
+                plan,
+                artifacts,
+                prerequisites,
+                source_commit=git_head(),
+            )
+            if args.json:
+                print(json.dumps(payload, indent=2))
+            else:
+                print_backup_human(payload)
+            return 0
     except RecoveryError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
