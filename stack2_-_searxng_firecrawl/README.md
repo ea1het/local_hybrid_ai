@@ -28,11 +28,69 @@ ${BASE_PATH}/service_-_searxng/data
 ${BASE_PATH}/service_-_firecrawl-redis/data
 ${BASE_PATH}/service_-_firecrawl-rabbitmq/data
 ${BASE_PATH}/service_-_firecrawl-postgres/data
+${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
 ```
 
 PREPARE preserves the existing SearXNG configuration directory identity and persistent data directories. It synchronizes managed configuration without replacing a live bind-mounted directory.
 
 Firecrawl PostgreSQL belongs only to Stack2. LiteLLM no longer uses this database in the current architecture.
+
+Existing PostgreSQL `PGDATA` is never recursively chowned or permission-normalized by PREPARE. Its existing identity, owner and mode are preserved. A fresh empty PGDATA directory is initialized by the PostgreSQL container entrypoint.
+
+## PostgreSQL identity model
+
+Stack2 deliberately separates the PostgreSQL administrative identity from the Firecrawl application identity.
+
+```text
+firecrawl-postgres / database postgres
+|
++-- postgres
+|   admin/bootstrap role
+|   owns NUQ/cron/extensions
+|   password stored outside .env at:
+|   ${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
+|
++-- firecrawl
+    application role
+    non-superuser / no CREATEDB / no CREATEROLE / no replication
+    password: FIRECRAWL_DB_PASSWORD in the protected operational .env
+    database: postgres
+```
+
+The database remains named `postgres` because the upstream NUQ image configures `pg_cron` against that database. The isolation boundary is therefore **role separation**, not a second database.
+
+For a fresh runtime, Stack2 PREPARE generates the `postgres` administrative password once as a root-owned runtime secret. During first `initdb`, `config/postgres/020-firecrawl-app-role.sh` creates/reconciles the dedicated Firecrawl role after upstream `010-nuq.sql` has created the NUQ objects. Firecrawl receives CRUD access to the `nuq` schema but no PostgreSQL administrative privileges. Default privileges are configured so future NUQ tables/sequences created by `postgres` remain usable by the application role.
+
+The application contract is:
+
+```text
+FIRECRAWL_DB_NAME=postgres
+FIRECRAWL_DB_USER=firecrawl
+FIRECRAWL_DB_PASSWORD=<persistent application password>
+```
+
+Firecrawl must not use the `postgres` role during normal operation.
+
+### Existing deployments
+
+Existing deployments created before this separation have `POSTGRES_PASSWORD` in the root operational `.env` and Firecrawl connects as `postgres`. They must be migrated explicitly; PREPARE does not silently mutate a live database identity.
+
+After adding the new `FIRECRAWL_DB_*` variables to the protected operational `.env`, run:
+
+```bash
+sudo bash ./03-migrate-postgres-app-role.sh
+```
+
+The migration:
+
+1. adopts the existing `POSTGRES_PASSWORD` once into the runtime administrative secret file without printing it;
+2. creates/reconciles the dedicated Firecrawl role and minimum grants;
+3. establishes default privileges for future NUQ objects;
+4. validates that the role has no administrative attributes;
+5. performs a TCP-authenticated SELECT/INSERT/UPDATE/DELETE probe inside a transaction and rolls it back;
+6. does **not** modify PGDATA and does **not** restart/recreate containers.
+
+Only after that migration passes should the new Compose definition be applied. The legacy `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` entries can then be removed from the operational `.env` after runtime validation confirms that Firecrawl is using `FIRECRAWL_DB_USER`.
 
 ## Preparation, deployment and readiness
 
@@ -44,7 +102,7 @@ sudo bash ./02-wait-ready.sh
 docker compose ps
 ```
 
-PREPARE requires Stack0 `.lock`, verifies the existing shared bridge network without creating it, prepares stack-owned runtime paths/configuration, validates Compose and creates `.lock` only after success.
+PREPARE requires Stack0 `.lock`, verifies the existing shared bridge network without creating it, prepares stack-owned runtime paths/configuration, ensures the PostgreSQL administrative runtime secret exists, validates Compose and creates `.lock` only after success.
 
 `.lock` means PREPARED, not deployed/healthy/ready.
 
@@ -68,6 +126,8 @@ PostgreSQL:    firecrawl-postgres:5432
 Redis:         firecrawl-redis:6379
 RabbitMQ:      firecrawl-rabbitmq:5672
 ```
+
+PostgreSQL does not publish `5432` to the host. Application access is through `redlocal`; administrative access from the host should normally use `docker exec` rather than exposing the database to the LAN.
 
 ## Stack6 integration
 
