@@ -6,7 +6,7 @@ Stack1 is the ingress/static-web stack. It requires only Stack0 and provides `in
 flowchart LR
     C[Client] -->|80/443| H[HAProxy]
     H --> W[Static web]
-    H -. optional routes .-> B[Other redlocal backends]
+    H -.->|optional routes| B[Other redlocal backends]
     P[Stack0 PKI] -->|read-only| H
 ```
 
