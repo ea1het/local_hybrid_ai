@@ -32,6 +32,44 @@ The `local-hybrid-pki` group uses `PLATFORM_PKI_GID` (default 1999). PKI directo
 
 Existing valid PKI is preserved; preparation never rotates it implicitly.
 
+## Disaster recovery
+
+The platform PKI is a managed persistent identity. Full disaster recovery must preserve it so rebuilt clients/services can continue using the same trust chain.
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "mixed"
+    },
+    "resources": [
+      {
+        "id": "platform-pki",
+        "class": "persistent-identity",
+        "strategy": "archive",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "runtime-path",
+            "path": "${BASE_PATH}/service_-_platform/pki"
+          },
+          "restore": {
+            "phase": "pre-prepare"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+The future recovery engine must restore this bounded identity before Stack0 PREPARE rather than silently creating a new PKI and treating it as equivalent. See [`../dr-howto.md`](../dr-howto.md) and [`../recovery.schema.json`](../recovery.schema.json).
+
+The operational root `.env` is a protected global recovery prerequisite, not a Stack0-managed backup resource.
+
 ## Preparation
 
 ```bash
@@ -72,7 +110,7 @@ A new Open WebUI stack is planned next. Stack0's resolver should discover it dyn
 
 Each `stackN_-_*` directory must contain `manifest.json`. `manifests.py` discovers stacks rather than maintaining a hard-coded table.
 
-It validates:
+It currently validates:
 
 - schema version, ID and directory identity;
 - required/optional dependency references;
@@ -82,6 +120,8 @@ It validates:
 - global ownership collisions;
 - required consumed capabilities are provided inside required dependency closure;
 - optional consumed capabilities are reachable through required/optional dependency closure.
+
+`recovery.schema.json` now defines the future normalized manifest `recovery` object. Recovery validation/integration in `manifests.py` belongs to the next engine implementation phase; it is not yet active code.
 
 Useful commands:
 
