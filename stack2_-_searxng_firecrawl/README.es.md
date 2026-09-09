@@ -30,16 +30,30 @@ PREPARE conserva la identidad del directorio de configuración SearXNG y los dir
 
 El PostgreSQL de Firecrawl pertenece exclusivamente a Stack2. LiteLLM ya no usa esa base de datos.
 
-## Preparación y arranque
+## Preparación, despliegue y readiness
 
 ```bash
 cd /opt/docker/stacks/stack2_-_searxng_firecrawl
 sudo ./01-prepare.sh
 docker compose up -d
+sudo bash ./02-wait-ready.sh
 docker compose ps
 ```
 
-PREPARE exige el `.lock` de Stack0, valida la red bridge compartida sin crearla, prepara recursos propios, valida Compose y sólo entonces crea `.lock`. `.lock` significa PREPARED, no running/healthy.
+PREPARE exige el `.lock` de Stack0, valida la red bridge compartida sin crearla, prepara recursos propios, valida Compose y sólo entonces crea `.lock`.
+
+`.lock` significa PREPARED; no significa desplegado, healthy ni READY.
+
+`docker compose up -d` establece el estado de proceso, pero **DEPLOYED no equivale a READY**. `02-wait-ready.sh` espera, con timeout acotado, hasta que ambos endpoints del proveedor aceptan conexiones:
+
+```text
+web.search  -> searxng:8080
+web.extract -> firecrawl-api:3002
+```
+
+El instalador común ejecuta esta puerta de readiness después del despliegue de Stack2 y de nuevo durante VERIFY. La reconciliación de consumidores sólo se realiza después de que la readiness del proveedor haya pasado correctamente durante una transición.
+
+Este comportamiento se validó deteniendo únicamente SearXNG y recuperando Stack2 mediante el instalador común: se reutilizó el mismo contenedor SearXNG, la readiness finalizó antes de reconciliar Stack6, Hermes mantuvo su identidad y una segunda ejecución volvió a convergencia de sólo verificación.
 
 ## Endpoints internos
 
@@ -53,21 +67,30 @@ RabbitMQ:      firecrawl-rabbitmq:5672
 
 ## Integración incremental con Stack6
 
-Stack6 no requiere Stack2. Si Stack2 no está disponible, las herramientas web de Hermes permanecen explícitamente deshabilitadas.
+Stack6 no requiere Stack2. Si Stack2 no está READY, las herramientas web de Hermes permanecen explícitamente deshabilitadas.
 
-Después de desplegar o restaurar Stack2:
+Operación incremental preferida desde la raíz del repositorio:
 
 ```bash
+sudo python3 install.py 2 --yes
+```
+
+Si Stack2 ya está sano/READY, el instalador lo verifica y no provoca una reconciliación innecesaria de Stack6. Si Stack2 debe desplegarse o recuperarse realmente, el instalador espera su readiness, descubre consumidores preparados mediante las capabilities del manifest y reconcilia Stack6 automáticamente.
+
+Equivalente manual tras desplegar/restaurar Stack2:
+
+```bash
+sudo bash ./02-wait-ready.sh
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --restart
 ```
 
-La reconciliación habilita web sólo cuando `searxng` y `firecrawl-api` están ejecutándose sobre la red compartida. Si el proveedor desaparece, una nueva reconciliación vuelve al estado web deshabilitado y no activa un proveedor externo alternativo.
+La reconciliación habilita web cuando los proveedores locales están disponibles en la red compartida; durante una transición gestionada por el instalador, además se garantiza su readiness antes de reconciliar. Si el proveedor desaparece, una nueva reconciliación vuelve al estado web deshabilitado y no activa un proveedor externo alternativo.
 
 ```mermaid
 stateDiagram-v2
     [*] --> WebDeshabilitada
-    WebDeshabilitada --> WebLocal: proveedores disponibles + reconcile
+    WebDeshabilitada --> WebLocal: proveedor READY + reconcile
     WebLocal --> WebDeshabilitada: proveedor no disponible + reconcile
 ```
 
