@@ -1,105 +1,40 @@
-# Stack4 — Gitea
+# Stack4 — Gitea + Runner
 
-Gitea serves **HTTP** inside `redlocal`, and HAProxy provides the public HTTPS endpoint.
+Stack4 provides local Git infrastructure. It is atomic, requires only Stack0 and provides `git.remote` and `git.runner`.
 
-```text
-HAProxy -> http://gitea:3000
+```mermaid
+flowchart LR
+    H[HAProxy optional] -->|HTTP| G[Gitea :3000]
+    R[Gitea runner] --> G
+    MS[Stack6 memory-sync optional] -->|SSH Git| G
+    HOST[Host SSH port] --> G
 ```
 
-Gitea's built-in SSH is published directly on the host on the configured port, currently 2222.
+Gitea serves HTTP inside `redlocal`; Stack1 may provide public HTTPS. Built-in Git SSH is published directly on the configured host port.
 
-The runner also accesses directly:
+## Ownership
 
-```text
-http://gitea:3000/
-```
+Stack4 owns containers `gitea` and `gitea-runner`, runtimes `service_-_gitea` and `service_-_gitea-runner`, Gitea data/configuration, runner `.runner` identity and the runtime-owned registration secret.
 
-It does not use custom certificates, a custom CA, or `NODE_EXTRA_CA_CERTS`.
+Stack0 owns the shared network. Stack4 verifies it and never creates it.
 
-## Structure
+## Runner secret lifecycle
 
-```text
-stack4_-_gitea/
-├── .env
-├── docker-compose.yml
-├── 01-prepare.sh
-├── 02-run.sh
-├── README.md
-└── config/
-    ├── gitea/
-    │   └── app.ini
-    └── gitea-runner/
-        └── config.yaml
-```
-
-The two files under `config/` are the real source files for the stack. `01-prepare.sh` renders them by replacing only the values that come from `.env`; there is no complete `app.ini` embedded in Bash.
-
-## `.env`
-
-Stack4 consumes the central environment through `.env -> ../.env`. Relevant values include:
-
-```text
-STACKS_ROOT
-BASE_PATH
-GITEA_IMAGE
-GITEA_CONTAINER_NAME
-GITEA_UID
-GITEA_GID
-GITEA_SSH_BIND
-GITEA_SSH_PORT
-GITEA_DOCKER_NETWORK
-GITEA_DOMAIN
-GITEA_ROOT_URL
-GITEA_SSH_DOMAIN
-GITEA_TIMEZONE
-GITEA_INTERNAL_TOKEN
-GITEA_JWT_SECRET
-GITEA_ADMIN_USERNAME
-GITEA_ADMIN_EMAIL
-GITEA_ADMIN_PASSWORD
-GITEA_RUNNER_IMAGE
-GITEA_RUNNER_NAME
-GITEA_RUNNER_INSTANCE_URL
-```
-
-`GITEA_INTERNAL_TOKEN` and `GITEA_JWT_SECRET` are persistent Gitea secrets and must not be rotated accidentally.
-
-The Actions runner registration token is **not part of the permanent `.env` contract**. Stack4 owns it as persistent runtime state:
+The registration token is persistent runtime state:
 
 ```text
 ${BASE_PATH}/service_-_gitea-runner/secret/registration-token
 ```
 
-`01-prepare.sh` preserves an existing runtime token. During migration of an older deployment it may adopt the former `GITEA_RUNNER_REGISTRATION_TOKEN` value from `.env` once. On a fresh deployment, when neither runtime token nor legacy value exists, Stack4 generates the token once and persists it outside Git and outside `.env`.
+It is not part of the permanent `.env` contract. PREPARE preserves an existing token, may adopt the former legacy environment value once, or generates/persists one for a fresh deployment. Containers receive the secret through a mounted file path rather than the token value in their environment.
 
-Both Gitea and `gitea-runner` receive only `GITEA_RUNNER_REGISTRATION_TOKEN_FILE`, pointing to a read-only mount of that runtime secret. The token value itself is not injected into container environment variables.
+Persistent Gitea secrets such as `GITEA_INTERNAL_TOKEN` and `GITEA_JWT_SECRET` must not be rotated accidentally.
 
-## Operational paths
+## Configuration layout
 
-```text
-${BASE_PATH}/service_-_gitea/config
-${BASE_PATH}/service_-_gitea/data
-${BASE_PATH}/service_-_gitea-runner/data
-${BASE_PATH}/service_-_gitea-runner/secret
-```
+Managed source files are `config/gitea/app.ini` and `config/gitea-runner/config.yaml`. PREPARE renders runtime configuration while preserving bind-directory identity. The Gitea custom configuration path is explicitly aligned so web and SSH/subprocess operations resolve the same `app.ini`.
 
-The runner keeps its `.runner` identity and `config.yaml` in its `data` directory. The registration token is stored separately in `secret/registration-token`.
-
-## Runtime policy
-
-`01-prepare.sh` works on the current runtime layout under `${BASE_PATH}` and does not automatically migrate unrelated legacy directories.
-
-It replaces managed configuration while preserving `service_-_gitea/data`, the persistent runner `.runner` identity and the runtime-owned registration token. Legacy runner `ca-certificates.crt` and `certificates.txt` files are removed because they belong to the previous TLS architecture.
-
-Stack4 does not create the shared Docker network. Stack0 owns `redlocal`; Stack4 verifies that it already exists.
-
-## Preparation lock contract
-
-`.lock` means only that `01-prepare.sh` completed successfully and the stack is prepared. It does not mean migrations have run, the administrator has been ensured, or Gitea/runner are running.
-
-`01-prepare.sh` creates `.lock`. `02-run.sh` requires it and performs the remaining installation/start phase without owning or rewriting the lock.
-
-## Installation / refactor
+## Preparation and deployment
 
 ```bash
 cd /opt/docker/stacks/stack4_-_gitea
@@ -107,41 +42,36 @@ sudo ./01-prepare.sh
 sudo ./02-run.sh
 ```
 
-`01-prepare.sh` validates the Stack0 network dependency, prepares the persistent runner token, renders managed configuration and creates `.lock`.
+`01-prepare.sh` validates Stack0/network, prepares/preserves the registration secret and runtime directories, renders managed configuration, validates Compose and creates `.lock`.
 
-`02-run.sh`:
+`02-run.sh` requires `.lock`, pulls images, runs Gitea migrations, ensures the configured administrator, starts Gitea/runner and verifies the runner identity.
 
-1. requires the preparation lock;
-2. validates Compose;
-3. downloads the images;
-4. runs Gitea migrations;
-5. ensures the configured administrator exists;
-6. starts Gitea and the runner;
-7. verifies that the runner has created or recovered its persistent `.runner` identity.
+`.lock` means PREPARED only.
 
-## Atomicity contract
+## Stack6 Git-memory capability
 
-Stack4 is atomic once Stack0 is available:
+Stack6 treats `git.remote` as optional. Merely installing Stack4 does not automatically enable Git-memory synchronization.
 
-```text
-Stack4 requires: Stack0
-Stack4 owns: Gitea, gitea-runner, their runtime data and runner registration secret
+After Git memory has been safely adopted (`04-gitmem.sh`) and dedicated SSH material validated (`05-maintenance-sidecars.sh`), operator intent is enabled with:
+
+```bash
+cd /opt/docker/stacks/stack6_-_hermes
+sudo ./06-reconcile-capabilities.sh --enable-git-memory
 ```
 
-No externally provisioned runner-registration token is required for a fresh installation.
+If Gitea later becomes unavailable, reconciliation stops only the memory-sync sidecar and preserves memory/Git state and desired intent. It does not merge, rebase or force-push.
 
 ## Normal operation
 
-After installation, `02-run.sh` is not used as the normal startup command. Docker Compose is used instead:
-
 ```bash
 docker compose up -d
-docker compose down
 docker compose restart gitea
 docker compose logs -f
 ```
 
-## Configuration rebuild
+Avoid `docker compose down -v`; persistent state/identity must not be coupled to routine shutdown.
+
+## Re-preparation
 
 ```bash
 rm .lock
@@ -149,4 +79,4 @@ sudo ./01-prepare.sh
 sudo ./02-run.sh
 ```
 
-This may replace configuration and rerun migrations, but it preserves Gitea data, runner identity and the runtime registration token.
+Use deliberately. Existing Gitea data, runner identity and registration token must remain preserved.
