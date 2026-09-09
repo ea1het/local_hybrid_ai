@@ -54,7 +54,7 @@ litellm-postgres
 
 The `postgres` role is reserved for cluster administration/bootstrap. LiteLLM uses the dedicated application role in normal operation.
 
-`LITELLM_SALT_KEY`, the LiteLLM database and both database credentials are persistent identities. They must not be regenerated during routine preparation or upgrades.
+`LITELLM_SALT_KEY` and the LiteLLM logical database are the critical DR identities/state. Database credentials must be preserved or rotated deliberately during normal operation, but the PostgreSQL administrative password itself may be regenerated for a completely fresh DR cluster.
 
 ## PGDATA safety contract
 
@@ -76,6 +76,8 @@ flowchart TD
 ```
 
 Do not use recursive `chown`, database resets or fresh-cluster recreation as routine configuration repair.
+
+For disaster recovery, however, PGDATA is **not** the backup artifact. Stack3 recovery uses a logical custom-format PostgreSQL dump of the LiteLLM application database. See [`../dr-howto.md`](../dr-howto.md).
 
 ## Preparation and start
 
@@ -99,6 +101,54 @@ Useful bounded database validation after maintenance:
 docker exec litellm-postgres psql -U postgres -d postgres -Atc 'SELECT 1;'
 docker exec litellm-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CHECKPOINT;'
 ```
+
+## Disaster recovery
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "mixed"
+    },
+    "resources": [
+      {
+        "id": "litellm-database",
+        "class": "persistent-data",
+        "strategy": "postgres-custom-dump",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "postgres",
+            "service": "litellm-postgres",
+            "database_env": "LITELLM_DB_NAME",
+            "user_env": "LITELLM_DB_USER"
+          },
+          "restore": {
+            "phase": "post-prepare-pre-deploy"
+          }
+        }
+      },
+      {
+        "id": "litellm-salt",
+        "class": "persistent-identity",
+        "strategy": "external-config",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "environment",
+            "key": "LITELLM_SALT_KEY"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+The protected operational `.env` supplies the original `LITELLM_SALT_KEY`. A fresh PostgreSQL cluster may be created, the logical dump restored, and LiteLLM then started with the matching salt.
 
 ## Re-preparation
 
