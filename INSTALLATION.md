@@ -1,6 +1,6 @@
 # Installation and lifecycle
 
-This document describes the current deployment contract for `local_hybrid_ai`. The future common installer will consume the same manifest/dependency/capability model; until then these commands are the authoritative manual flow.
+This document describes the deployment contract for `local_hybrid_ai`. The root common installer consumes the same manifest/dependency/capability model as the stacks; manual stack commands remain useful for bounded maintenance and diagnosis.
 
 ## 1. Permanent layout
 
@@ -10,6 +10,10 @@ This document describes the current deployment contract for `local_hybrid_ai`. T
 │   ├── .git/
 │   ├── .env                 # operational, secret, ignored by Git
 │   ├── .env.template        # tracked variable contract
+│   ├── install.sh           # common installer entry point
+│   ├── install.py           # dependency-driven orchestrator
+│   ├── installer/
+│   │   └── lifecycle.json   # stack-owned lifecycle command registry
 │   └── stack0...stack6/
 └── runtime/                 # persistent mutable state, never Git source
 ```
@@ -51,7 +55,55 @@ python3 stack0_-_platform/manifests.py plan all
 
 `plan 6` resolves the minimum required order as Stack0 -> Stack3 -> Stack6.
 
-## 3. Lifecycle states
+## 3. Common installer
+
+The root installer is deliberately thin. `manifests.py` decides **which stacks and dependency order** are required; `installer/lifecycle.json` maps each stack to its own lifecycle entry points. The installer does not duplicate stack implementation.
+
+```mermaid
+flowchart LR
+    CLI[install.sh selectors] --> M[manifest resolver]
+    M --> P[dependency plan]
+    P --> L[lifecycle registry]
+    L --> S[stack-owned scripts / Compose]
+    S --> V[verification]
+```
+
+Inspect before execution:
+
+```bash
+./install.sh 6 --plan
+./install.sh 6 --dry-run
+./install.sh 2 4 6 --dry-run
+./install.sh all --plan
+```
+
+Real execution requires an explicit acknowledgement:
+
+```bash
+sudo ./install.sh 6 --yes
+sudo ./install.sh all --yes
+```
+
+Selectors accepted by the installer are the same selectors accepted by the manifest planner: numeric IDs, `stackN`, exact stack directory names, or `all`.
+
+`--plan` and `--dry-run` never execute lifecycle actions. `--dry-run` prints the exact actions that real execution would run. `--target` resolves `target_requires` instead of the current dependency graph.
+
+The installer detects PREPARED state from `.lock` and therefore does not remove locks or re-run PREPARE merely to converge an existing stack. Deployment commands remain idempotent/convergent stack-owned operations. Optional Stack6 capabilities are reconciled by Stack6 after deployment.
+
+Safety properties of the common installer:
+
+- never rewrites the operational `.env`;
+- never deletes `.lock` automatically;
+- never runs Docker prune or `docker compose down -v`;
+- never resets runtime state;
+- never hard-codes Stack6 -> Stack3 dependency logic;
+- does not perform the legacy Stack3 PostgreSQL migration;
+- stops on the first failed lifecycle action and reports that action;
+- keeps stack implementation inside the owning stack.
+
+The lifecycle registry is intentionally declarative but is **not** a second dependency graph. Dependencies, optional relationships, capabilities and ownership stay in `manifest.json`.
+
+## 4. Lifecycle states
 
 ```mermaid
 stateDiagram-v2
@@ -66,7 +118,7 @@ stateDiagram-v2
 
 PREPARE owns creation/validation of resources belonging to that stack. RECONCILE is a separate repeatable operation for optional capabilities and must not require deleting `.lock`.
 
-## 4. Clean installation
+## 5. Clean installation
 
 Clone once and create the central environment:
 
@@ -81,15 +133,25 @@ sudo chmod 0600 .env
 sudo editor .env
 ```
 
-Bootstrap Stack0 before any application stack:
+Then inspect and run the common installer. A complete installation is:
 
 ```bash
-sudo ./stack0_-_platform/install.sh
+./install.sh all --plan
+sudo ./install.sh all --yes
 ```
 
-A full manual deployment may use 0,1,2,3,4,5,6 for operator convenience, but that order is **not** the dependency graph. Installing only Hermes requires 0,3,6. Installing Stack3 alone requires 0,3.
+A minimal Hermes installation is dependency-resolved automatically:
 
-## 5. Stack deployment procedures
+```bash
+./install.sh 6 --plan
+sudo ./install.sh 6 --yes
+```
+
+The resolved required plan is Stack0 -> Stack3 -> Stack6. Numeric order `0,1,2,3,4,5,6` remains convenient for a full deployment but is not the dependency model.
+
+## 6. Manual stack deployment procedures
+
+These remain authoritative bounded operations when maintaining one stack directly.
 
 ### Stack1 — HAProxy + static web
 
@@ -129,7 +191,7 @@ Stack3 provides `ai.gateway` and `ai.mcp-gateway`. It owns `litellm-postgres` an
 
 `LITELLM_SALT_KEY` and existing database identities must be preserved.
 
-`90-migrate-postgres-from-stack2.sh` is a one-time legacy migration helper only. Do not run it on a clean installation and do not rerun it after migration has succeeded.
+`90-migrate-postgres-from-stack2.sh` is a one-time legacy migration helper only. Do not run it on a clean installation and do not rerun it after migration has succeeded. The common installer never invokes it.
 
 ### Stack4 — Gitea + runner
 
@@ -167,7 +229,7 @@ sudo ./06-reconcile-capabilities.sh --restart
 docker compose ps
 ```
 
-`04-gitmem.sh` performs bounded Git-memory adoption/validation. `05-maintenance-sidecars.sh` prepares/validates maintenance prerequisites. `06-reconcile-capabilities.sh` is the repeatable capability reconciliation layer.
+`04-gitmem.sh` is an explicit adoption/validation operation and is not run automatically by the common installer: adoption can require stopped Hermes and operator knowledge of local/remote memory state. `05-maintenance-sidecars.sh` prepares/validates maintenance prerequisites. `06-reconcile-capabilities.sh` is the repeatable capability reconciliation layer.
 
 The temporary terminal-timeout workaround for the validated Hermes version remains:
 
@@ -175,13 +237,14 @@ The temporary terminal-timeout workaround for the validated Hermes version remai
 sudo ./03-temporary-fix-issue-74116-terminal-timeout.sh
 ```
 
-## 6. Incremental optional capabilities
+## 7. Incremental optional capabilities
 
 ### Add local web after Hermes is already running
 
-Deploy Stack2 normally, verify it, then reconcile Stack6:
+Deploy Stack2, then reconcile Stack6. When using the common installer and Stack6 is part of the requested plan, reconciliation is already the final Stack6 deployment action. If Stack2 alone is installed later, explicitly reconcile the already-running consumer:
 
 ```bash
+sudo ./install.sh 2 --yes
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --restart
 ```
@@ -193,6 +256,7 @@ When both SearXNG and Firecrawl are running on `redlocal`, the managed Hermes co
 Git memory is not enabled merely because Gitea exists. The operator must explicitly persist intent:
 
 ```bash
+cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --enable-git-memory
 ```
 
@@ -206,7 +270,7 @@ Without either flag, the previous desired state is preserved. A new deployment d
 
 If Git memory is enabled but Gitea becomes unavailable, reconciliation stops only `hermes-memory-sync`; it preserves the memory worktree, SSH identity and desired state. When the provider returns, reconciliation can resume the sidecar after clean local/remote equality checks.
 
-## 7. Network/security boundaries
+## 8. Network/security boundaries
 
 ```mermaid
 flowchart LR
@@ -221,7 +285,7 @@ flowchart LR
 
 The sandbox is not attached to `redlocal`, has no Docker socket and is not privileged. Hermes reaches it only over SSH on `hermes-exec`. The cleanup sidecar has no network.
 
-## 8. Sandbox lifecycle and recovery
+## 9. Sandbox lifecycle and recovery
 
 Generation identity is stored in both:
 
@@ -230,18 +294,9 @@ ${BASE_PATH}/service_-_hermes-sandbox/data/workspace/.sandbox-generation
 ${BASE_PATH}/service_-_hermes-sandbox/data/state/state.db
 ```
 
-They must agree. Normal restarts preserve the generation. For corrupt/mismatched lifecycle state, use the bounded reset:
+They must agree. Normal restarts preserve the generation. For corrupt/mismatched lifecycle state, use the bounded reset documented by Stack6. Never turn sandbox recovery into a whole-platform wipe.
 
-```bash
-cd /opt/docker/stacks/stack6_-_hermes
-docker compose stop hermes hermes-sandbox hermes-sandbox-cleanup
-sudo ./02-cleanup.sh --reset-sandbox --yes
-docker compose up -d hermes-sandbox hermes hermes-sandbox-cleanup
-```
-
-This resets only sandbox workspace/lifecycle state and preserves Hermes runtime, Git memory, sandbox home/authorized keys, host identity, managed configuration and memory-sync SSH identity.
-
-## 9. Updating an existing deployment
+## 10. Updating an existing deployment
 
 Git updates must not overwrite deployment state:
 
@@ -255,15 +310,15 @@ git merge --ff-only origin/main
 
 The root `.env`, stack `.env` symlinks, `.lock` files and `/opt/docker/runtime` are outside tracked source changes.
 
-After an update, use the affected stack's documented lifecycle. Do not delete `.lock` merely to activate an optional capability; use reconciliation. A plain `docker restart` does not apply changed Compose environment/mounts.
+After an update, use the common installer for dependency-aware convergence or the affected stack's documented lifecycle for bounded maintenance. Do not delete `.lock` merely to activate an optional capability; use reconciliation. A plain `docker restart` does not apply changed Compose environment/mounts.
 
-## 10. Re-preparation
+## 11. Re-preparation
 
 Removing a `.lock` and rerunning PREPARE is an explicit maintenance action, not a normal update primitive. Before doing so, understand what the stack's PREPARE manages and preserve persistent identities.
 
 Validated atomic PREPARE behavior includes preserving bind-directory identity where required, persistent databases/volumes, generated secrets and existing runtime data. Stack3 specifically preserves existing PGDATA owner/mode/inode.
 
-## 11. Secrets and persistent identities
+## 12. Secrets and persistent identities
 
 Never commit or casually rotate:
 
