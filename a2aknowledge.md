@@ -2,11 +2,11 @@
 
 > Audience: AI assistants, coding agents and future maintainers.
 >
-> Read this before modifying the project. Then inspect the current root README, `INSTALLATION.md`, `.env.template`, `.env.secretsexplained.md`, the affected stack README, manifest, Compose file and lifecycle scripts.
+> Read this before modifying the project. Then inspect the current root README, `INSTALLATION.md`, `dr-howto.md`, `recovery.schema.json`, `.env.template`, `.env.secretsexplained.md`, the affected stack README, manifest, Compose file and lifecycle scripts.
 
 ## 1. What this project is
 
-`local_hybrid_ai` is a local-first hybrid AI platform composed of atomic Docker stacks with explicit ownership, dependencies, capabilities, readiness and security boundaries.
+`local_hybrid_ai` is a local-first hybrid AI platform composed of atomic Docker stacks with explicit ownership, dependencies, capabilities, readiness, recovery and security boundaries.
 
 The platform is not one monolithic Compose application. Each stack owns its own mutable state; Stack0 owns only platform-shared resources.
 
@@ -18,7 +18,8 @@ Core principles:
 - atomic stack ownership;
 - dependency/capability-driven installation;
 - readiness before capability use;
-- persistent identity preservation;
+- explicit disaster-recovery classification;
+- persistent identity preservation where recovery requires it;
 - least privilege between services;
 - bounded, reversible maintenance.
 
@@ -30,6 +31,8 @@ Core principles:
 │   ├── .env                    # operational, ignored by Git
 │   ├── .env.template
 │   ├── .env.secretsexplained.md
+│   ├── recovery.schema.json
+│   ├── dr-howto.md
 │   ├── install.py
 │   ├── installer/
 │   └── stack0 ... stack6/
@@ -44,7 +47,7 @@ BASE_PATH=/opt/docker/runtime
 NETWORK_NAME=redlocal
 ```
 
-Never solve a source problem by deleting runtime. Never move mutable production state into Git.
+Never solve a source problem by deleting runtime. Never move mutable production state into Git unless the architecture explicitly externalizes durable knowledge/state there.
 
 ## 3. Stack map
 
@@ -76,7 +79,7 @@ Stack2 is the canonical readiness lesson: provider recovery must wait until both
 
 ## 5. Manifest model
 
-Stack manifests are architectural truth for dependency/capability/ownership relationships.
+Stack manifests are architectural truth for dependency/capability/ownership relationships and are the intended location for normalized disaster-recovery contracts.
 
 Important fields:
 
@@ -88,9 +91,22 @@ Important fields:
 - `optional_consumes`;
 - `owns`;
 - `atomic`;
-- `blockers`.
+- `blockers`;
+- future `recovery` declarations validated by `recovery.schema.json`.
 
-Do not encode dependency folklore in `install.py`.
+Do not encode dependency or recovery folklore in generic engines.
+
+The normalized recovery object has exactly two conceptual blocks:
+
+```text
+recovery
+├── contract     REQUIRED
+└── resources    OPTIONAL
+```
+
+`contract.schema_version` is currently `1`; `contract.mode` is one of `reconstructable`, `managed`, or `mixed`. Resource objects use the same normalized common fields (`id`, `class`, `strategy`, `sensitive`) plus strategy-specific `config` validated by the schema.
+
+Read `dr-howto.md` before adding or changing recovery semantics.
 
 ## 6. Common installer
 
@@ -111,6 +127,8 @@ A healthy requested provider should remain verification-only. `--reconcile` is a
 
 The common installer never rewrites `.env`, deletes `.lock`, resets runtime, prunes Docker or executes historical migrations.
 
+The disaster-recovery engine is a separate future component. Do not add backup/restore behavior to `install.py` merely because installation and restore interact.
+
 ## 7. Cleanup doctrine
 
 The active repository represents the current clean-install architecture only.
@@ -120,6 +138,7 @@ Keep:
 - installation code;
 - current lifecycle/readiness/reconciliation scripts;
 - manifests/tests;
+- recovery schema/contracts;
 - current operational documentation.
 
 Remove completed one-time migration helpers and active documentation that tells operators to run them after the platform has converged. Git history is the historical record.
@@ -172,15 +191,37 @@ litellm-postgres
     LITELLM_DB_PASSWORD
 ```
 
-Stack3 and Stack2 now follow the same identity principle even though their bootstrap mechanisms differ.
+Stack3 and Stack2 follow the same operational identity principle even though their DR classifications differ.
 
 ## 9. PGDATA safety
 
-Existing PGDATA is persistent identity. PREPARE may validate it but must not recursively `chown`, replace, reset or recreate it for convenience.
+Existing PGDATA is persistent operational state. PREPARE may validate it but must not recursively `chown`, replace, reset or recreate it for convenience.
 
 After maintenance, test real DB operations and application connectivity. Container health alone is insufficient evidence.
 
-## 10. Stack0
+Do not equate PGDATA persistence with DR policy. Stack2 data is intentionally disposable in a full rebuild. Stack3 is recovered from a logical LiteLLM dump, not a physical PGDATA archive.
+
+## 10. Disaster recovery doctrine
+
+Normative documentation lives in [`dr-howto.md`](dr-howto.md), and the normalized object shape is defined by [`recovery.schema.json`](recovery.schema.json).
+
+Current intended recovery classification:
+
+```text
+Stack0   PKI                  BACKUP
+Stack1   HAProxy/Web          RECONSTRUCT
+Stack2   SearXNG/Firecrawl    RECONSTRUCT
+Stack3   LiteLLM DB + SALT    BACKUP
+Stack4   Gitea                BACKUP
+Stack5   Dockhand             RECONSTRUCT
+Stack6   Hermes               RECONSTRUCT
+```
+
+Global prerequisites are source at a known commit/tag and a protected operational `.env`.
+
+Physical persistence is not enough to qualify a resource for backup. The future engine must follow manifest policy rather than enumerate every bind mount, volume or database it can discover.
+
+## 11. Stack0
 
 Stack0 owns platform-shared contracts:
 
@@ -190,15 +231,15 @@ Stack0 owns platform-shared contracts:
 - PKI;
 - manifest discovery/validation.
 
-PKI private key is persistent identity and must not rotate implicitly.
+PKI private identity must not rotate implicitly and is a managed DR resource. It is restored before PREPARE so Stack0 sees the existing trust identity.
 
-## 11. Stack1
+## 12. Stack1
 
 Stack1 owns HAProxy/static web. Backends are optional from Stack1's dependency perspective. It may route to services that are absent at install time.
 
-Do not make Stack1 own application runtime merely because it exposes an application.
+Do not make Stack1 own application runtime merely because it exposes an application. Stack1 is reconstructable for DR.
 
-## 12. Stack2
+## 13. Stack2
 
 Provides local `web.search` and `web.extract`.
 
@@ -208,25 +249,32 @@ Important rules:
 - owns all Firecrawl supporting services including PostgreSQL;
 - does not create `redlocal`;
 - PostgreSQL app/admin roles are separate;
-- existing PGDATA metadata is preserved;
+- existing PGDATA metadata is preserved during normal operation;
 - readiness gate is `02-wait-ready.sh`;
-- absence must leave consumers fail-closed for local web.
+- absence must leave consumers fail-closed for local web;
+- Firecrawl PostgreSQL, Redis, RabbitMQ and SearXNG state are intentionally reconstructable/disposable for full DR.
 
-## 13. Stack3
+## 14. Stack3
 
 LiteLLM is the AI policy boundary for inference and MCP. Stack6 requires it. Stack3 owns its dedicated PostgreSQL and uses a dedicated application DB identity distinct from `postgres`.
 
-`LITELLM_SALT_KEY` is persistent cryptographic identity. Do not rotate it casually.
+`LITELLM_SALT_KEY` is persistent cryptographic identity. Do not rotate it casually. Full DR preserves the logical LiteLLM application database and the original salt; the PostgreSQL administrative password may be regenerated during a fresh rebuild.
 
-## 14. Stack4
+## 15. Stack4
 
-Gitea/runner stack. Preserve Gitea data, runner identity and registration secret. Web health does not prove Git-over-SSH health.
+Gitea/runner stack. Gitea is a managed DR domain: preserve repositories plus the logical application metadata/state needed to reconstruct Gitea through an application-aware native dump.
 
-## 15. Stack5
+The runner registration token/runtime identity is reconstructable and may be re-registered after Gitea recovery. Do not treat it as a core DR artifact.
 
-Dockhand owns external volume `dockhand_data`. Preserve existing volume state.
+Web health does not prove Git-over-SSH health.
 
-## 16. Stack6
+## 16. Stack5
+
+Dockhand is a reconstructable container visualizer/management UI. The existence of `dockhand_data` does not make that volume a DR target.
+
+Do not back up Dockhand merely because Docker reports persistent storage.
+
+## 17. Stack6
 
 Requires Stack0 + Stack3. Optionally consumes Stack2 web capabilities and Stack4 `git.remote`.
 
@@ -238,7 +286,16 @@ Security boundary:
 - cleanup sidecar has no network;
 - Git memory synchronization has explicit operator intent separate from provider availability.
 
-## 17. Secrets doctrine
+DR boundary:
+
+- Hermes runtime is reconstructable;
+- caches, sessions, packages, logs, operational SQLite databases and sandbox state are disposable;
+- durable memory/knowledge/identity documents should be externalized to Git/Gitea;
+- if loss of a Hermes runtime file would matter after a complete rebuild, move that information to an authoritative externalized store rather than adding another arbitrary runtime backup target.
+
+Until all operator-valued identity/knowledge such as `SOUL.md` is externalized, treat that as a migration gap rather than weakening the long-term reconstructable design.
+
+## 18. Secrets doctrine
 
 Read `.env.secretsexplained.md` before creating or changing secrets.
 
@@ -254,7 +311,9 @@ Differentiate:
 
 A generator existing does not make a persistent secret disposable.
 
-## 18. Shell safety for operator commands
+The operational `.env` is a protected global DR prerequisite, not a Git-tracked stack artifact.
+
+## 19. Shell safety for operator commands
 
 The operator pastes command blocks into an existing interactive shell.
 
@@ -275,7 +334,7 @@ Interactive diagnostic/migration blocks should capture return codes, branch expl
 echo "La shell permanece abierta."
 ```
 
-## 19. How to modify the project
+## 20. How to modify the project
 
 Before changing code:
 
@@ -284,11 +343,13 @@ Before changing code:
 3. list invariants that must remain unchanged;
 4. make the smallest ownership-correct change;
 5. validate source before runtime;
-6. preserve availability and persistent state;
+6. preserve availability and required persistent state;
 7. test the real feature/failure path;
 8. verify invariants again;
 9. update documentation in the same work;
 10. leave Git and deployed host on the same intended commit when deployment is in scope.
+
+For DR-related changes, additionally validate the proposed `recovery` block against `recovery.schema.json` and ensure the strategy remains generic rather than stack-number-specific.
 
 Typical source checks:
 
@@ -301,7 +362,7 @@ python3 -m unittest -v installer.test_installer
 git diff --check
 ```
 
-## 20. Things not to do casually
+## 21. Things not to do casually
 
 Do not:
 
@@ -316,10 +377,11 @@ Do not:
 - give Hermes Docker socket access;
 - attach sandbox to `redlocal` without explicit redesign;
 - silently enable cloud fallback;
-- hard-code dependencies that belong in manifests;
+- hard-code dependencies or recovery policy that belongs in manifests;
+- infer backup importance solely from a bind mount, Docker volume or database file;
 - retain completed migration helpers as permanent installation surface.
 
-## 21. Next planned stack — Open WebUI
+## 22. Next planned stack — Open WebUI
 
 Open WebUI should be a new atomic stack. Before implementation define:
 
@@ -331,11 +393,12 @@ Open WebUI should be a new atomic stack. Before implementation define:
 - secret provenance;
 - application readiness;
 - ingress relationship with Stack1;
+- normalized recovery contract;
 - tests and docs.
 
-Do not add Open WebUI-specific conditionals to the generic installer unless the manifest/lifecycle model genuinely cannot express the requirement.
+Do not add Open WebUI-specific conditionals to generic installer or future recovery-engine code unless the manifest/lifecycle/recovery model genuinely cannot express the requirement.
 
-## 22. Completion checklist
+## 23. Completion checklist
 
 Before claiming work complete:
 
@@ -343,13 +406,14 @@ Before claiming work complete:
 - worktree is clean;
 - manifests validate;
 - installer tests pass when relevant;
+- recovery declarations validate when relevant;
 - operational `.env` remains protected and preserved;
-- runtime identities remain intact;
+- runtime identities required by the recovery contract remain intact;
 - required containers are running;
 - readiness passes;
 - actual application path works;
 - no obsolete active migration helper remains;
-- documentation matches current code;
+- documentation matches current code and recovery policy;
 - deployed host is synchronized to the same commit if deployment was part of the task.
 
-The platform's maintenance principle is simple: capability must be explicit, bounded, ready before use and under operator control.
+The platform's maintenance principle is simple: capability and recovery intent must be explicit, bounded, validated and under operator control.
