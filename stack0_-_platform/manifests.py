@@ -6,14 +6,221 @@ import sys
 from pathlib import Path
 
 STACK_DIR_RE = re.compile(r"^stack(?P<id>[0-9]+)_-_.+$")
+RESOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def fail(message: str) -> None:
     raise SystemExit(f"ERROR: {message}")
 
 
+def load_recovery_schema(root: Path) -> dict:
+    schema_path = root / "recovery.schema.json"
+    try:
+        schema = json.loads(schema_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"cannot read {schema_path}: {exc}")
+
+    try:
+        contract = schema["$defs"]["contract"]
+        resource = schema["$defs"]["resource"]
+        restore = schema["$defs"]["restore"]
+        schema_version = contract["properties"]["schema_version"]["const"]
+        modes = set(contract["properties"]["mode"]["enum"])
+        classes = set(resource["properties"]["class"]["enum"])
+        strategies = set(resource["properties"]["strategy"]["enum"])
+        restore_phases = set(restore["properties"]["phase"]["enum"])
+    except (KeyError, TypeError) as exc:
+        fail(f"invalid recovery schema structure in {schema_path}: missing {exc}")
+
+    if schema_version != 1:
+        fail(f"unsupported recovery schema version in {schema_path}: {schema_version}")
+
+    return {
+        "path": schema_path,
+        "version": schema_version,
+        "modes": modes,
+        "classes": classes,
+        "strategies": strategies,
+        "restore_phases": restore_phases,
+    }
+
+
+def require_exact_keys(value: dict, required: set[str], optional: set[str], where: str) -> None:
+    missing = required - set(value)
+    if missing:
+        fail(f"{where}: missing required fields: {', '.join(sorted(missing))}")
+    unexpected = set(value) - required - optional
+    if unexpected:
+        fail(f"{where}: unsupported fields: {', '.join(sorted(unexpected))}")
+
+
+def require_non_empty_string(value: object, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        fail(f"{where} must be a non-empty string")
+    return value
+
+
+def validate_restore(restore: object, recovery_schema: dict, where: str) -> None:
+    if not isinstance(restore, dict):
+        fail(f"{where} must be an object")
+    require_exact_keys(restore, {"phase"}, set(), where)
+    phase = restore["phase"]
+    if phase not in recovery_schema["restore_phases"]:
+        fail(f"{where}.phase has unsupported value: {phase}")
+
+
+def validate_recovery_resource(resource: object, recovery_schema: dict, where: str) -> None:
+    if not isinstance(resource, dict):
+        fail(f"{where} must be an object")
+
+    require_exact_keys(
+        resource,
+        {"id", "class", "strategy", "sensitive"},
+        {"config"},
+        where,
+    )
+
+    resource_id = require_non_empty_string(resource["id"], f"{where}.id")
+    if not RESOURCE_ID_RE.fullmatch(resource_id):
+        fail(f"{where}.id has invalid format: {resource_id}")
+
+    resource_class = resource["class"]
+    if resource_class not in recovery_schema["classes"]:
+        fail(f"{where}.class has unsupported value: {resource_class}")
+
+    strategy = resource["strategy"]
+    if strategy not in recovery_schema["strategies"]:
+        fail(f"{where}.strategy has unsupported value: {strategy}")
+
+    if not isinstance(resource["sensitive"], bool):
+        fail(f"{where}.sensitive must be boolean")
+
+    if "config" not in resource or not isinstance(resource["config"], dict):
+        fail(f"{where}.config must be an object for strategy {strategy}")
+
+    config = resource["config"]
+    strategy_contracts = {
+        "archive": {
+            "source_type": "runtime-path",
+            "source_required": {"type", "path"},
+            "source_optional": set(),
+            "restore_required": True,
+        },
+        "postgres-custom-dump": {
+            "source_type": "postgres",
+            "source_required": {"type", "service", "database_env"},
+            "source_optional": {"user_env"},
+            "restore_required": True,
+        },
+        "gitea-native-dump": {
+            "source_type": "application",
+            "source_required": {"type", "service"},
+            "source_optional": set(),
+            "restore_required": True,
+        },
+        "external-config": {
+            "source_type": "environment",
+            "source_required": {"type", "key"},
+            "source_optional": set(),
+            "restore_required": False,
+        },
+        "git": {
+            "source_type": "git",
+            "source_required": {"type"},
+            "source_optional": {"repository_env"},
+            "restore_required": False,
+        },
+    }
+
+    contract = strategy_contracts.get(strategy)
+    if contract is None:
+        fail(f"{where}.strategy is declared by schema but unsupported by validator: {strategy}")
+
+    required_config = {"source"}
+    optional_config: set[str] = set()
+    if contract["restore_required"]:
+        required_config.add("restore")
+    require_exact_keys(config, required_config, optional_config, f"{where}.config")
+
+    source = config["source"]
+    if not isinstance(source, dict):
+        fail(f"{where}.config.source must be an object")
+    require_exact_keys(
+        source,
+        contract["source_required"],
+        contract["source_optional"],
+        f"{where}.config.source",
+    )
+    if source["type"] != contract["source_type"]:
+        fail(
+            f"{where}.config.source.type must be {contract['source_type']} "
+            f"for strategy {strategy}"
+        )
+
+    for key, value in source.items():
+        if key != "type":
+            require_non_empty_string(value, f"{where}.config.source.{key}")
+
+    if contract["restore_required"]:
+        validate_restore(config["restore"], recovery_schema, f"{where}.config.restore")
+
+
+def validate_recovery(data: dict, recovery_schema: dict, manifest_path: Path) -> None:
+    recovery = data.get("recovery")
+    if not isinstance(recovery, dict):
+        fail(f"{manifest_path}: recovery must be an object")
+
+    require_exact_keys(recovery, {"contract"}, {"resources"}, f"{manifest_path}: recovery")
+
+    contract = recovery["contract"]
+    if not isinstance(contract, dict):
+        fail(f"{manifest_path}: recovery.contract must be an object")
+    require_exact_keys(
+        contract,
+        {"schema_version", "mode"},
+        set(),
+        f"{manifest_path}: recovery.contract",
+    )
+
+    if contract["schema_version"] != recovery_schema["version"]:
+        fail(
+            f"{manifest_path}: recovery.contract.schema_version must be "
+            f"{recovery_schema['version']}"
+        )
+
+    mode = contract["mode"]
+    if mode not in recovery_schema["modes"]:
+        fail(f"{manifest_path}: unsupported recovery mode: {mode}")
+
+    resources = recovery.get("resources")
+    if resources is not None:
+        if not isinstance(resources, list) or not resources:
+            fail(f"{manifest_path}: recovery.resources must be a non-empty list when present")
+
+        resource_ids: set[str] = set()
+        for index, resource in enumerate(resources):
+            where = f"{manifest_path}: recovery.resources[{index}]"
+            validate_recovery_resource(resource, recovery_schema, where)
+            resource_id = resource["id"]
+            if resource_id in resource_ids:
+                fail(f"{manifest_path}: duplicate recovery resource id: {resource_id}")
+            resource_ids.add(resource_id)
+
+    if mode in {"managed", "mixed"} and resources is None:
+        fail(f"{manifest_path}: recovery mode {mode} requires resources")
+
+    if mode == "reconstructable" and resources is not None:
+        for resource in resources:
+            if resource["class"] != "externalized":
+                fail(
+                    f"{manifest_path}: reconstructable stacks may only declare "
+                    "externalized recovery resources"
+                )
+
+
 def load_manifests(root: Path) -> dict[int, dict]:
     manifests: dict[int, dict] = {}
+    recovery_schema = load_recovery_schema(root)
 
     for directory in sorted(root.iterdir()):
         if not directory.is_dir():
@@ -54,6 +261,7 @@ def load_manifests(root: Path) -> dict[int, dict]:
         if "atomic" in data and not isinstance(data["atomic"], bool):
             fail(f"{manifest_path}: atomic must be boolean")
 
+        validate_recovery(data, recovery_schema, manifest_path)
         manifests[stack_id] = data
 
     if not manifests:
@@ -106,7 +314,6 @@ def validate_graph(manifests: dict[int, dict], target: bool) -> None:
 
     for stack_id in sorted(manifests):
         visit(stack_id)
-
 
 
 def dependency_closure(
@@ -283,7 +490,11 @@ def main() -> None:
             for stack_id in sorted(manifests):
                 data = manifests[stack_id]
                 atomic = "atomic" if data.get("atomic", False) else "blocked"
-                print(f"stack{stack_id}: {data['directory']} [{atomic}]")
+                recovery_mode = data["recovery"]["contract"]["mode"]
+                print(
+                    f"stack{stack_id}: {data['directory']} "
+                    f"[{atomic}] [recovery:{recovery_mode}]"
+                )
                 for blocker in data.get("blockers", []):
                     print(f"  blocker: {blocker}")
         return
