@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./backup-set.schema.json",
+  "title": "Local Hybrid AI completed backup set metadata",
+  "description": "Normative metadata contract for a completed disaster-recovery backup set. Planning output is not a completed backup set and therefore is not valid against this schema until artifacts and checksums exist.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "created_at",
+    "source_commit",
+    "requested",
+    "resolved_stacks",
+    "artifacts",
+    "prerequisites"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "kind": {
+      "type": "string",
+      "const": "local-hybrid-ai-backup-set"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "requested": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "resolved_stacks": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prerequisite"
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stack_id",
+        "resource_id",
+        "strategy",
+        "sensitive",
+        "restore_phase",
+        "relative_path",
+        "sha256",
+        "size_bytes"
+      ],
+      "properties": {
+        "stack_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resource_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "archive",
+            "postgres-custom-dump",
+            "gitea-native-dump"
+          ]
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "restore_phase": {
+          "type": ["string", "null"],
+          "enum": [
+            "pre-prepare",
+            "post-prepare-pre-deploy",
+            "post-deploy",
+            null
+          ]
+        },
+        "relative_path": {
+          "type": "string",
+          "pattern": "^artifacts/stack[0-9]+/[a-z0-9][a-z0-9._-]*\\.(tar|dump|zip)$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "prerequisite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stack_id",
+        "resource_id",
+        "kind",
+        "strategy",
+        "sensitive"
+      ],
+      "properties": {
+        "stack_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resource_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["REQUIRE", "EXTERNAL"]
+        },
+        "strategy": {
+          "type": "string",
+          "enum": ["external-config", "git"]
+        },
+        "sensitive": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
