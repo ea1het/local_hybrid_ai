@@ -8,5 +8,28 @@
   "requires": [0],
   "optional": [1],
   "provides": ["git.remote", "git.runner"],
-  "owns": ["container:gitea", "container:gitea-runner", "runtime:service_-_gitea", "runtime:service_-_gitea-runner"]
+  "owns": ["container:gitea", "container:gitea-runner", "runtime:service_-_gitea", "runtime:service_-_gitea-runner"],
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "managed"
+    },
+    "resources": [
+      {
+        "id": "gitea-state",
+        "class": "persistent-data",
+        "strategy": "gitea-native-dump",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "application",
+            "service": "gitea"
+          },
+          "restore": {
+            "phase": "post-prepare-pre-deploy"
+          }
+        }
+      }
+    ]
+  }
 }
