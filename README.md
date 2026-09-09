@@ -17,8 +17,8 @@ flowchart TB
     S0 --> S5[Stack5 Dockhand]
     S0 --> S6[Stack6 Hermes]
     S3 -->|ai.gateway + ai.mcp-gateway| S6
-    S2 -. web.search + web.extract .-> S6
-    S4 -. git.remote .-> S6
+    S2 -.->|web.search + web.extract| S6
+    S4 -.->|git.remote| S6
 ```
 
 Every application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional capability providers for Stack6.
@@ -40,19 +40,19 @@ All seven stacks are atomic in the current manifest graph. `target_requires` rem
 ```mermaid
 flowchart LR
     U[User / Browser] --> HP[HAProxy]
-    TG[Telegram] -. optional .-> H[Hermes]
-    BZ[Buzz] -. optional .-> H
+    TG[Telegram] -.->|optional| H[Hermes]
+    BZ[Buzz] -.->|optional| H
     HP --> H
     HP --> LL[LiteLLM]
     HP --> SX[SearXNG]
     H -->|inference + MCP| LL
     LL --> LOCAL[Local OpenAI-compatible runtime]
-    LL -. explicit policy .-> CLOUD[Optional cloud APIs]
-    H -. when capability available .-> SX
-    H -. when capability available .-> FC[Firecrawl]
+    LL -.->|explicit policy| CLOUD[Optional cloud APIs]
+    H -.->|when capability available| SX
+    H -.->|when capability available| FC[Firecrawl]
     H -->|SSH| SB[Hermes Sandbox]
     H --> MEM[Git-backed memory]
-    MS[Memory sync] -. optional git.remote .-> G[Gitea]
+    MS[Memory sync] -.->|optional git.remote| G[Gitea]
     MS --> MEM
     CLEAN[Sandbox cleanup] --> SB
 ```
