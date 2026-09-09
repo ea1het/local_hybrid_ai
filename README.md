@@ -195,6 +195,7 @@ sequenceDiagram
 ├── stacks/                         # Git checkout / source
 │   ├── .env                        # operational, ignored by Git
 │   ├── .env.template               # tracked variable contract
+│   ├── .env.secretsexplained.md    # tracked secret provenance/lifecycle guide
 │   ├── install.py                  # canonical common installer
 │   ├── install.sh                  # convenience wrapper
 │   ├── installer/lifecycle.json    # lifecycle command registry
@@ -274,6 +275,12 @@ The validated Hermes pin is:
 HERMES_IMAGE=nousresearch/hermes-agent
 HERMES_VERSION=v2026.8.31
 ```
+
+## Secrets and credential provenance
+
+`.env.template` is the variable contract; it intentionally does not try to teach the full secret lifecycle. For every current secret—including values intentionally stored outside `.env`—read [`.env.secretsexplained.md`](.env.secretsexplained.md). It records the issuer/generator, secret type, storage location, bootstrap method, consumers and rotation impact.
+
+In particular, do not confuse operator-generated random secrets with service-issued credentials. Hermes' `LITELLM_API_KEY` and `LITELLM_MCP_API_KEY` must be credentials issued/registered by LiteLLM, while Gitea internal/JWT secrets should be generated with Gitea's native generator. Stack-owned runtime identities such as the Stack3 PostgreSQL admin password and Stack6 sandbox SSH keys deliberately do not belong in the shared `.env`.
 
 ## Installation and operations
 
