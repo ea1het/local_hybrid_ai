@@ -143,7 +143,7 @@ litellm-postgres
     secret: LITELLM_DB_PASSWORD
 ```
 
-Both stacks treat PGDATA and database credentials as persistent identity. Existing PGDATA owner/mode/inode are preserved; recursive `chown`, cluster recreation or password regeneration are not routine repair mechanisms.
+Both stacks preserve existing PGDATA during routine maintenance. That operational persistence does not imply identical disaster-recovery policy: Stack2 is intentionally reconstructable, while Stack3's LiteLLM application database is a managed DR resource.
 
 ## Runtime flow
 
@@ -215,9 +215,17 @@ Important distinctions include:
 
 Do not confuse a random string with a service-issued credential, and do not regenerate a persistent identity just because a generator exists.
 
+## Disaster recovery
+
+Disaster recovery is intentionally narrower than runtime persistence. The target DR set is the source repository, a protected copy of the operational `.env`, Stack0 platform PKI, a logical LiteLLM database dump and an application-aware Gitea dump. Stack1, Stack2, Stack5 and Stack6 are intended to be reconstructable; durable Hermes knowledge should be externalized to Git/Gitea.
+
+[`recovery.schema.json`](recovery.schema.json) defines the normalized manifest recovery contract. Every future manifest recovery declaration has a mandatory `recovery.contract` block and an optional `recovery.resources` block. [`dr-howto.md`](dr-howto.md) defines the policy, stack-by-stack decisions, examples, restore phases and boundary for the future generic backup/restore engine.
+
+The recovery engine itself is not implemented yet; schema and documentation are the contract for the next implementation phase.
+
 ## Operations
 
-See [`INSTALLATION.md`](INSTALLATION.md) for clean installation, lifecycle, updates, verification and maintenance. Each stack README defines stack-specific ownership and safety boundaries. AI/coding agents should read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
+See [`INSTALLATION.md`](INSTALLATION.md) for clean installation, lifecycle, updates, verification and maintenance. See [`dr-howto.md`](dr-howto.md) for disaster-recovery design and future backup/restore semantics. Each stack README defines stack-specific ownership and safety boundaries. AI/coding agents should read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
 
 The desired end state after any maintenance is:
 
