@@ -20,7 +20,7 @@ Stack0 owns the shared network. Stack4 verifies it and never creates it.
 
 ## Runner secret lifecycle
 
-The registration token is persistent runtime state:
+The registration token is persistent runtime state during normal operation:
 
 ```text
 ${BASE_PATH}/service_-_gitea-runner/secret/registration-token
@@ -29,6 +29,8 @@ ${BASE_PATH}/service_-_gitea-runner/secret/registration-token
 It is not part of the permanent `.env` contract. PREPARE preserves an existing token, may adopt the former legacy environment value once, or generates/persists one for a fresh deployment. Containers receive the secret through a mounted file path rather than the token value in their environment.
 
 Persistent Gitea secrets such as `GITEA_INTERNAL_TOKEN` and `GITEA_JWT_SECRET` must not be rotated accidentally.
+
+For full DR, the runner token/identity is reconstructable and may be re-registered after Gitea is restored. It is not a core recovery artifact.
 
 ## Configuration layout
 
@@ -47,6 +49,42 @@ sudo ./02-run.sh
 `02-run.sh` requires `.lock`, pulls images, runs Gitea migrations, ensures the configured administrator, starts Gitea/runner and verifies the runner identity.
 
 `.lock` means PREPARED only.
+
+## Disaster recovery
+
+Gitea is a managed DR domain. Preserve the complete logical/application state required to recover repositories and associated metadata with an application-aware native Gitea dump. Do not reduce the contract to selected filesystem paths such as only `gitea.db` or only `git/repositories`.
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "managed"
+    },
+    "resources": [
+      {
+        "id": "gitea-state",
+        "class": "persistent-data",
+        "strategy": "gitea-native-dump",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "application",
+            "service": "gitea"
+          },
+          "restore": {
+            "phase": "post-prepare-pre-deploy"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+The future recovery engine must verify the exact native dump/restore command and flags against the deployed Gitea version before implementation. See [`../dr-howto.md`](../dr-howto.md) and [`../recovery.schema.json`](../recovery.schema.json).
 
 ## Stack6 Git-memory capability
 
@@ -79,4 +117,4 @@ sudo ./01-prepare.sh
 sudo ./02-run.sh
 ```
 
-Use deliberately. Existing Gitea data, runner identity and registration token must remain preserved.
+Use deliberately. Existing Gitea data, runner identity and registration token must remain preserved during normal maintenance even though runner identity is reconstructable in full DR.
