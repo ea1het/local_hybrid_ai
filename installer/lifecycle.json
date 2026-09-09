@@ -3,44 +3,58 @@
   "stacks": {
     "0": {
       "directory": "stack0_-_platform",
+      "required_containers": [],
       "prepare": [["./01-prepare.sh"]],
       "deploy": [],
+      "reconcile": [],
       "verify": [["./verify.sh"]]
     },
     "1": {
       "directory": "stack1_-_haproxy_web",
+      "required_containers": ["haproxy", "web"],
       "prepare": [["./01-prepare.sh"]],
       "deploy": [["docker", "compose", "up", "-d"]],
+      "reconcile": [],
       "verify": [["docker", "compose", "config", "--quiet"]]
     },
     "2": {
       "directory": "stack2_-_searxng_firecrawl",
+      "required_containers": ["searxng", "firecrawl-api", "firecrawl-playwright", "firecrawl-redis", "firecrawl-rabbitmq", "firecrawl-postgres"],
       "prepare": [["./01-prepare.sh"]],
       "deploy": [["docker", "compose", "up", "-d"]],
+      "reconcile": [],
       "verify": [["docker", "compose", "config", "--quiet"]]
     },
     "3": {
       "directory": "stack3_-_litellm",
+      "required_containers": ["litellm-postgres", "litellm"],
       "prepare": [["./01-prepare.sh"]],
       "deploy": [["./02-postgres.sh"], ["docker", "compose", "up", "-d", "litellm"]],
+      "reconcile": [],
       "verify": [["docker", "compose", "config", "--quiet"]]
     },
     "4": {
       "directory": "stack4_-_gitea",
+      "required_containers": ["gitea", "gitea-runner"],
       "prepare": [["./01-prepare.sh"]],
       "deploy": [["./02-run.sh"]],
+      "reconcile": [],
       "verify": [["docker", "compose", "config", "--quiet"]]
     },
     "5": {
       "directory": "stack5_-_dockhand",
+      "required_containers": ["dockhand"],
       "prepare": [["./01-prepare.sh"]],
       "deploy": [["docker", "compose", "up", "-d"]],
+      "reconcile": [],
       "verify": [["docker", "compose", "config", "--quiet"]]
     },
     "6": {
       "directory": "stack6_-_hermes",
+      "required_containers": ["hermes", "hermes-sandbox", "hermes-sandbox-cleanup"],
       "prepare": [["./01-prepare.sh"]],
-      "deploy": [["./05-maintenance-sidecars.sh"], ["docker", "compose", "up", "-d", "--build"], ["./06-reconcile-capabilities.sh", "--restart"]],
+      "deploy": [["./05-maintenance-sidecars.sh"], ["docker", "compose", "up", "-d", "--build"]],
+      "reconcile": [["./06-reconcile-capabilities.sh", "--restart"]],
       "verify": [["docker", "compose", "config", "--quiet"]]
     }
   }
