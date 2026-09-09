@@ -36,7 +36,7 @@ runtime:
 
 Stack2 consumes `redlocal`; Stack0 owns and creates that network.
 
-## Persistent state
+## Persistent operational state
 
 ```text
 ${BASE_PATH}/service_-_searxng/config
@@ -47,7 +47,9 @@ ${BASE_PATH}/service_-_firecrawl-postgres/data
 ${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
 ```
 
-PREPARE preserves existing persistent directories. In particular, existing Firecrawl PostgreSQL PGDATA is never recursively chowned or permission-normalized by PREPARE. Existing inode, owner and mode belong to the PostgreSQL runtime and must be preserved.
+PREPARE preserves existing persistent directories during normal operation. In particular, existing Firecrawl PostgreSQL PGDATA is never recursively chowned or permission-normalized by PREPARE. Existing inode, owner and mode belong to the PostgreSQL runtime and must be preserved.
+
+This operational persistence must not be confused with disaster-recovery value. Stack2 is intentionally reconstructable in the DR model; its PostgreSQL, Redis, RabbitMQ and SearXNG runtime state are not backup targets. See [`../dr-howto.md`](../dr-howto.md).
 
 ## PostgreSQL security model
 
@@ -168,6 +170,23 @@ cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --restart
 ```
 
+## Disaster recovery
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "reconstructable"
+    }
+  }
+}
+```
+
+No Stack2-specific backup artifact is required. A full disaster rebuild creates fresh SearXNG, Firecrawl, Redis, RabbitMQ and Firecrawl PostgreSQL state.
+
 ## Re-preparation
 
 Removing `.lock` is an explicit maintenance decision, not an upgrade mechanism. If PREPARE is deliberately repeated against an existing deployment, persistent directories, PostgreSQL PGDATA and generated runtime secrets must remain intact.
@@ -176,8 +195,9 @@ Removing `.lock` is an explicit maintenance decision, not an upgrade mechanism. 
 
 - `postgres` is administrative only; Firecrawl runtime uses `firecrawl`.
 - the PostgreSQL admin password lives outside `.env` and Git;
-- `FIRECRAWL_DB_PASSWORD` is persistent and must not be rotated by editing `.env` alone;
+- `FIRECRAWL_DB_PASSWORD` is persistent during normal operation and must not be rotated by editing `.env` alone;
 - PostgreSQL is reachable only through the Docker network unless deliberately redesigned;
 - PREPARE never resets or recursively repairs PGDATA;
+- full DR treats Stack2 runtime state as reconstructable rather than a backup target;
 - no migration helper is part of normal installation or routine convergence;
 - absence of Stack2 must not create an external web fallback in consumers.
