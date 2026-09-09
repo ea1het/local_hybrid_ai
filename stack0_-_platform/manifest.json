@@ -20,5 +20,28 @@
     "docker-network:redlocal",
     "runtime:service_-_platform"
   ],
-  "blockers": []
+  "blockers": [],
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "mixed"
+    },
+    "resources": [
+      {
+        "id": "platform-pki",
+        "class": "persistent-identity",
+        "strategy": "archive",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "runtime-path",
+            "path": "${BASE_PATH}/service_-_platform/pki"
+          },
+          "restore": {
+            "phase": "pre-prepare"
+          }
+        }
+      }
+    ]
+  }
 }
