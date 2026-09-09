@@ -18,16 +18,6 @@ services:
 
   # -------------------------------------------------------------------------
   # SearXNG
-  #
-  # No publica ningún puerto en el host.
-  #
-  # Acceso externo exclusivamente mediante HAProxy:
-  #
-  #   https://buscar.casa.lan
-  #
-  # Acceso interno desde redlocal:
-  #
-  #   http://searxng:8080
   # -------------------------------------------------------------------------
   searxng:
     image: docker.io/searxng/searxng:2026.9.5-c7f3080aa
@@ -50,6 +40,7 @@ services:
 
   # -------------------------------------------------------------------------
   # Firecrawl API + workers
+  # Firecrawl authenticates to PostgreSQL with its dedicated non-admin role.
   # -------------------------------------------------------------------------
   firecrawl-api:
     image: ghcr.io/firecrawl/firecrawl@sha256:1910ef022706238c7d13c0e191b9a080efcf10aab049d776ba321abd8dc512ca
@@ -76,9 +67,9 @@ services:
 
       POSTGRES_HOST: "firecrawl-postgres"
       POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${FIRECRAWL_DB_USER:?Set FIRECRAWL_DB_USER in .env}
+      POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?Set FIRECRAWL_DB_PASSWORD in .env}
+      POSTGRES_DB: ${FIRECRAWL_DB_NAME:?Set FIRECRAWL_DB_NAME in .env}
 
       # Firecrawl accede directamente a SearXNG por la red Docker.
       # No debe pasar por HAProxy para comunicación interna.
@@ -212,6 +203,8 @@ services:
   # -------------------------------------------------------------------------
   # PostgreSQL / NuQ.
   # No publica el puerto 5432 en el host.
+  # postgres remains the administrative/bootstrap role. Its password is a
+  # Stack2 runtime secret; Firecrawl itself uses FIRECRAWL_DB_USER instead.
   # -------------------------------------------------------------------------
   firecrawl-postgres:
     image: ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
@@ -222,15 +215,20 @@ services:
       - redlocal
 
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_DB: postgres
+      FIRECRAWL_DB_USER: ${FIRECRAWL_DB_USER:?Set FIRECRAWL_DB_USER in .env}
+      FIRECRAWL_DB_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?Set FIRECRAWL_DB_PASSWORD in .env}
+      FIRECRAWL_DB_NAME: ${FIRECRAWL_DB_NAME:?Set FIRECRAWL_DB_NAME in .env}
 
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_firecrawl-postgres/data:/var/lib/postgresql/data
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_firecrawl-postgres/secret/postgres_admin_password:/run/secrets/postgres_admin_password:ro
+      - ./config/postgres/020-firecrawl-app-role.sh:/docker-entrypoint-initdb.d/020-firecrawl-app-role.sh:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 20
