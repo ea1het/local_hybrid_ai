@@ -62,7 +62,7 @@ Optional capabilities are managed after preparation by `06-reconcile-capabilitie
 stateDiagram-v2
     [*] --> Prepared
     Prepared --> WebOff
-    WebOff --> WebLocal: Stack2 providers available + reconcile
+    WebOff --> WebLocal: Stack2 READY + reconcile
     WebLocal --> WebOff: provider unavailable + reconcile
     Prepared --> GitOff
     GitOff --> GitOn: explicit enable + Gitea + safe Git state
@@ -74,13 +74,29 @@ stateDiagram-v2
 
 Managed source defaults to `disabled_toolsets: [web]`. This is deliberate: removing local provider configuration alone could allow undesired fallback behavior.
 
-When both `searxng` and `firecrawl-api` are running on `redlocal`, reconciliation renders web enabled. If either disappears, reconciliation renders web disabled again.
+When Stack2 is changed through the common installer, Stack2's own `02-wait-ready.sh` must complete before Stack6 reconciliation. This enforces the architectural distinction:
+
+```text
+container running != provider READY
+```
+
+The readiness gate waits for both local endpoints (`searxng:8080` and `firecrawl-api:3002`) before the installer treats that provider transition as ready for consumer reconciliation.
+
+`06-reconcile-capabilities.sh` itself remains consumer-owned and conservative: it inspects provider containers/network attachment and renders web enabled only when both local provider containers are available. If either disappears, reconciliation renders web disabled again.
 
 ```bash
 sudo ./06-reconcile-capabilities.sh --restart
 ```
 
 `--restart` recreates only Hermes when its managed config actually changes and Hermes is already running.
+
+Preferred provider-transition path from repository root:
+
+```bash
+sudo python3 install.py 2 --yes
+```
+
+A healthy Stack2 does not cause a spurious Stack6 reconciliation. A Stack2 deploy/recovery does: deploy -> provider readiness -> Stack6 reconcile -> verification.
 
 ### Git memory desired state
 
@@ -173,6 +189,8 @@ Deferred intelligent work uses Hermes native Cron; there is no standalone schedu
 
 ## Deployment sequence
 
+Manual sequence:
+
 ```bash
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./01-prepare.sh
@@ -185,10 +203,25 @@ sudo ./06-reconcile-capabilities.sh --restart
 docker compose ps
 ```
 
+Common-installer sequence from repository root:
+
+```bash
+python3 install.py 6 --plan
+sudo python3 install.py 6 --yes
+```
+
+`04-gitmem.sh` remains an explicit operator adoption/validation action and is intentionally not folded into automatic common-installer deployment.
+
 The terminal-timeout workaround is retained for the validated Hermes `v2026.8.31` deployment while required.
+
+## Open WebUI planning boundary
+
+A new Open WebUI stack is planned next. Do not place it inside Stack6 merely because it is an AI user interface. It should receive its own stack manifest, runtime ownership, readiness/HTTP verification and explicit dependency/capability contract. The common installer must discover it generically; no Open-WebUI-specific branch belongs in `install.py`.
 
 ## Validated boundaries
 
 The reference deployment has exercised Hermes -> LiteLLM, LiteLLM authentication/local inference, Hermes -> SSH sandbox, incremental web enable/disable, Git-memory desired-state/provider-loss/provider-return behavior, memory-sync -> Gitea, native Cron, sandbox generation persistence, cleanup/quarantine and bounded sandbox reset.
+
+The common installer has additionally been validated on a healthy Stack6 (verification-only, unchanged container IDs) and through a controlled Stack2/SearXNG recovery where provider readiness completed before Stack6 reconciliation and Hermes remained converged.
 
 Do not commit operational `.env`, private SSH keys, Hermes/LiteLLM/Telegram/Buzz credentials, runtime databases or lifecycle state.
