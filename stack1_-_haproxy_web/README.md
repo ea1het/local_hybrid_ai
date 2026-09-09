@@ -1,123 +1,35 @@
 # Stack1 — HAProxy + Web
 
-Entry stack for the `casa.lan` environment. HAProxy is the only TLS termination point. Backends speak HTTP inside the shared Docker network from Stack0.
+Stack1 is the ingress/static-web stack. It requires only Stack0 and provides `ingress.https` and `web.static`.
 
-## Services
-
-- `haproxy`: publishes host ports 80/443 and routes to internal services.
-- `web`: main static portal at `https://casa.lan`.
-
-## Dependency and ownership contract
-
-Stack1 is atomic and requires only Stack0.
-
-Stack0 owns:
-
-```text
-${BASE_PATH}/service_-_platform/pki/tls.crt
-${BASE_PATH}/service_-_platform/pki/tls.key
-shared Docker network
+```mermaid
+flowchart LR
+    C[Client] -->|80/443| H[HAProxy]
+    H --> W[Static web]
+    H -. optional routes .-> B[Other redlocal backends]
+    P[Stack0 PKI] -->|read-only| H
 ```
 
-Stack1 owns:
+## Ownership and dependencies
 
-```text
-${BASE_PATH}/service_-_haproxy/config
-${BASE_PATH}/service_-_web
-```
+Stack0 owns `redlocal` and `${BASE_PATH}/service_-_platform/pki`. Stack1 owns containers `haproxy`/`web` and runtimes `service_-_haproxy`/`service_-_web`.
 
-Stack1 never generates or copies TLS private material. Its HAProxy runtime config contains compatibility symlinks that resolve inside the container to the read-only Stack0 PKI mount.
+Backend stacks are optional from Stack1's installation perspective. HAProxy uses Docker DNS with `init-addr last,none`, allowing ingress to start while a routed backend is absent.
 
-## Structure
-
-```text
-stack1_-_haproxy_web/
-├── .env
-├── docker-compose.yml
-├── 01-prepare.sh
-├── README.md
-└── config/
-    ├── haproxy/
-    │   └── haproxy.cfg
-    └── web/
-        └── index.html
-```
-
-Certificate-generation files no longer belong to Stack1. PKI lifecycle is centralized in `stack0_-_platform/pki.sh`.
-
-## Environment
-
-Stack1 consumes the central deployment environment through `.env -> ../.env`, including:
-
-```text
-STACKS_ROOT
-BASE_PATH
-NETWORK_NAME
-PLATFORM_PKI_GID
-HAPROXY_HTTP_PORT
-HAPROXY_HTTPS_PORT
-ROOT_HOSTNAME
-WEB_TARGET
-SEARCH_HOSTNAME
-SEARCH_TARGET
-CHAT_HOSTNAME
-CHAT_TARGET
-GIT_HOSTNAME
-GIT_TARGET
-GWIA_HOSTNAME
-GWIA_TARGET
-HOMELAB_HOSTNAME
-HOMELAB_TARGET
-AGENTIA_HOSTNAME
-AGENTIA_TARGET
-```
-
-`PLATFORM_PKI_GID` defaults to `1999`. Stack0 owns the `local-hybrid-pki` group and PKI permissions; HAProxy receives this numeric supplementary group in both validation and Compose. The private key remains root-owned with mode `0640`.
-
-The backend stacks are optional from Stack1's installation perspective. HAProxy uses Docker DNS with `init-addr last,none`, so a backend may be absent when Stack1 starts.
+Stack1 never generates/copies TLS private material. HAProxy mounts the Stack0 PKI directory read-only and receives the configured PKI supplementary GID.
 
 ## Preparation
-
-Stack0 must already be prepared, including its network and PKI:
-
-```bash
-cd /opt/docker/stacks
-sudo ./stack0_-_platform/install.sh
-```
-
-Then:
 
 ```bash
 cd /opt/docker/stacks/stack1_-_haproxy_web
 sudo ./01-prepare.sh
 ```
 
-`01-prepare.sh`:
+PREPARE validates the Stack0 lock/network/PKI, preserves existing bind-mounted runtime directories, synchronizes managed HAProxy/static content, validates HAProxy and Compose, then creates `.lock`.
 
-1. validates the central environment contract used by Stack1;
-2. verifies the shared Docker network from Stack0 without creating it;
-3. validates the Stack0 certificate/private-key pair;
-4. deploys only `haproxy.cfg` into Stack1 runtime;
-5. creates or replaces runtime symlinks for HAProxy's historical certificate filenames, pointing to the Stack0 PKI mount;
-6. deploys the static web content;
-7. validates HAProxy using the same central PKI mount used at runtime;
-8. validates Compose;
-9. creates `.lock`.
+`.lock` means PREPARED only. Existing runtime directories are not replaced, so a running bind mount keeps the same directory identity.
 
-`.lock` means only PREPARED. If it already exists, preparation exits without changes.
-
-Preparation preserves the existing HAProxy config and web directories so running bind mounts remain attached to the current content. It updates source files and TLS links without deleting those directories. Other existing files are retained; removing obsolete files is a separate, deliberate operation.
-
-For a deliberate re-preparation:
-
-```bash
-rm .lock
-sudo ./01-prepare.sh
-```
-
-Updating files does not reload HAProxy configuration. Apply configuration changes with a controlled HAProxy reload/recreation when needed. Changes to Compose mounts or supplementary groups require container recreation. Static web content updates do not require recreating `web`.
-
-## Start and normal operation
+## Start
 
 ```bash
 docker compose up -d
@@ -125,9 +37,11 @@ docker compose ps
 docker compose logs -f haproxy
 ```
 
+Updating HAProxy source files does not reload the running process. Apply a controlled reload/recreation when configuration, mounts, supplementary groups or certificate material require it. Static web content can be updated without recreating `web`.
+
 ## PKI lifecycle
 
-Certificate lifecycle belongs exclusively to Stack0:
+PKI belongs exclusively to Stack0:
 
 ```bash
 sudo ../stack0_-_platform/pki.sh status
@@ -135,6 +49,19 @@ sudo ../stack0_-_platform/pki.sh renew
 sudo ../stack0_-_platform/pki.sh recreate --yes
 ```
 
-Stack1 mounts the whole PKI directory read-only, rather than individual files. This ensures replacement files remain visible inside the container. HAProxy still needs a controlled reload/recreate after certificate renewal or recreation before it begins serving the new certificate.
+Mounting the whole PKI directory ensures replacement files become visible inside the container, but HAProxy still needs a controlled reload/recreation to begin serving a renewed certificate.
 
-Stack1 must never store the TLS private key in Git or copy it into `service_-_haproxy`.
+## Re-preparation
+
+Removing `.lock` and rerunning PREPARE is an explicit maintenance operation:
+
+```bash
+rm .lock
+sudo ./01-prepare.sh
+```
+
+Do this only when preparation itself must be repeated. Normal Git updates or optional backend changes do not inherently require deleting the lock.
+
+## Security boundary
+
+Do not store TLS private keys in Stack1 source or copy them into `service_-_haproxy`. The operational `.env` and PKI private material remain outside Git.
