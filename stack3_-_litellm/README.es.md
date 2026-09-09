@@ -1,58 +1,83 @@
-# Stack3 — LiteLLM
+# Stack3 — LiteLLM + PostgreSQL
 
-LiteLLM actúa como gateway de modelos y MCP. Stack3 pasa a ser propietario de su propio servicio PostgreSQL y deja de depender de Stack2 para la infraestructura de base de datos.
+Stack3 actúa como gateway de modelos y MCP. Es atómico, requiere únicamente Stack0 y proporciona `ai.gateway` y `ai.mcp-gateway`.
+
+```mermaid
+flowchart LR
+    A[Aplicaciones / Hermes] --> LL[LiteLLM :4000]
+    LL --> LOCAL[Inferencia local]
+    LL -.->|política explícita| CLOUD[APIs cloud opcionales]
+    A -->|MCP vía gateway| LL
+    LL --> MCP[Servidores MCP upstream]
+    LL --> PG[(litellm-postgres)]
+```
+
+Stack6 requiere ambas capacidades AI. Stack3 no depende de Stack2.
+
+## Propiedad
+
+```text
+contenedores:
+  litellm
+  litellm-postgres
+
+runtime:
+  ${BASE_PATH}/service_-_litellm
+  ${BASE_PATH}/service_-_litellm-postgres
+```
 
 Endpoints internos:
 
 ```text
 http://litellm:4000
-postgresql://litellm-postgres:5432/<LITELLM_DB_NAME>
+litellm-postgres:5432
 ```
 
-La publicación `https://gwia.casa.lan` corresponde a HAProxy cuando Stack1 está instalado.
+Stack1 puede publicar LiteLLM mediante HAProxy, pero no es una dependencia dura de Stack3.
 
-## Propiedad
+## Modelo de identidad PostgreSQL
 
-Stack3 posee:
+Stack3 posee un cluster PostgreSQL dedicado. Igual que Stack2, separa la identidad administrativa de la identidad de aplicación.
 
 ```text
-contenedor: litellm
-contenedor: litellm-postgres
-runtime:    ${BASE_PATH}/service_-_litellm
-runtime:    ${BASE_PATH}/service_-_litellm-postgres
+litellm-postgres
+├── postgres
+│   rol administrativo/bootstrap
+│   password fuera de .env:
+│   ${BASE_PATH}/service_-_litellm-postgres/secret/postgres_admin_password
+│
+└── ${LITELLM_DB_USER}
+    rol de aplicación de LiteLLM
+    base: ${LITELLM_DB_NAME}
+    password: LITELLM_DB_PASSWORD en el .env operativo protegido
 ```
 
-Su única dependencia dura de otro stack es Stack0.
+El rol `postgres` queda reservado para bootstrap y administración del cluster. LiteLLM utiliza su rol dedicado durante la operación normal.
 
-## Entorno
+`LITELLM_SALT_KEY`, la base LiteLLM y ambas credenciales PostgreSQL son identidades persistentes. No deben regenerarse durante PREPARE ni durante una actualización rutinaria.
 
-Stack3 consume el `.env` raíz mediante el enlace gestionado `./.env -> ../.env`. Las variables relevantes son:
+## Contrato de seguridad PGDATA
+
+El cluster dedicado vive en:
 
 ```text
-STACKS_ROOT
-BASE_PATH
-NETWORK_NAME
-LITELLM_IMAGE
-LITELLM_VERSION
-LITELLM_MASTER_KEY
-LITELLM_SALT_KEY
-UI_USERNAME
-UI_PASSWORD
-STORE_MODEL_IN_DB
-LITELLM_DB_NAME
-LITELLM_DB_USER
-LITELLM_DB_PASSWORD
+${BASE_PATH}/service_-_litellm-postgres/data
 ```
 
-El host y puerto PostgreSQL son detalles internos de Stack3: `litellm-postgres:5432`.
+PREPARE nunca cambia owner/mode/inode de un PGDATA existente.
 
-`LITELLM_SALT_KEY` debe preservarse una vez LiteLLM tenga estado cifrado en PostgreSQL.
+```mermaid
+flowchart TD
+    P[01-prepare.sh] --> E{Existe PGDATA?}
+    E -->|sí| V[Validar directorio real]
+    V --> K[Preservar inode / owner / mode]
+    E -->|no| N[Crear directorio vacío]
+    N --> I[El ciclo PostgreSQL lo inicializa]
+```
 
-## Lock de preparación
+No se debe usar `chown` recursivo, reset de base ni recreación del cluster como reparación rutinaria de configuración.
 
-`.lock` significa únicamente que `01-prepare.sh` terminó correctamente. No significa que PostgreSQL o LiteLLM estén arrancados o healthy.
-
-## Instalación nueva
+## Preparación y arranque
 
 ```bash
 cd /opt/docker/stacks/stack3_-_litellm
@@ -62,27 +87,25 @@ docker compose up -d litellm
 docker compose ps
 ```
 
-`02-postgres.sh` arranca y valida el PostgreSQL propiedad de Stack3. En un directorio de datos nuevo, la imagen oficial de PostgreSQL inicializa la base e identidad configuradas para LiteLLM.
+`01-prepare.sh` exige Stack0, valida red y entorno, prepara/preserva el runtime propio, genera o conserva el secreto administrativo PostgreSQL, sincroniza la configuración gestionada de LiteLLM, valida Compose y sólo entonces escribe `.lock`.
 
-## Migración desde el antiguo PostgreSQL de Stack2
+`02-postgres.sh` establece/valida el servicio PostgreSQL dedicado y el contrato de base/rol de aplicación antes de arrancar LiteLLM.
 
-Los despliegues existentes anteriores a la atomicidad de Stack3 conservan el estado de LiteLLM dentro de `firecrawl-postgres`. Para ellos existe un helper de migración de una sola vez:
+`.lock` significa únicamente PREPARED; no es una señal de health de PostgreSQL ni de LiteLLM.
+
+Validaciones acotadas útiles después de mantenimiento:
 
 ```bash
-sudo ./90-migrate-postgres-from-stack2.sh
+docker exec litellm-postgres psql -U postgres -d postgres -Atc 'SELECT 1;'
+docker exec litellm-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CHECKPOINT;'
 ```
 
-El helper:
+## Re-preparación
 
-1. verifica que el LiteLLM actualmente desplegado sigue apuntando a `firecrawl-postgres`;
-2. arranca el PostgreSQL destino vacío de Stack3;
-3. detiene LiteLLM para congelar escrituras;
-4. genera un `pg_dump` en formato custom bajo `/root/litellm-postgres-migration-*`;
-5. restaura en `litellm-postgres`;
-6. compara el inventario de tablas de usuario;
-7. recrea LiteLLM contra la nueva base y espera a que alcance `healthy`;
-8. conserva intacta la antigua base LiteLLM dentro de `firecrawl-postgres` como rollback.
+Eliminar `.lock` es una operación explícita de mantenimiento. Si PREPARE se repite deliberadamente sobre una instalación existente, deben conservarse PGDATA, owner/mode/inode, secretos de base, `LITELLM_SALT_KEY` y la identidad de los directorios bind.
 
-Si se produce un fallo después de detener LiteLLM, el helper intenta recrear LiteLLM automáticamente contra la base legacy de Stack2.
+Los helpers históricos de migración no forman parte del repositorio ni del camino de instalación actual. El repositorio describe y despliega únicamente la arquitectura ya convergida.
 
-La base antigua no debe eliminarse hasta validar operativamente el nuevo servicio y cerrar de forma deliberada la ventana de rollback.
+## Seguridad
+
+No deben versionarse ni rotarse de forma casual `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, las virtual keys de inferencia/MCP, las credenciales de la base de aplicación ni el secreto administrativo PostgreSQL en runtime. La política de proveedores debe permanecer detrás de LiteLLM y no saltarse desde los consumidores.
