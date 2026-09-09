@@ -21,5 +21,24 @@
     "runtime:service_-_hermes-memory-sync",
     "runtime:service_-_hermes-sandbox"
   ],
-  "blockers": []
+  "blockers": [],
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "reconstructable"
+    },
+    "resources": [
+      {
+        "id": "hermes-knowledge",
+        "class": "externalized",
+        "strategy": "git",
+        "sensitive": false,
+        "config": {
+          "source": {
+            "type": "git"
+          }
+        }
+      }
+    ]
+  }
 }
