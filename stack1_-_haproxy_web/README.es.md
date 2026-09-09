@@ -6,7 +6,7 @@ Stack1 es el stack de entrada y web estática. Requiere únicamente Stack0 y pro
 flowchart LR
     C[Cliente] -->|80/443| H[HAProxy]
     H --> W[Web estática]
-    H -. rutas opcionales .-> B[Otros backends de redlocal]
+    H -.->|rutas opcionales| B[Otros backends de redlocal]
     P[PKI de Stack0] -->|solo lectura| H
 ```
 
