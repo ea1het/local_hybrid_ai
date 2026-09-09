@@ -196,7 +196,9 @@ Neither application should use `postgres` during normal operation.
 
 ## 7. PGDATA safety
 
-Existing PostgreSQL data directories are persistent identity. PREPARE may validate them but must not recursively change owner/mode, replace the directory, or reset the cluster.
+Existing PostgreSQL data directories are persistent operational state. PREPARE may validate them but must not recursively change owner/mode, replace the directory, or reset the cluster.
+
+This maintenance rule is separate from disaster-recovery policy. Stack2 is intentionally reconstructable for full DR; Stack3 is recovered from a logical LiteLLM database dump rather than a physical PGDATA copy.
 
 After PostgreSQL maintenance, validate real operations rather than container state alone. Examples:
 
@@ -342,6 +344,40 @@ This cleanup rule does **not** mean deleting runtime data or rollback material c
 - persistent data/identities preserved across source updates;
 - no broad prune/reset operations as maintenance shortcuts.
 
-## 14. Next stack: Open WebUI
+## 14. Disaster recovery contract
 
-Open WebUI must be introduced as a new atomic stack. Before implementation define its stack ID, owned runtime, required/optional dependencies, consumed/provided capabilities, database/storage model, secret provenance, readiness gate and Stack1 ingress contract. The generic resolver should discover it without special-case `install.py` logic.
+Disaster recovery is defined separately from normal runtime persistence. See [`dr-howto.md`](dr-howto.md) for the complete stack-by-stack policy, examples and future engine requirements. [`recovery.schema.json`](recovery.schema.json) is the normative JSON Schema for the manifest `recovery` object.
+
+Every future manifest recovery declaration has:
+
+```text
+recovery
+├── contract     REQUIRED
+└── resources    OPTIONAL
+```
+
+The mandatory contract uses `schema_version: 1` and one of:
+
+```text
+reconstructable
+managed
+mixed
+```
+
+The current intended DR set is:
+
+```text
+Git source at a known commit/tag
++ protected operational .env
++ Stack0 platform PKI archive
++ Stack3 LiteLLM logical PostgreSQL dump
++ Stack4 Gitea application-native dump
+```
+
+Stack1, Stack2, Stack5 and Stack6 are intentionally reconstructable. Stack6 durable knowledge must be externalized to Git/Gitea; runtime caches, sessions, packages, SQLite operational state and sandbox state are not recovery targets.
+
+The backup/restore engine is not implemented yet. Do not interpret the schema as an available operational command until the engine and its tests are added.
+
+## 15. Next stack: Open WebUI
+
+Open WebUI must be introduced as a new atomic stack. Before implementation define its stack ID, owned runtime, required/optional dependencies, consumed/provided capabilities, database/storage model, secret provenance, readiness gate, Stack1 ingress contract **and recovery contract**. The generic resolver and future recovery engine should discover it without stack-specific conditionals.
