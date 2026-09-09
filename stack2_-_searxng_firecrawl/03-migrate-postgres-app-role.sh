@@ -10,7 +10,9 @@ step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "ejecuta este script como root"
-command -v docker >/dev/null 2>&1 || die "docker no esta instalado"
+for cmd in docker install cmp; do
+  command -v "${cmd}" >/dev/null 2>&1 || die "${cmd} no esta instalado"
+done
 [[ -f "${ENV_FILE}" ]] || die "falta ${ENV_FILE}"
 
 set -a
@@ -96,18 +98,6 @@ SELECT format(
 EOSQL
 
 step "Validacion de privilegios del rol"
-docker exec -i \
-  -e FC_APP_USER="${FIRECRAWL_DB_USER}" \
-  firecrawl-postgres \
-  psql -U postgres -d postgres -v ON_ERROR_STOP=1 -At <<'EOSQL'
-\getenv app_user FC_APP_USER
-SELECT CASE
-  WHEN rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR NOT rolcanlogin
-  THEN 1 ELSE 0 END
-FROM pg_roles
-WHERE rolname = :'app_user';
-EOSQL
-
 ROLE_BAD="$(docker exec -i -e FC_APP_USER="${FIRECRAWL_DB_USER}" firecrawl-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 -At <<'EOSQL'
 \getenv app_user FC_APP_USER
 SELECT CASE
@@ -117,23 +107,21 @@ FROM pg_roles
 WHERE rolname = :'app_user';
 EOSQL
 )"
-[[ "${ROLE_BAD}" == "0" ]] || die "el rol aplicativo conserva privilegios administrativos inesperados"
+[[ "${ROLE_BAD}" == "0" ]] || die "rol aplicativo ausente o con privilegios administrativos inesperados"
 log "rol aplicativo sin privilegios administrativos"
 
 step "Prueba TCP y CRUD transaccional como rol aplicativo"
 docker exec -i \
   -e PGPASSWORD="${FIRECRAWL_DB_PASSWORD}" \
-  -e FC_APP_USER="${FIRECRAWL_DB_USER}" \
-  firecrawl-postgres sh -c '
-    psql -h 127.0.0.1 -U "$FC_APP_USER" -d postgres -v ON_ERROR_STOP=1 <<'"'"'EOSQL'"'"'
+  firecrawl-postgres \
+  psql -h 127.0.0.1 -U "${FIRECRAWL_DB_USER}" -d postgres -v ON_ERROR_STOP=1 <<'EOSQL'
 BEGIN;
 SELECT count(*) >= 0 AS can_select FROM nuq.queue_scrape;
-INSERT INTO nuq.queue_scrape(data) VALUES ('"'"'{"migration_probe":true}'"'"'::jsonb) RETURNING id \gset
-UPDATE nuq.queue_scrape SET data='"'"'{"migration_probe":"updated"}'"'"'::jsonb WHERE id=:'"'"'id'"'"';
-DELETE FROM nuq.queue_scrape WHERE id=:'"'"'id'"'"';
+INSERT INTO nuq.queue_scrape(data) VALUES ('{"migration_probe":true}'::jsonb) RETURNING id \gset
+UPDATE nuq.queue_scrape SET data='{"migration_probe":"updated"}'::jsonb WHERE id=:'id';
+DELETE FROM nuq.queue_scrape WHERE id=:'id';
 ROLLBACK;
 EOSQL
-  '
 log "autenticacion TCP y SELECT/INSERT/UPDATE/DELETE: OK (ROLLBACK aplicado)"
 
 step "Migracion preparada"
