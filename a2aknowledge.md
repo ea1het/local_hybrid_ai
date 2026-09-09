@@ -10,11 +10,11 @@
 
 ## 1. What this project is
 
-`local_hybrid_ai` is a **local-first, hybrid AI platform** composed of independent Docker stacks. Its central idea is that useful AI infrastructure should run locally whenever practical, while cloud capabilities may be used deliberately when necessary. The operator, not an accidental fallback path, decides when external services are used.
+`local_hybrid_ai` is a **local-first, hybrid AI platform** composed of independent Docker stacks. Useful AI infrastructure should run locally whenever practical, while cloud capabilities may be used deliberately when necessary. The operator—not an accidental fallback path—decides when external services are used.
 
-The project is not a single Docker Compose application. It is a small platform made of **atomic stacks with explicit ownership, dependencies and capabilities**.
+The project is not one monolithic Docker Compose application. It is a small platform made of **atomic stacks with explicit ownership, dependencies, capabilities, readiness and security boundaries**.
 
-The intended qualities are:
+Core qualities:
 
 - local-first operation;
 - explicit rather than accidental cloud use;
@@ -23,44 +23,56 @@ The intended qualities are:
 - reproducible installation;
 - persistent state separated from source code;
 - safe incremental upgrades;
-- clear security boundaries;
 - no hidden cross-stack mutation;
 - dependency/capability-driven automation rather than hard-coded orchestration;
 - preservation of identities, databases, secrets and runtime state during maintenance.
 
-A future common installer is expected to consume the same manifest model already used by the repository. Do not redesign the stacks around a monolithic installer.
+The common installer is now implemented. It consumes the same manifest model used by the repository; do not redesign the stacks around a monolithic installer.
 
 ---
 
-## 2. Mental model
+## 2. Current mental model
 
-Think of the repository as three layers:
+Think in lifecycle layers:
 
 ```text
-                 OPERATOR / FUTURE INSTALLER
-                            |
-                            v
-              manifest dependency/capability graph
-                            |
-        +-------------------+-------------------+
-        |                   |                   |
-        v                   v                   v
-     PREPARE              DEPLOY             RECONCILE
-  owned resources       containers          optional caps
-        |                   |                   |
-        +-------------------+-------------------+
-                            |
-                            v
-                 persistent runtime state
+                    OPERATOR / COMMON INSTALLER
+                               |
+                               v
+                 manifest dependency/capability graph
+                               |
+                               v
+                     observed current state
+                               |
+          +--------------------+--------------------+
+          |                    |                    |
+          v                    v                    v
+       PREPARE               DEPLOY               VERIFY
+    owned resources      required containers      contracts
+          |                    |
+          +-----------> READINESS <---------------+
+                               |
+                               v
+                    capability transition
+                               |
+                               v
+                  consumer-owned RECONCILE
+                               |
+                               v
+                    persistent runtime state
 ```
 
-The important distinction is:
+The distinctions matter:
 
 - **PREPARE** creates or validates resources owned by a stack.
-- **DEPLOY/START** runs that stack's services.
+- **DEPLOY** runs required services.
+- **READY** means stack-specific service readiness checks have passed.
 - **RECONCILE** adapts a prepared consumer to optional capabilities that are currently available and intentionally enabled.
+- **VERIFY** validates the resulting stack-owned contract.
 
-A `.lock` file means **PREPARED only**. It does **not** mean deployed, running, healthy or reconciled.
+A `.lock` file means **PREPARED only**. It does **not** mean deployed, running, healthy, ready or reconciled.
+
+A container being `running` does **not** automatically mean its capability is READY.
 
 Do not use deletion of `.lock` as a generic update mechanism.
 
@@ -76,6 +88,11 @@ Reference deployment layout:
 │   ├── .git/
 │   ├── .env                        # operational secrets, ignored by Git
 │   ├── .env.template               # tracked variable contract
+│   ├── install.py                  # canonical common installer
+│   ├── install.sh                  # convenience wrapper
+│   ├── installer/
+│   │   ├── lifecycle.json
+│   │   └── test_installer.py
 │   ├── stack0_-_platform/
 │   ├── stack1_-_haproxy_web/
 │   ├── stack2_-_searxng_firecrawl/
@@ -86,7 +103,7 @@ Reference deployment layout:
 └── runtime/                        # persistent mutable state
 ```
 
-Central deployment variables are conceptually:
+Central deployment variables:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
@@ -133,13 +150,26 @@ flowchart TB
     S4 -.->|optional git.remote| S6
 ```
 
-Every application stack requires Stack0.
+Every current application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are **optional providers** for Stack6 and must not become hidden mandatory dependencies.
 
-Stack6 additionally requires Stack3.
+A full deployment may be installed in numeric order for human convenience, but `0,1,2,3,4,5,6` is not the dependency model. The minimum required plan for Hermes is `0 -> 3 -> 6`.
 
-Stack2 and Stack4 are **optional providers** for Stack6. They must not become hidden mandatory dependencies.
+### Next planned stack — Open WebUI
 
-A full deployment may be installed in numeric order for human convenience, but `0,1,2,3,4,5,6` is not the dependency model. For example, the minimum required plan for Hermes is `0 -> 3 -> 6`.
+A new independent Open WebUI stack is planned next.
+
+Do **not** assume its final stack ID, dependency graph or capability names before inspecting the desired Open WebUI architecture. The intended engineering pattern is nevertheless fixed:
+
+1. create a new atomic `stackN_-_*` directory;
+2. declare ownership and persistence explicitly;
+3. declare required/optional dependencies and consumed/provided capabilities in `manifest.json`;
+4. define required containers and lifecycle commands in `installer/lifecycle.json`;
+5. define an HTTP/application readiness gate before any capability/ingress dependency relies on it;
+6. integrate ingress through the appropriate existing contract rather than hidden cross-stack mutation;
+7. add planner/lifecycle tests;
+8. update root, installation, stack and A2A documentation in the same change.
+
+Do not add `if open_webui` or `if stack7` logic to `install.py` merely to make tomorrow's work easy. The generic resolver should discover the new stack.
 
 ---
 
@@ -150,18 +180,18 @@ Every `stackN_-_*` directory has a `manifest.json`. Stack0's `manifests.py` disc
 Important manifest concepts:
 
 - `requires`: mandatory stack dependencies;
-- `target_requires`: supported alternate/target dependency graph for architecture evolution;
+- `target_requires`: alternate/target dependency graph for architecture evolution;
 - `optional`: optional stack relationships;
 - `provides`: capabilities exported by the stack;
 - `consumes`: capabilities that must exist in the required dependency closure;
-- `optional_consumes`: capabilities reachable through required/optional dependencies;
+- `optional_consumes`: optional capabilities reachable through declared relationships;
 - `owns`: containers, runtimes, volumes or other resources for which the stack is responsible;
-- `atomic`: whether the stack currently satisfies the atomic-stack contract;
+- `atomic`: whether the stack satisfies the atomic-stack contract;
 - `blockers`: explicit blockers if it does not.
 
 The resolver validates dependency references, cycles, duplicate capability/resource entries, global ownership collisions and capability reachability.
 
-Before changing dependencies or ownership, run and understand:
+Useful commands:
 
 ```bash
 python3 stack0_-_platform/manifests.py validate
@@ -172,82 +202,184 @@ python3 stack0_-_platform/manifests.py plan 6
 python3 stack0_-_platform/manifests.py plan all
 ```
 
-### Design rule for future automation
-
-If an installer needs to know that Stack6 requires Stack3, it should learn that from manifests/capabilities. Do not encode logic such as:
+If an installer needs to know that Stack6 requires Stack3, it must learn that from manifests/capabilities. Do not encode:
 
 ```text
 if stack == 6: install stack3
 ```
 
-The desired pattern is generic graph resolution.
+---
+
+## 6. Common installer v1 — current behavior
+
+Canonical portable entry point:
+
+```bash
+python3 install.py ...
+```
+
+The tracked root `install.sh` is a convenience wrapper. Some Git contents/update paths store newly-created files as `100644`, so do not assume a fresh checkout can execute `./install.sh`. Portable wrapper invocation is:
+
+```bash
+bash ./install.sh 6 --dry-run
+```
+
+Preferred real execution:
+
+```bash
+sudo python3 install.py 6 --yes
+sudo python3 install.py all --yes
+```
+
+### Planner behavior
+
+The installer:
+
+1. validates manifest and lifecycle registry structure;
+2. resolves required dependency closure from manifests;
+3. observes PREPARED state from `.lock`;
+4. observes DEPLOYED state from required-container process state;
+5. schedules PREPARE only when not prepared;
+6. schedules DEPLOY only when required services are not deployed;
+7. executes provider-specific readiness commands in the stack lifecycle before consumer reconciliation;
+8. treats capabilities as changed only for actual state transitions, not merely because a provider was requested;
+9. discovers affected prepared consumers generically through `optional_consumes`;
+10. invokes consumer-owned RECONCILE actions;
+11. runs VERIFY actions;
+12. validates required runtime containers after real execution.
+
+`--reconcile` is the explicit operator override for intentionally reconciling a stable requested consumer.
+
+### Proven installer states
+
+Validated conceptual transitions:
+
+```text
+not prepared
+    -> PREPARE
+    -> DEPLOY
+    -> readiness where declared
+    -> RECONCILE affected consumers
+    -> VERIFY
+
+prepared / not deployed
+    -> DEPLOY
+    -> readiness where declared
+    -> RECONCILE affected consumers
+    -> VERIFY
+
+prepared / deployed / converged
+    -> VERIFY only
+
+explicit --reconcile
+    -> RECONCILE intentionally
+    -> VERIFY
+```
+
+A healthy requested Stack2 or Stack4 must not spuriously reconcile Stack6.
 
 ---
 
-## 6. Stack0 — platform foundation
+## 7. Critical readiness lesson — DEPLOYED != READY
+
+This was learned through a real controlled recovery test.
+
+Originally the installer saw SearXNG transition from `exited` to `running`, immediately reconciled Stack6, and only afterwards a connectivity test found `searxng:8080` still refusing connections. The deployment itself was correct; the capability was simply not ready yet.
+
+The repaired Stack2 lifecycle inserts:
+
+```text
+docker compose up -d
+    -> 02-wait-ready.sh
+       -> searxng:8080 READY
+       -> firecrawl-api:3002 READY
+    -> Stack6 RECONCILE
+```
+
+The readiness gate is also part of Stack2 VERIFY.
+
+The repeated controlled recovery then validated:
+
+- SearXNG was deliberately stopped;
+- installer detected Stack2 as PREPARED + NOT-DEPLOYED;
+- Compose restarted the same SearXNG container ID rather than recreating it;
+- `02-wait-ready.sh` completed before Stack6 reconciliation;
+- Hermes could reach SearXNG and Firecrawl afterwards;
+- Hermes itself was not recreated because managed config was already converged;
+- `.env` and all `.lock` files remained unchanged;
+- the second run contained no state transitions.
+
+General rule for future stacks—including Open WebUI: **a user-facing/provider capability must have an explicit readiness definition if `running` is not sufficient evidence of usability.**
+
+---
+
+## 8. Stack0 — platform foundation
 
 Stack0 is mandatory and intentionally different from application stacks. It establishes shared platform contracts rather than running an application service.
 
-It owns or manages the platform-level concerns, including:
+It owns/manages:
 
-- the central environment contract and stack `.env` compatibility links;
+- central environment contract and stack `.env` compatibility links;
 - shared Docker network `redlocal`;
 - platform runtime;
 - platform PKI;
 - manifest discovery and validation.
 
-Application stacks must **consume** shared platform resources rather than independently recreating them.
-
-For example, an application stack should validate that `redlocal` exists; it should not silently create its own substitute network.
+Application stacks consume shared platform resources rather than recreating substitutes.
 
 Stack0's PKI is a persistent identity. Existing valid PKI must not be rotated implicitly by routine preparation.
 
 ---
 
-## 7. Stack1 — HAProxy and static web
+## 9. Stack1 — HAProxy and static web
 
 Stack1 is ingress/static web. It requires only Stack0.
 
 Important boundaries:
 
-- Stack0 owns the shared network and platform PKI.
-- Stack1 consumes PKI read-only.
-- Stack1 owns its own HAProxy and web containers/runtimes.
-- Other application stacks are optional backends from Stack1's installation perspective.
-- HAProxy configuration is designed so ingress can exist while a routed backend is absent.
+- Stack0 owns the shared network and platform PKI;
+- Stack1 consumes PKI read-only;
+- Stack1 owns HAProxy and web containers/runtimes;
+- other application stacks are optional backends from Stack1's installation perspective;
+- HAProxy configuration can exist while a routed backend is absent.
 
-A configuration-file update is not necessarily applied by `docker restart`; changes to Compose environment, mounts, supplementary groups or similar container definition details generally require controlled recreation.
+A configuration-file update is not necessarily applied by `docker restart`; changes to Compose environment, mounts, groups or container definition usually require controlled recreation.
 
-Preserve bind-mounted runtime directory identity when a running container depends on it.
+When Open WebUI is added, treat its HAProxy relationship as an explicit ingress integration. Do not make Stack1 own Open WebUI runtime or state.
 
 ---
 
-## 8. Stack2 — SearXNG and Firecrawl
+## 10. Stack2 — SearXNG and Firecrawl
 
-Stack2 is the local web capability provider.
-
-It provides:
+Stack2 is the local web capability provider:
 
 ```text
 web.search
 web.extract
 ```
 
-It owns SearXNG and the Firecrawl service set, including its own persistence.
-
-Important rules:
+Rules:
 
 - requires Stack0 only;
+- owns SearXNG and the Firecrawl service set/persistence;
 - does not create `redlocal`;
-- does not mutate Stack6 configuration directly;
-- must remain independently deployable;
-- appearing or disappearing as a provider is handled by consumer reconciliation.
+- does not mutate Stack6 directly;
+- remains independently deployable;
+- provider appearance/disappearance is handled by consumer reconciliation;
+- provider transition must pass `02-wait-ready.sh` before the common installer reconciles consumers.
 
-If Stack2 is added after Hermes is already running, Stack2 should be deployed and verified first. Stack6 is then reconciled. This separation is deliberate.
+Manual recovery/deployment should therefore use:
+
+```bash
+docker compose up -d
+sudo bash ./02-wait-ready.sh
+```
+
+before manually reconciling Stack6.
 
 ---
 
-## 9. Stack3 — LiteLLM and dedicated PostgreSQL
+## 11. Stack3 — LiteLLM and dedicated PostgreSQL
 
 Stack3 is the **AI policy boundary**. It provides:
 
@@ -256,40 +388,28 @@ ai.gateway
 ai.mcp-gateway
 ```
 
-Hermes consumes these capabilities.
+Hermes consumes these capabilities. LiteLLM is where inference/provider policy belongs; Hermes should not silently bypass it for provider inference.
 
-LiteLLM is where inference/provider policy belongs. Hermes should not silently bypass LiteLLM for model-provider inference.
-
-Stack3 owns its dedicated PostgreSQL service and runtime. This database is a persistent identity, not disposable cache.
+Stack3 owns its dedicated PostgreSQL service/runtime. This database is persistent identity, not disposable cache.
 
 ### PGDATA safety — critical historical lesson
 
-An earlier PREPARE implementation used host-side directory creation with forced `root:root` ownership on the PostgreSQL data directory. On an existing bind-mounted cluster this changed the PGDATA root metadata and later caused PostgreSQL permission failures such as inaccessible `pg_logical`, `pg_filenode.map` and relation files.
+An earlier PREPARE implementation forced existing PostgreSQL data-directory metadata to `root:root`, causing later PostgreSQL permission failures.
 
-The repaired contract is:
+Current contract:
 
-- if PGDATA already exists, PREPARE validates it but **does not change its owner, mode or inode**;
-- if the runtime is new, the PostgreSQL container is allowed to initialize the empty data directory according to its own runtime requirements;
-- do not recursively `chown` an existing database tree as a routine repair;
-- do not infer that a database is safe merely because a container temporarily reports healthy;
-- after relevant maintenance, validate actual database operations such as `SELECT 1` and `CHECKPOINT`.
+- if PGDATA exists, PREPARE validates it but does **not** change owner, mode or inode;
+- if runtime is new, the PostgreSQL container initializes the empty directory according to its own requirements;
+- do not recursively `chown` an existing cluster as routine repair;
+- after relevant maintenance, test real database operations such as `SELECT 1` and `CHECKPOINT`.
 
-This incident is a general lesson for the entire repository: **preserving a path name is not enough; bind-mounted directory identity, ownership and process expectations matter.**
+Persistent identities include LiteLLM DB state, `LITELLM_SALT_KEY`, keys and PostgreSQL credentials.
 
-### Persistent LiteLLM identities
-
-Do not casually rotate or regenerate:
-
-- LiteLLM database state;
-- `LITELLM_SALT_KEY`;
-- master/inference/MCP keys;
-- PostgreSQL administrative/application credentials.
-
-The legacy `90-migrate-postgres-from-stack2.sh` is a one-time migration tool for old deployments. It is not a clean-install step and must not be rerun after a successful migration.
+`90-migrate-postgres-from-stack2.sh` is a one-time legacy migration helper only. The common installer must never invoke it for normal installation/convergence.
 
 ---
 
-## 10. Stack4 — Gitea and runner
+## 12. Stack4 — Gitea and runner
 
 Stack4 provides:
 
@@ -298,29 +418,19 @@ git.remote
 git.runner
 ```
 
-It owns Gitea and runner persistence.
+It owns Gitea and runner persistence. Persistent identities include Gitea data, runner registration state and registration secret/token.
 
-Persistent identities include Gitea data, runner registration state and registration secret/token. Do not recreate them casually.
-
-### Important Gitea configuration lesson
-
-The deployment uses the rootless Gitea image. Web and Git-over-SSH subprocesses must resolve the same effective Gitea configuration. Configuration-path changes can therefore affect SSH Git even if the web service appears healthy.
-
-When changing Gitea paths/environment, validate both web health and an actual Git/SSH operation.
+Gitea web health does not prove SSH Git health. After path/environment changes, validate both web and a real Git-over-SSH operation.
 
 ---
 
-## 11. Stack5 — Dockhand
+## 13. Stack5 — Dockhand
 
-Stack5 provides container-management capability and owns the external Docker volume `dockhand_data`.
-
-The volume is persistent state. PREPARE may create it when absent, but must preserve an existing volume. Never use routine cleanup logic that deletes/recreates it.
+Stack5 owns the external Docker volume `dockhand_data`. The volume is persistent state. PREPARE may create it when absent but must preserve an existing volume.
 
 ---
 
-## 12. Stack6 — Hermes agent platform
-
-Stack6 is the agent/orchestration layer.
+## 14. Stack6 — Hermes agent platform
 
 Mandatory dependencies:
 
@@ -352,53 +462,43 @@ ai.sandbox
 ai.memory
 ```
 
-Stack6 contains more than the Hermes process. Its security and persistence design includes:
-
-- Hermes agent;
-- isolated SSH execution sandbox;
-- Git-backed memory;
-- optional conservative memory synchronization;
-- deterministic sandbox cleanup.
+Stack6 owns Hermes, isolated SSH execution sandbox, Git-backed memory, optional conservative memory synchronization and deterministic sandbox cleanup.
 
 ### Security boundary
 
 Hermes does not receive the Docker socket and does not need privileged mode.
 
-Execution goes through SSH to `hermes-sandbox` on the isolated `hermes-exec` network.
+Execution goes through SSH to `hermes-sandbox` on isolated `hermes-exec`. The sandbox is not attached to `redlocal`. Cleanup has no network.
 
-The sandbox is not attached to `redlocal`.
-
-The cleanup sidecar has no network.
-
-Do not weaken these boundaries merely because direct Docker/host access would be easier for an agent.
+Do not weaken these boundaries for convenience.
 
 ---
 
-## 13. Optional web capability and fail-closed behavior
+## 15. Optional web capability and fail-closed behavior
 
-When Stack2 is unavailable, Hermes web tooling is deliberately disabled.
+When Stack2 is unavailable, Hermes web tooling is deliberately disabled. Removing local configuration must not silently permit an external/keyless fallback.
 
-This is important because simply removing local backend configuration may permit a tool/framework to fall through to an external or keyless provider. That would violate the project's local-first/operator-choice principle.
-
-Therefore:
+Desired behavior:
 
 ```text
-Stack2 available and healthy
-        -> Stack6 reconcile
-        -> local web tools may be enabled
+Stack2 READY
+    -> Stack6 reconcile
+    -> local web tools may be enabled
 
 Stack2 unavailable/incomplete
-        -> Stack6 reconcile
-        -> web tools explicitly disabled
+    -> Stack6 reconcile
+    -> web tools explicitly disabled
 ```
 
-Do not replace explicit disablement with "configuration absent" unless upstream behavior has been proven to fail closed.
+The common installer adds an important ordering guarantee during Stack2 transitions: provider readiness completes before consumer reconciliation.
+
+`06-reconcile-capabilities.sh` remains consumer-owned and does not create Stack2 resources.
 
 ---
 
-## 14. PREPARE vs RECONCILE
+## 16. PREPARE vs RECONCILE
 
-This distinction exists because optional providers may be installed later.
+Optional providers may be installed later.
 
 Example:
 
@@ -407,56 +507,43 @@ Example:
 3. install Stack6;
 4. Hermes runs without web capability;
 5. later install Stack2;
-6. verify Stack2;
-7. reconcile Stack6;
-8. Hermes gains local web capability.
+6. Stack2 deploys and becomes READY;
+7. common installer discovers changed `web.search`/`web.extract`;
+8. prepared Stack6 is reconciled;
+9. Hermes gains local web capability.
 
-Stack2 does not edit Stack6 files. Stack6 owns its own managed configuration.
-
-The current Stack6 reconciliation entry point is:
-
-```bash
-sudo ./06-reconcile-capabilities.sh --restart
-```
-
-The future installer should generalize this pattern: detect changed provider capabilities, identify prepared consumers and invoke the consumer-owned reconciliation mechanism. Avoid provider-specific mutation of consumers.
+Provider stacks do not edit consumer runtime/configuration directly. Consumers own their own reconciliation.
 
 ---
 
-## 15. Git-backed memory desired state
+## 17. Git-backed memory desired state
 
 Gitea availability alone must not automatically turn Git-backed memory synchronization on.
 
-There are two independent concepts:
+Keep separate:
 
 ```text
 operator intent
 provider availability
 ```
 
-A new deployment defaults Git-memory synchronization to disabled. The operator can explicitly enable or disable persistent intent through Stack6 reconciliation.
+A new deployment defaults Git-memory synchronization to disabled. The operator explicitly enables/disables persistent intent through Stack6 reconciliation.
 
 If intent is enabled but Gitea disappears:
 
-- stop only the memory-sync sidecar as needed;
+- stop only memory-sync if necessary;
 - preserve local memory;
 - preserve Git worktree;
 - preserve SSH identity;
 - preserve desired state.
 
-When Gitea returns, reconciliation can resume only after safe Git-state checks.
-
-Routine reconciliation must not silently clone, merge, rebase, force-push or resolve divergence.
-
-The memory-sync behavior is intentionally conservative: refuse unsafe ambiguity rather than inventing conflict resolution.
-
-Only the bounded memory files are automatically mutable; unrelated tracked files in the memory repository are not an invitation for the sidecar to rewrite them.
+Routine reconciliation must not silently clone, merge, rebase, force-push or invent divergence resolution.
 
 ---
 
-## 16. Hermes sandbox lifecycle
+## 18. Hermes sandbox lifecycle
 
-The sandbox workspace is scratch space, not a durable artifact store.
+The sandbox workspace is scratch space, not durable artifact storage.
 
 Persistent lifecycle identity includes both:
 
@@ -465,39 +552,31 @@ ${BASE_PATH}/service_-_hermes-sandbox/data/workspace/.sandbox-generation
 ${BASE_PATH}/service_-_hermes-sandbox/data/state/state.db
 ```
 
-These must agree.
+They must agree. A mismatch is corruption and should fail closed.
 
-Do not delete one and preserve the other casually. A generation mismatch is treated as corruption and should fail closed.
-
-The bounded reset mechanism intentionally resets only sandbox workspace/lifecycle state while preserving unrelated Hermes state, Git memory and SSH identities.
-
-Never turn a bounded recovery into a whole-stack wipe.
+The bounded reset intentionally resets only sandbox workspace/lifecycle state while preserving unrelated Hermes state, Git memory and SSH identities.
 
 ---
 
-## 17. Scheduling philosophy
+## 19. Scheduling philosophy
 
-Hermes native Cron is the mechanism for deferred **agentic** work. There is no need for a separate scheduler stack merely to schedule Hermes reasoning.
-
-Small deterministic sidecars are appropriate for mechanical tasks such as memory synchronization or sandbox cleanup.
-
-Keep the distinction:
+Hermes native Cron is the mechanism for deferred **agentic** work. Small deterministic sidecars are appropriate for mechanical tasks such as memory synchronization or sandbox cleanup.
 
 ```text
 reasoning / agentic deferred work -> Hermes native Cron
 mechanical deterministic work     -> small bounded sidecar
 ```
 
-Scheduled agent prompts must be self-contained because future executions are fresh agent sessions and cannot depend on transient conversational context or scratch files that may no longer exist.
+Scheduled agent prompts must be self-contained because future executions are fresh agent sessions.
 
 ---
 
-## 18. Persistent identities: assume preservation unless explicitly told otherwise
+## 20. Persistent identities: preserve by default
 
-An agent should treat the following as sensitive persistent identities/state:
+Treat these as sensitive persistent identities/state:
 
 - operational root `.env`;
-- platform PKI and private key;
+- platform PKI/private key;
 - LiteLLM database and salt/key material;
 - PostgreSQL clusters and credentials;
 - Gitea data and secrets;
@@ -506,54 +585,47 @@ An agent should treat the following as sensitive persistent identities/state:
 - Git-backed memory repository;
 - memory-sync SSH identity;
 - sandbox SSH host identity;
-- sandbox generation marker and lifecycle database;
+- sandbox generation marker/lifecycle DB;
 - `dockhand_data` volume;
 - stack `.lock` state unless intentionally re-preparing.
 
-The safe default is **preserve**.
-
-If a change genuinely requires rotation, reset, migration or destructive recreation, that should be an explicit operator decision with a rollback plan.
+If a change genuinely requires rotation/reset/migration/destructive recreation, make that an explicit operator decision with rollback.
 
 ---
 
-## 19. Things an AI agent must not do casually
+## 21. Things an AI agent must not do casually
 
 Do not:
 
 - run `docker compose down -v`;
-- run broad Docker volume pruning;
+- run broad Docker volume/system pruning;
 - delete `/opt/docker/runtime`;
 - reset databases to fix configuration errors;
-- rerun legacy migrations without proving they are required;
-- rotate secrets because generation is easier than preservation;
-- overwrite the operational `.env` from `.env.template`;
-- print secrets or full effective configuration into logs/chat;
-- recursively `chown` persistent application data without understanding ownership semantics;
-- make Stack2 or Stack4 hidden mandatory dependencies of Stack6;
-- let Stack2 mutate Stack6 directly;
-- give Hermes the Docker socket as a shortcut;
-- attach the execution sandbox to `redlocal` without an explicit architectural decision;
+- rerun legacy migrations without proving necessity;
+- rotate secrets because regeneration is easier than preservation;
+- overwrite operational `.env` from `.env.template`;
+- print secrets/full effective config into chat/logs;
+- recursively `chown` persistent application data without ownership analysis;
+- make optional providers hidden mandatory dependencies;
+- let providers mutate consumer runtime directly;
+- give Hermes Docker socket access;
+- attach sandbox to `redlocal` without explicit architectural decision;
 - silently enable cloud fallback;
 - force-push Git memory or auto-resolve divergence;
 - assume `.lock` means healthy;
-- assume `docker restart` applies Compose definition changes;
-- assume a healthy container proves persistent storage is safe;
-- hard-code dependency knowledge that already belongs in manifests;
-- delete/recreate a bind-mounted directory just to update files inside it.
+- assume `running` means READY;
+- assume `docker restart` applies Compose-definition changes;
+- assume a healthy container proves persistent storage safety;
+- hard-code dependency knowledge that belongs in manifests;
+- delete/recreate bind-mounted directories just to update files inside them.
 
 ---
 
-## 20. How to approach a bug or requested modification
+## 22. How to approach a bug or requested modification
 
-A new agent should use this sequence.
+### Step 1 — establish ownership and scope
 
-### Step 1 — establish scope
-
-Identify:
-
-- which stack owns the affected resource;
-- whether the problem is source, runtime, dependency, capability, persistence, networking or security;
-- which other stacks are actual required dependencies versus merely optional providers/consumers.
+Identify the owning stack and whether the issue is source, runtime, dependency, capability, readiness, persistence, networking or security.
 
 ### Step 2 — read before changing
 
@@ -567,94 +639,71 @@ a2aknowledge.md
 <affected-stack>/manifest.json
 <affected-stack>/docker-compose.yml
 <affected-stack>/01-prepare.sh
-other lifecycle scripts involved in the change
+other lifecycle/readiness/reconcile scripts involved
+installer/lifecycle.json when lifecycle orchestration changes
+installer/test_installer.py when planner behavior changes
 ```
-
-For cross-stack changes, inspect both provider and consumer manifests/scripts.
 
 ### Step 3 — identify invariants
 
-Before touching runtime, record what must not change. Depending on the stack this may include:
-
-- file/directory inode;
-- owner/mode;
-- content hash;
-- container ID;
-- volume identity;
-- secret hash;
-- database identity;
-- SSH host/user key;
-- Git branch/remote/equality state;
-- sandbox generation;
-- `.env` hash;
-- `.lock` presence/content.
+Record what must not change: inode, owner/mode, hashes, container IDs, volume identity, DB identity, secrets, SSH identities, Git state, sandbox generation, `.env`, `.lock`.
 
 ### Step 4 — prefer the smallest ownership-correct fix
 
-Modify the stack that owns the behavior.
-
-If an optional provider appears, prefer consumer reconciliation over provider-side edits.
-
-If a shared platform resource is wrong, fix Stack0 rather than teaching every stack to create its own version.
+Fix the stack that owns the behavior. Provider appearance should usually trigger consumer reconciliation, not provider-side mutation.
 
 ### Step 5 — validate source before runtime
 
-Typical checks include:
+Typical checks:
 
 ```bash
 bash -n <script>
 docker compose config --quiet
 python3 stack0_-_platform/manifests.py validate
 python3 stack0_-_platform/manifests.py validate --target
+python3 -m unittest -v installer.test_installer
 git diff --check
 ```
 
-Use the checks relevant to the change; do not blindly run commands that expose secrets.
+### Step 6 — preserve availability
 
-### Step 6 — preserve service availability
-
-Do not stop the entire platform for convenience. Stop/recreate only the affected services when possible.
-
-A database repair should not require stopping unrelated Gitea, Firecrawl, Dockhand or Hermes services unless a demonstrated dependency requires it.
+Do not stop the whole platform for convenience. Stop/recreate only affected services when possible.
 
 ### Step 7 — test the real failure mode
-
-Health checks are necessary but not sufficient.
 
 Examples:
 
 - PostgreSQL: actual query + checkpoint/write path;
-- Gitea: web health + real SSH Git operation;
-- LiteLLM: authenticated request through the gateway;
+- Gitea: web + actual SSH Git operation;
+- LiteLLM: authenticated gateway request;
 - Hermes: gateway connectivity + sandbox SSH execution;
-- web capability: actual local provider reachability and correct enabled/disabled managed config;
-- Git memory: no-change sync and controlled write round trip;
-- sandbox: generation integrity and persistence across restart.
+- Stack2: actual SearXNG/Firecrawl readiness and Hermes connectivity;
+- Git memory: safe no-change sync and controlled round trip;
+- sandbox: generation integrity/persistence;
+- future Open WebUI: HTTP/application readiness plus its real LiteLLM/backend interaction, not merely container state.
 
 ### Step 8 — verify invariants again
 
-Compare before/after state. A fix that restores functionality but unexpectedly rotates identities or mutates unrelated runtime is not a clean fix.
+A functional fix that unexpectedly rotates identities or mutates unrelated runtime is not clean.
 
 ### Step 9 — leave Git and deployment coherent
 
-The desired end state is:
+Desired end state:
 
-- source change committed deliberately;
-- repository worktree clean;
-- deployment using the intended commit;
-- runtime preserved except for intentional changes;
+- deliberate committed source change;
+- clean worktree;
+- deployment on intended commit;
+- runtime preserved except intentional changes;
 - affected services validated;
-- no forgotten temporary branches/test artifacts unless intentionally retained.
+- no forgotten test artifacts/branches.
 
 ---
 
-## 21. Shell-safety when giving commands to the operator
+## 23. Shell-safety when giving commands to the operator
 
 The operator often pastes command blocks into an existing interactive shell.
 
-Therefore command blocks intended for direct interactive pasting should be designed so a failed check does not terminate the user's shell session.
-
-Avoid interactive-paste blocks containing global constructs such as:
+Interactive-paste blocks must not contain global constructs that can terminate that shell, such as:
 
 ```bash
 set -e
@@ -663,223 +712,185 @@ exit
 exec ...
 ```
 
-Instead, capture return codes and branch explicitly:
+Capture return codes and branch explicitly. End diagnostics with a visible line such as:
 
 ```bash
-some_command
-RC=$?
-
-echo "rc=$RC"
-
-if [ "$RC" -eq 0 ]; then
-    echo "OK"
-else
-    echo "REVIEW REQUIRED"
-fi
-
 echo "La shell permanece abierta."
 ```
 
-This rule is about commands pasted into the operator's current shell. Repository scripts executed as child processes may legitimately use strict shell options when appropriate.
+Repository scripts executed as child processes may legitimately use strict shell options.
 
-Also avoid destructive cleanup in diagnostic blocks. Diagnostics should observe first, mutate only after the failure pattern is confirmed.
+Also avoid destructive cleanup in diagnostic blocks. Observe first, mutate only after the failure pattern is confirmed.
 
 ---
 
-## 22. Security philosophy
+## 24. Security philosophy
 
-Security is structural, not a final hardening pass.
+Security is structural:
 
-Key principles:
-
-- secrets remain outside Git;
-- the agent does not get unrestricted Docker control;
-- code execution occurs in an isolated sandbox;
-- the sandbox has a narrower network than the agent;
-- deterministic cleanup has no network;
-- provider policy is centralized at LiteLLM;
+- secrets outside Git;
+- agent without unrestricted Docker control;
+- execution in isolated sandbox;
+- sandbox network narrower than agent network;
+- deterministic cleanup without network;
+- provider policy centralized at LiteLLM;
 - optional local capabilities fail closed rather than silently escalating to cloud;
 - Git synchronization refuses unsafe divergence;
-- destructive recovery is bounded to the smallest state domain possible.
+- destructive recovery bounded to the smallest state domain.
 
-A proposed convenience feature that violates one of these boundaries should be treated as an architectural change, not a small implementation detail.
+A convenience feature that violates these boundaries is an architectural change, not a small implementation detail.
 
 ---
 
-## 23. Why the architecture is intentionally capability-driven
+## 25. Why architecture is capability-driven
 
-Stack numbers are deployment identities, but capabilities describe architectural meaning.
+Stack numbers are deployment identities; capabilities describe architectural meaning.
 
-For example, Stack6 does not conceptually need "directory stack3". It needs:
+Stack6 conceptually needs:
 
 ```text
 ai.gateway
 ai.mcp-gateway
 ```
 
-The current provider happens to be Stack3, and the manifest graph guarantees those required capabilities are available through its required dependency closure.
+The current provider happens to be Stack3. Likewise optional features are expressed as `web.search`, `web.extract`, `git.remote`.
 
-Likewise Stack6 can optionally consume:
-
-```text
-web.search
-web.extract
-git.remote
-```
-
-This matters for future evolution. A common installer or future architecture should reason about declared contracts rather than accumulate stack-number conditionals.
+This lets future stacks—including Open WebUI—join the platform by declaring contracts rather than accumulating stack-number conditionals.
 
 ---
 
-## 24. Why stacks are atomic
+## 26. Why stacks are atomic
 
-Atomic means a stack owns enough of its own application resources to be prepared/deployed without borrowing hidden mutable state from another application stack.
+Atomic means a stack owns enough of its application resources to be prepared/deployed without borrowing hidden mutable state from another application stack.
 
-Examples of the direction taken by the project:
+Examples:
 
-- LiteLLM moved to its own PostgreSQL instead of depending on another application's database;
-- Stack2 owns its own Firecrawl persistence;
-- Stack4 owns Gitea and runner identities;
+- LiteLLM owns its PostgreSQL;
+- Stack2 owns Firecrawl persistence;
+- Stack4 owns Gitea/runner identities;
 - Stack5 owns its external volume;
-- Stack6 owns its agent, sandbox, memory and sidecar runtimes;
+- Stack6 owns agent/sandbox/memory/sidecars;
 - Stack0 alone owns platform-shared resources.
 
-When adding a service, ask:
+When adding Open WebUI or any future service, ask:
 
 1. Which stack owns it?
-2. Where does its persistent state live?
+2. Where does persistent state live?
 3. Which capability does it provide or consume?
-4. Does this create a hidden cross-stack mutable dependency?
+4. Does this create hidden cross-stack mutable dependency?
 5. Can its owner be prepared without modifying another application's runtime?
+6. What proves it is READY?
 
-If those answers are unclear, the design is not finished.
-
----
-
-## 25. Common installer direction
-
-The repository is being prepared for a future common installer.
-
-That installer should eventually be able to request one or more stacks and derive the required plan from manifests.
-
-Desired conceptual flow:
-
-```text
-requested stacks
-      |
-      v
-validate manifests
-      |
-      v
-resolve required dependency closure
-      |
-      v
-PREPARE in dependency order
-      |
-      v
-deploy/verify selected stacks
-      |
-      v
-identify changed capabilities
-      |
-      v
-reconcile affected prepared consumers
-```
-
-The installer should not redefine ownership or lifecycle rules. It should orchestrate the contracts already implemented by stacks.
-
-Do not make the common installer a privileged dumping ground for stack-specific repair logic. Stack-specific behavior belongs with the owning stack; the installer coordinates it.
+If these are unclear, design is not finished.
 
 ---
 
-## 26. Documentation rules
+## 27. Documentation rules
 
 Documentation is part of the operational contract.
 
-When changing architecture or lifecycle behavior, update the relevant documentation in the same work.
+When changing architecture/lifecycle/readiness behavior, update relevant documentation in the same work.
 
-Use Mermaid syntax that GitHub actually renders. For labelled dotted edges use GitHub-compatible syntax such as:
+Use GitHub-compatible Mermaid syntax. Keep root README high-level, `INSTALLATION.md` operational, stack READMEs stack-specific, and this file focused on AI-to-AI architecture/history handoff.
 
-```mermaid
-flowchart LR
-    A -.->|optional capability| B
-```
+When adding Open WebUI, update at least:
 
-Do not use the older/problematic form:
-
-```text
-A -. optional capability .-> B
-```
-
-Keep the root README high-level, `INSTALLATION.md` operational, stack READMEs stack-specific, and this file focused on transferring architectural and maintenance context from one AI agent to another.
+- root `README.md` architecture/table/filesystem/interfaces;
+- `INSTALLATION.md` dependency/lifecycle/install/update sections;
+- new Open WebUI stack README(s);
+- Stack1 documentation if ingress changes;
+- relevant provider documentation if dependencies/capabilities change;
+- `a2aknowledge.md` stack map and lessons;
+- manifests/lifecycle tests.
 
 ---
 
-## 27. Current project-specific historical knowledge worth preserving
+## 28. Historical lessons worth preserving
 
-Several engineering lessons shaped the current contracts:
-
-1. **Bind-mounted directory replacement can break running containers.** Updating managed files must preserve directory identity when the container holds a bind mount to that directory.
-2. **PostgreSQL PGDATA ownership is application-critical.** A PREPARE script must not normalize an existing database directory to root ownership.
-3. **Container health can hide delayed storage problems.** Exercise the operation that previously failed.
-4. **Gitea web health does not prove SSH Git health.** Validate both paths after configuration changes.
-5. **Optional provider absence must not create cloud fallback.** Hermes web tools are explicitly disabled when local providers are unavailable.
-6. **Provider installation and consumer configuration are different lifecycle events.** This led to the PREPARE/RECONCILE split.
-7. **Gitea availability is not operator intent.** Git-memory enablement is persisted separately from provider availability.
-8. **Git memory must prefer refusal over unsafe automation.** No force-push or automatic divergence resolution.
-9. **Sandbox cleanup must be bounded.** Generation marker and lifecycle database form one integrity contract.
-10. **A stack should not create platform resources it does not own.** Shared network and PKI belong to Stack0.
-11. **Persistent generated secrets are identities.** Re-preparation must preserve them.
-12. **A future installer should resolve manifests, not encode folklore.** If important architecture exists only in an `if stack6` branch, the contract is incomplete.
-
----
-
-## 28. When information conflicts
-
-Use this precedence when deciding what is true:
-
-1. **Observed current runtime**, when diagnosing the deployed system.
-2. **Current executable source and manifests** on the intended Git commit.
-3. **Current stack README / `INSTALLATION.md`.**
-4. **This A2A knowledge document.**
-5. Historical assumptions, old branches, chat transcripts or memory.
-
-This file deliberately contains history because history explains safeguards, but history must never override current code.
-
-If documentation and code disagree, do not silently choose one. Identify the discrepancy, determine intended behavior and fix both coherently.
+1. Bind-mounted directory replacement can break running containers.
+2. PostgreSQL PGDATA ownership is application-critical.
+3. Container health can hide delayed storage problems; test the real operation.
+4. Gitea web health does not prove SSH Git health.
+5. Optional provider absence must not create cloud fallback.
+6. Provider installation and consumer configuration are different lifecycle events.
+7. Gitea availability is not Git-memory operator intent.
+8. Git memory must prefer refusal over unsafe automation.
+9. Sandbox cleanup/recovery must be bounded.
+10. A stack should not create platform resources it does not own.
+11. Persistent generated secrets are identities.
+12. Installer dependencies belong in manifests, not folklore/conditionals.
+13. **Running is not READY.** Stack2 recovery proved capability reconciliation must wait for real provider readiness.
+14. A converged provider should not cause spurious consumer reconciliation merely because the operator requested it.
+15. Idempotence must be demonstrated with a second run after recovery.
 
 ---
 
-## 29. Minimum handoff checklist for the next AI
+## 29. Validated installer history
 
-Before claiming a modification is complete, be able to answer:
+The common installer has been exercised on the reference host through multiple phases:
+
+- static validation of manifests/lifecycle/Python;
+- planner dry-runs for Stack3, Stack6 and all stacks;
+- state-aware change that removed unnecessary DEPLOY actions for healthy stacks;
+- generic capability-driven discovery of prepared consumers;
+- state-transition-aware change so stable providers do not trigger unnecessary reconciliation;
+- unit tests for healthy providers/consumers, fresh providers/consumer and explicit `--reconcile`;
+- first real healthy Stack6 execution: verification only, unchanged container identities, unchanged `.env`/locks, PostgreSQL query/checkpoint, Hermes->LiteLLM connectivity;
+- controlled SearXNG stop/recovery;
+- discovery of the RUNNING-vs-READY race;
+- addition of Stack2 `02-wait-ready.sh`;
+- repeated controlled recovery proving readiness-before-reconcile and post-recovery idempotence.
+
+Current planner unit suite is in `installer/test_installer.py`.
+
+---
+
+## 30. When information conflicts
+
+Use this precedence:
+
+1. observed current runtime when diagnosing deployed system;
+2. current executable source/manifests on intended Git commit;
+3. current stack README / `INSTALLATION.md`;
+4. this A2A document;
+5. historical assumptions, branches, chats or memory.
+
+If documentation and code disagree, identify the discrepancy and fix both coherently.
+
+---
+
+## 31. Minimum handoff checklist for the next AI
+
+Before claiming a modification complete, answer:
 
 - What stack owns the changed resource?
 - What dependencies/capabilities are involved?
-- Did manifest validation still pass?
-- Did the change preserve source/runtime separation?
-- Did it preserve persistent identities that were not intentionally changed?
-- Did it avoid exposing secrets?
-- Did it preserve Stack6 sandbox/network boundaries?
-- Did it preserve local-first/fail-closed provider behavior?
-- Was the actual failure mode or feature path tested, not merely container health?
-- Were unrelated containers and runtime state left untouched?
-- Are docs consistent with the implementation?
-- Is Git in the intended clean state?
-- Is the deployed host on the intended commit if deployment was part of the task?
+- What proves the service/provider is READY?
+- Did manifest validation pass?
+- Did installer planner tests pass if lifecycle changed?
+- Did source/runtime separation remain intact?
+- Were persistent identities preserved unless intentionally changed?
+- Were secrets kept out of output/Git?
+- Were Stack6 sandbox/network boundaries preserved?
+- Was local-first/fail-closed behavior preserved?
+- Was the actual feature/failure path tested?
+- Were unrelated containers/runtime untouched?
+- Are docs consistent with implementation?
+- Is Git clean and on intended commit?
+- Is deployed host on intended commit if deployment was part of the task?
 
-If any answer is unknown, say so and investigate before declaring success.
+If any answer is unknown, investigate before declaring success.
 
 ---
 
-## 30. Final instruction to an AI maintainer
+## 32. Final instruction to an AI maintainer
 
 This project rewards **small, ownership-correct, reversible changes**.
 
-Do not optimize for the shortest command sequence. Optimize for preserving the operator's data, identities, security boundaries and ability to understand what changed.
+Do not optimize for the shortest command sequence. Optimize for preserving data, identities, readiness guarantees, security boundaries and operator understanding.
 
-Observe first. Determine ownership. Identify invariants. Change the smallest responsible component. Validate the real behavior. Re-check what must not have changed.
+Observe first. Determine ownership. Identify invariants. Change the smallest responsible component. Validate real behavior. Re-check what must not have changed.
 
-The platform is designed so that an AI agent can help maintain it safely, but only if the agent respects the same principle the platform applies to AI itself:
+The platform is designed so an AI agent can help maintain it safely, but only if the agent respects the same principle the platform applies to AI itself:
 
-> **Capability should be explicit, bounded and under operator control.**
+> **Capability should be explicit, bounded, ready before use, and under operator control.**
