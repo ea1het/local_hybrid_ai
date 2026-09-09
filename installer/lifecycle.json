@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "stacks": {
+    "0": {
+      "directory": "stack0_-_platform",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [],
+      "verify": [["./verify.sh"]]
+    },
+    "1": {
+      "directory": "stack1_-_haproxy_web",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["docker", "compose", "up", "-d"]],
+      "verify": [["docker", "compose", "config", "--quiet"]]
+    },
+    "2": {
+      "directory": "stack2_-_searxng_firecrawl",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["docker", "compose", "up", "-d"]],
+      "verify": [["docker", "compose", "config", "--quiet"]]
+    },
+    "3": {
+      "directory": "stack3_-_litellm",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["./02-postgres.sh"], ["docker", "compose", "up", "-d", "litellm"]],
+      "verify": [["docker", "compose", "config", "--quiet"]]
+    },
+    "4": {
+      "directory": "stack4_-_gitea",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["./02-run.sh"]],
+      "verify": [["docker", "compose", "config", "--quiet"]]
+    },
+    "5": {
+      "directory": "stack5_-_dockhand",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["docker", "compose", "up", "-d"]],
+      "verify": [["docker", "compose", "config", "--quiet"]]
+    },
+    "6": {
+      "directory": "stack6_-_hermes",
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["./05-maintenance-sidecars.sh"], ["docker", "compose", "up", "-d", "--build"], ["./06-reconcile-capabilities.sh", "--restart"]],
+      "verify": [["docker", "compose", "config", "--quiet"]]
+    }
+  }
+}
