@@ -39,6 +39,25 @@ docker compose logs -f haproxy
 
 Updating HAProxy source files does not reload the running process. Apply a controlled reload/recreation when configuration, mounts, supplementary groups or certificate material require it. Static web content can be updated without recreating `web`.
 
+## Disaster recovery
+
+Stack1 is fully reconstructable. Rendered HAProxy/static-web runtime is installation output rather than authoritative recovery state.
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "reconstructable"
+    }
+  }
+}
+```
+
+The TLS trust identity belongs to Stack0 and is recovered there. Stack1 itself requires no backup artifact. See [`../dr-howto.md`](../dr-howto.md) and [`../recovery.schema.json`](../recovery.schema.json).
+
 ## PKI lifecycle
 
 PKI belongs exclusively to Stack0:
