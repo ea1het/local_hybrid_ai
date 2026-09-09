@@ -33,7 +33,37 @@ Every application stack requires Stack0. Stack6 additionally requires Stack3. St
 | 5 | container management | 0 | `containers.management` |
 | 6 | agent + sandbox + memory | 0, 3 | `ai.agent`, `ai.sandbox`, `ai.memory` |
 
-All seven stacks are atomic in the current manifest graph. `target_requires` remains supported by the resolver for architecture evolution, but the current and target dependency sets of Stacks 0, 2, 3 and 6 are already aligned.
+All seven stacks are atomic in the current manifest graph. `target_requires` remains supported by the resolver for architecture evolution.
+
+## Common installer
+
+The root installer resolves dependencies from stack manifests and then invokes stack-owned lifecycle operations. It does not contain a second hard-coded dependency graph.
+
+```mermaid
+flowchart LR
+    CLI[install.sh] --> R[manifest resolver]
+    R --> P[dependency plan]
+    P --> L[lifecycle registry]
+    L --> S[stack-owned scripts]
+    S --> V[verification]
+```
+
+Inspect a deployment before executing it:
+
+```bash
+./install.sh 6 --plan
+./install.sh 6 --dry-run
+./install.sh all --plan
+```
+
+Execute only after inspection:
+
+```bash
+sudo ./install.sh 6 --yes
+sudo ./install.sh all --yes
+```
+
+For Stack6 the resolver derives the minimum required plan Stack0 -> Stack3 -> Stack6 from manifests. The installer never removes `.lock`, rewrites `.env`, resets runtime, invokes Docker prune, or runs the legacy PostgreSQL migration. See [`INSTALLATION.md`](INSTALLATION.md) for lifecycle details.
 
 ## Runtime flow
 
@@ -106,12 +136,12 @@ Stack6 demonstrates the intended incremental lifecycle:
 
 ```mermaid
 sequenceDiagram
-    participant O as Operator / future installer
+    participant O as Operator / installer
     participant P as Optional provider
     participant R as Stack6 reconcile
     participant H as Hermes
     O->>P: deploy/enable provider
-    O->>R: 06-reconcile-capabilities.sh --restart
+    O->>R: reconcile capabilities
     R->>R: inspect provider availability
     R->>H: update managed config if needed
     R->>H: recreate only Hermes when config changed
@@ -131,6 +161,8 @@ sequenceDiagram
 ├── stacks/                         # Git checkout / source
 │   ├── .env                        # operational, ignored by Git
 │   ├── .env.template               # tracked variable contract
+│   ├── install.sh / install.py     # common installer
+│   ├── installer/lifecycle.json    # lifecycle command registry
 │   ├── stack0_-_platform/
 │   ├── stack1_-_haproxy_web/
 │   ├── stack2_-_searxng_firecrawl/
@@ -207,14 +239,7 @@ HERMES_VERSION=v2026.8.31
 
 ## Installation and operations
 
-See [`INSTALLATION.md`](INSTALLATION.md) for the complete deployment and update flow. Each stack README documents its ownership, preparation, startup and recovery boundaries.
-
-Bootstrap always starts with Stack0:
-
-```bash
-cd /opt/docker/stacks
-sudo ./stack0_-_platform/install.sh
-```
+See [`INSTALLATION.md`](INSTALLATION.md) for the complete deployment, common-installer and update flow. Each stack README documents its ownership, preparation, startup and recovery boundaries. AI/coding agents should also read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
 
 ## Security
 
