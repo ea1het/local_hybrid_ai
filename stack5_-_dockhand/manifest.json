@@ -8,5 +8,11 @@
   "requires": [0],
   "optional": [1],
   "provides": ["containers.management"],
-  "owns": ["container:dockhand", "volume:dockhand_data"]
+  "owns": ["container:dockhand", "volume:dockhand_data"],
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "reconstructable"
+    }
+  }
 }
