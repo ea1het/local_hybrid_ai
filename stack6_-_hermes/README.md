@@ -1,158 +1,150 @@
-# Stack6 - Hermes Agent
+# Stack6 — Hermes Agent
 
-Stack6 provides the agent/orchestration layer for `local_hybrid_ai`.
+Stack6 is the agent/orchestration layer. It is atomic and requires Stack0 + Stack3. Stack2 and Stack4 are optional capability providers.
 
-Its responsibilities are deliberately split:
+Manifest contract:
 
-- **Hermes Agent** — reasoning, tools, messaging and native deferred scheduling;
-- **hermes-sandbox** — isolated SSH execution environment;
-- **hermes-memory-sync** — conservative Git synchronization of `MEMORY.md` / `USER.md`;
-- **hermes-sandbox-cleanup** — lifecycle tracking and cleanup of ephemeral sandbox work;
-- **Git-backed memory** — persistent Hermes long-term memory.
-
-> Hermes owns intelligent work. Small deterministic sidecars own mechanical maintenance.
-
-## Service map
-
-| Service | Networks | Persistent state | Purpose |
-|---|---|---|---|
-| `hermes` | `redlocal`, `hermes-exec` | `service_-_hermes`, Git memory mount | Agent runtime, tools, messaging, native Cron |
-| `hermes-sandbox` | `hermes-exec` | `service_-_hermes-sandbox` | Isolated SSH execution |
-| `hermes-memory-sync` | `redlocal` | memory worktree + dedicated SSH identity | Git synchronization |
-| `hermes-sandbox-cleanup` | none | sandbox workspace + lifecycle DB | Retention, quarantine and cleanup |
-
-No Stack6 service receives the Docker socket or privileged mode.
+```text
+requires:          platform foundation + Stack3
+consumes:          ai.gateway, ai.mcp-gateway
+optional_consumes: web.search, web.extract, git.remote
+provides:          ai.agent, ai.sandbox, ai.memory
+```
 
 ## Architecture
 
-```text
-User / Telegram / Buzz
-          |
-          v
-        Hermes
-          |-- LiteLLM -> model policy -> local/cloud inference
-          |-- LiteLLM MCP Gateway -> upstream MCP servers
-          |-- native Cron -> future fresh agent runs
-          |-- SSH -> hermes-sandbox
-          |-- memory -> service_-_hermes-memory/data
-                           ^
-                           |
-                  hermes-memory-sync -> Gitea
-
-hermes-sandbox workspace
-          ^
-          |
-hermes-sandbox-cleanup
-  inotify + SQLite + retention/quarantine
+```mermaid
+flowchart TB
+    U[User] --> H[Hermes]
+    TG[Telegram optional] -.-> H
+    BZ[Buzz optional] -.-> H
+    H -->|inference + MCP| LL[Stack3 LiteLLM]
+    H -. optional local web .-> SX[Stack2 SearXNG]
+    H -. optional local extract .-> FC[Stack2 Firecrawl]
+    H -->|SSH| SB[hermes-sandbox]
+    H --> MEM[Git-backed memory]
+    MS[hermes-memory-sync] --> MEM
+    MS -. optional git.remote .-> G[Stack4 Gitea]
+    CLEAN[hermes-sandbox-cleanup] --> SB
 ```
 
-## Native Cron
+Hermes owns intelligent work and native deferred scheduling. Deterministic sidecars own mechanical memory synchronization and sandbox cleanup.
 
-Deferred intelligent work uses Hermes' native `cronjob` capability. Stack6 does not implement a custom scheduler API.
+## Services and security boundaries
 
-Cron runs are fresh agent sessions. They load persistent memory, but they do not inherit the conversation that created the job. A scheduled prompt therefore must be self-contained.
+| Service | Network | Persistent state | Purpose |
+|---|---|---|---|
+| `hermes` | `redlocal` + `hermes-exec` | Hermes runtime + memory mount | agent, tools, messaging, native Cron |
+| `hermes-sandbox` | `hermes-exec` only | sandbox home/workspace/state | isolated SSH execution |
+| `hermes-memory-sync` | `redlocal` | memory worktree + dedicated SSH identity | conservative Git sync |
+| `hermes-sandbox-cleanup` | none | sandbox workspace + lifecycle DB | retention/quarantine/cleanup |
 
-The managed Hermes system prompt contains two relevant policies:
+No Stack6 service receives the Docker socket or privileged mode. The sandbox is not attached to `redlocal`.
 
-- `deferred_work_policy` — defer only genuinely future-dependent work, make future prompts self-contained and avoid duplicate jobs;
-- `sandbox_lifecycle_policy` — the sandbox is ephemeral scratch space; anything required later must be persisted to durable storage.
+## PREPARE
 
-A current failure is not, by itself, a reason to create a Cron job.
+```bash
+cd /opt/docker/stacks/stack6_-_hermes
+sudo ./01-prepare.sh
+```
+
+PREPARE requires Stack0 and Stack3 locks, validates mandatory provider configuration, prepares Stack6-owned runtime/configuration and creates `.lock` after success. It does **not** require Stack2 or Stack4.
+
+`.lock` means PREPARED only.
+
+Telegram and Buzz are optional. Empty credentials mean disabled. They are not required for the core Hermes -> LiteLLM path.
+
+## Capability reconciliation
+
+Optional capabilities are managed after preparation by `06-reconcile-capabilities.sh`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Prepared
+    Prepared --> WebOff
+    WebOff --> WebLocal: Stack2 providers available + reconcile
+    WebLocal --> WebOff: provider unavailable + reconcile
+    Prepared --> GitOff
+    GitOff --> GitOn: explicit enable + Gitea + safe Git state
+    GitOn --> GitWaiting: Gitea unavailable
+    GitWaiting --> GitOn: provider returns + safe reconcile
+```
+
+### Web
+
+Managed source defaults to `disabled_toolsets: [web]`. This is deliberate: removing local provider configuration alone could allow undesired fallback behavior.
+
+When both `searxng` and `firecrawl-api` are running on `redlocal`, reconciliation renders web enabled. If either disappears, reconciliation renders web disabled again.
+
+```bash
+sudo ./06-reconcile-capabilities.sh --restart
+```
+
+`--restart` recreates only Hermes when its managed config actually changes and Hermes is already running.
+
+### Git memory desired state
+
+Git memory has persistent operator intent under the memory-sync runtime. A new deployment defaults to disabled.
+
+```bash
+sudo ./06-reconcile-capabilities.sh --enable-git-memory
+sudo ./06-reconcile-capabilities.sh --disable-git-memory
+```
+
+Without either flag, existing intent is preserved. Provider availability alone never enables Git memory.
+
+If enabled but Gitea is unavailable, only `hermes-memory-sync` is stopped; local memory/Git state and desired intent are preserved.
+
+Reconciliation never creates providers, adopts/clones memory, commits, pushes, pulls, merges, rebases or changes `.env`/`.lock`.
 
 ## Git-backed memory
 
-The memory working tree is:
-
 ```text
-/opt/docker/runtime/service_-_hermes-memory/data/
+${BASE_PATH}/service_-_hermes-memory/data/
 ├── .git/
 ├── MEMORY.md
 └── USER.md
 ```
 
-`04-gitmem.sh` prepares and validates this working tree. It does not pull, merge, rebase, commit or push.
+`04-gitmem.sh` is the bounded adoption/validation step. It permits additional static tracked files, but only `MEMORY.md` and `USER.md` are mutable memory files for automatic synchronization.
 
-`hermes-memory-sync` performs the periodic synchronization every 900 seconds by default:
-
-```dotenv
-MEMORY_SYNC_INTERVAL_SECONDS=900
-```
-
-The sidecar:
-
-- accepts dirty changes only in `MEMORY.md` and `USER.md`;
-- fetches before changing local history;
-- permits fast-forward only when remote is ahead and local state is clean;
-- commits/pushes valid local memory changes;
-- refuses automatic merge/rebase on divergence;
-- never force-pushes;
-- checks that local and remote heads match after success.
-
-### Dedicated memory-sync SSH identity
-
-Runtime path:
+Dedicated sync SSH material:
 
 ```text
-/opt/docker/runtime/service_-_hermes-memory-sync/ssh/
+${BASE_PATH}/service_-_hermes-memory-sync/ssh/
 ├── id_ed25519
 ├── known_hosts
 └── ssh_config
 ```
 
-`05-maintenance-sidecars.sh` validates this identity and the sandbox lifecycle-state directory. It does not create, copy or replace credentials.
+`05-maintenance-sidecars.sh` validates this material; it does not create/replace credentials.
 
-Provision and authorize the identity for the configured Gitea memory repository before running the script.
+The sync sidecar is conservative: fetch before decisions, fast-forward only for clean remote-ahead state, commit/push valid local memory changes, refuse divergence, never force-push, verify local/remote equality after success.
 
-## Sandbox lifecycle
+## Sandbox execution
 
-The sandbox is explicitly **scratch space, not storage**.
-
-Persistent runtime:
-
-```text
-/opt/docker/runtime/service_-_hermes-sandbox/
-├── config/
-├── data/
-│   ├── home/
-│   ├── workspace/
-│   │   ├── .sandbox-generation
-│   │   └── .cleanup-quarantine/
-│   └── state/
-│       └── state.db
-└── logs/
+```mermaid
+flowchart LR
+    H[Hermes] -->|SSH over hermes-exec| SB[Sandbox]
+    SB --> WS[/workspace scratch/]
+    CLEAN[Cleanup sidecar] --> WS
+    CLEAN --> DB[(state.db)]
 ```
 
-The logical sandbox generation is represented by both:
+The workspace is scratch, not durable storage. Anything needed by later work must be persisted elsewhere before the current run ends.
+
+Generation integrity is represented by both:
 
 ```text
-/workspace/.sandbox-generation
-/var/lib/hermes-sandbox-state/state.db
+${BASE_PATH}/service_-_hermes-sandbox/data/workspace/.sandbox-generation
+${BASE_PATH}/service_-_hermes-sandbox/data/state/state.db
 ```
 
-The marker generation ID and SQLite metadata generation ID must match.
+Marker and SQLite generation must match. Startup fails closed on missing/corrupt/mismatched lifecycle state.
 
-Before `sshd` starts, `hermes-sandbox` validates:
+## Sandbox cleanup
 
-- `state.db` is a regular non-symlink file when present;
-- SQLite integrity passes;
-- schema metadata is supported;
-- `.sandbox-generation` is a regular non-symlink file;
-- the marker is non-empty;
-- marker generation equals database generation.
-
-If no state exists, first boot of a new generation:
-
-1. creates a new generation ID;
-2. initializes SQLite lifecycle state;
-3. captures existing top-level workspace objects as the protected baseline;
-4. protects `.sandbox-generation` and `.cleanup-quarantine`;
-5. starts `sshd` only after state initialization succeeds.
-
-A normal restart preserves the generation.
-
-If marker/database state is incomplete, corrupt or mismatched, startup fails closed and instructs the operator to use `02-cleanup.sh --reset-sandbox`.
-
-## Cleanup policy
+`hermes-sandbox-cleanup` has `network_mode: none`. It watches activity, reconciles top-level objects, protects the baseline, quarantines inactive post-baseline objects and deletes them after the grace period while retaining audit state according to policy.
 
 Defaults:
 
@@ -164,26 +156,7 @@ SANDBOX_CLEANUP_SWEEP_HOUR=3
 SANDBOX_CLEANUP_SWEEP_MINUTE=30
 ```
 
-`hermes-sandbox-cleanup`:
-
-- uses `network_mode: none`;
-- validates the sandbox generation marker against `state.db` before operating;
-- watches `/workspace` recursively with inotify;
-- records activity at top-level object granularity;
-- reconciles actual top-level filesystem state during every sweep;
-- treats post-baseline objects as disposable;
-- quarantines objects inactive beyond retention;
-- waits through the configured quarantine grace period;
-- deletes matching quarantined objects safely;
-- retains deleted DB records for the configured audit period;
-- performs WAL checkpoint / incremental vacuum maintenance;
-- emits audit/sweep logs.
-
-Cleanup intentionally does not preserve an artifact merely because Hermes might want it later. The contract is the opposite: Hermes must persist anything needed later before finishing the current run.
-
 ## Bounded sandbox recovery
-
-Fast recovery from a corrupt or inconsistent sandbox generation is:
 
 ```bash
 cd /opt/docker/stacks/stack6_-_hermes
@@ -192,102 +165,30 @@ sudo ./02-cleanup.sh --reset-sandbox --yes
 docker compose up -d hermes-sandbox hermes hermes-sandbox-cleanup
 ```
 
-This mode intentionally works without removing Stack6 `.lock`.
+This resets workspace/lifecycle state only. It preserves Hermes runtime/session/auth state, Git memory, sandbox home/authorized keys, sandbox host identity, managed configuration and memory-sync SSH identity. It does not require removing Stack6 `.lock`.
 
-It destroys only:
+## Native Cron
 
-```text
-sandbox workspace contents
-sandbox data/state contents
-```
+Deferred intelligent work uses Hermes native Cron; there is no standalone scheduler stack. Cron runs are fresh agent sessions, so scheduled prompts must be self-contained and reference durable inputs rather than transient sandbox files or the conversation that created the job.
 
-It preserves:
-
-```text
-sandbox home / authorized_keys
-sandbox host identity
-Hermes runtime/session/auth state
-Git-backed memory
-managed configuration
-memory-sync SSH identity
-```
-
-The next sandbox boot creates a fresh logical generation.
-
-## Runtime layout
-
-```text
-/opt/docker/runtime/
-├── service_-_hermes/
-├── service_-_hermes-memory/
-├── service_-_hermes-memory-sync/
-│   └── ssh/
-└── service_-_hermes-sandbox/
-    ├── config/
-    ├── data/
-    │   ├── home/
-    │   ├── workspace/
-    │   └── state/
-    └── logs/
-```
-
-`hermes-sandbox-cleanup` intentionally owns no separate persistent runtime directory. Its durable state belongs to the sandbox generation database.
-
-## Deployment
-
-Create/update the operational `.env`, provision the dedicated memory-sync SSH identity, and then run:
+## Deployment sequence
 
 ```bash
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./01-prepare.sh
 sudo ./04-gitmem.sh
 sudo ./05-maintenance-sidecars.sh
-
+sudo ./03-temporary-fix-issue-74116-terminal-timeout.sh
 docker compose config --quiet
 docker compose up -d --build
+sudo ./06-reconcile-capabilities.sh --restart
 docker compose ps
 ```
 
-Expected services:
-
-```text
-hermes
-hermes-sandbox
-hermes-memory-sync
-hermes-sandbox-cleanup
-```
-
-For the validated Hermes version, retain the terminal-timeout workaround while the upstream issue remains unresolved:
-
-```bash
-sudo ./03-temporary-fix-issue-74116-terminal-timeout.sh
-```
-
-## Network and security boundaries
-
-`hermes` is attached to `redlocal` and `hermes-exec`.
-
-`hermes-sandbox` is attached only to `hermes-exec`; it has no `redlocal` access.
-
-`hermes-memory-sync` has `redlocal` connectivity only because it must reach Gitea. Its mounts are limited to the Git-backed memory working tree and its dedicated SSH identity.
-
-`hermes-sandbox-cleanup` receives only the sandbox workspace and lifecycle state and has no network.
-
-Do not commit operational `.env`, private SSH keys, Hermes/LiteLLM/Telegram/Buzz credentials, runtime databases or other deployment secrets.
+The terminal-timeout workaround is retained for the validated Hermes `v2026.8.31` deployment while required.
 
 ## Validated boundaries
 
-The reference deployment has validated:
+The reference deployment has exercised Hermes -> LiteLLM, LiteLLM authentication/local inference, Hermes -> SSH sandbox, incremental web enable/disable, Git-memory desired-state/provider-loss/provider-return behavior, memory-sync -> Gitea, native Cron, sandbox generation persistence, cleanup/quarantine and bounded sandbox reset.
 
-```text
-Hermes -> LiteLLM -> local inference
-Hermes -> SSH -> hermes-sandbox
-Hermes -> SearXNG / Firecrawl
-Hermes native Cron -> real one-shot future agent run
-hermes-memory-sync -> Gitea fetch + write authorization
-hermes-sandbox -> generation initialization and restart persistence
-hermes-sandbox-cleanup -> inotify / audit / quarantine / deletion
-02-cleanup.sh --reset-sandbox -> fresh generation recovery
-```
-
-The current deployed architecture has no dependency on a standalone scheduler runtime.
+Do not commit operational `.env`, private SSH keys, Hermes/LiteLLM/Telegram/Buzz credentials, runtime databases or lifecycle state.
