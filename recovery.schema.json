@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "./recovery.schema.json",
+  "title": "Local Hybrid AI recovery contract",
+  "description": "Schema for the recovery object embedded in a stack manifest. The contract block is always required. The resources block is optional and is present only when the stack declares managed or externalized recovery resources.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract"
+  ],
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/contract"
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "contract": {
+            "properties": {
+              "mode": {
+                "const": "reconstructable"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "resources": {
+            "items": {
+              "properties": {
+                "class": {
+                  "const": "externalized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "contract": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "managed",
+                  "mixed"
+                ]
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "resources"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "mode"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "reconstructable",
+            "managed",
+            "mixed"
+          ]
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "class",
+        "strategy",
+        "sensitive"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "class": {
+          "type": "string",
+          "enum": [
+            "persistent-data",
+            "persistent-identity",
+            "externalized"
+          ]
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "archive",
+            "postgres-custom-dump",
+            "gitea-native-dump",
+            "external-config",
+            "git"
+          ]
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "config": {
+          "$ref": "#/$defs/config"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "archive"
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/archiveConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "postgres-custom-dump"
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/postgresConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "gitea-native-dump"
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/applicationConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "external-config"
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/environmentConfig"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "git"
+              }
+            },
+            "required": [
+              "strategy"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/$defs/gitConfig"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "config": {
+      "type": "object"
+    },
+    "restore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string",
+          "enum": [
+            "pre-prepare",
+            "post-prepare-pre-deploy",
+            "post-deploy"
+          ]
+        }
+      }
+    },
+    "archiveConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "restore"
+      ],
+      "properties": {
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "path"
+          ],
+          "properties": {
+            "type": {
+              "const": "runtime-path"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "restore": {
+          "$ref": "#/$defs/restore"
+        }
+      }
+    },
+    "postgresConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "restore"
+      ],
+      "properties": {
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "service",
+            "database_env"
+          ],
+          "properties": {
+            "type": {
+              "const": "postgres"
+            },
+            "service": {
+              "type": "string",
+              "minLength": 1
+            },
+            "database_env": {
+              "type": "string",
+              "minLength": 1
+            },
+            "user_env": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "restore": {
+          "$ref": "#/$defs/restore"
+        }
+      }
+    },
+    "applicationConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "restore"
+      ],
+      "properties": {
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "service"
+          ],
+          "properties": {
+            "type": {
+              "const": "application"
+            },
+            "service": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "restore": {
+          "$ref": "#/$defs/restore"
+        }
+      }
+    },
+    "environmentConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "key"
+          ],
+          "properties": {
+            "type": {
+              "const": "environment"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "gitConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "git"
+            },
+            "repository_env": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
