@@ -14,12 +14,16 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
 LIFECYCLE_FILE = ROOT / "installer" / "lifecycle.json"
+RUNTIME_READY_TIMEOUT_SECONDS = 180
+RUNTIME_READY_POLL_SECONDS = 2
+INTERNAL_WAIT_COMMAND = "__installer_wait_required_runtime__"
 
 
 class InstallerError(RuntimeError):
@@ -35,6 +39,8 @@ class Action:
     reason: str
 
     def display(self) -> str:
+        if self.command == (INTERNAL_WAIT_COMMAND,):
+            return f"stack{self.stack_id} {self.phase}: wait required runtime"
         return f"stack{self.stack_id} {self.phase}: {shlex.join(self.command)}"
 
 
@@ -218,6 +224,55 @@ def deployment_ready(entry: dict, state: dict) -> bool:
     )
 
 
+def wait_required_runtime(
+    sid: int,
+    entry: dict,
+    *,
+    timeout_seconds: int = RUNTIME_READY_TIMEOUT_SECONDS,
+) -> None:
+    """Wait until required containers are running and healthy when health exists.
+
+    Containers without a Docker healthcheck are ready at the generic runtime
+    layer once they are running. Application-level readiness that needs more
+    than this stays stack-owned (for example Stack2 02-wait-ready.sh).
+    """
+    required = entry["required_containers"]
+    if not required:
+        print(f"[installer-ready] stack{sid}: no required containers")
+        return
+
+    deadline = time.monotonic() + timeout_seconds
+    last: dict[str, str] = {}
+
+    while True:
+        states = {name: container_state(name) for name in required}
+        last = states
+        if all(is_runtime_healthy(state) for state in states.values()):
+            summary = ", ".join(f"{name}={state}" for name, state in states.items())
+            print(f"[installer-ready] stack{sid}: READY ({summary})")
+            return
+
+        terminal = {
+            name: state
+            for name, state in states.items()
+            if state in {"exited", "dead", "removing", "absent"}
+            or state.startswith("exited/")
+            or state.startswith("dead/")
+        }
+        if terminal:
+            detail = ", ".join(f"{name}={state}" for name, state in terminal.items())
+            raise InstallerError(f"stack{sid} required runtime failed before READY: {detail}")
+
+        if time.monotonic() >= deadline:
+            detail = ", ".join(f"{name}={state}" for name, state in last.items())
+            raise InstallerError(
+                f"stack{sid} required runtime did not become READY within "
+                f"{timeout_seconds}s: {detail}"
+            )
+
+        time.sleep(RUNTIME_READY_POLL_SECONDS)
+
+
 def state_transition_ids(
     plan: list[int],
     states: dict[int, dict],
@@ -326,6 +381,15 @@ def build_actions(
                 entry["deploy"],
                 "one or more required containers are not running",
             )
+            actions.append(
+                Action(
+                    sid,
+                    manifest["directory"],
+                    "ready",
+                    (INTERNAL_WAIT_COMMAND,),
+                    "wait for required runtime before dependents or capability reconciliation",
+                )
+            )
 
     reconcile_ids = reconciliation_targets(
         requested,
@@ -395,9 +459,16 @@ def print_plan(
         containers = ", ".join(
             f"{name}={value}" for name, value in state["containers"].items()
         ) or "no owned containers"
-        ready = "DEPLOYED" if deployment_ready(lifecycle["stacks"][str(sid)], state) else "NOT-DEPLOYED"
+        deployed = (
+            "DEPLOYED"
+            if deployment_ready(lifecycle["stacks"][str(sid)], state)
+            else "NOT-DEPLOYED"
+        )
         transition = "; WILL-CHANGE" if sid in changed_stack_ids else ""
-        print(f"  {sid}: {manifests[sid]['directory']} [{prepared}; {ready}{transition}; {containers}]")
+        print(
+            f"  {sid}: {manifests[sid]['directory']} "
+            f"[{prepared}; {deployed}{transition}; {containers}]"
+        )
 
     if reconcile_ids:
         print("Reconcile consumers:")
@@ -412,9 +483,20 @@ def print_plan(
         print(f"  {index:02d}. {action.display()}  # {action.reason}")
 
 
-def execute(actions: list[Action]) -> None:
+def execute(
+    actions: list[Action],
+    lifecycle: dict,
+) -> None:
     for index, action in enumerate(actions, 1):
         print(f"\n== [{index}/{len(actions)}] {action.display()}", flush=True)
+
+        if action.command == (INTERNAL_WAIT_COMMAND,):
+            wait_required_runtime(
+                action.stack_id,
+                lifecycle["stacks"][str(action.stack_id)],
+            )
+            continue
+
         cwd = ROOT / action.directory
         command = list(action.command)
         if command[0].startswith("./"):
@@ -422,7 +504,9 @@ def execute(actions: list[Action]) -> None:
         try:
             run(command, cwd=cwd)
         except subprocess.CalledProcessError as exc:
-            raise InstallerError(f"failed: {action.display()} (rc={exc.returncode})") from exc
+            raise InstallerError(
+                f"failed: {action.display()} (rc={exc.returncode})"
+            ) from exc
 
 
 def validate_runtime(plan: list[int], manifests: dict[int, dict], lifecycle: dict) -> None:
@@ -434,16 +518,32 @@ def validate_runtime(plan: list[int], manifests: dict[int, dict], lifecycle: dic
             if not is_runtime_healthy(state):
                 failures.append(f"stack{sid}:{name}={state}")
     if failures:
-        raise InstallerError("required runtime validation failed: " + ", ".join(failures))
+        raise InstallerError(
+            "required runtime validation failed: " + ", ".join(failures)
+        )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Manifest-driven local_hybrid_ai installer")
-    parser.add_argument("stacks", nargs="+", help="stack ids, stackN, directory names, or all")
+    parser = argparse.ArgumentParser(
+        description="Manifest-driven local_hybrid_ai installer"
+    )
+    parser.add_argument(
+        "stacks", nargs="+", help="stack ids, stackN, directory names, or all"
+    )
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--plan", action="store_true", help="resolve and print plan only")
-    mode.add_argument("--dry-run", action="store_true", help="print exact actions without executing them")
-    parser.add_argument("--target", action="store_true", help="resolve target_requires instead of current requires")
+    mode.add_argument(
+        "--plan", action="store_true", help="resolve and print plan only"
+    )
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print exact actions without executing them",
+    )
+    parser.add_argument(
+        "--target",
+        action="store_true",
+        help="resolve target_requires instead of current requires",
+    )
     parser.add_argument(
         "--reconcile",
         action="store_true",
@@ -484,9 +584,11 @@ def main() -> int:
             print("\nNo changes made.")
             return 0
         if not args.yes:
-            raise InstallerError("refusing execution without --yes; inspect --plan/--dry-run first")
+            raise InstallerError(
+                "refusing execution without --yes; inspect --plan/--dry-run first"
+            )
 
-        execute(actions)
+        execute(actions, lifecycle)
         validate_runtime(plan, manifests, lifecycle)
         print("\nINSTALLER: PASS")
         return 0
