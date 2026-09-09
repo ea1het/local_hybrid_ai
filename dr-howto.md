@@ -1,18 +1,16 @@
 # Disaster recovery how-to
 
-This document defines the disaster-recovery model for `local_hybrid_ai` before the backup/restore engine is implemented.
+This document defines the disaster-recovery model and recovery-engine contract for `local_hybrid_ai`.
 
 The design goal is deliberately small: preserve only state whose loss would materially prevent recovery. Everything else must be reconstructable from Git, protected configuration and fresh stack deployment.
 
-> **Current implementation status:** the recovery contract and schema are defined here and in [`recovery.schema.json`](recovery.schema.json). The backup/restore engine is **not implemented yet**. Until that engine exists, this document is the architectural contract, not an executable runbook.
+> **Current implementation status:** manifest recovery contracts are validated, `dr.py plan` is implemented, and `dr.py backup ... --dry-run` now plans the backup-set layout. No backup adapter, dump, archive, checksum generation, verification or restore execution is implemented yet.
 
 ## 1. Recovery principles
 
-The platform distinguishes physical persistence from disaster-recovery value.
+The platform distinguishes physical persistence from disaster-recovery value. A Docker volume, bind mount, database file or runtime directory is not automatically a backup target.
 
-A Docker volume, bind mount, database file or runtime directory is **not automatically a backup target**. A resource belongs in disaster recovery only when its loss would destroy durable data or durable identity that cannot be reconstructed safely.
-
-The intended recovery set is:
+The intended recovery inputs are:
 
 ```text
 Git source at a known commit/tag
@@ -24,15 +22,11 @@ Git source at a known commit/tag
 
 Everything else should be reconstructable or externalized.
 
-Do not back up live PostgreSQL PGDATA as the normal DR mechanism. Use logical/application-aware recovery artifacts.
-
-Do not encode Docker-internal paths such as `/var/lib/docker/overlay2/...` or named-volume mountpoints as architectural recovery contracts.
+Do not back up live PostgreSQL PGDATA as the normal DR mechanism. Use logical/application-aware recovery artifacts. Do not encode Docker-internal paths such as `/var/lib/docker/overlay2/...` or named-volume mountpoints as architectural recovery contracts.
 
 ## 2. Normalized manifest contract
 
-Each stack manifest will eventually contain a `recovery` object validated by [`recovery.schema.json`](recovery.schema.json).
-
-The structure is intentionally normalized into two top-level blocks:
+Each stack manifest contains a `recovery` object validated by [`recovery.schema.json`](recovery.schema.json):
 
 ```text
 recovery
@@ -40,9 +34,7 @@ recovery
 └── resources    OPTIONAL; present only when recovery resources exist
 ```
 
-### 2.1 Mandatory block: `contract`
-
-Every stack must declare:
+The mandatory contract is:
 
 ```json
 {
@@ -55,19 +47,15 @@ Every stack must declare:
 }
 ```
 
-Valid `mode` values are:
+Valid modes are:
 
 | Mode | Meaning |
 |---|---|
-| `reconstructable` | The stack itself can be destroyed and rebuilt. It may only declare `externalized` resources. |
+| `reconstructable` | The stack can be destroyed and rebuilt. It may only declare `externalized` resources. |
 | `managed` | The stack owns durable recovery resources and cannot be considered recovered without them. |
 | `mixed` | Some stack state is durable while the rest is intentionally reconstructable. |
 
-### 2.2 Optional block: `resources`
-
-`resources` is omitted when a stack has no managed or externalized recovery resources.
-
-When present, every resource has the same normalized shape:
+When present, every resource uses the same normalized shape:
 
 ```json
 {
@@ -79,293 +67,195 @@ When present, every resource has the same normalized shape:
 }
 ```
 
-The required common fields are:
+Resource classes are `persistent-data`, `persistent-identity`, and `externalized`. `ephemeral` and `reconstructable` are stack-level semantics rather than resource classes.
 
-| Field | Meaning |
-|---|---|
-| `id` | Stable machine-readable identifier inside the stack recovery contract. |
-| `class` | Recovery semantics of the resource. |
-| `strategy` | Engine adapter that creates/restores the artifact. |
-| `sensitive` | Whether the resulting artifact/config must be treated as secret material. |
+## 3. Recovery strategies
 
-`config` is strategy-specific. Its exact allowed shape is enforced by `recovery.schema.json`; strategies do not invent arbitrary peer fields.
-
-## 3. Resource classes
-
-The schema intentionally exposes only three resource classes:
-
-| Class | Meaning |
-|---|---|
-| `persistent-data` | Durable application data that must survive rebuild. |
-| `persistent-identity` | Cryptographic or identity material whose replacement changes trust or decryptability. |
-| `externalized` | Durable information lives outside the stack runtime and is recovered from another authoritative system. |
-
-`ephemeral` and `reconstructable` are not resource classes. They are stack-level recovery semantics and are represented by `contract.mode`.
-
-## 4. Recovery strategies
-
-Version 1 defines only the strategies currently required by the platform:
+Version 1 defines:
 
 | Strategy | Source | Intended use |
 |---|---|---|
-| `archive` | `runtime-path` | Preserve a bounded filesystem identity/resource such as platform PKI. |
-| `postgres-custom-dump` | `postgres` | Logical PostgreSQL backup using custom-format dump semantics. |
-| `gitea-native-dump` | `application` | Application-aware Gitea export containing database and durable repository/application state. |
-| `external-config` | `environment` | Persistent identity already supplied by protected operational configuration. |
-| `git` | `git` | Durable knowledge/state externalized to a Git repository. |
+| `archive` | `runtime-path` | Bounded filesystem identity/resource such as platform PKI. |
+| `postgres-custom-dump` | `postgres` | Logical PostgreSQL custom-format dump. |
+| `gitea-native-dump` | `application` | Application-aware Gitea export. |
+| `external-config` | `environment` | Persistent identity supplied by protected operational configuration. |
+| `git` | `git` | Durable knowledge/state externalized to Git. |
 
-The manifest declares the logical resource and strategy. The future engine is responsible for the actual command implementation, verification, checksums, temporary paths, artifact naming, encryption and restore sequencing.
+The manifest declares policy and logical source. The engine implements the command, consistency, artifact creation, integrity and restore semantics.
 
-## 5. Restore phases
+## 4. Restore phases
 
-Managed filesystem/application resources may declare one of three normalized restore phases:
+Managed filesystem/application resources may declare one of three phases:
 
 | Phase | Meaning |
 |---|---|
 | `pre-prepare` | Restore before stack PREPARE so preparation sees the existing identity/state. |
-| `post-prepare-pre-deploy` | Prepare the fresh runtime/service substrate, restore durable state, then start the application. |
-| `post-deploy` | Restore only after the application stack is already deployed. |
+| `post-prepare-pre-deploy` | Prepare the substrate, restore durable state, then start the application. |
+| `post-deploy` | Restore only after the application stack is deployed. |
 
-The schema deliberately does not allow arbitrary workflow strings such as `service:x:ready`. Recovery sequencing should remain a small platform lifecycle, not become an embedded workflow language.
+The contract deliberately avoids arbitrary workflow expressions. Recovery sequencing remains a small platform lifecycle.
 
-## 6. Stack-by-stack recovery decision
-
-The current DR classification is:
+## 5. Stack-by-stack decision
 
 | Stack | Recovery mode | Durable recovery target | Decision |
 |---|---|---|---|
 | Stack0 Platform | `mixed` | platform PKI | **BACKUP** |
 | Stack1 HAProxy/Web | `reconstructable` | none | **RECONSTRUCT** |
 | Stack2 SearXNG/Firecrawl | `reconstructable` | none | **RECONSTRUCT** |
-| Stack3 LiteLLM | `mixed` | LiteLLM DB + original `LITELLM_SALT_KEY` | **BACKUP** |
+| Stack3 LiteLLM | `mixed` | LiteLLM DB + original `LITELLM_SALT_KEY` | **BACKUP + REQUIRE** |
 | Stack4 Gitea | `managed` | complete logical/application state | **BACKUP** |
 | Stack5 Dockhand | `reconstructable` | none | **RECONSTRUCT** |
-| Stack6 Hermes | `reconstructable` | knowledge/memory externalized to Git | **RECONSTRUCT** |
+| Stack6 Hermes | `reconstructable` | knowledge/memory externalized to Git | **EXTERNAL** |
 
-### 6.1 Stack0 — platform PKI
+### Stack0 — platform PKI
 
-The platform trust identity must survive a rebuild. A representative future manifest block is:
+The trust identity survives rebuild. Manifest strategy: `archive`, restore phase `pre-prepare`. The engine must preserve the existing identity rather than generate a replacement and call it equivalent.
 
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "mixed"
-    },
-    "resources": [
-      {
-        "id": "platform-pki",
-        "class": "persistent-identity",
-        "strategy": "archive",
-        "sensitive": true,
-        "config": {
-          "source": {
-            "type": "runtime-path",
-            "path": "${BASE_PATH}/service_-_platform/pki"
-          },
-          "restore": {
-            "phase": "pre-prepare"
-          }
-        }
-      }
-    ]
-  }
-}
-```
+### Stack1 — HAProxy/Web
 
-The engine must preserve the PKI as a bounded identity resource, including ownership/permissions needed by the platform. It must not generate a new PKI and then silently treat it as equivalent.
+No recovery artifact. Rendered HAProxy/static-web runtime is installation output. TLS identity belongs to Stack0.
 
-### 6.2 Stack1 — HAProxy/Web
+### Stack2 — SearXNG/Firecrawl
 
-No disaster-recovery artifact is required:
+No recovery artifact. Firecrawl PostgreSQL, Redis, RabbitMQ and SearXNG runtime/cache state are intentionally disposable for full DR.
 
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "reconstructable"
-    }
-  }
-}
-```
+### Stack3 — LiteLLM
 
-Rendered HAProxy/static-web runtime is installation output, not authoritative recovery state.
+The LiteLLM application database is a `postgres-custom-dump` artifact restored `post-prepare-pre-deploy`. `LITELLM_SALT_KEY` is a required external configuration identity and is never copied into generic backup metadata.
 
-### 6.3 Stack2 — SearXNG/Firecrawl
+The target is the logical LiteLLM database, not PGDATA. A rebuild may create a fresh PostgreSQL cluster/admin credential, restore the application dump, and start LiteLLM with the original salt.
 
-No Stack2 runtime state is part of DR:
+### Stack4 — Gitea
 
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "reconstructable"
-    }
-  }
-}
-```
+Gitea is durable source-of-truth state. Strategy: `gitea-native-dump`. The artifact must cover repositories plus associated application metadata supported by the native dump mechanism. Runner registration/runtime identity is reconstructable.
 
-This intentionally includes Firecrawl PostgreSQL, Redis, RabbitMQ and SearXNG runtime/cache state. They may be persistent on disk for normal operation, but they are disposable for full disaster recovery.
+The exact dump/restore flags must be verified against the deployed Gitea version before adapter execution is implemented.
 
-### 6.4 Stack3 — LiteLLM
+### Stack5 — Dockhand
 
-LiteLLM contains durable configured state. Preserve the application database logically and preserve the original salt through protected configuration.
+Reconstructable. The existence of `dockhand_data` does not make it a DR resource.
 
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "mixed"
-    },
-    "resources": [
-      {
-        "id": "litellm-database",
-        "class": "persistent-data",
-        "strategy": "postgres-custom-dump",
-        "sensitive": true,
-        "config": {
-          "source": {
-            "type": "postgres",
-            "service": "litellm-postgres",
-            "database_env": "LITELLM_DB_NAME",
-            "user_env": "LITELLM_DB_USER"
-          },
-          "restore": {
-            "phase": "post-prepare-pre-deploy"
-          }
-        }
-      },
-      {
-        "id": "litellm-salt",
-        "class": "persistent-identity",
-        "strategy": "external-config",
-        "sensitive": true,
-        "config": {
-          "source": {
-            "type": "environment",
-            "key": "LITELLM_SALT_KEY"
-          }
-        }
-      }
-    ]
-  }
-}
-```
+### Stack6 — Hermes
 
-The target is the logical LiteLLM database, **not PGDATA**. A rebuild may create a new PostgreSQL cluster and new PostgreSQL administrative credential, restore the logical dump, and then start LiteLLM with the original `LITELLM_SALT_KEY`.
-
-### 6.5 Stack4 — Gitea
-
-Gitea is the durable source of truth for local repositories and application metadata. Preserve it with an application-aware dump rather than by naming selected internal directories in the manifest.
-
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "managed"
-    },
-    "resources": [
-      {
-        "id": "gitea-state",
-        "class": "persistent-data",
-        "strategy": "gitea-native-dump",
-        "sensitive": true,
-        "config": {
-          "source": {
-            "type": "application",
-            "service": "gitea"
-          },
-          "restore": {
-            "phase": "post-prepare-pre-deploy"
-          }
-        }
-      }
-    ]
-  }
-}
-```
-
-The intended artifact must cover the logical Gitea state required to recover repositories and associated metadata, including the SQLite database and durable repository/application data supported by the native dump mechanism. The future engine must verify the exact command/flags against the deployed Gitea version before implementation.
-
-Runner registration/runtime identity is not a core DR target; it may be re-registered after Gitea recovery.
-
-### 6.6 Stack5 — Dockhand
-
-Dockhand is an operational container visualizer/management UI. Its runtime volume is not valuable DR state.
-
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "reconstructable"
-    }
-  }
-}
-```
-
-Physical existence of `dockhand_data` does not change this classification.
-
-### 6.7 Stack6 — Hermes
-
-Hermes should be disposable compute/agent runtime. Durable memory, identity documents and knowledge should live in Git rather than in Hermes runtime databases/caches.
-
-Target contract:
-
-```json
-{
-  "recovery": {
-    "contract": {
-      "schema_version": 1,
-      "mode": "reconstructable"
-    },
-    "resources": [
-      {
-        "id": "hermes-knowledge",
-        "class": "externalized",
-        "strategy": "git",
-        "sensitive": false,
-        "config": {
-          "source": {
-            "type": "git"
-          }
-        }
-      }
-    ]
-  }
-}
-```
-
-Architectural rule:
+Hermes should be disposable agent/compute runtime. Durable memory, identity documents and knowledge should live in Git/Gitea.
 
 > If losing a Hermes runtime file would matter after a complete rebuild, that information is stored in the wrong place and should be externalized to Git/Gitea.
 
-Caches, sessions, dynamically installed Python packages, model catalogs, SQLite operational databases, browser workspace, logs, sandbox state and similar runtime artifacts are not DR targets.
+Caches, sessions, dynamically installed packages, model catalogs, SQLite operational databases, browser workspace, logs and sandbox state are not DR targets.
 
-**Current migration note:** `SOUL.md` and any other operator-valued Hermes identity/knowledge that still exists only in mutable runtime must be externalized to Git before the future recovery engine can safely enforce Stack6 as fully reconstructable.
+`SOUL.md` and any other operator-valued identity/knowledge that still exists only in mutable runtime remains a migration gap and must be externalized before Stack6 can be treated as fully disposable in practice.
 
-## 7. Global protected configuration
+## 6. Global protected configuration
 
-The operational `.env` is not a stack-owned backup resource. It is a platform recovery prerequisite and must have a protected backup outside Git.
+The operational `.env` is not a stack-owned backup artifact. It is a protected recovery prerequisite outside Git. It contains durable configuration/credentials including `LITELLM_SALT_KEY`.
 
-It contains durable configuration/credentials including `LITELLM_SALT_KEY`. Recovery tooling must never print it, commit it, or bundle it into an unprotected general-purpose artifact.
+Recovery tooling must never print `.env`, commit it, or place secret values into unprotected metadata.
 
-The conceptual platform recovery inputs are therefore:
+## 7. Read-only planner
 
-```text
-source repository
-protected .env
-manifest-declared recovery artifacts
+The first engine milestone is:
+
+```bash
+python3 dr.py plan all
+python3 dr.py plan 3
+python3 dr.py plan 6 --target
+python3 dr.py plan all --json
 ```
 
-## 8. What is intentionally excluded
+It resolves the same dependency graph as installation and classifies entries as:
 
-The DR design intentionally excludes:
+```text
+BACKUP       create a managed artifact
+REQUIRE      required protected prerequisite, not a generic artifact
+EXTERNAL     authoritative state lives elsewhere
+RECONSTRUCT  no recovery artifact
+```
+
+Planning does not inspect Docker runtime or secret values and makes no changes.
+
+## 8. Backup-set dry-run
+
+The second engine milestone plans a backup set without creating it:
+
+```bash
+python3 dr.py backup all --dry-run
+python3 dr.py backup 3 --dry-run
+python3 dr.py backup all --dry-run --json
+```
+
+Calling `dr.py backup` without `--dry-run` currently fails closed because adapter execution is not implemented.
+
+For the current platform, `backup all --dry-run` must plan exactly three artifacts:
+
+```text
+artifacts/stack0/platform-pki.tar
+artifacts/stack3/litellm-database.dump
+artifacts/stack4/gitea-state.zip
+```
+
+and two non-artifact prerequisites:
+
+```text
+stack3 litellm-salt       REQUIRE / external-config
+stack6 hermes-knowledge   EXTERNAL / git
+```
+
+Reconstructable stacks never acquire artifact slots merely because they own persistent files or Docker volumes.
+
+## 9. Backup-set layout
+
+A completed backup set will use this logical layout:
+
+```text
+<backup-set>/
+├── backup.json
+├── checksums.sha256
+└── artifacts/
+    ├── stack0/
+    │   └── platform-pki.tar
+    ├── stack3/
+    │   └── litellm-database.dump
+    └── stack4/
+        └── gitea-state.zip
+```
+
+`backup.json` is normative metadata. `checksums.sha256` is a human/tool-friendly integrity index over artifact files. The backup set is not considered complete merely because files with these names exist.
+
+[`backup-set.schema.json`](backup-set.schema.json) defines the metadata contract for a **completed** backup set. Dry-run JSON deliberately uses `kind: local-hybrid-ai-backup-plan`, not `local-hybrid-ai-backup-set`, and contains no fake checksum or size values.
+
+A completed `backup.json` must contain, at minimum:
+
+- schema version and kind;
+- creation timestamp;
+- exact Git source commit;
+- requested selectors and resolved stacks;
+- each real artifact's stack/resource identity, strategy, sensitivity, restore phase and relative path;
+- SHA-256 and byte size for each real artifact;
+- non-artifact prerequisites (`REQUIRE` / `EXTERNAL`).
+
+Secret values, `.env` contents, database passwords and source-specific manifest config do not belong in backup metadata.
+
+## 10. Integrity and completion rules
+
+The future executing backup command must build into a temporary backup-set directory and publish/rename it only after all requested artifacts succeed and integrity metadata is complete.
+
+A completed set should therefore satisfy:
+
+```text
+all BACKUP resources produced
++ every artifact is non-missing
++ SHA-256 recorded
++ size recorded
++ checksums.sha256 matches backup.json
++ required prerequisites validated without exposing values
++ backup.json validates against backup-set.schema.json
+```
+
+A partially generated directory must never be presented as a successful backup set.
+
+## 11. What is intentionally excluded
+
+The DR design excludes:
 
 - Firecrawl PostgreSQL data;
 - Firecrawl Redis/RabbitMQ state;
@@ -373,57 +263,35 @@ The DR design intentionally excludes:
 - PostgreSQL PGDATA physical copies as the normal database restore mechanism;
 - Dockhand runtime volume;
 - Hermes caches, sessions, packages, logs and operational SQLite state;
-- Hermes sandbox workspace/state unless future requirements explicitly change;
+- Hermes sandbox workspace/state unless requirements change;
 - Gitea runner registration token/state;
-- Docker containers and images;
-- Docker overlay filesystem internals;
+- Docker containers/images and overlay filesystem internals;
 - `.lock`, temporary files and migration markers.
 
-## 9. Future engine boundary
+## 12. Remaining engine milestones
 
-The next implementation phase should build a generic recovery engine that consumes stack manifests rather than hard-coding stack numbers.
-
-Conceptually:
+The generic engine should continue without stack-number conditionals. The remaining sequence is:
 
 ```text
-manifest recovery contract
-        +
-current runtime observation
-        +
-strategy adapters
-        ↓
-backup / verify / restore
+runtime/source preflight
+-> adapter execution
+   archive
+   postgres-custom-dump
+   gitea-native-dump
+-> checksum + size collection
+-> completed backup.json
+-> backup-set verify
+-> restore planning/execution by declared restore phase
 ```
 
-Expected adapters for version 1:
+Before real adapter execution, settle and test:
 
-```text
-archive
-postgres-custom-dump
-gitea-native-dump
-external-config
-git
-```
-
-The engine should validate declared resources against actual runtime/service topology before acting. A manifest path or service declaration is architectural intent; runtime observation confirms that the deployed system still matches it.
-
-The engine must not implement destructive cleanup as part of backup or restore discovery.
-
-## 10. Engine requirements to settle before coding
-
-Before implementation, define at minimum:
-
-- CLI shape (`backup`, `restore`, `verify`, `plan`);
-- artifact directory/layout and naming;
-- manifest validation integration;
-- checksum/integrity metadata;
+- backup destination and permissions;
 - encryption policy for sensitive artifacts;
-- atomic temporary-file handling;
-- retention policy, if any;
-- backup consistency rules for Gitea and PostgreSQL;
-- restore ordering across Stack0, Stack3 and Stack4;
-- behavior when external prerequisites such as `.env` or Git knowledge are missing;
-- dry-run/plan semantics;
-- tests proving that reconstructable stacks never become accidental backup targets.
+- temporary directory and atomic publication semantics;
+- PostgreSQL consistency and command details;
+- exact Gitea native dump/restore command for the pinned version;
+- prerequisite verification without displaying secret values;
+- failure cleanup that never destroys source/runtime state.
 
-No recovery engine code should be considered complete until it can prove both sides of the contract: creation of a valid artifact and restoration into a clean deployment.
+No recovery engine is complete until it proves both artifact creation and restoration into a clean deployment.
