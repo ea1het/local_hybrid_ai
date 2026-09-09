@@ -20,18 +20,20 @@ container:dockhand
 volume:dockhand_data
 ```
 
-`dockhand_data` is an external Docker volume and is the stack's persistent application state. There is intentionally no `${BASE_PATH}/service_-_dockhand` directory.
+`dockhand_data` is an external Docker volume and is the stack's persistent operational state. There is intentionally no `${BASE_PATH}/service_-_dockhand` directory.
 
 Stack0 owns the shared network. Stack5 validates that network and does not create it.
 
 ## Volume lifecycle
 
-PREPARE treats `dockhand_data` conservatively:
+PREPARE treats `dockhand_data` conservatively during normal operation:
 
 - existing volume: preserve unchanged;
 - missing volume: create once;
 - never delete/recreate an existing volume during PREPARE;
 - keep Compose declaration `external: true` so routine project shutdown does not own its lifecycle.
+
+Persistent storage does **not** imply DR value. Dockhand is a container visualizer/management UI and is intentionally reconstructable after total loss.
 
 ## Preparation and startup
 
@@ -46,6 +48,25 @@ PREPARE requires Stack0 `.lock`, validates stack location/shared network, ensure
 
 `.lock` means PREPARED only.
 
+## Disaster recovery
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "reconstructable"
+    }
+  }
+}
+```
+
+`dockhand_data` is **not** a recovery target. A disaster rebuild may create a fresh Dockhand volume and redeploy the stack from source/configuration.
+
+See [`../dr-howto.md`](../dr-howto.md) and [`../recovery.schema.json`](../recovery.schema.json).
+
 ## Re-preparation
 
 ```bash
@@ -53,7 +74,7 @@ rm .lock
 sudo ./01-prepare.sh
 ```
 
-This must preserve `dockhand_data`. Do not use `docker compose down -v`, `docker volume prune` or general cleanup operations as part of normal Stack5 maintenance.
+This must preserve `dockhand_data` during normal maintenance. Do not use `docker compose down -v`, `docker volume prune` or general cleanup operations as part of normal Stack5 maintenance.
 
 ## Security boundary
 
