@@ -41,6 +41,14 @@ sudo ./install.sh
 
 Preparation validates the root `.env`, creates/validates `stackN/.env -> ../.env`, prepares platform runtime, creates/validates the shared bridge network, establishes PKI and validates both current and target manifest graphs. `.lock` means PREPARED only.
 
+For platform-wide installation use the root common installer instead of this stack-local wrapper:
+
+```bash
+cd /opt/docker/stacks
+python3 install.py all --plan
+sudo python3 install.py all --yes
+```
+
 ## Dependency graph
 
 ```mermaid
@@ -56,7 +64,9 @@ flowchart TB
     S4 -.->|optional capabilities| S6
 ```
 
-Every application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional providers to Stack6.
+Every current application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional providers to Stack6.
+
+A new Open WebUI stack is planned next. Stack0's resolver should discover it dynamically from its manifest; do not add a hard-coded Stack7/Open-WebUI table to `manifests.py`.
 
 ## Manifest registry
 
@@ -88,19 +98,29 @@ python3 manifests.py plan all
 
 `target_requires` remains part of the schema for future architecture transitions, but current atomic stacks already have their intended required dependencies.
 
-## PREPARE versus capability reconciliation
+## Common installer and lifecycle states
 
-Stack0 validates dependency/capability declarations; it does not reconcile application configuration itself.
+The common installer is now implemented at repository root (`install.py`). It consumes the manifest graph, observes current state, invokes stack-owned lifecycle commands from `installer/lifecycle.json`, and reconciles affected optional consumers generically when a provider actually changes.
 
 ```mermaid
 flowchart LR
     PREP[PREPARE stack-owned resources] --> LOCK[.lock = PREPARED]
-    LOCK --> RUN[Deploy/start]
-    RUN --> REC[Consumer RECONCILE]
-    PROV[Optional provider state] --> REC
+    LOCK --> RUN[DEPLOY required containers]
+    RUN --> READY[stack-specific READY gate]
+    READY --> REC[consumer RECONCILE]
+    PROV[changed provider capabilities] --> REC
+    REC --> VERIFY[VERIFY]
 ```
 
-The future common installer should use the manifest graph to determine install order and use capability declarations to determine which prepared consumers need reconciliation after provider changes.
+Important distinctions:
+
+- `.lock` means PREPARED only;
+- required containers running means DEPLOYED, not necessarily READY;
+- a provider-specific readiness gate must pass before capability-dependent consumers are reconciled;
+- a healthy requested provider does not count as a capability change;
+- `--reconcile` is the explicit operator override for intentional reconciliation.
+
+Stack2 currently demonstrates the readiness pattern through `02-wait-ready.sh` before `web.search`/`web.extract` are treated as usable for Stack6 reconciliation.
 
 ## PKI lifecycle
 
