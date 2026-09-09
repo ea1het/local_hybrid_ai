@@ -34,18 +34,30 @@ PREPARE preserves the existing SearXNG configuration directory identity and pers
 
 Firecrawl PostgreSQL belongs only to Stack2. LiteLLM no longer uses this database in the current architecture.
 
-## Preparation and start
+## Preparation, deployment and readiness
 
 ```bash
 cd /opt/docker/stacks/stack2_-_searxng_firecrawl
 sudo ./01-prepare.sh
 docker compose up -d
+sudo bash ./02-wait-ready.sh
 docker compose ps
 ```
 
 PREPARE requires Stack0 `.lock`, verifies the existing shared bridge network without creating it, prepares stack-owned runtime paths/configuration, validates Compose and creates `.lock` only after success.
 
-`.lock` means PREPARED, not running/healthy.
+`.lock` means PREPARED, not deployed/healthy/ready.
+
+`docker compose up -d` establishes process state, but **DEPLOYED is not READY**. `02-wait-ready.sh` waits up to its bounded timeout until both provider endpoints accept connections:
+
+```text
+web.search  -> searxng:8080
+web.extract -> firecrawl-api:3002
+```
+
+The common installer runs this readiness gate after Stack2 deployment and again during Stack2 verification. Consumer reconciliation occurs only after the deploy-time readiness gate succeeds.
+
+This behavior was validated by stopping only SearXNG and recovering Stack2 through the common installer: the same SearXNG container was restarted rather than recreated, readiness completed before Stack6 reconciliation, Hermes remained unchanged, and a second installer run returned to verification-only convergence.
 
 ## Internal endpoints
 
@@ -59,21 +71,30 @@ RabbitMQ:      firecrawl-rabbitmq:5672
 
 ## Stack6 integration
 
-Stack6 does not require Stack2. Without Stack2, Hermes web tools remain explicitly disabled.
+Stack6 does not require Stack2. Without a ready Stack2, Hermes web tools remain explicitly disabled.
 
-After deploying/restoring Stack2, reconcile the already-prepared Stack6 consumer:
+Preferred incremental operation from repository root:
 
 ```bash
+sudo python3 install.py 2 --yes
+```
+
+If Stack2 is already healthy/ready, this verifies it and does not spuriously reconcile Stack6. If Stack2 must actually deploy/recover, the common installer waits for provider readiness, discovers prepared consumers through manifest capabilities, and reconciles Stack6 automatically.
+
+Manual equivalent after deploying/restoring Stack2:
+
+```bash
+sudo bash ./02-wait-ready.sh
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --restart
 ```
 
-Reconciliation enables web only when both `searxng` and `firecrawl-api` are running on the configured shared network. Provider disappearance reverses the configuration to explicit web-disabled state; it does not trigger an external web fallback.
+Reconciliation enables web only when both provider containers are present on the configured shared network; the common installer additionally guarantees readiness before it invokes that reconciliation during a provider transition. Provider disappearance reverses the managed configuration to explicit web-disabled state when reconciled; it does not trigger an external web fallback.
 
 ```mermaid
 stateDiagram-v2
     [*] --> WebDisabled
-    WebDisabled --> LocalWeb: SearXNG + Firecrawl available + reconcile
+    WebDisabled --> LocalWeb: provider READY + reconcile
     LocalWeb --> WebDisabled: provider unavailable + reconcile
 ```
 
