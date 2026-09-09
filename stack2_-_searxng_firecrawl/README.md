@@ -1,54 +1,24 @@
 # Stack2 — SearXNG + Firecrawl
 
-Search and web extraction stack. None of its services publish ports directly to the host.
+Stack2 is the local web search/extraction capability provider. It is atomic, requires only Stack0, and provides `web.search` and `web.extract`.
 
-- SearXNG is exposed to the user only through HAProxy at `https://buscar.casa.lan/`.
-- Firecrawl API is an internal `redlocal` service at `http://firecrawl-api:3002`.
-- Firecrawl accesses SearXNG directly at `http://searxng:8080`.
-- Redis, RabbitMQ and PostgreSQL are internal.
-
-## Structure
-
-```text
-stack2_-_searxng_firecrawl/
-├── .env
-├── docker-compose.yml
-├── 01-prepare.sh
-├── README.md
-└── config/
-    └── searxng/
-        ├── settings.yml
-        └── limiter.toml
+```mermaid
+flowchart LR
+    H[Hermes when reconciled] --> SX[SearXNG :8080]
+    H --> FC[Firecrawl API :3002]
+    FC --> SX
+    FC --> R[Redis]
+    FC --> Q[RabbitMQ]
+    FC --> P[(Firecrawl PostgreSQL)]
 ```
 
-`limiter.toml` is intentionally kept as an empty file.
+No Stack2 service publishes an application port directly to the host. SearXNG can be exposed through Stack1/HAProxy; Firecrawl and its supporting services remain internal to `redlocal`.
 
-## `.env`
+## Ownership
 
-Current variables:
+Stack2 owns six containers: SearXNG, Firecrawl API, Firecrawl Playwright, Redis, RabbitMQ and Firecrawl PostgreSQL. It also owns the corresponding SearXNG and Firecrawl runtime roots declared in its manifest.
 
-```text
-STACKS_ROOT
-BASE_PATH
-SEARXNG_SECRET
-SEARXNG_BASE_URL
-REDIS_PASSWORD
-RABBITMQ_USER
-RABBITMQ_PASSWORD
-POSTGRES_USER
-POSTGRES_PASSWORD
-POSTGRES_DB
-```
-
-`SEARXNG_PORT` and `FIRECRAWL_PORT` no longer exist, because Compose does not publish those ports.
-
-The public URL must be:
-
-```text
-SEARXNG_BASE_URL=https://buscar.casa.lan/
-```
-
-Secrets must be complete before running the script. `01-prepare.sh` does not generate them.
+It does **not** own `redlocal`; Stack0 creates/validates the shared network.
 
 ## Persistence
 
@@ -60,26 +30,22 @@ ${BASE_PATH}/service_-_firecrawl-rabbitmq/data
 ${BASE_PATH}/service_-_firecrawl-postgres/data
 ```
 
-The current preparation script works exclusively with runtime paths under `${BASE_PATH}` and does not automatically migrate legacy directories.
+PREPARE preserves the existing SearXNG configuration directory identity and persistent data directories. It synchronizes managed configuration without replacing a live bind-mounted directory.
 
-The `data` directories are never deleted. They can only be created and their ownership adjusted.
+Firecrawl PostgreSQL belongs only to Stack2. LiteLLM no longer uses this database in the current architecture.
 
-## Preparation
+## Preparation and start
 
 ```bash
 cd /opt/docker/stacks/stack2_-_searxng_firecrawl
 sudo ./01-prepare.sh
-```
-
-Without `.lock`, the script replaces `service_-_searxng/config` with the stack source content, validates the network and Compose, and finally creates `.lock`.
-
-Then:
-
-```bash
 docker compose up -d
 docker compose ps
-docker compose logs -f
 ```
+
+PREPARE requires Stack0 `.lock`, verifies the existing shared bridge network without creating it, prepares stack-owned runtime paths/configuration, validates Compose and creates `.lock` only after success.
+
+`.lock` means PREPARED, not running/healthy.
 
 ## Internal endpoints
 
@@ -91,12 +57,31 @@ Redis:         firecrawl-redis:6379
 RabbitMQ:      firecrawl-rabbitmq:5672
 ```
 
-## Configuration rebuild
+## Stack6 integration
+
+Stack6 does not require Stack2. Without Stack2, Hermes web tools remain explicitly disabled.
+
+After deploying/restoring Stack2, reconcile the already-prepared Stack6 consumer:
+
+```bash
+cd /opt/docker/stacks/stack6_-_hermes
+sudo ./06-reconcile-capabilities.sh --restart
+```
+
+Reconciliation enables web only when both `searxng` and `firecrawl-api` are running on the configured shared network. Provider disappearance reverses the configuration to explicit web-disabled state; it does not trigger an external web fallback.
+
+```mermaid
+stateDiagram-v2
+    [*] --> WebDisabled
+    WebDisabled --> LocalWeb: SearXNG + Firecrawl available + reconcile
+    LocalWeb --> WebDisabled: provider unavailable + reconcile
+```
+
+## Re-preparation
 
 ```bash
 rm .lock
 sudo ./01-prepare.sh
 ```
 
-This rewrites the configuration but does not delete persistent data.
-
+Use this only when PREPARE itself must be repeated. Optional-capability activation in Stack6 uses reconciliation and does not require re-preparing Stack6.
