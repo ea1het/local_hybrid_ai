@@ -19,12 +19,12 @@ flowchart TB
     TG[Telegram optional] -.-> H
     BZ[Buzz optional] -.-> H
     H -->|inference + MCP| LL[Stack3 LiteLLM]
-    H -. optional local web .-> SX[Stack2 SearXNG]
-    H -. optional local extract .-> FC[Stack2 Firecrawl]
+    H -.->|optional local web| SX[Stack2 SearXNG]
+    H -.->|optional local extract| FC[Stack2 Firecrawl]
     H -->|SSH| SB[hermes-sandbox]
     H --> MEM[Git-backed memory]
     MS[hermes-memory-sync] --> MEM
-    MS -. optional git.remote .-> G[Stack4 Gitea]
+    MS -.->|optional git.remote| G[Stack4 Gitea]
     CLEAN[hermes-sandbox-cleanup] --> SB
 ```
 
