@@ -1,6 +1,6 @@
 # Local Hybrid AI
 
-**Local-first hybrid AI platform with explicit dependency, capability and security boundaries.**
+**Local-first hybrid AI platform with explicit dependency, capability, readiness and security boundaries.**
 
 > Local first. Cloud when necessary. The decision should belong to the operator.
 
@@ -33,37 +33,68 @@ Every application stack requires Stack0. Stack6 additionally requires Stack3. St
 | 5 | container management | 0 | `containers.management` |
 | 6 | agent + sandbox + memory | 0, 3 | `ai.agent`, `ai.sandbox`, `ai.memory` |
 
-All seven stacks are atomic in the current manifest graph. `target_requires` remains supported by the resolver for architecture evolution.
+All seven current stacks are atomic in the manifest graph. `target_requires` remains supported by the resolver for architecture evolution.
 
-## Common installer
+> **Next planned extension:** a new atomic Open WebUI stack is expected to be designed next. Its stack ID, dependencies, capabilities, ownership, readiness gates and ingress contract must be declared from the actual design rather than hard-coded into the installer.
 
-The root installer resolves dependencies from stack manifests and then invokes stack-owned lifecycle operations. It does not contain a second hard-coded dependency graph.
+## Common installer v1
+
+The root installer resolves dependencies from stack manifests and invokes stack-owned lifecycle operations. It does not contain a second hard-coded dependency graph.
 
 ```mermaid
 flowchart LR
-    CLI[install.sh] --> R[manifest resolver]
+    CLI[python3 install.py] --> R[manifest resolver]
     R --> P[dependency plan]
-    P --> L[lifecycle registry]
-    L --> S[stack-owned scripts]
-    S --> V[verification]
+    P --> S{observed state}
+    S -->|not prepared| PREP[PREPARE]
+    S -->|not deployed| DEP[DEPLOY]
+    PREP --> DEP
+    DEP --> READY[readiness gate]
+    READY --> CAP[capability transition]
+    CAP --> REC[consumer RECONCILE]
+    S -->|already converged| VER[VERIFY]
+    REC --> VER
 ```
+
+`python3 install.py` is the canonical portable entry point. The tracked `install.sh` is a convenience wrapper; because repository-file creation through some Git hosting paths may not preserve its executable bit, invoke it portably as `bash ./install.sh ...` unless the checkout has explicitly made it executable.
 
 Inspect a deployment before executing it:
 
 ```bash
-./install.sh 6 --plan
-./install.sh 6 --dry-run
-./install.sh all --plan
+python3 install.py 6 --plan
+python3 install.py 6 --dry-run
+python3 install.py all --plan
+
+# equivalent wrapper form
+bash ./install.sh 6 --dry-run
 ```
 
 Execute only after inspection:
 
 ```bash
-sudo ./install.sh 6 --yes
-sudo ./install.sh all --yes
+sudo python3 install.py 6 --yes
+sudo python3 install.py all --yes
 ```
 
-For Stack6 the resolver derives the minimum required plan Stack0 -> Stack3 -> Stack6 from manifests. The installer never removes `.lock`, rewrites `.env`, resets runtime, invokes Docker prune, or runs the legacy PostgreSQL migration. See [`INSTALLATION.md`](INSTALLATION.md) for lifecycle details.
+For Stack6 the resolver derives the minimum required plan Stack0 -> Stack3 -> Stack6 from manifests. A healthy requested provider does not spuriously trigger consumer reconciliation. A provider that is prepared but not deployed is converged first; readiness gates complete before its capability transition is reconciled into prepared consumers. `--reconcile` is the explicit operator override when a stable consumer must be reconciled intentionally.
+
+The installer never removes `.lock`, rewrites `.env`, resets runtime, invokes Docker prune, or runs the legacy PostgreSQL migration. See [`INSTALLATION.md`](INSTALLATION.md) for lifecycle details.
+
+## Lifecycle state model
+
+The project deliberately distinguishes preparation, process state and service readiness:
+
+```text
+SOURCE
+  -> PREPARED        (.lock exists)
+  -> DEPLOYED        (required containers are running)
+  -> READY           (stack-specific service readiness checks pass)
+  -> RECONCILED      (affected optional consumers match available capabilities)
+```
+
+**DEPLOYED is not the same as READY.** A container can report `running` before its service accepts connections. Stack2 demonstrates the contract: after Compose starts SearXNG/Firecrawl, `02-wait-ready.sh` waits for `searxng:8080` and `firecrawl-api:3002` before Stack6 is reconciled. This prevents a capability from being advertised to consumers before the provider actually serves it.
+
+`.lock` means PREPARED only; it is never a health signal.
 
 ## Runtime flow
 
@@ -78,8 +109,8 @@ flowchart LR
     H -->|inference + MCP| LL
     LL --> LOCAL[Local OpenAI-compatible runtime]
     LL -.->|explicit policy| CLOUD[Optional cloud APIs]
-    H -.->|when capability available| SX
-    H -.->|when capability available| FC[Firecrawl]
+    H -.->|when capability ready| SX
+    H -.->|when capability ready| FC[Firecrawl]
     H -->|SSH| SB[Hermes Sandbox]
     H --> MEM[Git-backed memory]
     MS[Memory sync] -.->|optional git.remote| G[Gitea]
@@ -87,19 +118,20 @@ flowchart LR
     CLEAN[Sandbox cleanup] --> SB
 ```
 
-LiteLLM is the model-policy and MCP boundary. Hermes does not silently bypass it for provider inference. Web tooling is explicitly disabled when Stack2 is unavailable; it is enabled by Stack6 reconciliation only when both local providers are available. Git-memory synchronization is separately controlled by persistent operator intent and requires Stack4/Gitea.
+LiteLLM is the model-policy and MCP boundary. Hermes does not silently bypass it for provider inference. Web tooling is explicitly disabled when Stack2 is unavailable; it is enabled by Stack6 reconciliation only after the local provider is ready. Git-memory synchronization is separately controlled by persistent operator intent and requires Stack4/Gitea.
 
 ## Design contracts
 
 - **Stack0 is mandatory.** It owns the central environment links, shared network, platform runtime, PKI and manifest validation.
 - **Atomic ownership.** Each application stack owns its own containers and persistent state.
 - **Dependency-driven composition.** `manifest.json` declares `requires`, `optional`, `provides`, `consumes`, `optional_consumes` and `owns`.
-- **PREPARE is not DEPLOY.** `.lock` means only that `01-prepare.sh` completed successfully.
+- **PREPARE is not DEPLOY.** `.lock` means only that preparation completed successfully.
+- **DEPLOYED is not READY.** Provider-specific readiness must pass before dependent capability reconciliation.
 - **PREPARE and RECONCILE are separate.** Preparation creates/validates stack-owned resources. Reconciliation adapts a prepared consumer to optional capabilities without changing `.lock`.
 - **Source/runtime separation.** `/opt/docker/stacks` is Git-managed source; `/opt/docker/runtime` is persistent mutable state.
 - **No secrets in Git.** Operational `.env`, database credentials, TLS/SSH private material and runtime databases remain outside source control.
 - **No Docker socket for Hermes.** Agent execution goes through an isolated SSH sandbox.
-- **No implicit web fallback.** Absence of Stack2 leaves Hermes web tools disabled rather than falling through to an external provider.
+- **No implicit web fallback.** Absence of a ready Stack2 leaves Hermes web tools disabled rather than falling through to an external provider.
 - **Deterministic maintenance stays deterministic.** Hermes native Cron handles agentic deferred work; small sidecars handle Git-memory sync and sandbox cleanup.
 
 ## Manifest model
@@ -138,19 +170,21 @@ Stack6 demonstrates the intended incremental lifecycle:
 sequenceDiagram
     participant O as Operator / installer
     participant P as Optional provider
-    participant R as Stack6 reconcile
+    participant W as Provider readiness
+    participant R as Consumer reconcile
     participant H as Hermes
-    O->>P: deploy/enable provider
-    O->>R: reconcile capabilities
-    R->>R: inspect provider availability
+    O->>P: deploy/restore provider
+    P->>W: wait until service is ready
+    W-->>O: capability can be considered available
+    O->>R: reconcile affected consumer
     R->>H: update managed config if needed
     R->>H: recreate only Hermes when config changed
 ```
 
 `06-reconcile-capabilities.sh` does not create provider resources and does not alter `.env` or `.lock`.
 
-- Stack2 present: local `web.search` + `web.extract` become available and Hermes web tooling can be enabled.
-- Stack2 absent/incomplete: web remains explicitly disabled.
+- Stack2 ready: local `web.search` + `web.extract` become available and Hermes web tooling can be enabled.
+- Stack2 absent/incomplete/not ready: web remains explicitly disabled.
 - Stack4 present + Git-memory desired/enabled + safe Git preconditions: `hermes-memory-sync` can run.
 - Stack4 unavailable: the sidecar stops while local memory and desired state are preserved.
 
@@ -161,8 +195,10 @@ sequenceDiagram
 ├── stacks/                         # Git checkout / source
 │   ├── .env                        # operational, ignored by Git
 │   ├── .env.template               # tracked variable contract
-│   ├── install.sh / install.py     # common installer
+│   ├── install.py                  # canonical common installer
+│   ├── install.sh                  # convenience wrapper
 │   ├── installer/lifecycle.json    # lifecycle command registry
+│   ├── installer/test_installer.py # planner regression tests
 │   ├── stack0_-_platform/
 │   ├── stack1_-_haproxy_web/
 │   ├── stack2_-_searxng_firecrawl/
@@ -228,7 +264,9 @@ Sandbox generation integrity is represented by both `.sandbox-generation` and `s
 
 ## Interfaces and optional integrations
 
-Open WebUI, Telegram and Buzz are optional interfaces. Telegram and Buzz credentials may be empty; empty means disabled. They are not required for the core Hermes -> LiteLLM -> inference path.
+Telegram and Buzz are optional Hermes interfaces. Credentials may be empty; empty means disabled. They are not required for the core Hermes -> LiteLLM -> inference path.
+
+Open WebUI is the next planned independent interface stack. Do not bolt it into Stack6 or the common installer as special-case logic. When designed, give it its own manifest, ownership, lifecycle/readiness definition and explicit consumed/provided capabilities, then let the generic resolver discover it.
 
 The validated Hermes pin is:
 
@@ -245,4 +283,4 @@ See [`INSTALLATION.md`](INSTALLATION.md) for the complete deployment, common-ins
 
 Never commit real operational `.env` values, provider/inference/MCP credentials, Telegram/Buzz secrets, TLS or SSH private keys, database passwords, Hermes runtime databases/sessions, Git-memory SSH material or sandbox lifecycle state.
 
-Treat effective runtime configuration as something to validate, not assume.
+Treat effective runtime configuration and readiness as things to validate, not assume.
