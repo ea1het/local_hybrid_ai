@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,7 @@ DR_PATH = ROOT / "dr.py"
 SPEC = importlib.util.spec_from_file_location("dr_planner", DR_PATH)
 dr_planner = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = dr_planner
 SPEC.loader.exec_module(dr_planner)
 
 
