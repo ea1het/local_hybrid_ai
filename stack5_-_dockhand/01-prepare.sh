@@ -37,6 +37,9 @@ done
   die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
 [[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 
+STACK0_LOCK="${STACKS_ROOT%/}/stack0_-_platform/.lock"
+[[ -f "${STACK0_LOCK}" ]] || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
+
 step "Red Docker compartida ${NETWORK_NAME}"
 docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || \
   die "falta ${NETWORK_NAME}; instala/prepara primero Stack0"

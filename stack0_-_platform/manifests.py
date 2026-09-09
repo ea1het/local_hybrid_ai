@@ -47,10 +47,10 @@ def load_manifests(root: Path) -> dict[int, dict]:
             if key not in data or not isinstance(data[key], list):
                 fail(f"{manifest_path}: {key} must be a list")
 
-        if "target_requires" in data and not isinstance(data["target_requires"], list):
-            fail(f"{manifest_path}: target_requires must be a list")
-        if "blockers" in data and not isinstance(data["blockers"], list):
-            fail(f"{manifest_path}: blockers must be a list")
+        for key in ("target_requires", "blockers", "consumes", "optional_consumes"):
+            if key in data and not isinstance(data[key], list):
+                fail(f"{manifest_path}: {key} must be a list")
+
         if "atomic" in data and not isinstance(data["atomic"], bool):
             fail(f"{manifest_path}: atomic must be boolean")
 
@@ -106,6 +106,102 @@ def validate_graph(manifests: dict[int, dict], target: bool) -> None:
 
     for stack_id in sorted(manifests):
         visit(stack_id)
+
+
+
+def dependency_closure(
+    manifests: dict[int, dict],
+    roots: list[int],
+    target: bool,
+) -> set[int]:
+    closure: set[int] = set()
+
+    def add(stack_id: int) -> None:
+        if stack_id in closure:
+            return
+        closure.add(stack_id)
+        for dep in dependencies(manifests[stack_id], target):
+            add(dep)
+
+    for stack_id in roots:
+        add(stack_id)
+
+    return closure
+
+
+def validate_contracts(manifests: dict[int, dict], target: bool) -> None:
+    providers: dict[str, set[int]] = {}
+    owner_of: dict[str, int] = {}
+
+    for stack_id, data in manifests.items():
+        for key in ("provides", "owns", "consumes", "optional_consumes"):
+            values = data.get(key, [])
+
+            for value in values:
+                if not isinstance(value, str) or not value.strip():
+                    fail(f"stack{stack_id}: {key} entries must be non-empty strings")
+
+            if len(values) != len(set(values)):
+                fail(f"stack{stack_id}: duplicate entries in {key}")
+
+        for capability in data["provides"]:
+            providers.setdefault(capability, set()).add(stack_id)
+
+        for resource in data["owns"]:
+            previous = owner_of.get(resource)
+
+            if previous is not None:
+                fail(
+                    f"ownership collision: {resource} is owned by "
+                    f"stack{previous} and stack{stack_id}"
+                )
+
+            owner_of[resource] = stack_id
+
+    for stack_id, data in manifests.items():
+        required_stacks = dependency_closure(
+            manifests,
+            dependencies(data, target),
+            target,
+        )
+
+        optional_stacks = dependency_closure(
+            manifests,
+            data["optional"],
+            target,
+        )
+
+        available_optional = required_stacks | optional_stacks
+
+        for capability in data.get("consumes", []):
+            capability_providers = providers.get(capability, set())
+
+            if not capability_providers:
+                fail(
+                    f"stack{stack_id}: required capability {capability} "
+                    f"has no provider"
+                )
+
+            if not (capability_providers & required_stacks):
+                fail(
+                    f"stack{stack_id}: required capability {capability} "
+                    f"is not provided by its required dependency closure"
+                )
+
+        for capability in data.get("optional_consumes", []):
+            capability_providers = providers.get(capability, set())
+
+            if not capability_providers:
+                fail(
+                    f"stack{stack_id}: optional capability {capability} "
+                    f"has no provider"
+                )
+
+            if not (capability_providers & available_optional):
+                fail(
+                    f"stack{stack_id}: optional capability {capability} "
+                    f"is not reachable through required/optional dependencies"
+                )
 
 
 def resolve_token(token: str, manifests: dict[int, dict]) -> int:
@@ -165,12 +261,15 @@ def main() -> None:
 
     if args.command == "validate":
         validate_graph(manifests, args.target)
+        validate_contracts(manifests, args.target)
         mode = "target" if args.target else "current"
         print(f"manifest graph ({mode}): OK ({len(manifests)} stacks)")
         return
 
     validate_graph(manifests, False)
+    validate_contracts(manifests, False)
     validate_graph(manifests, True)
+    validate_contracts(manifests, True)
 
     if args.command == "directories":
         for stack_id in sorted(manifests):

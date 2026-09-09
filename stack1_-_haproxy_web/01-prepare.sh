@@ -51,6 +51,9 @@ PLATFORM_PKI_GID="${PLATFORM_PKI_GID:-1999}"
   die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
 [[ "${STACKS_ROOT%/}" != "${BASE_PATH%/}" ]] || die "STACKS_ROOT y BASE_PATH deben ser distintos"
 
+STACK0_LOCK="${STACKS_ROOT%/}/stack0_-_platform/.lock"
+[[ -f "${STACK0_LOCK}" ]] || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
+
 HAPROXY_SERVICE="${BASE_PATH%/}/service_-_haproxy"
 WEB_SERVICE="${BASE_PATH%/}/service_-_web"
 PLATFORM_PKI="${BASE_PATH%/}/service_-_platform/pki"

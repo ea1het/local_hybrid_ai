@@ -147,7 +147,10 @@ BASE_PATH="${BASE_PATH%/}"
 [[ "${STACK_DIR}" == "${STACKS_ROOT}/stack6_-_hermes" ]]   || die "Stack6 debe residir en ${STACKS_ROOT}/stack6_-_hermes; ruta actual: ${STACK_DIR}"
 
 STACK0_LOCK="${STACKS_ROOT}/stack0_-_platform/.lock"
+STACK3_LOCK="${STACKS_ROOT}/stack3_-_litellm/.lock"
+
 [[ -f "${STACK0_LOCK}" ]]   || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
+[[ -f "${STACK3_LOCK}" ]]   || die "Stack3 no esta preparado: falta ${STACK3_LOCK}"
 
 for service_var in HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE; do
   service_value="${!service_var}"

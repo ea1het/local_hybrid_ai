@@ -48,6 +48,9 @@ done
 [[ "${GITEA_RUNNER_INSTANCE_URL}" == "http://gitea:3000/" ]] || die "GITEA_RUNNER_INSTANCE_URL debe ser http://gitea:3000/"
 [[ "${GITEA_DOCKER_NETWORK}" == "${NETWORK_NAME}" ]] || die "GITEA_DOCKER_NETWORK debe coincidir con NETWORK_NAME (${NETWORK_NAME})"
 
+STACK0_LOCK="${STACKS_ROOT%/}/stack0_-_platform/.lock"
+[[ -f "${STACK0_LOCK}" ]] || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
+
 GITEA_SERVICE="${BASE_PATH%/}/service_-_gitea"
 RUNNER_SERVICE="${BASE_PATH%/}/service_-_gitea-runner"
 RUNNER_SECRET_DIR="${RUNNER_SERVICE}/secret"
