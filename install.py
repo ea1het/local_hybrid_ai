@@ -196,11 +196,7 @@ def is_running(state: str) -> bool:
 
 
 def is_runtime_healthy(state: str) -> bool:
-    if state == "running":
-        return True
-    if state == "running/healthy":
-        return True
-    return False
+    return state in {"running", "running/healthy"}
 
 
 def stack_state(manifest: dict) -> dict:
@@ -216,24 +212,57 @@ def stack_state(manifest: dict) -> dict:
 
 
 def deployment_ready(entry: dict, state: dict) -> bool:
-    required = entry["required_containers"]
-    return all(is_running(state["containers"].get(name, "absent")) for name in required)
+    return all(
+        is_running(state["containers"].get(name, "absent"))
+        for name in entry["required_containers"]
+    )
+
+
+def state_transition_ids(
+    plan: list[int],
+    states: dict[int, dict],
+    lifecycle: dict,
+) -> set[int]:
+    """Stacks whose installer run will change PREPARED or DEPLOYED state."""
+    changed: set[int] = set()
+    for sid in plan:
+        entry = lifecycle["stacks"][str(sid)]
+        state = states[sid]
+        if not state["prepared"] or not deployment_ready(entry, state):
+            changed.add(sid)
+    return changed
 
 
 def reconciliation_targets(
     requested: list[int],
     plan: list[int],
+    changed_stack_ids: set[int],
     manifests: dict[int, dict],
     lifecycle: dict,
+    *,
+    force_reconcile: bool,
 ) -> list[int]:
+    """Return prepared consumers that need reconciliation after this run.
+
+    Requesting an already-stable provider is not a capability change. A consumer
+    is reconciled automatically only when this installer run prepares/deploys a
+    provider it consumes, or when the consumer itself is prepared/deployed. The
+    operator may explicitly force reconciliation with --reconcile.
+    """
     targets: set[int] = set()
 
+    if force_reconcile:
+        for sid in requested:
+            if lifecycle["stacks"][str(sid)]["reconcile"]:
+                if sid in plan or stack_prepared(manifests[sid]["directory"]):
+                    targets.add(sid)
+
     for sid in requested:
-        if lifecycle["stacks"][str(sid)]["reconcile"]:
+        if sid in changed_stack_ids and lifecycle["stacks"][str(sid)]["reconcile"]:
             targets.add(sid)
 
     changed_capabilities: set[str] = set()
-    for sid in requested:
+    for sid in changed_stack_ids:
         changed_capabilities.update(manifests[sid].get("provides", []))
 
     if changed_capabilities:
@@ -258,9 +287,7 @@ def add_commands(
     reason: str,
 ) -> None:
     for command in commands:
-        actions.append(
-            Action(sid, manifest["directory"], phase, tuple(command), reason)
-        )
+        actions.append(Action(sid, manifest["directory"], phase, tuple(command), reason))
 
 
 def build_actions(
@@ -268,9 +295,12 @@ def build_actions(
     plan: list[int],
     manifests: dict[int, dict],
     lifecycle: dict,
-) -> tuple[list[Action], list[int]]:
+    *,
+    force_reconcile: bool = False,
+) -> tuple[list[Action], list[int], set[int]]:
     actions: list[Action] = []
     states = {sid: stack_state(manifests[sid]) for sid in plan}
+    changed_stack_ids = state_transition_ids(plan, states, lifecycle)
 
     for sid in plan:
         manifest = manifests[sid]
@@ -298,19 +328,22 @@ def build_actions(
             )
 
     reconcile_ids = reconciliation_targets(
-        requested, plan, manifests, lifecycle
+        requested,
+        plan,
+        changed_stack_ids,
+        manifests,
+        lifecycle,
+        force_reconcile=force_reconcile,
     )
     for sid in reconcile_ids:
         manifest = manifests[sid]
         entry = lifecycle["stacks"][str(sid)]
-        add_commands(
-            actions,
-            sid,
-            manifest,
-            "reconcile",
-            entry["reconcile"],
-            "requested/changed capabilities may affect this consumer",
+        reason = (
+            "operator requested explicit reconciliation"
+            if force_reconcile and sid in requested and sid not in changed_stack_ids
+            else "installer state transition changes capabilities consumed by this stack"
         )
+        add_commands(actions, sid, manifest, "reconcile", entry["reconcile"], reason)
 
     verify_ids = list(plan)
     for sid in reconcile_ids:
@@ -329,7 +362,7 @@ def build_actions(
             "validate stack-owned contract",
         )
 
-    return actions, reconcile_ids
+    return actions, reconcile_ids, changed_stack_ids
 
 
 def preflight(execute_mode: bool) -> None:
@@ -352,6 +385,7 @@ def print_plan(
     lifecycle: dict,
     actions: list[Action],
     reconcile_ids: list[int],
+    changed_stack_ids: set[int],
 ) -> None:
     print("Requested:", " ".join(selectors))
     print("Resolved dependency plan:")
@@ -361,13 +395,9 @@ def print_plan(
         containers = ", ".join(
             f"{name}={value}" for name, value in state["containers"].items()
         ) or "no owned containers"
-        ready = "DEPLOYED" if deployment_ready(
-            lifecycle["stacks"][str(sid)], state
-        ) else "NOT-DEPLOYED"
-        print(
-            f"  {sid}: {manifests[sid]['directory']} "
-            f"[{prepared}; {ready}; {containers}]"
-        )
+        ready = "DEPLOYED" if deployment_ready(lifecycle["stacks"][str(sid)], state) else "NOT-DEPLOYED"
+        transition = "; WILL-CHANGE" if sid in changed_stack_ids else ""
+        print(f"  {sid}: {manifests[sid]['directory']} [{prepared}; {ready}{transition}; {containers}]")
 
     if reconcile_ids:
         print("Reconcile consumers:")
@@ -392,9 +422,7 @@ def execute(actions: list[Action]) -> None:
         try:
             run(command, cwd=cwd)
         except subprocess.CalledProcessError as exc:
-            raise InstallerError(
-                f"failed: {action.display()} (rc={exc.returncode})"
-            ) from exc
+            raise InstallerError(f"failed: {action.display()} (rc={exc.returncode})") from exc
 
 
 def validate_runtime(plan: list[int], manifests: dict[int, dict], lifecycle: dict) -> None:
@@ -406,25 +434,20 @@ def validate_runtime(plan: list[int], manifests: dict[int, dict], lifecycle: dic
             if not is_runtime_healthy(state):
                 failures.append(f"stack{sid}:{name}={state}")
     if failures:
-        raise InstallerError(
-            "required runtime validation failed: " + ", ".join(failures)
-        )
+        raise InstallerError("required runtime validation failed: " + ", ".join(failures))
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Manifest-driven local_hybrid_ai installer"
-    )
-    parser.add_argument(
-        "stacks", nargs="+", help="stack ids, stackN, directory names, or all"
-    )
+    parser = argparse.ArgumentParser(description="Manifest-driven local_hybrid_ai installer")
+    parser.add_argument("stacks", nargs="+", help="stack ids, stackN, directory names, or all")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--plan", action="store_true", help="resolve and print plan only")
-    mode.add_argument(
-        "--dry-run", action="store_true", help="print exact actions without executing them"
-    )
+    mode.add_argument("--dry-run", action="store_true", help="print exact actions without executing them")
+    parser.add_argument("--target", action="store_true", help="resolve target_requires instead of current requires")
     parser.add_argument(
-        "--target", action="store_true", help="resolve target_requires instead of current requires"
+        "--reconcile",
+        action="store_true",
+        help="force reconciliation for requested stacks that own a reconcile phase",
     )
     parser.add_argument("--yes", action="store_true", help="required for real execution")
     return parser.parse_args()
@@ -440,20 +463,28 @@ def main() -> int:
         validate_registry(manifests, lifecycle)
         requested = resolve_requested(args.stacks, manifests)
         plan = resolve_plan(args.stacks, args.target)
-        actions, reconcile_ids = build_actions(
-            requested, plan, manifests, lifecycle
+        actions, reconcile_ids, changed_stack_ids = build_actions(
+            requested,
+            plan,
+            manifests,
+            lifecycle,
+            force_reconcile=args.reconcile,
         )
         print_plan(
-            args.stacks, plan, manifests, lifecycle, actions, reconcile_ids
+            args.stacks,
+            plan,
+            manifests,
+            lifecycle,
+            actions,
+            reconcile_ids,
+            changed_stack_ids,
         )
 
         if not execute_mode:
             print("\nNo changes made.")
             return 0
         if not args.yes:
-            raise InstallerError(
-                "refusing execution without --yes; inspect --plan/--dry-run first"
-            )
+            raise InstallerError("refusing execution without --yes; inspect --plan/--dry-run first")
 
         execute(actions)
         validate_runtime(plan, manifests, lifecycle)
