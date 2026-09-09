@@ -41,6 +41,8 @@ Hermes owns intelligent work and native deferred scheduling. Deterministic sidec
 
 No Stack6 service receives the Docker socket or privileged mode. The sandbox is not attached to `redlocal`.
 
+The table above describes operational persistence, not DR value. Stack6 is intentionally reconstructable for full disaster recovery.
+
 ## PREPARE
 
 ```bash
@@ -137,6 +139,46 @@ ${BASE_PATH}/service_-_hermes-memory-sync/ssh/
 
 The sync sidecar is conservative: fetch before decisions, fast-forward only for clean remote-ahead state, commit/push valid local memory changes, refuse divergence, never force-push, verify local/remote equality after success.
 
+## Disaster recovery
+
+Hermes is disposable compute/agent runtime. Durable memory, identity documents and knowledge should be externalized to Git/Gitea rather than backed up from arbitrary Hermes runtime paths or internal SQLite files.
+
+Target manifest semantics:
+
+```json
+{
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "reconstructable"
+    },
+    "resources": [
+      {
+        "id": "hermes-knowledge",
+        "class": "externalized",
+        "strategy": "git",
+        "sensitive": false,
+        "config": {
+          "source": {
+            "type": "git"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+The DR rule is:
+
+> If losing a Hermes runtime file would matter after a complete rebuild, that information is stored in the wrong place and should be externalized to Git/Gitea.
+
+Therefore caches, sessions, lazy-installed Python packages, model catalogs, operational SQLite databases, browser workspace, logs and sandbox state are not DR targets.
+
+Current migration gap: operator-valued identity/knowledge such as `SOUL.md` must be externalized to Git before the future recovery engine can safely enforce Stack6 as completely reconstructable without exception.
+
+See [`../dr-howto.md`](../dr-howto.md) and [`../recovery.schema.json`](../recovery.schema.json).
+
 ## Sandbox execution
 
 ```mermaid
@@ -181,7 +223,7 @@ sudo ./02-cleanup.sh --reset-sandbox --yes
 docker compose up -d hermes-sandbox hermes hermes-sandbox-cleanup
 ```
 
-This resets workspace/lifecycle state only. It preserves Hermes runtime/session/auth state, Git memory, sandbox home/authorized keys, sandbox host identity, managed configuration and memory-sync SSH identity. It does not require removing Stack6 `.lock`.
+This resets workspace/lifecycle state only. It preserves Hermes runtime/session/auth state, Git memory, sandbox home/authorized keys, sandbox host identity, managed configuration and memory-sync SSH identity during bounded maintenance. This is separate from full DR, where Stack6 is reconstructable. It does not require removing Stack6 `.lock`.
 
 ## Native Cron
 
@@ -216,7 +258,7 @@ The terminal-timeout workaround is retained for the validated Hermes `v2026.8.31
 
 ## Open WebUI planning boundary
 
-A new Open WebUI stack is planned next. Do not place it inside Stack6 merely because it is an AI user interface. It should receive its own stack manifest, runtime ownership, readiness/HTTP verification and explicit dependency/capability contract. The common installer must discover it generically; no Open-WebUI-specific branch belongs in `install.py`.
+A new Open WebUI stack is planned next. Do not place it inside Stack6 merely because it is an AI user interface. It should receive its own stack manifest, runtime ownership, readiness/HTTP verification, explicit dependency/capability contract and normalized recovery contract. Generic installer/recovery engines must discover it without stack-specific branches.
 
 ## Validated boundaries
 
