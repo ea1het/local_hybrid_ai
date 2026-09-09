@@ -12,15 +12,18 @@ flowchart LR
     LL --> PG[(litellm-postgres)]
 ```
 
-Stack6 requires these two AI capabilities; Stack3 itself does not require Stack2.
+Stack6 requires these two AI capabilities. Stack3 does not depend on Stack2.
 
 ## Ownership
 
 ```text
-container: litellm
-container: litellm-postgres
-runtime:   ${BASE_PATH}/service_-_litellm
-runtime:   ${BASE_PATH}/service_-_litellm-postgres
+containers:
+  litellm
+  litellm-postgres
+
+runtime:
+  ${BASE_PATH}/service_-_litellm
+  ${BASE_PATH}/service_-_litellm-postgres
 ```
 
 Internal endpoints:
@@ -32,30 +35,47 @@ litellm-postgres:5432
 
 Stack1 may expose LiteLLM through HAProxy, but Stack1 is optional from Stack3's dependency perspective.
 
-## Persistent identity
+## PostgreSQL identity model
 
-The dedicated PostgreSQL cluster lives at:
+Stack3 owns a dedicated PostgreSQL cluster. As with Stack2, administrative and application database identities are separated.
+
+```text
+litellm-postgres
+├── postgres
+│   administrative/bootstrap role
+│   password outside .env:
+│   ${BASE_PATH}/service_-_litellm-postgres/secret/postgres_admin_password
+│
+└── ${LITELLM_DB_USER}
+    LiteLLM application role
+    database: ${LITELLM_DB_NAME}
+    password: LITELLM_DB_PASSWORD in protected operational .env
+```
+
+The `postgres` role is reserved for cluster administration/bootstrap. LiteLLM uses the dedicated application role in normal operation.
+
+`LITELLM_SALT_KEY`, the LiteLLM database and both database credentials are persistent identities. They must not be regenerated during routine preparation or upgrades.
+
+## PGDATA safety contract
+
+The dedicated cluster lives at:
 
 ```text
 ${BASE_PATH}/service_-_litellm-postgres/data
 ```
 
-The PostgreSQL administrative password is generated once into Stack3 runtime secret state. `LITELLM_DB_*` identifies the LiteLLM application database/user. `LITELLM_SALT_KEY` must remain stable once encrypted LiteLLM state exists.
-
-## PGDATA safety contract
-
-PREPARE must never change owner/mode of an existing PGDATA. Existing directory identity, ownership and permissions are preserved.
+PREPARE never changes owner/mode/inode of an existing PGDATA.
 
 ```mermaid
 flowchart TD
     P[01-prepare.sh] --> E{PGDATA exists?}
     E -->|yes| V[Validate real directory]
-    V --> K[Preserve inode/owner/mode]
+    V --> K[Preserve inode / owner / mode]
     E -->|no| N[Create empty directory]
-    N --> I[Official PostgreSQL entrypoint initializes it]
+    N --> I[PostgreSQL lifecycle initializes it]
 ```
 
-This prevents a running bind-mounted PostgreSQL cluster from becoming inaccessible due to host-side ownership changes. Do not use recursive `chown` as a routine repair of an existing database tree.
+Do not use recursive `chown`, database resets or fresh-cluster recreation as routine configuration repair.
 
 ## Preparation and start
 
@@ -67,27 +87,25 @@ docker compose up -d litellm
 docker compose ps
 ```
 
-`01-prepare.sh` requires Stack0, verifies the shared network, preserves existing PGDATA, preserves/generates the administrative secret, preserves the LiteLLM config bind-directory identity, synchronizes managed `config.yaml`, validates Compose and creates `.lock`.
+`01-prepare.sh` requires Stack0, validates the shared network and environment, prepares/preserves Stack3-owned runtime, generates or preserves the PostgreSQL administrative runtime secret, synchronizes managed LiteLLM configuration, validates Compose and writes `.lock` only after success.
 
-`02-postgres.sh` starts/validates the dedicated PostgreSQL service. `.lock` means PREPARED only; it is not a PostgreSQL or LiteLLM health signal.
+`02-postgres.sh` establishes/validates the dedicated PostgreSQL service and application database contract before LiteLLM is started.
 
-Useful database validation after maintenance:
+`.lock` means PREPARED only. It is not a PostgreSQL or LiteLLM health signal.
+
+Useful bounded database validation after maintenance:
 
 ```bash
 docker exec litellm-postgres psql -U postgres -d postgres -Atc 'SELECT 1;'
 docker exec litellm-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CHECKPOINT;'
 ```
 
-## Legacy migration
-
-`90-migrate-postgres-from-stack2.sh` exists only for deployments created before Stack3 became atomic. It migrates LiteLLM state from the former shared Firecrawl PostgreSQL into `litellm-postgres` while retaining rollback material.
-
-It is **not** part of a clean install and must not be rerun after a successful migration. Do not delete the legacy database/rollback dump until its rollback window has been deliberately closed.
-
 ## Re-preparation
 
-Removing `.lock` is an explicit maintenance operation. When PREPARE is deliberately repeated against an existing deployment, PGDATA owner/mode/inode, database secret and bind-directory identity must remain unchanged.
+Removing `.lock` is an explicit maintenance operation. If PREPARE is deliberately repeated against an existing deployment, PGDATA owner/mode/inode, database secrets, `LITELLM_SALT_KEY` and bind-directory identity must remain unchanged.
+
+Historical migration helpers are not part of the current repository or installation path. The repository describes and deploys only the converged architecture.
 
 ## Security
 
-Do not commit or rotate casually: `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, inference/MCP virtual keys, database credentials or the PostgreSQL administrative secret. Provider escalation belongs behind LiteLLM policy rather than being silently configured in consuming agents.
+Do not commit or rotate casually: `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, inference/MCP virtual keys, application database credentials or the PostgreSQL administrative runtime secret. Provider escalation belongs behind LiteLLM policy rather than being silently configured in consuming agents.
