@@ -12,11 +12,31 @@ flowchart LR
     FC --> P[(PostgreSQL de Firecrawl)]
 ```
 
-Ningún servicio de Stack2 publica directamente su puerto de aplicación en el host. SearXNG puede exponerse mediante Stack1/HAProxy; Firecrawl y sus servicios auxiliares permanecen internos a `redlocal`.
+Ningún puerto de aplicación de Stack2 se publica directamente en el host. SearXNG puede exponerse mediante Stack1/HAProxy; Firecrawl y sus servicios auxiliares permanecen internos a `redlocal`.
 
-## Propiedad y persistencia
+## Propiedad
 
-Stack2 posee SearXNG, Firecrawl API, Playwright, Redis, RabbitMQ y su PostgreSQL, además de sus runtimes declarados en el manifest. No posee `redlocal`; la red pertenece a Stack0.
+Stack2 posee:
+
+```text
+contenedores:
+  searxng
+  firecrawl-api
+  firecrawl-playwright
+  firecrawl-redis
+  firecrawl-rabbitmq
+  firecrawl-postgres
+
+runtime:
+  ${BASE_PATH}/service_-_searxng
+  ${BASE_PATH}/service_-_firecrawl-redis
+  ${BASE_PATH}/service_-_firecrawl-rabbitmq
+  ${BASE_PATH}/service_-_firecrawl-postgres
+```
+
+Stack2 consume `redlocal`; Stack0 es propietario y creador de esa red.
+
+## Estado persistente
 
 ```text
 ${BASE_PATH}/service_-_searxng/config
@@ -27,68 +47,61 @@ ${BASE_PATH}/service_-_firecrawl-postgres/data
 ${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
 ```
 
-PREPARE conserva la identidad del directorio de configuración SearXNG y los directorios persistentes. Sincroniza la configuración gestionada sin sustituir un directorio bind ya utilizado por un contenedor.
+PREPARE conserva los directorios persistentes existentes. En particular, nunca hace `chown` recursivo ni normaliza permisos sobre un PGDATA ya inicializado. El inode, propietario y modo de un PGDATA existente pertenecen al runtime PostgreSQL y deben preservarse.
 
-El PostgreSQL de Firecrawl pertenece exclusivamente a Stack2. LiteLLM ya no usa esa base de datos.
+## Modelo de seguridad PostgreSQL
 
-PREPARE no hace `chown -R` ni normaliza permisos sobre un PGDATA existente. Preserva su ownership y modo actuales. En un runtime nuevo, crea únicamente el directorio vacío y deja que el entrypoint oficial de PostgreSQL establezca su identidad durante `initdb`.
-
-## Modelo de identidades PostgreSQL
-
-Stack2 separa explícitamente la identidad administrativa de PostgreSQL de la identidad usada por Firecrawl en operación normal.
+Stack2 utiliza un único cluster PostgreSQL y una única base llamada `postgres`, pero separa de forma explícita dos identidades.
 
 ```text
-firecrawl-postgres / database postgres
-|
-+-- postgres
-|   rol administrativo/bootstrap
-|   propietario de NUQ/cron/extensiones
-|   password fuera de .env:
-|   ${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
-|
-+-- firecrawl
-    rol aplicativo
-    no superuser / sin CREATEDB / sin CREATEROLE / sin replication
-    password: FIRECRAWL_DB_PASSWORD en el .env operacional protegido
-    database: postgres
+firecrawl-postgres
+└── database: postgres
+    ├── postgres
+    │   rol administrativo/bootstrap
+    │   SUPERUSER
+    │   propietario de objetos NUQ, extensiones y trabajos pg_cron
+    │   password fuera de .env:
+    │   ${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
+    │
+    └── firecrawl
+        rol LOGIN de aplicación
+        NOSUPERUSER
+        NOCREATEDB
+        NOCREATEROLE
+        NOREPLICATION
+        NOBYPASSRLS
+        password: FIRECRAWL_DB_PASSWORD en el .env operativo protegido
 ```
 
-La base continúa llamándose `postgres` porque la imagen upstream de NUQ configura `pg_cron` sobre esa base. La separación de seguridad se realiza mediante **roles**, no creando una segunda base.
+La base continúa llamándose `postgres` porque la imagen NuQ PostgreSQL fijada configura `pg_cron` contra esa base. La separación de seguridad se hace por roles, no moviendo Firecrawl a una segunda base.
 
-En una instalación nueva, PREPARE genera una sola vez el password administrativo de `postgres` como secreto runtime de Stack2. Durante el primer `initdb`, `config/postgres/020-firecrawl-app-role.sh` crea/reconcilia el rol aplicativo después de que el `010-nuq.sql` upstream haya creado los objetos NUQ. Firecrawl recibe acceso CRUD al schema `nuq` pero ningún privilegio administrativo de PostgreSQL. También se configuran privilegios por defecto para futuros objetos NUQ creados por `postgres`.
+`postgres` queda reservado para bootstrap, ownership, extensiones, cron y administración explícita. Firecrawl no debe usarlo durante la operación normal.
 
-El contrato aplicativo es:
+Contrato de aplicación:
 
-```text
+```dotenv
 FIRECRAWL_DB_NAME=postgres
 FIRECRAWL_DB_USER=firecrawl
-FIRECRAWL_DB_PASSWORD=<password aplicativo persistente>
+FIRECRAWL_DB_PASSWORD=<credencial persistente de aplicación>
 ```
 
-Firecrawl no debe utilizar el rol `postgres` durante operación normal.
+La credencial administrativa no pertenece a `.env`. En un runtime nuevo, `01-prepare.sh` la genera una vez con permisos restringidos. Compose la monta read-only dentro de `firecrawl-postgres` y el entrypoint oficial de PostgreSQL la consume mediante `POSTGRES_PASSWORD_FILE`.
 
-### Instalaciones existentes
+Durante el primer `initdb`, el `010-nuq.sql` upstream crea el esquema y las tablas NuQ. A continuación, `config/postgres/020-firecrawl-app-role.sh` crea/reconcilia el rol `firecrawl`, concede únicamente acceso a base/esquema/tablas/secuencias necesario para la aplicación y establece privilegios por defecto para futuros objetos NuQ creados por `postgres`.
 
-Los despliegues anteriores a esta separación tienen `POSTGRES_PASSWORD` en el `.env` raíz y Firecrawl se conecta como `postgres`. Se migran explícitamente; PREPARE no modifica silenciosamente una identidad de base de datos viva.
+Ese bootstrap forma parte de la instalación limpia. Los helpers históricos de migración de una sola ejecución se eliminan del repositorio una vez la plataforma desplegada ha convergido al modelo definitivo.
 
-Después de añadir las nuevas variables `FIRECRAWL_DB_*` al `.env` operacional protegido:
+## Frontera de red PostgreSQL
 
-```bash
-sudo bash ./03-migrate-postgres-app-role.sh
+PostgreSQL no publica `5432` en el host.
+
+```text
+Firecrawl -> firecrawl-postgres:5432 por redlocal
 ```
 
-La migración:
+Para administración desde el host se prefieren comandos `docker exec` acotados frente a exponer PostgreSQL en la LAN.
 
-1. adopta una sola vez el `POSTGRES_PASSWORD` actual en el fichero runtime `postgres_admin_password`, sin imprimirlo;
-2. crea/reconcilia el rol `firecrawl` y los grants mínimos;
-3. establece privilegios por defecto para futuros objetos NUQ;
-4. valida que el rol no conserva atributos administrativos;
-5. realiza una prueba TCP autenticada con SELECT/INSERT/UPDATE/DELETE dentro de una transacción y aplica `ROLLBACK`;
-6. no modifica PGDATA y no reinicia ni recrea contenedores.
-
-Sólo después de que esta migración pase debe aplicarse el nuevo Compose. Una vez validado que Firecrawl se conecta como `firecrawl`, las variables legacy `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB` pueden retirarse del `.env` operacional.
-
-## Preparación, despliegue y readiness
+## Preparación y despliegue
 
 ```bash
 cd /opt/docker/stacks/stack2_-_searxng_firecrawl
@@ -98,18 +111,30 @@ sudo bash ./02-wait-ready.sh
 docker compose ps
 ```
 
-PREPARE exige el `.lock` de Stack0, valida la red bridge compartida sin crearla, prepara recursos propios, asegura que exista el secreto administrativo runtime de PostgreSQL, valida Compose y sólo entonces crea `.lock`.
+`01-prepare.sh`:
 
-`.lock` significa PREPARED; no significa desplegado, healthy ni READY.
+1. exige Stack0 preparado;
+2. valida la red bridge compartida sin crearla;
+3. valida las variables requeridas de `.env`;
+4. prepara el runtime propio de Stack2;
+5. preserva metadatos de un PGDATA existente;
+6. genera/preserva el secreto administrativo PostgreSQL en runtime;
+7. sincroniza la configuración gestionada de SearXNG;
+8. valida Compose;
+9. escribe `.lock` sólo después de una preparación correcta.
 
-`docker compose up -d` establece el estado de proceso, pero **DEPLOYED no equivale a READY**. `02-wait-ready.sh` espera, con timeout acotado, hasta que ambos endpoints del proveedor aceptan conexiones:
+`.lock` significa únicamente PREPARED. No significa desplegado, healthy ni READY.
+
+## Readiness
+
+`docker compose up -d` establece estado de proceso, pero DEPLOYED no equivale a READY. `02-wait-ready.sh` espera a ambos endpoints del proveedor:
 
 ```text
 web.search  -> searxng:8080
 web.extract -> firecrawl-api:3002
 ```
 
-El instalador común ejecuta esta puerta de readiness después del despliegue de Stack2 y de nuevo durante VERIFY. La reconciliación de consumidores sólo se realiza después de que la readiness del proveedor haya pasado correctamente durante una transición.
+El instalador común ejecuta esta puerta tras un despliegue de Stack2 y durante VERIFY. Los consumidores opcionales se reconcilian únicamente después de que la readiness del proveedor haya pasado.
 
 ## Endpoints internos
 
@@ -121,42 +146,38 @@ Redis:         firecrawl-redis:6379
 RabbitMQ:      firecrawl-rabbitmq:5672
 ```
 
-PostgreSQL no publica `5432` en el host. El acceso aplicativo se realiza por `redlocal`; para administración desde el host se debe preferir `docker exec` frente a exponer PostgreSQL a la LAN.
+## Integración con Stack6
 
-## Integración incremental con Stack6
+Stack6 no requiere Stack2. Si Stack2 no existe o no está READY, las herramientas web de Hermes permanecen explícitamente deshabilitadas.
 
-Stack6 no requiere Stack2. Si Stack2 no está READY, las herramientas web de Hermes permanecen explícitamente deshabilitadas.
-
-Operación incremental preferida desde la raíz del repositorio:
+Operación incremental preferida:
 
 ```bash
+cd /opt/docker/stacks
 sudo python3 install.py 2 --yes
 ```
 
-Si Stack2 ya está sano/READY, el instalador lo verifica y no provoca una reconciliación innecesaria de Stack6. Si Stack2 debe desplegarse o recuperarse realmente, el instalador espera su readiness, descubre consumidores preparados mediante las capabilities del manifest y reconcilia Stack6 automáticamente.
+Si Stack2 atraviesa una transición de despliegue/recuperación, el instalador común espera readiness y después descubre/reconcilia consumidores preparados mediante capabilities del manifest. Un Stack2 sano y ya READY debe quedar en verificación únicamente y no recrear Hermes de forma espuria.
 
-Equivalente manual tras desplegar/restaurar Stack2:
+Equivalente manual tras recuperar Stack2:
 
 ```bash
+cd /opt/docker/stacks/stack2_-_searxng_firecrawl
 sudo bash ./02-wait-ready.sh
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --restart
 ```
 
-La reconciliación habilita web cuando los proveedores locales están disponibles en la red compartida; durante una transición gestionada por el instalador, además se garantiza su readiness antes de reconciliar. Si el proveedor desaparece, una nueva reconciliación vuelve al estado web deshabilitado y no activa un proveedor externo alternativo.
-
-```mermaid
-stateDiagram-v2
-    [*] --> WebDeshabilitada
-    WebDeshabilitada --> WebLocal: proveedor READY + reconcile
-    WebLocal --> WebDeshabilitada: proveedor no disponible + reconcile
-```
-
 ## Re-preparación
 
-```bash
-rm .lock
-sudo ./01-prepare.sh
-```
+Eliminar `.lock` es una decisión explícita de mantenimiento, no un mecanismo de actualización. Si PREPARE se repite deliberadamente sobre una instalación existente, los datos persistentes, PGDATA y secretos runtime generados deben permanecer intactos.
 
-Usar únicamente cuando deba repetirse PREPARE. La activación de capacidades opcionales en Stack6 se realiza con reconciliación, sin eliminar el `.lock` de Stack6.
+## Invariantes de seguridad
+
+- `postgres` es sólo administrativo; Firecrawl usa `firecrawl`.
+- el password administrativo PostgreSQL vive fuera de `.env` y de Git;
+- `FIRECRAWL_DB_PASSWORD` es persistente y no debe rotarse editando sólo `.env`;
+- PostgreSQL sólo es alcanzable por la red Docker salvo rediseño explícito;
+- PREPARE nunca resetea ni repara recursivamente PGDATA;
+- ningún helper de migración forma parte de la instalación normal ni de la convergencia rutinaria;
+- la ausencia de Stack2 no debe habilitar un fallback web externo en los consumidores.
