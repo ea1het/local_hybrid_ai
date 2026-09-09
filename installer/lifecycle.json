@@ -21,9 +21,9 @@
       "directory": "stack2_-_searxng_firecrawl",
       "required_containers": ["searxng", "firecrawl-api", "firecrawl-playwright", "firecrawl-redis", "firecrawl-rabbitmq", "firecrawl-postgres"],
       "prepare": [["./01-prepare.sh"]],
-      "deploy": [["docker", "compose", "up", "-d"]],
+      "deploy": [["docker", "compose", "up", "-d"], ["./02-wait-ready.sh"]],
       "reconcile": [],
-      "verify": [["docker", "compose", "config", "--quiet"]]
+      "verify": [["docker", "compose", "config", "--quiet"], ["./02-wait-ready.sh"]]
     },
     "3": {
       "directory": "stack3_-_litellm",
