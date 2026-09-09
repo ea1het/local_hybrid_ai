@@ -101,10 +101,11 @@ class InstallerPlannerTests(unittest.TestCase):
         self.assertEqual(changed, set())
         self.assertEqual(reconcile, [])
         self.assertNotIn((6, "deploy"), self.phases(actions))
+        self.assertNotIn((6, "ready"), self.phases(actions))
         self.assertNotIn((6, "reconcile"), self.phases(actions))
         self.assertEqual(self.phases(actions), [(0, "verify"), (6, "verify")])
 
-    def test_new_consumer_prepares_deploys_and_reconciles(self):
+    def test_new_consumer_prepares_deploys_waits_and_reconciles(self):
         states = {
             0: state(True),
             6: state(False, hermes="absent", **{"hermes-sandbox": "absent"}),
@@ -115,7 +116,10 @@ class InstallerPlannerTests(unittest.TestCase):
         phases = self.phases(actions)
         self.assertIn((6, "prepare"), phases)
         self.assertIn((6, "deploy"), phases)
+        self.assertIn((6, "ready"), phases)
         self.assertIn((6, "reconcile"), phases)
+        self.assertLess(phases.index((6, "deploy")), phases.index((6, "ready")))
+        self.assertLess(phases.index((6, "ready")), phases.index((6, "reconcile")))
 
     def test_healthy_provider_does_not_reconcile_consumer(self):
         states = {
@@ -126,9 +130,10 @@ class InstallerPlannerTests(unittest.TestCase):
         actions, reconcile, changed = self.build([2], [0, 2], states)
         self.assertEqual(changed, set())
         self.assertEqual(reconcile, [])
+        self.assertNotIn((2, "ready"), self.phases(actions))
         self.assertNotIn((6, "reconcile"), self.phases(actions))
 
-    def test_new_web_provider_reconciles_prepared_consumer(self):
+    def test_new_web_provider_waits_before_reconciling_prepared_consumer(self):
         states = {
             0: state(True),
             2: state(False, searxng="absent", **{"firecrawl-api": "absent"}),
@@ -137,10 +142,14 @@ class InstallerPlannerTests(unittest.TestCase):
         actions, reconcile, changed = self.build([2], [0, 2], states)
         self.assertEqual(changed, {2})
         self.assertEqual(reconcile, [6])
-        self.assertIn((2, "deploy"), self.phases(actions))
-        self.assertIn((6, "reconcile"), self.phases(actions))
+        phases = self.phases(actions)
+        self.assertIn((2, "deploy"), phases)
+        self.assertIn((2, "ready"), phases)
+        self.assertIn((6, "reconcile"), phases)
+        self.assertLess(phases.index((2, "deploy")), phases.index((2, "ready")))
+        self.assertLess(phases.index((2, "ready")), phases.index((6, "reconcile")))
 
-    def test_new_git_provider_reconciles_prepared_consumer(self):
+    def test_new_git_provider_waits_before_reconciling_prepared_consumer(self):
         states = {
             0: state(True),
             4: state(False, gitea="absent", **{"gitea-runner": "absent"}),
@@ -149,7 +158,10 @@ class InstallerPlannerTests(unittest.TestCase):
         actions, reconcile, changed = self.build([4], [0, 4], states)
         self.assertEqual(changed, {4})
         self.assertEqual(reconcile, [6])
-        self.assertIn((6, "reconcile"), self.phases(actions))
+        phases = self.phases(actions)
+        self.assertIn((4, "ready"), phases)
+        self.assertIn((6, "reconcile"), phases)
+        self.assertLess(phases.index((4, "ready")), phases.index((6, "reconcile")))
 
     def test_force_reconcile_is_explicit_override(self):
         states = {
@@ -161,6 +173,31 @@ class InstallerPlannerTests(unittest.TestCase):
         self.assertEqual(reconcile, [6])
         self.assertIn((6, "reconcile"), self.phases(actions))
         self.assertNotIn((6, "deploy"), self.phases(actions))
+        self.assertNotIn((6, "ready"), self.phases(actions))
+
+    def test_wait_required_runtime_accepts_starting_then_healthy(self):
+        states = iter([
+            "running/starting",
+            "running/starting",
+            "running/healthy",
+            "running/healthy",
+        ])
+        with patch("install.container_state", side_effect=lambda name: next(states)), \
+             patch("install.time.sleep"):
+            install.wait_required_runtime(
+                3,
+                {"required_containers": ["litellm-postgres", "litellm"]},
+                timeout_seconds=10,
+            )
+
+    def test_wait_required_runtime_fails_fast_on_exited_container(self):
+        with patch("install.container_state", return_value="exited"):
+            with self.assertRaises(install.InstallerError):
+                install.wait_required_runtime(
+                    2,
+                    {"required_containers": ["searxng"]},
+                    timeout_seconds=10,
+                )
 
 
 if __name__ == "__main__":
