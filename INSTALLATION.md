@@ -33,8 +33,8 @@ flowchart TB
     S0 --> S5[5 Dockhand]
     S0 --> S6[6 Hermes]
     S3 -->|required AI capabilities| S6
-    S2 -. optional web capabilities .-> S6
-    S4 -. optional git.remote .-> S6
+    S2 -.->|optional web capabilities| S6
+    S4 -.->|optional git.remote| S6
 ```
 
 All application stacks require Stack0. Stack6 requires Stack3. Stack2 and Stack4 are optional for Stack6.
