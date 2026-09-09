@@ -113,8 +113,10 @@ class DisasterRecoveryPlannerTests(unittest.TestCase):
         self.assertEqual(payload["kind"], "local-hybrid-ai-backup-plan")
         self.assertFalse(payload["changes_made"])
         self.assertNotIn("LITELLM_SALT_KEY", serialized)
-        self.assertNotIn("sha256", serialized)
-        self.assertNotIn("size_bytes", serialized)
+        self.assertEqual(payload["layout"]["checksums"], "checksums.sha256")
+        for artifact in payload["artifacts"]:
+            self.assertNotIn("sha256", artifact)
+            self.assertNotIn("size_bytes", artifact)
 
     def test_completed_backup_schema_is_distinct_from_dry_run_plan(self):
         schema_path = ROOT / "backup-set.schema.json"
