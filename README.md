@@ -1,12 +1,12 @@
 # Local Hybrid AI
 
-**Local-first hybrid AI platform with explicit dependency, capability, readiness and security boundaries.**
+**Local-first hybrid AI platform with explicit dependency, capability, readiness, persistence and security boundaries.**
 
-> Local first. Cloud when necessary. The decision should belong to the operator.
+> Local first. Cloud when necessary. The operator decides.
 
-This repository contains the deployable Docker stacks and operational controls for a small local/hybrid AI platform. Source lives in Git; mutable runtime state and secrets do not.
+This repository contains the deployable Docker stacks and lifecycle controls for the platform. Git contains source and installation logic; mutable state, databases and operational secrets live outside the checkout.
 
-## Architecture at a glance
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -21,209 +21,36 @@ flowchart TB
     S4 -.->|git.remote| S6
 ```
 
-Every application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional capability providers for Stack6.
-
-| Stack | Role | Required dependencies | Main capabilities |
+| Stack | Purpose | Required dependencies | Main capabilities |
 |---|---|---|---|
-| 0 | platform foundation | none | platform environment, network, PKI |
+| 0 | platform foundation | none | environment, shared network, PKI |
 | 1 | ingress + static web | 0 | `ingress.https`, `web.static` |
 | 2 | local web search/extraction | 0 | `web.search`, `web.extract` |
-| 3 | AI/model/MCP gateway | 0 | `ai.gateway`, `ai.mcp-gateway` |
+| 3 | model-policy + MCP gateway | 0 | `ai.gateway`, `ai.mcp-gateway` |
 | 4 | Git + Actions runner | 0 | `git.remote`, `git.runner` |
 | 5 | container management | 0 | `containers.management` |
-| 6 | agent + sandbox + memory | 0, 3 | `ai.agent`, `ai.sandbox`, `ai.memory` |
+| 6 | AI agent + sandbox + memory | 0, 3 | `ai.agent`, `ai.sandbox`, `ai.memory` |
 
-All seven current stacks are atomic in the manifest graph. `target_requires` remains supported by the resolver for architecture evolution.
+Every current application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional capability providers for Stack6. Dependencies and capabilities are declared in manifests rather than duplicated in installer conditionals.
 
-> **Next planned extension:** a new atomic Open WebUI stack is expected to be designed next. Its stack ID, dependencies, capabilities, ownership, readiness gates and ingress contract must be declared from the actual design rather than hard-coded into the installer.
+The next planned extension is an independent Open WebUI stack. Its ID, ownership, persistence, dependencies, capabilities, readiness and ingress contract must be designed explicitly before implementation.
 
-## Common installer v1
-
-The root installer resolves dependencies from stack manifests and invokes stack-owned lifecycle operations. It does not contain a second hard-coded dependency graph.
-
-```mermaid
-flowchart LR
-    CLI[python3 install.py] --> R[manifest resolver]
-    R --> P[dependency plan]
-    P --> S{observed state}
-    S -->|not prepared| PREP[PREPARE]
-    S -->|not deployed| DEP[DEPLOY]
-    PREP --> DEP
-    DEP --> READY[readiness gate]
-    READY --> CAP[capability transition]
-    CAP --> REC[consumer RECONCILE]
-    S -->|already converged| VER[VERIFY]
-    REC --> VER
-```
-
-`python3 install.py` is the canonical portable entry point. The tracked `install.sh` is a convenience wrapper; because repository-file creation through some Git hosting paths may not preserve its executable bit, invoke it portably as `bash ./install.sh ...` unless the checkout has explicitly made it executable.
-
-Inspect a deployment before executing it:
-
-```bash
-python3 install.py 6 --plan
-python3 install.py 6 --dry-run
-python3 install.py all --plan
-
-# equivalent wrapper form
-bash ./install.sh 6 --dry-run
-```
-
-Execute only after inspection:
-
-```bash
-sudo python3 install.py 6 --yes
-sudo python3 install.py all --yes
-```
-
-For Stack6 the resolver derives the minimum required plan Stack0 -> Stack3 -> Stack6 from manifests. A healthy requested provider does not spuriously trigger consumer reconciliation. A provider that is prepared but not deployed is converged first; readiness gates complete before its capability transition is reconciled into prepared consumers. `--reconcile` is the explicit operator override when a stable consumer must be reconciled intentionally.
-
-The installer never removes `.lock`, rewrites `.env`, resets runtime, invokes Docker prune, or runs the legacy PostgreSQL migration. See [`INSTALLATION.md`](INSTALLATION.md) for lifecycle details.
-
-## Lifecycle state model
-
-The project deliberately distinguishes preparation, process state and service readiness:
-
-```text
-SOURCE
-  -> PREPARED        (.lock exists)
-  -> DEPLOYED        (required containers are running)
-  -> READY           (stack-specific service readiness checks pass)
-  -> RECONCILED      (affected optional consumers match available capabilities)
-```
-
-**DEPLOYED is not the same as READY.** A container can report `running` before its service accepts connections. Stack2 demonstrates the contract: after Compose starts SearXNG/Firecrawl, `02-wait-ready.sh` waits for `searxng:8080` and `firecrawl-api:3002` before Stack6 is reconciled. This prevents a capability from being advertised to consumers before the provider actually serves it.
-
-`.lock` means PREPARED only; it is never a health signal.
-
-## Runtime flow
-
-```mermaid
-flowchart LR
-    U[User / Browser] --> HP[HAProxy]
-    TG[Telegram] -.->|optional| H[Hermes]
-    BZ[Buzz] -.->|optional| H
-    HP --> H
-    HP --> LL[LiteLLM]
-    HP --> SX[SearXNG]
-    H -->|inference + MCP| LL
-    LL --> LOCAL[Local OpenAI-compatible runtime]
-    LL -.->|explicit policy| CLOUD[Optional cloud APIs]
-    H -.->|when capability ready| SX
-    H -.->|when capability ready| FC[Firecrawl]
-    H -->|SSH| SB[Hermes Sandbox]
-    H --> MEM[Git-backed memory]
-    MS[Memory sync] -.->|optional git.remote| G[Gitea]
-    MS --> MEM
-    CLEAN[Sandbox cleanup] --> SB
-```
-
-LiteLLM is the model-policy and MCP boundary. Hermes does not silently bypass it for provider inference. Web tooling is explicitly disabled when Stack2 is unavailable; it is enabled by Stack6 reconciliation only after the local provider is ready. Git-memory synchronization is separately controlled by persistent operator intent and requires Stack4/Gitea.
-
-## Design contracts
-
-- **Stack0 is mandatory.** It owns the central environment links, shared network, platform runtime, PKI and manifest validation.
-- **Atomic ownership.** Each application stack owns its own containers and persistent state.
-- **Dependency-driven composition.** `manifest.json` declares `requires`, `optional`, `provides`, `consumes`, `optional_consumes` and `owns`.
-- **PREPARE is not DEPLOY.** `.lock` means only that preparation completed successfully.
-- **DEPLOYED is not READY.** Provider-specific readiness must pass before dependent capability reconciliation.
-- **PREPARE and RECONCILE are separate.** Preparation creates/validates stack-owned resources. Reconciliation adapts a prepared consumer to optional capabilities without changing `.lock`.
-- **Source/runtime separation.** `/opt/docker/stacks` is Git-managed source; `/opt/docker/runtime` is persistent mutable state.
-- **No secrets in Git.** Operational `.env`, database credentials, TLS/SSH private material and runtime databases remain outside source control.
-- **No Docker socket for Hermes.** Agent execution goes through an isolated SSH sandbox.
-- **No implicit web fallback.** Absence of a ready Stack2 leaves Hermes web tools disabled rather than falling through to an external provider.
-- **Deterministic maintenance stays deterministic.** Hermes native Cron handles agentic deferred work; small sidecars handle Git-memory sync and sandbox cleanup.
-
-## Manifest model
-
-Stack0 discovers `stackN_-_*` directories and validates their manifests. The resolver checks IDs/directories, graph dependencies, cycles, ownership collisions and capability contracts.
-
-```mermaid
-flowchart LR
-    M[manifest.json] --> D[Dependency graph]
-    M --> P[Provided capabilities]
-    M --> C[Consumed capabilities]
-    M --> O[Owned resources]
-    D --> PLAN[Install plan]
-    P --> PLAN
-    C --> PLAN
-    O --> VALIDATE[Collision validation]
-```
-
-Examples:
-
-```bash
-python3 stack0_-_platform/manifests.py validate
-python3 stack0_-_platform/manifests.py validate --target
-python3 stack0_-_platform/manifests.py plan 3
-python3 stack0_-_platform/manifests.py plan 6
-python3 stack0_-_platform/manifests.py plan all
-```
-
-For Stack6 the minimum plan is Stack0 -> Stack3 -> Stack6. Stack2 and Stack4 are not mandatory dependencies.
-
-## Capability reconciliation
-
-Stack6 demonstrates the intended incremental lifecycle:
-
-```mermaid
-sequenceDiagram
-    participant O as Operator / installer
-    participant P as Optional provider
-    participant W as Provider readiness
-    participant R as Consumer reconcile
-    participant H as Hermes
-    O->>P: deploy/restore provider
-    P->>W: wait until service is ready
-    W-->>O: capability can be considered available
-    O->>R: reconcile affected consumer
-    R->>H: update managed config if needed
-    R->>H: recreate only Hermes when config changed
-```
-
-`06-reconcile-capabilities.sh` does not create provider resources and does not alter `.env` or `.lock`.
-
-- Stack2 ready: local `web.search` + `web.extract` become available and Hermes web tooling can be enabled.
-- Stack2 absent/incomplete/not ready: web remains explicitly disabled.
-- Stack4 present + Git-memory desired/enabled + safe Git preconditions: `hermes-memory-sync` can run.
-- Stack4 unavailable: the sidecar stops while local memory and desired state are preserved.
-
-## Filesystem contract
+## Permanent filesystem contract
 
 ```text
 /opt/docker/
 ├── stacks/                         # Git checkout / source
-│   ├── .env                        # operational, ignored by Git
+│   ├── .git/
+│   ├── .env                        # operational values, ignored by Git
 │   ├── .env.template               # tracked variable contract
-│   ├── .env.secretsexplained.md    # tracked secret provenance/lifecycle guide
-│   ├── install.py                  # canonical common installer
-│   ├── install.sh                  # convenience wrapper
-│   ├── installer/lifecycle.json    # lifecycle command registry
-│   ├── installer/test_installer.py # planner regression tests
-│   ├── stack0_-_platform/
-│   ├── stack1_-_haproxy_web/
-│   ├── stack2_-_searxng_firecrawl/
-│   ├── stack3_-_litellm/
-│   ├── stack4_-_gitea/
-│   ├── stack5_-_dockhand/
-│   └── stack6_-_hermes/
+│   ├── .env.secretsexplained.md    # secret provenance/lifecycle guide
+│   ├── install.py                  # common installer
+│   ├── installer/
+│   └── stack0 ... stack6/
 └── runtime/                        # persistent mutable state
-    ├── service_-_platform/
-    ├── service_-_haproxy/
-    ├── service_-_web/
-    ├── service_-_searxng/
-    ├── service_-_firecrawl-*/
-    ├── service_-_litellm/
-    ├── service_-_litellm-postgres/
-    ├── service_-_gitea/
-    ├── service_-_gitea-runner/
-    ├── service_-_hermes/
-    ├── service_-_hermes-memory/
-    ├── service_-_hermes-memory-sync/
-    └── service_-_hermes-sandbox/
 ```
 
-Shared deployment context:
+Reference shared values:
 
 ```dotenv
 STACKS_ROOT=/opt/docker/stacks
@@ -231,63 +58,175 @@ BASE_PATH=/opt/docker/runtime
 NETWORK_NAME=redlocal
 ```
 
-Stack5 is the exception to directory-backed persistence: it owns the external Docker volume `dockhand_data`.
+`/opt/docker/stacks` is source. `/opt/docker/runtime` is state. Never repair source by deleting runtime, and never put mutable production state in the Git worktree.
 
-## Network and execution boundaries
+## Lifecycle model
+
+```text
+SOURCE
+  -> PREPARED        stack-owned preparation completed; .lock exists
+  -> DEPLOYED        required containers are running
+  -> READY           stack-specific readiness passes
+  -> RECONCILED      affected optional consumers match available capabilities
+```
+
+`.lock` means PREPARED only. It is not a health signal.
+
+**DEPLOYED is not READY.** Stack2 demonstrates this explicitly: `02-wait-ready.sh` waits for `searxng:8080` and `firecrawl-api:3002` before optional consumers are reconciled.
+
+PREPARE and RECONCILE are separate responsibilities. PREPARE creates or validates resources owned by the stack. RECONCILE adapts a prepared consumer to optional capabilities without rewriting `.env`, deleting `.lock`, or making the provider mutate consumer state.
+
+## Common installer
+
+`install.py` resolves dependency closure from manifests and invokes stack-owned lifecycle commands.
 
 ```mermaid
-flowchart TB
-    RED[redlocal]
-    EXEC[hermes-exec]
-    NONE[no network]
-    H[Hermes] --- RED
-    H --- EXEC
-    SB[hermes-sandbox] --- EXEC
-    MS[hermes-memory-sync] --- RED
-    CLEAN[hermes-sandbox-cleanup] --- NONE
+flowchart LR
+    CLI[install.py] --> M[manifest resolver]
+    M --> P[dependency plan]
+    P --> O[observe state]
+    O --> PREP[PREPARE when needed]
+    PREP --> DEP[DEPLOY when needed]
+    DEP --> READY[readiness]
+    READY --> REC[reconcile affected consumers]
+    O --> VER[VERIFY when converged]
+    REC --> VER
 ```
 
-The sandbox has no Docker socket, is not privileged, is not attached to `redlocal`, and receives no arbitrary host filesystem mounts. Its workspace is scratch space. Durable artifacts must be persisted explicitly.
+Inspect before execution:
 
-## Stack3 PostgreSQL safety
-
-Stack3 owns a dedicated PostgreSQL 17.10 service and runtime. Existing PGDATA ownership, permissions and inode identity are preserved by PREPARE. PREPARE must never force an existing PGDATA to `root:root`; PostgreSQL owns that directory inside the bind-mounted runtime.
-
-`LITELLM_SALT_KEY`, LiteLLM database state and the Stack3 PostgreSQL administrative secret are persistent identities and must not be rotated casually.
-
-The legacy `90-migrate-postgres-from-stack2.sh` is only for deployments created before Stack3 became atomic. It is not part of a clean install and must not be rerun after a successful migration.
-
-## Hermes memory and sandbox
-
-Git-backed memory lives under `service_-_hermes-memory/data`. `04-gitmem.sh` performs adoption/validation; routine reconciliation never clones, pulls, merges, rebases, commits or pushes. The optional memory-sync sidecar performs conservative synchronization and refuses divergence rather than auto-merging.
-
-Sandbox generation integrity is represented by both `.sandbox-generation` and `state/state.db`; they must agree. `hermes-sandbox-cleanup` has no network and applies retention/quarantine policy. `02-cleanup.sh --reset-sandbox --yes` is the bounded recovery path for a corrupt generation and deliberately preserves Hermes state, Git memory, SSH identities and managed configuration.
-
-## Interfaces and optional integrations
-
-Telegram and Buzz are optional Hermes interfaces. Credentials may be empty; empty means disabled. They are not required for the core Hermes -> LiteLLM -> inference path.
-
-Open WebUI is the next planned independent interface stack. Do not bolt it into Stack6 or the common installer as special-case logic. When designed, give it its own manifest, ownership, lifecycle/readiness definition and explicit consumed/provided capabilities, then let the generic resolver discover it.
-
-The validated Hermes pin is:
-
-```dotenv
-HERMES_IMAGE=nousresearch/hermes-agent
-HERMES_VERSION=v2026.8.31
+```bash
+python3 install.py 6 --plan
+python3 install.py 6 --dry-run
+python3 install.py all --plan
 ```
+
+Execute deliberately:
+
+```bash
+sudo python3 install.py 6 --yes
+sudo python3 install.py all --yes
+```
+
+The installer never rewrites the operational `.env`, deletes `.lock`, prunes Docker state, resets databases or executes historical migration helpers. Migration helpers are not part of the converged repository: the tracked source represents the current clean-install architecture only.
+
+## Database security standard
+
+Application stacks that own PostgreSQL follow the same principle:
+
+```text
+postgres        -> administrative/bootstrap identity
+application role -> normal application connectivity
+```
+
+The administrative role is not used by the application during routine operation. Its password is stack-owned runtime secret state outside `.env`; the application password remains a dedicated application credential.
+
+### Stack2 / Firecrawl
+
+```text
+firecrawl-postgres / database postgres
+├── postgres     SUPERUSER, owner/bootstrap, pg_cron
+│   secret: ${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
+└── firecrawl    non-admin application role
+    secret: FIRECRAWL_DB_PASSWORD
+```
+
+The database remains named `postgres` because the pinned NuQ image configures `pg_cron` for that database. Firecrawl itself connects as `firecrawl`, not `postgres`. PostgreSQL does not publish 5432 to the host.
+
+### Stack3 / LiteLLM
+
+```text
+litellm-postgres
+├── postgres             administrative/bootstrap role
+│   secret: ${BASE_PATH}/service_-_litellm-postgres/secret/postgres_admin_password
+└── ${LITELLM_DB_USER}   LiteLLM application role
+    secret: LITELLM_DB_PASSWORD
+```
+
+Both stacks treat PGDATA and database credentials as persistent identity. Existing PGDATA owner/mode/inode are preserved; recursive `chown`, cluster recreation or password regeneration are not routine repair mechanisms.
+
+## Runtime flow
+
+```mermaid
+flowchart LR
+    U[User / Browser] --> HP[HAProxy]
+    TG[Telegram] -.-> H[Hermes]
+    BZ[Buzz] -.-> H
+    HP --> H
+    HP --> LL[LiteLLM]
+    HP --> SX[SearXNG]
+    H -->|inference + MCP| LL
+    LL --> LOCAL[Local OpenAI-compatible runtime]
+    LL -.->|explicit policy| CLOUD[Optional cloud APIs]
+    H -.->|optional capability| SX
+    H -.->|optional capability| FC[Firecrawl]
+    H -->|SSH| SB[Hermes Sandbox]
+    H --> MEM[Git-backed memory]
+    MS[Memory sync] -.-> G[Gitea]
+    MS --> MEM
+```
+
+LiteLLM is the inference/provider policy boundary. Hermes does not silently bypass it. When Stack2 is not ready, Hermes web tooling remains explicitly disabled rather than falling through to an external provider.
+
+## Security and ownership contracts
+
+- Stack0 owns platform-shared resources: environment links, `redlocal`, platform runtime, PKI and manifest validation.
+- Every application stack owns its own containers and persistent state.
+- PostgreSQL administrative identities are separate from application roles.
+- No real secret belongs in Git.
+- Stack-owned secrets that need not be shared prefer restricted runtime files rather than the central `.env`.
+- Hermes receives no Docker socket and executes through an isolated SSH sandbox.
+- The sandbox is not attached to `redlocal`.
+- Optional providers do not become hidden required dependencies.
+- Absence of local optional capability must fail closed, not silently escalate to cloud.
+- Historical migration helpers are removed after convergence; normal installation must not depend on them.
+
+## Capabilities and incremental composition
+
+Stack6 demonstrates optional capability consumption. Stack2 provides `web.search` and `web.extract`; Stack4 provides `git.remote`. A provider transition is followed by provider readiness and then consumer-owned reconciliation.
+
+```mermaid
+sequenceDiagram
+    participant O as Operator/installer
+    participant P as Provider
+    participant W as Readiness
+    participant C as Consumer reconcile
+    O->>P: deploy/recover
+    P->>W: wait for usable service
+    W-->>O: READY
+    O->>C: reconcile affected prepared consumer
+```
+
+A provider that is already healthy and ready is verification-only and should not cause spurious consumer recreation.
 
 ## Secrets and credential provenance
 
-`.env.template` is the variable contract; it intentionally does not try to teach the full secret lifecycle. For every current secret—including values intentionally stored outside `.env`—read [`.env.secretsexplained.md`](.env.secretsexplained.md). It records the issuer/generator, secret type, storage location, bootstrap method, consumers and rotation impact.
+`.env.template` defines the variable contract. [`.env.secretsexplained.md`](.env.secretsexplained.md) documents where each secret comes from, who generates or issues it, where it is stored, what consumes it and what rotation means.
 
-In particular, do not confuse operator-generated random secrets with service-issued credentials. Hermes' `LITELLM_API_KEY` and `LITELLM_MCP_API_KEY` must be credentials issued/registered by LiteLLM, while Gitea internal/JWT secrets should be generated with Gitea's native generator. Stack-owned runtime identities such as the Stack3 PostgreSQL admin password and Stack6 sandbox SSH keys deliberately do not belong in the shared `.env`.
+Important distinctions include:
 
-## Installation and operations
+- operator-generated secrets;
+- application-generated secrets;
+- service-issued credentials such as LiteLLM client keys;
+- external-provider credentials;
+- runtime-generated stack identities;
+- operator-provisioned runtime identities;
+- derived secrets such as password hashes.
 
-See [`INSTALLATION.md`](INSTALLATION.md) for the complete deployment, common-installer and update flow. Each stack README documents its ownership, preparation, startup and recovery boundaries. AI/coding agents should also read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
+Do not confuse a random string with a service-issued credential, and do not regenerate a persistent identity just because a generator exists.
 
-## Security
+## Operations
 
-Never commit real operational `.env` values, provider/inference/MCP credentials, Telegram/Buzz secrets, TLS or SSH private keys, database passwords, Hermes runtime databases/sessions, Git-memory SSH material or sandbox lifecycle state.
+See [`INSTALLATION.md`](INSTALLATION.md) for clean installation, lifecycle, updates, verification and maintenance. Each stack README defines stack-specific ownership and safety boundaries. AI/coding agents should read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
 
-Treat effective runtime configuration and readiness as things to validate, not assume.
+The desired end state after any maintenance is:
+
+```text
+Git source on intended commit
++ clean worktree
++ operational .env preserved
++ runtime identities preserved
++ required containers running
++ readiness passing
++ installer dry-run showing verification-only convergence
+```
