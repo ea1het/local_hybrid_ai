@@ -15,5 +15,42 @@
     "runtime:service_-_litellm",
     "runtime:service_-_litellm-postgres"
   ],
-  "blockers": []
+  "blockers": [],
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "mixed"
+    },
+    "resources": [
+      {
+        "id": "litellm-database",
+        "class": "persistent-data",
+        "strategy": "postgres-custom-dump",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "postgres",
+            "service": "litellm-postgres",
+            "database_env": "LITELLM_DB_NAME",
+            "user_env": "LITELLM_DB_USER"
+          },
+          "restore": {
+            "phase": "post-prepare-pre-deploy"
+          }
+        }
+      },
+      {
+        "id": "litellm-salt",
+        "class": "persistent-identity",
+        "strategy": "external-config",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "environment",
+            "key": "LITELLM_SALT_KEY"
+          }
+        }
+      }
+    ]
+  }
 }
