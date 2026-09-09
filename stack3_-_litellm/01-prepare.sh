@@ -58,6 +58,7 @@ driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
 
 SERVICE_DIR="${BASE_PATH%/}/service_-_litellm"
 POSTGRES_DIR="${BASE_PATH%/}/service_-_litellm-postgres"
+POSTGRES_DATA_DIR="${POSTGRES_DIR}/data"
 POSTGRES_SECRET_DIR="${POSTGRES_DIR}/secret"
 POSTGRES_ADMIN_PASSWORD_FILE="${POSTGRES_SECRET_DIR}/postgres_admin_password"
 CONFIG_SOURCE="${STACK_DIR}/config/litellm/config.yaml"
@@ -66,7 +67,21 @@ CONFIG_DIR="${SERVICE_DIR}/config"
 
 step "Runtime de Stack3"
 install -d -m 0750 -o 0 -g 0 "${BASE_PATH}" "${SERVICE_DIR}" "${POSTGRES_DIR}"
-install -d -m 0700 -o 0 -g 0 "${POSTGRES_DIR}/data" "${POSTGRES_SECRET_DIR}"
+
+# PGDATA is owned and managed by the PostgreSQL container. Never change the
+# ownership or mode of an existing data directory from PREPARE: doing so while
+# PostgreSQL is running can immediately make the live bind mount inaccessible.
+if [[ -e "${POSTGRES_DATA_DIR}" || -L "${POSTGRES_DATA_DIR}" ]]; then
+  [[ -d "${POSTGRES_DATA_DIR}" && ! -L "${POSTGRES_DATA_DIR}" ]] || \
+    die "PGDATA invalido: ${POSTGRES_DATA_DIR} debe ser un directorio real"
+  log "PGDATA existente: identidad, ownership y permisos preservados"
+else
+  install -d -m 0700 "${POSTGRES_DATA_DIR}"
+  log "PGDATA vacio creado; PostgreSQL ajustara ownership durante la inicializacion"
+fi
+
+# Administrative secrets are Stack3 host state and remain root-owned.
+install -d -m 0700 -o 0 -g 0 "${POSTGRES_SECRET_DIR}"
 if [[ -e "${POSTGRES_ADMIN_PASSWORD_FILE}" ]]; then
   [[ -f "${POSTGRES_ADMIN_PASSWORD_FILE}" && ! -L "${POSTGRES_ADMIN_PASSWORD_FILE}" && -s "${POSTGRES_ADMIN_PASSWORD_FILE}" ]] || \
     die "estado invalido del secreto PostgreSQL: ${POSTGRES_ADMIN_PASSWORD_FILE}"
@@ -80,7 +95,7 @@ else
   chmod 0600 "${POSTGRES_ADMIN_PASSWORD_FILE}"
   log "secreto administrativo PostgreSQL: generado una vez"
 fi
-log "PostgreSQL dedicado: ${POSTGRES_DIR}/data"
+log "PostgreSQL dedicado: ${POSTGRES_DATA_DIR}"
 
 step "Configuracion de LiteLLM"
 if [[ -e "${CONFIG_DIR}" || -L "${CONFIG_DIR}" ]]; then
