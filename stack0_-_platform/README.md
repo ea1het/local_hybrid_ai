@@ -1,21 +1,23 @@
 # Stack0 — Platform foundation
 
-Stack0 owns host-level resources shared by every deployable stack. It is not an application stack and does not run its own Docker Compose services.
+Stack0 is the mandatory host/platform foundation. It runs no application container; it establishes and validates the shared contracts required by every deployable stack.
 
-## Responsibilities
+## What Stack0 owns
 
-Stack0 owns:
+```mermaid
+flowchart LR
+    S0[Stack0] --> ENV[Central .env + stack symlinks]
+    S0 --> NET[Shared Docker network]
+    S0 --> PKI[Platform PKI]
+    S0 --> RT[service_-_platform runtime]
+    S0 --> REG[Manifest registry/validation]
+```
 
-- validation of the root operational `.env`;
-- compatibility symlinks `stackN/.env -> ../.env`;
-- the shared Docker network declared by `NETWORK_NAME`;
-- persistent platform runtime below `${BASE_PATH}/service_-_platform`;
-- centralized TLS/PKI lifecycle;
-- the manifest registry and dependency graph for every stack.
+Manifest capabilities: `platform.foundation`, `platform.environment`, `platform.network`, `platform.pki`.
 
-Stack0 does **not** own application databases, application volumes, Gitea repositories, LiteLLM dynamic objects or Hermes-specific SSH identities.
+Owned resources include the root environment contract, stack `.env` compatibility links, `redlocal` and `runtime:service_-_platform`. Stack0 does not own application databases, application volumes, Gitea repositories or Hermes identities.
 
-## Runtime layout
+## Runtime
 
 ```text
 ${BASE_PATH}/service_-_platform/
@@ -26,9 +28,9 @@ ${BASE_PATH}/service_-_platform/
 └── logs/
 ```
 
-Stack0 creates the dedicated `local-hybrid-pki` group with `PLATFORM_PKI_GID` (default `1999`). The PKI directory is `root:<PKI GID> 0750`, the certificate `0644` and the private key `0640`. HAProxy consumes the directory read-only with that supplementary group. Existing group/GID conflicts stop preparation.
+The `local-hybrid-pki` group uses `PLATFORM_PKI_GID` (default 1999). PKI directory permissions are `root:<PKI GID> 0750`, certificate `0644`, private key `0640`. HAProxy consumes this directory read-only with the supplementary group.
 
-The current PKI is self-signed and covers both `ROOT_HOSTNAME` and `*.ROOT_HOSTNAME`.
+Existing valid PKI is preserved; preparation never rotates it implicitly.
 
 ## Preparation
 
@@ -37,9 +39,68 @@ cd /opt/docker/stacks/stack0_-_platform
 sudo ./install.sh
 ```
 
-Preparation is idempotent. Existing valid PKI material is preserved and is never rotated implicitly.
+Preparation validates the root `.env`, creates/validates `stackN/.env -> ../.env`, prepares platform runtime, creates/validates the shared bridge network, establishes PKI and validates both current and target manifest graphs. `.lock` means PREPARED only.
 
-`.lock` means only that Stack0 preparation completed successfully.
+## Dependency graph
+
+```mermaid
+flowchart TB
+    S0[Stack0] --> S1[Stack1]
+    S0 --> S2[Stack2]
+    S0 --> S3[Stack3]
+    S0 --> S4[Stack4]
+    S0 --> S5[Stack5]
+    S0 --> S6[Stack6]
+    S3 --> S6
+    S2 -. optional capabilities .-> S6
+    S4 -. optional capabilities .-> S6
+```
+
+Every application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional providers to Stack6.
+
+## Manifest registry
+
+Each `stackN_-_*` directory must contain `manifest.json`. `manifests.py` discovers stacks rather than maintaining a hard-coded table.
+
+It validates:
+
+- schema version, ID and directory identity;
+- required/optional dependency references;
+- current and target dependency cycles;
+- atomic flag and declared blockers;
+- non-empty capability/ownership entries and duplicates;
+- global ownership collisions;
+- required consumed capabilities are provided inside required dependency closure;
+- optional consumed capabilities are reachable through required/optional dependency closure.
+
+Useful commands:
+
+```bash
+python3 manifests.py validate
+python3 manifests.py validate --target
+python3 manifests.py list
+python3 manifests.py plan 3
+python3 manifests.py plan 6
+python3 manifests.py plan all
+```
+
+`plan 6` resolves Stack0 -> Stack3 -> Stack6. Required dependencies are recursively ordered and de-duplicated.
+
+`target_requires` remains part of the schema for future architecture transitions, but current atomic stacks already have their intended required dependencies.
+
+## PREPARE versus capability reconciliation
+
+Stack0 validates dependency/capability declarations; it does not reconcile application configuration itself.
+
+```mermaid
+flowchart LR
+    PREP[PREPARE stack-owned resources] --> LOCK[.lock = PREPARED]
+    LOCK --> RUN[Deploy/start]
+    RUN --> REC[Consumer RECONCILE]
+    PROV[Optional provider state] --> REC
+```
+
+The future common installer should use the manifest graph to determine install order and use capability declarations to determine which prepared consumers need reconciliation after provider changes.
 
 ## PKI lifecycle
 
@@ -51,42 +112,14 @@ sudo ./pki.sh recreate --yes
 sudo ./pki.sh delete --yes
 ```
 
-`renew` preserves the private key. `recreate` replaces both certificate and key and therefore requires explicit confirmation.
+`renew` preserves the private key. `recreate` replaces certificate and key and requires explicit confirmation. HAProxy must be deliberately reloaded/recreated before it serves changed certificate material.
 
-## Manifest registry
-
-Every stack directory contains `manifest.json`. Stack0 discovers those manifests instead of hard-coding a dependency table.
-
-Useful commands:
+## Verification
 
 ```bash
+sudo ./verify.sh
 python3 manifests.py validate
 python3 manifests.py validate --target
-python3 manifests.py list
-python3 manifests.py plan 6
-python3 manifests.py plan 6 --target
-python3 manifests.py plan all
 ```
 
-The registry deliberately distinguishes the **current** dependency graph from the **target atomic** graph while refactoring is in progress.
-
-Stack3 owns its dedicated PostgreSQL and requires only Stack0. Stack6 currently still requires Stack2 because its preparation flow hard-requires local web services; its target graph requires only Stack0 and Stack3.
-
-This makes the remaining atomicity blockers explicit and machine-readable instead of hiding them inside installation scripts.
-
-## Dependency model
-
-Target architecture:
-
-```text
-Stack0 -> Stack1
-       -> Stack2
-       -> Stack3
-       -> Stack4
-       -> Stack5
-       -> Stack6
-
-Stack6 additionally requires Stack3.
-```
-
-Stack2 and Stack4 are optional capability providers for Stack6 in the target model.
+Stack0 should be considered healthy only when the shared environment/network/PKI contracts validate; the presence of `.lock` alone is not a health signal.
