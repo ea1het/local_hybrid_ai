@@ -52,8 +52,8 @@ flowchart TB
     S0 --> S5[Stack5]
     S0 --> S6[Stack6]
     S3 --> S6
-    S2 -. optional capabilities .-> S6
-    S4 -. optional capabilities .-> S6
+    S2 -.->|optional capabilities| S6
+    S4 -.->|optional capabilities| S6
 ```
 
 Every application stack requires Stack0. Stack6 additionally requires Stack3. Stack2 and Stack4 are optional providers to Stack6.
