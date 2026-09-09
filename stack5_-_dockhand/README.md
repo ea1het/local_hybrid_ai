@@ -1,81 +1,60 @@
 # Stack5 — Dockhand
 
-Minimal stack for Dockhand.
+Stack5 provides container-management tooling. It is atomic, requires only Stack0 and provides `containers.management`.
 
-Dockhand:
-
-- is connected to the shared Stack0 network;
-- exposes port 3000 only within Docker;
-- is published externally by HAProxy as `https://homelab.casa.lan` when Stack1 is present;
-- persists its application state in the Stack5-owned Docker volume `dockhand_data`.
-
-## Structure
-
-```text
-stack5_-_dockhand/
-├── .env
-├── docker-compose.yml
-├── 01-prepare.sh
-├── manifest.json
-└── README.md
+```mermaid
+flowchart LR
+    H[HAProxy optional] --> D[Dockhand :3000]
+    D --> V[(dockhand_data)]
+    S0[Stack0 redlocal] --- D
 ```
 
-The `.env` contains only the shared platform contract required by this stack:
+Dockhand exposes port 3000 only inside Docker; Stack1 may publish it through HAProxy.
+
+## Ownership
+
+Stack5 owns:
 
 ```text
-STACKS_ROOT=/opt/docker/stacks
-BASE_PATH=/opt/docker/runtime
-NETWORK_NAME=redlocal
+container:dockhand
+volume:dockhand_data
 ```
 
-Dockhand does not require additional application-specific environment variables.
+`dockhand_data` is an external Docker volume and is the stack's persistent application state. There is intentionally no `${BASE_PATH}/service_-_dockhand` directory.
 
-## Atomicity contract
+Stack0 owns the shared network. Stack5 validates that network and does not create it.
 
-Stack5 requires only Stack0.
+## Volume lifecycle
 
-Stack0 owns the shared Docker network. Stack5 verifies that network but does not create it.
+PREPARE treats `dockhand_data` conservatively:
 
-Stack5 owns `dockhand_data`:
+- existing volume: preserve unchanged;
+- missing volume: create once;
+- never delete/recreate an existing volume during PREPARE;
+- keep Compose declaration `external: true` so routine project shutdown does not own its lifecycle.
 
-- if the volume already exists, it is preserved unchanged;
-- if it does not exist, `01-prepare.sh` creates it;
-- preparation never deletes or recreates an existing volume;
-- normal Compose shutdown does not remove the external volume.
-
-The volume remains declared `external: true` in Compose so its lifecycle stays explicit and is not coupled to `docker compose down`.
-
-## Preparation
+## Preparation and startup
 
 ```bash
 cd /opt/docker/stacks/stack5_-_dockhand
 sudo ./01-prepare.sh
-```
-
-The script validates:
-
-- the stack location relative to `STACKS_ROOT`;
-- the presence/driver of the shared `NETWORK_NAME` created by Stack0;
-- the presence of `dockhand_data`, creating it only when absent;
-- the Compose syntax/configuration.
-
-When complete, it creates `.lock` with the common meaning `PREPARED`.
-
-## Startup
-
-```bash
 docker compose up -d
 docker compose ps
-docker compose logs -f dockhand
 ```
 
-## Rebuild / re-prepare
+PREPARE requires Stack0 `.lock`, validates stack location/shared network, ensures the external volume exists, validates Compose and creates `.lock` after success.
+
+`.lock` means PREPARED only.
+
+## Re-preparation
 
 ```bash
 rm .lock
 sudo ./01-prepare.sh
 ```
 
-Re-preparation preserves `dockhand_data` and therefore Dockhand state.
+This must preserve `dockhand_data`. Do not use `docker compose down -v`, `docker volume prune` or general cleanup operations as part of normal Stack5 maintenance.
 
-There is no `service_-_dockhand` directory because this deployment persists exclusively through the Stack5-owned named Docker volume `dockhand_data`.
+## Security boundary
+
+Dockhand is container-management infrastructure and should be exposed only through the intended trusted ingress/network boundary. Operational credentials and Docker/runtime state never belong in Git.
