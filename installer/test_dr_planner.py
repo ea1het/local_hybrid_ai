@@ -69,6 +69,67 @@ class DisasterRecoveryPlannerTests(unittest.TestCase):
         self.assertEqual(entries[0].disposition, "EXTERNAL")
         self.assertEqual(entries[0].strategy, "git")
 
+    def test_backup_plan_contains_only_real_artifacts(self):
+        entries = dr_planner.build_plan_entries(
+            dr_planner.resolve_plan(["all"]),
+            self.manifests,
+        )
+        artifacts, prerequisites = dr_planner.build_backup_plan(entries)
+        actual = {(item.stack_id, item.resource_id, item.relative_path) for item in artifacts}
+        expected = {
+            (0, "platform-pki", "artifacts/stack0/platform-pki.tar"),
+            (3, "litellm-database", "artifacts/stack3/litellm-database.dump"),
+            (4, "gitea-state", "artifacts/stack4/gitea-state.zip"),
+        }
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(prerequisites), 2)
+
+    def test_backup_plan_classifies_required_and_external_prerequisites(self):
+        entries = dr_planner.build_plan_entries(
+            dr_planner.resolve_plan(["all"]),
+            self.manifests,
+        )
+        _, prerequisites = dr_planner.build_backup_plan(entries)
+        actual = {(item.stack_id, item.resource_id): item.kind for item in prerequisites}
+        self.assertEqual(
+            actual,
+            {
+                (3, "litellm-salt"): "REQUIRE",
+                (6, "hermes-knowledge"): "EXTERNAL",
+            },
+        )
+
+    def test_backup_plan_payload_is_metadata_only(self):
+        entries = dr_planner.build_plan_entries([0, 3, 4, 6], self.manifests)
+        artifacts, prerequisites = dr_planner.build_backup_plan(entries)
+        payload = dr_planner.backup_plan_payload(
+            ["all"],
+            [0, 3, 4, 6],
+            artifacts,
+            prerequisites,
+            source_commit="a" * 40,
+        )
+        serialized = repr(payload)
+        self.assertEqual(payload["kind"], "local-hybrid-ai-backup-plan")
+        self.assertFalse(payload["changes_made"])
+        self.assertNotIn("LITELLM_SALT_KEY", serialized)
+        self.assertNotIn("sha256", serialized)
+        self.assertNotIn("size_bytes", serialized)
+
+    def test_completed_backup_schema_is_distinct_from_dry_run_plan(self):
+        schema_path = ROOT / "backup-set.schema.json"
+        self.assertTrue(schema_path.is_file())
+        schema_text = schema_path.read_text(encoding="utf-8")
+        self.assertIn('"local-hybrid-ai-backup-set"', schema_text)
+        self.assertIn('"sha256"', schema_text)
+        self.assertIn('"size_bytes"', schema_text)
+        self.assertNotIn('"local-hybrid-ai-backup-plan"', schema_text)
+
+    def test_artifact_path_rejects_non_backup_entry(self):
+        entries = dr_planner.build_plan_entries([6], self.manifests)
+        with self.assertRaises(dr_planner.RecoveryError):
+            dr_planner.artifact_relative_path(entries[0])
+
 
 if __name__ == "__main__":
     unittest.main()
