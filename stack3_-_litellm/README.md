@@ -6,7 +6,7 @@ Stack3 is the AI model-policy and MCP gateway. It is atomic, requires only Stack
 flowchart LR
     A[Applications / Hermes] --> LL[LiteLLM :4000]
     LL --> LOCAL[Local inference]
-    LL -. explicit routing policy .-> CLOUD[Optional cloud APIs]
+    LL -.->|explicit routing policy| CLOUD[Optional cloud APIs]
     A -->|MCP via gateway| LL
     LL --> MCP[Upstream MCP servers]
     LL --> PG[(litellm-postgres)]
