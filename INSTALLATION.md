@@ -10,10 +10,11 @@ This document describes the deployment contract for `local_hybrid_ai`. The root 
 │   ├── .git/
 │   ├── .env                 # operational, secret, ignored by Git
 │   ├── .env.template        # tracked variable contract
-│   ├── install.sh           # common installer entry point
-│   ├── install.py           # dependency-driven orchestrator
+│   ├── install.py           # canonical common installer
+│   ├── install.sh           # portable wrapper: invoke with bash unless executable
 │   ├── installer/
-│   │   └── lifecycle.json   # stack-owned lifecycle command registry
+│   │   ├── lifecycle.json   # stack-owned lifecycle command registry
+│   │   └── test_installer.py
 │   └── stack0...stack6/
 └── runtime/                 # persistent mutable state, never Git source
 ```
@@ -25,6 +26,8 @@ NETWORK_NAME=redlocal
 ```
 
 Stack0 manages each application stack's `.env -> ../.env` compatibility link. The operational root `.env` must be `root:root 0600` on the reference deployment.
+
+The next planned architecture extension is an independent Open WebUI stack. It must be added through the same manifest/lifecycle/readiness model; do not pre-encode a stack number or dependency rule in the installer before its actual design is agreed.
 
 ## 2. Dependency and capability model
 
@@ -55,42 +58,60 @@ python3 stack0_-_platform/manifests.py plan all
 
 `plan 6` resolves the minimum required order as Stack0 -> Stack3 -> Stack6.
 
-## 3. Common installer
+## 3. Common installer v1
 
 The root installer is deliberately thin. `manifests.py` decides **which stacks and dependency order** are required; `installer/lifecycle.json` maps each stack to its own lifecycle entry points. The installer does not duplicate stack implementation.
 
 ```mermaid
 flowchart LR
-    CLI[install.sh selectors] --> M[manifest resolver]
+    CLI[python3 install.py selectors] --> M[manifest resolver]
     M --> P[dependency plan]
-    P --> L[lifecycle registry]
-    L --> S[stack-owned scripts / Compose]
-    S --> V[verification]
+    P --> S{observed state}
+    S -->|not prepared| PREP[PREPARE]
+    S -->|not deployed| DEP[DEPLOY]
+    PREP --> DEP
+    DEP --> RDY[provider readiness]
+    RDY --> CAP[changed capabilities]
+    CAP --> REC[consumer RECONCILE]
+    S -->|converged| V[VERIFY]
+    REC --> V
 ```
 
-Inspect before execution:
+### Canonical invocation
+
+`python3 install.py` is the canonical portable entry point:
 
 ```bash
-./install.sh 6 --plan
-./install.sh 6 --dry-run
-./install.sh 2 4 6 --dry-run
-./install.sh all --plan
+python3 install.py 6 --plan
+python3 install.py 6 --dry-run
+python3 install.py 2 4 6 --dry-run
+python3 install.py all --plan
 ```
 
-Real execution requires an explicit acknowledgement:
+The tracked `install.sh` is only a convenience wrapper. Some repository-content creation paths store it as mode `100644`, so the portable wrapper form is:
 
 ```bash
-sudo ./install.sh 6 --yes
-sudo ./install.sh all --yes
+bash ./install.sh 6 --dry-run
 ```
 
-Selectors accepted by the installer are the same selectors accepted by the manifest planner: numeric IDs, `stackN`, exact stack directory names, or `all`.
+Do not assume `./install.sh` is executable in every fresh checkout.
 
-`--plan` and `--dry-run` never execute lifecycle actions. `--dry-run` prints the exact actions that real execution would run. `--target` resolves `target_requires` instead of the current dependency graph.
+Real execution requires explicit acknowledgement:
 
-The installer detects PREPARED state from `.lock` and therefore does not remove locks or re-run PREPARE merely to converge an existing stack. Deployment commands remain idempotent/convergent stack-owned operations. Optional Stack6 capabilities are reconciled by Stack6 after deployment.
+```bash
+sudo python3 install.py 6 --yes
+sudo python3 install.py all --yes
+```
 
-Safety properties of the common installer:
+Selectors are numeric IDs, `stackN`, exact stack directory names, or `all`.
+
+`--plan` and `--dry-run` never execute lifecycle actions. `--dry-run` prints the exact actions that real execution would run. `--target` resolves `target_requires` instead of the current dependency graph. `--reconcile` is an explicit operator override for intentionally reconciling a stable requested consumer.
+
+The installer observes `.lock` for PREPARED state and required containers for DEPLOYED state. It does not re-run PREPARE merely to converge an existing stack. Healthy providers do not cause spurious consumer reconciliation. A provider that will actually transition through PREPARE/DEPLOY contributes changed capabilities; prepared consumers whose optional capabilities intersect those changes are reconciled generically.
+
+### Safety properties
+
+The common installer:
 
 - never rewrites the operational `.env`;
 - never deletes `.lock` automatically;
@@ -99,22 +120,38 @@ Safety properties of the common installer:
 - never hard-codes Stack6 -> Stack3 dependency logic;
 - does not perform the legacy Stack3 PostgreSQL migration;
 - stops on the first failed lifecycle action and reports that action;
-- keeps stack implementation inside the owning stack.
+- keeps stack implementation inside the owning stack;
+- validates required runtime containers after real execution.
 
 The lifecycle registry is intentionally declarative but is **not** a second dependency graph. Dependencies, optional relationships, capabilities and ownership stay in `manifest.json`.
 
-## 4. Lifecycle states
+## 4. Lifecycle and readiness states
 
 ```mermaid
 stateDiagram-v2
     [*] --> Source
-    Source --> Prepared: 01-prepare.sh
-    Prepared --> Running: stack start/provision
-    Running --> Reconciled: optional capabilities reconciled
-    Reconciled --> Running: provider/intent changes
+    Source --> Prepared: PREPARE
+    Prepared --> Deployed: required containers running
+    Deployed --> Ready: stack-specific readiness passes
+    Ready --> Reconciled: affected optional consumers reconciled
+    Reconciled --> Ready: provider/intent remains converged
 ```
 
-`.lock` means **PREPARED only**. It does not mean deployed, running, healthy or reconciled.
+`.lock` means **PREPARED only**. It does not mean deployed, running, healthy, ready or reconciled.
+
+**DEPLOYED is not READY.** Docker may report a container `running` before the application endpoint accepts traffic. A provider must complete its stack-owned readiness gate before dependent capability reconciliation can rely on it.
+
+Stack2 is the current concrete implementation of this rule. Its lifecycle runs:
+
+```text
+docker compose up -d
+    -> 02-wait-ready.sh
+       -> searxng:8080 accepts TCP
+       -> firecrawl-api:3002 accepts TCP
+    -> reconcile affected prepared consumers
+```
+
+The installer also runs the Stack2 readiness gate during verification. This behavior was validated with a controlled SearXNG stop/recovery: the existing SearXNG container was reused, readiness completed before Stack6 reconciliation, Hermes retained its container identity, and a second installer run returned to verification-only convergence.
 
 PREPARE owns creation/validation of resources belonging to that stack. RECONCILE is a separate repeatable operation for optional capabilities and must not require deleting `.lock`.
 
@@ -136,15 +173,15 @@ sudo editor .env
 Then inspect and run the common installer. A complete installation is:
 
 ```bash
-./install.sh all --plan
-sudo ./install.sh all --yes
+python3 install.py all --plan
+sudo python3 install.py all --yes
 ```
 
 A minimal Hermes installation is dependency-resolved automatically:
 
 ```bash
-./install.sh 6 --plan
-sudo ./install.sh 6 --yes
+python3 install.py 6 --plan
+sudo python3 install.py 6 --yes
 ```
 
 The resolved required plan is Stack0 -> Stack3 -> Stack6. Numeric order `0,1,2,3,4,5,6` remains convenient for a full deployment but is not the dependency model.
@@ -170,10 +207,13 @@ Stack1 consumes Stack0 PKI read-only. Backends are optional from Stack1's depend
 cd /opt/docker/stacks/stack2_-_searxng_firecrawl
 sudo ./01-prepare.sh
 docker compose up -d
+sudo bash ./02-wait-ready.sh
 docker compose ps
 ```
 
 Stack2 provides `web.search` and `web.extract`. It owns SearXNG, Firecrawl API/Playwright, Redis, RabbitMQ and its own PostgreSQL persistence. It never creates `redlocal`.
+
+Do not reconcile a consumer merely because Compose returned successfully. `02-wait-ready.sh` is the provider readiness boundary for SearXNG and Firecrawl.
 
 ### Stack3 — LiteLLM + dedicated PostgreSQL
 
@@ -241,15 +281,26 @@ sudo ./03-temporary-fix-issue-74116-terminal-timeout.sh
 
 ### Add local web after Hermes is already running
 
-Deploy Stack2, then reconcile Stack6. When using the common installer and Stack6 is part of the requested plan, reconciliation is already the final Stack6 deployment action. If Stack2 alone is installed later, explicitly reconcile the already-running consumer:
+With the common installer, deploy Stack2 directly:
 
 ```bash
-sudo ./install.sh 2 --yes
+sudo python3 install.py 2 --yes
+```
+
+If Stack2 is already healthy, the installer performs verification only and does not spuriously reconcile Stack6. If Stack2 actually transitions through deploy/recovery, the installer waits for Stack2 readiness, discovers the prepared Stack6 consumer through `optional_consumes`, and runs Stack6 reconciliation automatically.
+
+Manual equivalent:
+
+```bash
+cd /opt/docker/stacks/stack2_-_searxng_firecrawl
+docker compose up -d
+sudo bash ./02-wait-ready.sh
+
 cd /opt/docker/stacks/stack6_-_hermes
 sudo ./06-reconcile-capabilities.sh --restart
 ```
 
-When both SearXNG and Firecrawl are running on `redlocal`, the managed Hermes configuration enables web tooling. If either provider is unavailable, web remains explicitly disabled. There is no external-provider fallback from this mechanism.
+When both local provider endpoints are ready, the managed Hermes configuration enables web tooling. If the provider is absent/incomplete, web remains explicitly disabled. There is no external-provider fallback from this mechanism.
 
 ### Git-backed memory intent
 
@@ -312,13 +363,69 @@ The root `.env`, stack `.env` symlinks, `.lock` files and `/opt/docker/runtime` 
 
 After an update, use the common installer for dependency-aware convergence or the affected stack's documented lifecycle for bounded maintenance. Do not delete `.lock` merely to activate an optional capability; use reconciliation. A plain `docker restart` does not apply changed Compose environment/mounts.
 
+For a healthy full deployment, the intended final convergence check is:
+
+```bash
+python3 install.py all --dry-run
+sudo python3 install.py all --yes
+```
+
+On a fully converged system this should contain verification/readiness actions only—no PREPARE, DEPLOY or RECONCILE transitions unless state actually changed or `--reconcile` was explicitly requested.
+
 ## 11. Re-preparation
 
 Removing a `.lock` and rerunning PREPARE is an explicit maintenance action, not a normal update primitive. Before doing so, understand what the stack's PREPARE manages and preserve persistent identities.
 
 Validated atomic PREPARE behavior includes preserving bind-directory identity where required, persistent databases/volumes, generated secrets and existing runtime data. Stack3 specifically preserves existing PGDATA owner/mode/inode.
 
-## 12. Secrets and persistent identities
+## 12. Tests and validated installer behavior
+
+Planner regression tests:
+
+```bash
+python3 -m unittest -v installer.test_installer
+```
+
+The reference deployment has validated:
+
+- healthy Stack6 execution performs verification only and preserves container IDs;
+- healthy Stack2/Stack4 providers do not trigger unnecessary Stack6 reconciliation;
+- explicit `--reconcile` does trigger consumer reconciliation intentionally;
+- stopping only SearXNG makes Stack2 `PREPARED + NOT-DEPLOYED`;
+- the installer restores the existing SearXNG container without deleting data;
+- Stack2 readiness completes before Stack6 reconciliation;
+- Hermes-to-SearXNG and Hermes-to-Firecrawl connectivity works after recovery;
+- `.env` and all `.lock` files remain unchanged during recovery;
+- a second run after recovery has no state transitions.
+
+These tests establish the core v1 state model:
+
+```text
+not prepared             -> PREPARE + DEPLOY
+prepared / not deployed  -> DEPLOY
+provider deploy           -> WAIT READY -> consumer RECONCILE
+prepared / deployed       -> VERIFY (plus stack readiness verification where declared)
+explicit --reconcile      -> intentional RECONCILE
+```
+
+## 13. Adding the next stack: Open WebUI
+
+Open WebUI is planned as a new stack, not an ad-hoc container inside an existing stack. Before implementation, decide and document:
+
+1. stack ID and directory name;
+2. persistent runtime ownership;
+3. required and optional dependencies;
+4. consumed/provided capabilities;
+5. required containers;
+6. readiness gate(s), especially the user-facing HTTP endpoint;
+7. ingress relationship with Stack1/HAProxy;
+8. authentication/secrets and whether any are persistent identities;
+9. lifecycle commands for `prepare`, `deploy`, optional `reconcile`, and `verify`;
+10. manifest validation and installer planner tests.
+
+Do not add `if open-webui` logic to `install.py`. Add a manifest and lifecycle registry entry so the generic resolver handles it.
+
+## 14. Secrets and persistent identities
 
 Never commit or casually rotate:
 
