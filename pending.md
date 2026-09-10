@@ -18,7 +18,7 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 - Reject boolean `schema_version` explicitly (`True == 1` in Python must not validate as schema version 1).
 - Harden/retire the older `dr_archive.py` post-publication verification path so every adapter performs all fallible integrity checks before the terminal atomic publication step.
 - Add direct unit tests for Stack4 helper failure paths: dump failure, restart failure, health timeout, helper cleanup failure and combined failure handling.
-- Re-run and record the **full** installer + recovery test suite after the DR reorganization; only focused Stack4 tests were confirmed immediately before the final real Stack4 validation.
+- Re-run and record the **full** installer + recovery test suite after the DR reorganization and generic Gitea-context change. Focused Stack4 tests and the real generic-context backup/restore regression have passed, but the complete current suite still needs one recorded run.
 - Replace the temporary `bkp-dr` compatibility symlinks/project-root assumptions with an explicit project-root resolver so DR code can live cleanly under `bkp-dr` without filesystem aliases.
 
 ## P1 — Installer/platform hardening
@@ -32,8 +32,12 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 - **Open WebUI** remains the next planned independent atomic stack. Before implementation define stack ID/directory, ownership, persistence/database model, required and optional dependencies, consumed/provided capabilities, secret provenance, readiness, Stack1 ingress relationship, recovery contract, tests and documentation. Do not add Open-WebUI-specific branches to generic installer/DR engines when manifests can express the relationship.
 
-## P2 — Operational/documentation follow-up
+## P2 — Operational follow-up
 
 - Decide whether historical local backup sets should eventually be retained, rotated or moved off-host. Do not delete the verified Stack0/Stack3/Stack4 sets as generic cleanup.
 - The Stack3 migration rollback dump under `/root/litellm-postgres-migration-20260908-150526/litellm.dump` is operator-owned cleanup. The operator has stated that `/root` cleanup will be handled manually; automation must not remove it.
 - Review the historical runtime marker `/opt/docker/runtime/service_-_litellm-postgres/.migration-from-stack2-complete`; it is no longer part of normal installation, but deletion should be a separate bounded cleanup decision after confirming no code depends on it.
+
+## Closed in the latest DR iteration
+
+The Stack4 Gitea adapter no longer treats rootless operation as part of the DR contract. It discovers the deployed execution context before the controlled stop, has synthetic rootless/rootful coverage, and the current rootless deployment passed a real controlled-offline backup plus isolated restore regression with the generic-context implementation. Future deployment variants must still pass preflight discovery unambiguously; no rootless-specific follow-up remains open.
