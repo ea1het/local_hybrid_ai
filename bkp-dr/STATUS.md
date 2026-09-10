@@ -1,6 +1,6 @@
 # DR Status and AI Handoff
 
-Updated after the successful Stack4 consistent-backup and isolated-restore validation and the later rootless/rootful portability hardening.
+Updated after the successful Stack4 consistent-backup/isolated-restore validation and the subsequent generic execution-context end-to-end qualification on 2026-09-11.
 
 ## Purpose
 
@@ -21,17 +21,9 @@ This file is the continuity document for the next AI/coding agent. Read it toget
 
 ## Stack4 execution-context rule
 
-The Stack4 adapter must not assume a historical Gitea layout. Before stopping the live service it now discovers:
+The Stack4 adapter must not assume a historical Gitea layout. Before stopping the live service it discovers image, configured container user when present, work path, `GITEA_CUSTOM`, and the active `app.ini` path from deployment evidence. The helper uses the same image and mounted volumes. If no explicit container user is configured, `--user` is omitted so the image keeps its default identity. `gitea` is invoked through image `PATH`; no rootless-specific binary path is hard-coded. Config discovery fails closed before downtime if the active `app.ini` cannot be identified.
 
-- image;
-- configured container user, if any;
-- work path from deployed environment/container configuration when available;
-- `GITEA_CUSTOM` when configured;
-- active `app.ini` path by testing candidate paths derived from the environment and mount destinations without reading config contents.
-
-The helper uses the same image and mounted volumes. If no explicit container user is configured, `--user` is omitted so the selected image keeps its own default user. `gitea` is invoked through the image `PATH`; no rootless-specific binary path is hard-coded. Config discovery fails closed before downtime if the active `app.ini` cannot be identified.
-
-Unit tests model both rootless-style and rootful-style deployments. The currently proven real backup/restore evidence remains from the reference rootless deployment; after any future rootless/rootful/image/layout transition, run a fresh real controlled-offline backup and isolated restore qualification.
+Synthetic unit coverage models both rootless-style and rootful-style deployments. The current real deployment is rootless and its discovered context was `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, work path `/var/lib/gitea`, custom path `/etc/gitea`, config `/etc/gitea/app.ini`. The generic-context implementation subsequently passed a fresh real controlled-offline backup and isolated restore end-to-end regression. Therefore rootless is deployment evidence, not the recovery contract. After a future image/layout/rootless-rootful transition, qualify that new deployment again with a real backup + isolated restore.
 
 ## Verified real evidence
 
@@ -51,7 +43,7 @@ PKI plus LiteLLM custom dump. LiteLLM dump SHA-256: `b1d2f6d804daeec2e44a7ca5d55
 
 An earlier online native dump exists at `/opt/local-hybrid-ai-backups/backup-20260910T220115Z`; it is historical validation evidence, **not the definitive consistency model**.
 
-Definitive consistent set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z`.
+First definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z`.
 
 - controlled-offline mode;
 - Gitea stopped briefly and restarted successfully;
@@ -66,13 +58,13 @@ Definitive consistent set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z
 - restore temporary tree removed;
 - restore verifier did not restart or modify live Gitea.
 
-That validated deployment was rootless: image `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, workdir `/var/lib/gitea`, `GITEA_CUSTOM=/etc/gitea`. Those values are **evidence only** and are no longer hard-coded as the DR execution contract.
+After removing rootless-specific assumptions, the operator ran the new execution-context preflight: discovery matched the actual rootless deployment and Gitea remained `running=true health=healthy`. Focused Stack4 tests passed. The operator then ran a fresh real generic-context controlled-offline backup + checksum validation + isolated restore verification; the complete end-to-end regression **PASSED**. The exact backup-set path/hash from that second run was not captured in conversation, so do not invent it; use the generated set metadata on the host if that evidence is needed later.
 
 ## What remains before generic DR completion
 
 Highest priority is Stack6/Hermes externalization. Inventory operator-valued runtime knowledge/identity, especially `SOUL.md` and anything else whose loss would matter, move authoritative copies into the intended Git/Gitea knowledge model, and make the manifest's externalized Git resource verifiable.
 
-After that, harden generic engine edges before enabling real `dr.py backup all`: destination/source overlap rejection; manifest validator type hardening; old archive adapter publication semantics; backup encryption/retention/off-host policy; protected `.env` backup policy; generic adapter orchestration; clean-environment end-to-end restore drill.
+After that, harden generic engine edges before enabling real `dr.py backup all`: destination/source overlap rejection; manifest validator type hardening; old archive adapter publication semantics; backup encryption/retention/off-host policy; protected `.env` backup policy; generic adapter orchestration; clean-environment end-to-end restore drill. See [`../pending.md`](../pending.md) for the complete current backlog.
 
 Do not destroy the current host to test recovery. Use an isolated temporary environment until the operator explicitly authorizes destructive rebuild testing.
 
