@@ -29,13 +29,14 @@
     },
     "resources": [
       {
-        "id": "hermes-knowledge",
+        "id": "agent-portable-memory",
         "class": "externalized",
         "strategy": "git",
         "sensitive": false,
         "config": {
           "source": {
-            "type": "git"
+            "type": "git",
+            "repository_env": "GITMEM_REPOSITORY"
           }
         }
       }
