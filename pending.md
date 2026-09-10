@@ -4,12 +4,11 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 ## P0 — DR completion
 
-- **Hermes durable knowledge externalization.** Inventory runtime-only operator-valued identity/knowledge, especially `SOUL.md`, and move authoritative durable content to Git/Gitea. The Stack6 recovery contract should remain reconstructable; do not solve this by backing up arbitrary Hermes runtime databases/caches.
-- **Make Stack6 externalized recovery verifiable.** The manifest declares `hermes-knowledge` as externalized/Git; add a concrete source/verification contract so DR preflight can prove the authoritative repository/commit exists.
+- **Qualify the Stack6 portable-memory verifier on the reference host.** `dr_stack6_verify.py` now defines the read-only proof for the only durable Stack6 exception: Git-backed `MEMORY.md` + `USER.md`. Run its focused tests and real verifier after synchronizing the host; once it passes, Stack6 has no remaining data-backup gap.
 - **Protected `.env` DR policy.** `.env` is a required global recovery prerequisite and contains persistent identity such as `LITELLM_SALT_KEY`, but the engine currently does not create a protected copy. Decide encrypted backup mechanism, storage, rotation and restore procedure without exposing values.
 - **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. Define encryption-at-rest, retention generations, off-host copy and verification policy.
-- **Generic real `backup all`.** Keep blocked until Stack6 externalization and remaining engine hardening are complete. Integrate already-proven Stack0/Stack3/Stack4 adapters through the generic manifest-driven engine rather than stack-number conditionals.
-- **Clean-environment restore drill.** Rebuild into an isolated/temporary clean environment from Git + protected `.env` + PKI + LiteLLM dump + Gitea dump. Do not destroy the current host without explicit authorization.
+- **Generic real `backup all`.** Integrate already-proven Stack0/Stack3/Stack4 adapters through the generic manifest-driven engine rather than stack-number conditionals. Stack6 contributes no backup artifact; its externalized Git memory is a prerequisite verified separately.
+- **Clean-environment restore drill.** Rebuild into an isolated/temporary clean environment from Git + protected `.env` + PKI + LiteLLM dump + Gitea dump, then restore/reconnect portable user memory. Do not destroy the current host without explicit authorization.
 
 ## P1 — DR engine hardening
 
@@ -38,6 +37,8 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 - Review the historical runtime marker `/opt/docker/runtime/service_-_litellm-postgres/.migration-from-stack2-complete`; it is no longer part of normal installation, but deletion should be a separate bounded cleanup decision after confirming no code depends on it.
 
 ## Closed in the latest DR iteration
+
+The Stack6 persistence boundary is now explicit: Hermes and the complete sandbox/runtime are replaceable and reconstructable. `SOUL.md` is runtime-generated Nous Research behavior text and is not a DR resource. Hermes SQLite databases, caches, packages, sessions, logs and sandbox state are disposable. The only durable application-level exception is the externalized Git-backed user memory contract (`MEMORY.md` + `USER.md`). No further Hermes-runtime externalization is planned.
 
 The Stack4 Gitea adapter no longer treats rootless operation as part of the DR contract. It discovers the deployed execution context before the controlled stop, has synthetic rootless/rootful coverage, and the current rootless deployment passed a real controlled-offline backup plus isolated restore regression with the generic-context implementation. Future deployment variants must still pass preflight discovery unambiguously; no rootless-specific follow-up remains open.
 
