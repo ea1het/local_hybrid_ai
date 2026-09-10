@@ -27,7 +27,7 @@ flowchart TB
 | 3 | [`stack3_-_litellm`](stack3_-_litellm/README.md) | model-policy + MCP gateway | 0 | `ai.gateway`, `ai.mcp-gateway` |
 | 4 | [`stack4_-_gitea`](stack4_-_gitea/README.md) | Git service + Actions runner | 0 | `git.remote`, `git.runner` |
 | 5 | [`stack5_-_dockhand`](stack5_-_dockhand/README.md) | container management UI | 0 | `containers.management` |
-| 6 | [`stack6_-_hermes`](stack6_-_hermes/README.md) | agent + sandbox + Git-backed memory | 0, 3 | `ai.agent`, `ai.sandbox`, `ai.memory` |
+| 6 | [`stack6_-_hermes`](stack6_-_hermes/README.md) | replaceable agent + sandbox + portable Git-backed memory | 0, 3 | `ai.agent`, `ai.sandbox`, `ai.memory` |
 
 Stack2 and Stack4 are optional providers for Stack6. Optional capabilities must never become hidden required dependencies or silent cloud fallbacks.
 
@@ -59,7 +59,7 @@ flowchart LR
   H -.->|optional| SX[Stack2 SearXNG/Firecrawl]
   H -.->|optional| G[Stack4 Gitea]
   H -->|SSH| SB[Isolated sandbox]
-  H --> MEM[Git-backed memory]
+  H --> MEM[Git-backed portable memory]
 ```
 
 ## Database/security model
@@ -79,9 +79,10 @@ flowchart LR
   PKI[Stack0 PKI] --> REBUILD
   DB[Stack3 LiteLLM logical DB] --> REBUILD
   GT[Stack4 consistent Gitea dump] --> REBUILD
+  MEM[External Git MEMORY.md + USER.md] --> REBUILD
 ```
 
-Stack0 PKI, Stack3 LiteLLM DB and Stack4 Gitea have real backup + isolated restore evidence. Stack1, Stack2 and Stack5 are reconstructable. Stack6 is intended to be reconstructable after its remaining operator-valued knowledge is fully externalized to Git/Gitea. Read [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md) before continuing DR work.
+Stack0 PKI, Stack3 LiteLLM DB and Stack4 Gitea have real backup + isolated restore evidence. Stack1, Stack2 and Stack5 are reconstructable. Stack6/Hermes is also reconstructable as a whole: its runtime, `SOUL.md`, SQLite databases, caches, logs and complete sandbox are disposable. The only durable Stack6 exception is user-owned portable memory (`MEMORY.md` + `USER.md`) externalized to Git and verified independently. Read [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md) before continuing DR work.
 
 ## Maintainer navigation
 
