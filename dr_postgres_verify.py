@@ -140,8 +140,6 @@ def fail_command(label: str, cp: subprocess.CompletedProcess) -> None:
         detail = stderr.decode("utf-8", errors="replace").strip()
     else:
         detail = (stderr or "").strip()
-    # PostgreSQL client diagnostics should not contain PGPASSWORD, but keep the
-    # error deliberately bounded and never include command arguments.
     if len(detail) > 1200:
         detail = detail[:1200] + "..."
     raise PostgresVerifyError(f"{label} failed (rc={cp.returncode}): {detail or 'no diagnostic output'}")
@@ -204,6 +202,22 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def pg_restore_list_command() -> list[str]:
+    # When no input filename is supplied, pg_restore reads the archive from
+    # standard input. A literal "-" is treated as a filename by pg_restore.
+    return docker_admin_prefix() + ["pg_restore", "--list"]
+
+
+def pg_restore_database_command(database: str, app_owner: str) -> list[str]:
+    validate_identifier(database, "restore database")
+    validate_identifier(app_owner, "role")
+    return docker_admin_prefix() + [
+        "pg_restore", "-h", "127.0.0.1", "-U", ADMIN_USER,
+        "-d", database, "--no-owner", "--no-acl", "--role", app_owner,
+        "--exit-on-error",
+    ]
+
+
 def verify_stack3_postgres_restore() -> VerificationResult:
     manifests = dr.load_manifests()
     plan = dr.resolve_plan(["3"])
@@ -229,10 +243,7 @@ def verify_stack3_postgres_restore() -> VerificationResult:
     temp_root = Path(tempfile.mkdtemp(prefix="local-hybrid-ai-pg-restore-test-"))
     os.chmod(temp_root, 0o700)
     dump_path = temp_root / "litellm-database.dump"
-    restore_db = validate_identifier(
-        "dr_restore_" + secrets.token_hex(6),
-        "restore database",
-    )
+    restore_db = validate_identifier("dr_restore_" + secrets.token_hex(6), "restore database")
     restore_created = False
     dump_hash = ""
     dump_size = 0
@@ -261,8 +272,7 @@ def verify_stack3_postgres_restore() -> VerificationResult:
             raise PostgresVerifyError("pg_dump produced an empty artifact")
         dump_hash = sha256_file(dump_path)
 
-        list_cmd = docker_admin_prefix() + ["pg_restore", "--list", "-"]
-        cp_list = run_binary_stdin(list_cmd, dump_path)
+        cp_list = run_binary_stdin(pg_restore_list_command(), dump_path)
         if cp_list.returncode != 0:
             fail_command("pg_restore --list", cp_list)
         catalog_entries = len([
@@ -278,12 +288,10 @@ def verify_stack3_postgres_restore() -> VerificationResult:
             fail_command("restore database creation", cp_create)
         restore_created = True
 
-        restore_cmd = docker_admin_prefix() + [
-            "pg_restore", "-h", "127.0.0.1", "-U", ADMIN_USER,
-            "-d", restore_db, "--no-owner", "--no-acl", "--role", app_owner,
-            "--exit-on-error", "-",
-        ]
-        cp_restore = run_binary_stdin(restore_cmd, dump_path)
+        cp_restore = run_binary_stdin(
+            pg_restore_database_command(restore_db, app_owner),
+            dump_path,
+        )
         if cp_restore.returncode != 0:
             fail_command("pg_restore", cp_restore)
 
