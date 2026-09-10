@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ MODULE_PATH = ROOT / "dr_filesystem.py"
 SPEC = importlib.util.spec_from_file_location("dr_filesystem", MODULE_PATH)
 dr_filesystem = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = dr_filesystem
 SPEC.loader.exec_module(dr_filesystem)
 
 
