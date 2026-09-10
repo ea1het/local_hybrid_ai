@@ -1,6 +1,6 @@
 # DR Status and AI Handoff
 
-Updated after the successful Stack4 consistent-backup and isolated-restore validation on 2026-09-11.
+Updated after the successful Stack4 consistent-backup and isolated-restore validation and the later rootless/rootful portability hardening.
 
 ## Purpose
 
@@ -14,10 +14,24 @@ This file is the continuity document for the next AI/coding agent. Read it toget
 4. Stack0 PKI/private identity is preserved so a rebuilt platform retains the same trust identity.
 5. Stack2 Firecrawl/SearXNG data is reconstructable; no Firecrawl PostgreSQL/Redis/RabbitMQ/SearXNG backup is required.
 6. Stack3 preserves the LiteLLM logical PostgreSQL database plus the original `LITELLM_SALT_KEY`. PostgreSQL admin credentials may be regenerated on a clean rebuild.
-7. Stack4 preserves Gitea repositories and durable application state with Gitea's native dump. Definitive consistency policy is a brief controlled stop of only Gitea, native dump using the same rootless image/context, restart + health verification, then artifact validation/publication.
+7. Stack4 preserves Gitea repositories and durable application state with Gitea's native dump. Definitive consistency policy is a brief controlled stop of only Gitea, native dump using the **execution context discovered from the deployed container**, restart + health verification, then artifact validation/publication. Rootless vs. rootful is not part of the DR contract.
 8. Stack5 Dockhand is reconstructable; its Docker volume is not a DR target.
 9. Stack6 Hermes runtime is intended to be reconstructable. Durable memory/identity/knowledge belongs in Git/Gitea, not arbitrary runtime backup targets.
 10. Do not back up raw PostgreSQL PGDATA, containers, images, logs, temp files, `.lock`, migration markers, queues or caches merely because they exist.
+
+## Stack4 execution-context rule
+
+The Stack4 adapter must not assume a historical Gitea layout. Before stopping the live service it now discovers:
+
+- image;
+- configured container user, if any;
+- work path from deployed environment/container configuration when available;
+- `GITEA_CUSTOM` when configured;
+- active `app.ini` path by testing candidate paths derived from the environment and mount destinations without reading config contents.
+
+The helper uses the same image and mounted volumes. If no explicit container user is configured, `--user` is omitted so the selected image keeps its own default user. `gitea` is invoked through the image `PATH`; no rootless-specific binary path is hard-coded. Config discovery fails closed before downtime if the active `app.ini` cannot be identified.
+
+Unit tests model both rootless-style and rootful-style deployments. The currently proven real backup/restore evidence remains from the reference rootless deployment; after any future rootless/rootful/image/layout transition, run a fresh real controlled-offline backup and isolated restore qualification.
 
 ## Verified real evidence
 
@@ -52,7 +66,7 @@ Definitive consistent set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z
 - restore temporary tree removed;
 - restore verifier did not restart or modify live Gitea.
 
-Gitea runtime is rootless: image `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, workdir `/var/lib/gitea`, `GITEA_CUSTOM=/etc/gitea`. The backup helper must preserve this context.
+That validated deployment was rootless: image `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, workdir `/var/lib/gitea`, `GITEA_CUSTOM=/etc/gitea`. Those values are **evidence only** and are no longer hard-coded as the DR execution contract.
 
 ## What remains before generic DR completion
 
