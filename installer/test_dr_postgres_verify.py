@@ -27,6 +27,10 @@ class DisasterRecoveryPostgresVerifyTests(unittest.TestCase):
         self.assertNotIn("LITELLM_DB_PASSWORD", rendered)
         self.assertNotIn("postgres_admin_password=", rendered)
 
+    def test_docker_exec_keeps_stdin_open_for_pg_restore(self):
+        command = dr_postgres_verify.docker_admin_prefix()
+        self.assertEqual(command[:4], ["docker", "exec", "-i", "litellm-postgres"])
+
     def test_admin_user_is_postgres(self):
         self.assertEqual(dr_postgres_verify.ADMIN_USER, "postgres")
         self.assertEqual(dr_postgres_verify.SERVICE, "litellm-postgres")
