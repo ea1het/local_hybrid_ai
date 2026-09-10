@@ -45,7 +45,7 @@ The next planned extension is an independent Open WebUI stack. Its ID, ownership
 │   ├── .env.template               # tracked variable contract
 │   ├── .env.secretsexplained.md    # secret provenance/lifecycle guide
 │   ├── install.py                  # common installer
-│   ├── dr.py                       # disaster-recovery planner; backup/restore adapters pending
+│   ├── dr.py                       # disaster-recovery engine milestones
 │   ├── installer/
 │   └── stack0 ... stack6/
 └── runtime/                        # persistent mutable state
@@ -204,15 +204,7 @@ A provider that is already healthy and ready is verification-only and should not
 
 `.env.template` defines the variable contract. [`.env.secretsexplained.md`](.env.secretsexplained.md) documents where each secret comes from, who generates or issues it, where it is stored, what consumes it and what rotation means.
 
-Important distinctions include:
-
-- operator-generated secrets;
-- application-generated secrets;
-- service-issued credentials such as LiteLLM client keys;
-- external-provider credentials;
-- runtime-generated stack identities;
-- operator-provisioned runtime identities;
-- derived secrets such as password hashes.
+Important distinctions include operator-generated secrets, application-generated secrets, service-issued credentials, external-provider credentials, runtime-generated stack identities, operator-provisioned runtime identities and derived secrets such as password hashes.
 
 Do not confuse a random string with a service-issued credential, and do not regenerate a persistent identity just because a generator exists.
 
@@ -220,22 +212,30 @@ Do not confuse a random string with a service-issued credential, and do not rege
 
 Disaster recovery is intentionally narrower than runtime persistence. The target DR set is the source repository, a protected copy of the operational `.env`, Stack0 platform PKI, a logical LiteLLM database dump and an application-aware Gitea dump. Stack1, Stack2, Stack5 and Stack6 are intended to be reconstructable; durable Hermes knowledge should be externalized to Git/Gitea.
 
-[`recovery.schema.json`](recovery.schema.json) defines the normalized manifest recovery contract. Every manifest has a mandatory `recovery.contract` block and an optional `recovery.resources` block. [`dr-howto.md`](dr-howto.md) defines the policy, stack-by-stack decisions, examples, restore phases and generic recovery-engine boundary.
+[`recovery.schema.json`](recovery.schema.json) defines the normalized manifest recovery contract. [`backup-set.schema.json`](backup-set.schema.json) defines completed backup metadata. [`dr-howto.md`](dr-howto.md) defines the operational DR contract.
 
-The first engine milestone is implemented as a read-only planner:
+Current read-only engine milestones:
 
 ```bash
 python3 dr.py plan all
-python3 dr.py plan 3
-python3 dr.py plan 6 --target
-python3 dr.py plan all --json
+python3 dr.py backup all --dry-run
+python3 dr.py backup all --dry-run --destination /opt/local-hybrid-ai-backups
+DR_BACKUP_ROOT=/mnt/backup/local-hybrid-ai python3 dr.py backup all --dry-run
 ```
 
-`dr.py plan` resolves the same manifest dependency graph used by installation and classifies effective recovery entries as `BACKUP`, `REQUIRE`, `EXTERNAL` or `RECONSTRUCT`. It does not access Docker runtime, secret values or backup artifacts and makes no changes. Backup creation, artifact verification and restore execution are not implemented yet.
+Backup destination precedence is:
+
+```text
+--destination
+> DR_BACKUP_ROOT
+> /opt/local-hybrid-ai-backups
+```
+
+`backup --dry-run` validates the selected absolute destination and nearest existing writable parent without creating directories or artifacts. Real backup execution, checksum generation, verification and restore remain disabled until their later engine milestones are implemented.
 
 ## Operations
 
-See [`INSTALLATION.md`](INSTALLATION.md) for clean installation, lifecycle, updates, verification and maintenance. See [`dr-howto.md`](dr-howto.md) for disaster-recovery design and recovery-planner semantics. Each stack README defines stack-specific ownership and safety boundaries. AI/coding agents should read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
+See [`INSTALLATION.md`](INSTALLATION.md) for clean installation, lifecycle, updates, verification and maintenance. See [`dr-howto.md`](dr-howto.md) for disaster recovery. Each stack README defines stack-specific ownership and safety boundaries. AI/coding agents should read [`a2aknowledge.md`](a2aknowledge.md) before modifying the platform.
 
 The desired end state after any maintenance is:
 
