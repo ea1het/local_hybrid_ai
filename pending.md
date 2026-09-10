@@ -18,7 +18,6 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 - Reject boolean `schema_version` explicitly (`True == 1` in Python must not validate as schema version 1).
 - Harden/retire the older `dr_archive.py` post-publication verification path so every adapter performs all fallible integrity checks before the terminal atomic publication step.
 - Add direct unit tests for Stack4 helper failure paths: dump failure, restart failure, health timeout, helper cleanup failure and combined failure handling.
-- Re-run and record the **full** installer + recovery test suite after the DR reorganization and generic Gitea-context change. Focused Stack4 tests and the real generic-context backup/restore regression have passed, but the complete current suite still needs one recorded run.
 - Replace the temporary `bkp-dr` compatibility symlinks/project-root assumptions with an explicit project-root resolver so DR code can live cleanly under `bkp-dr` without filesystem aliases.
 
 ## P1 — Installer/platform hardening
@@ -41,3 +40,5 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 ## Closed in the latest DR iteration
 
 The Stack4 Gitea adapter no longer treats rootless operation as part of the DR contract. It discovers the deployed execution context before the controlled stop, has synthetic rootless/rootful coverage, and the current rootless deployment passed a real controlled-offline backup plus isolated restore regression with the generic-context implementation. Future deployment variants must still pass preflight discovery unambiguously; no rootless-specific follow-up remains open.
+
+The post-reorganization validation/cleanup pass has also completed successfully on the reference host: manifests validated, installer tests passed, the complete current DR test suite passed from `bkp-dr/tests`, `install.py all --dry-run` converged, critical services remained healthy, generated Python/restore test debris was cleaned, no Gitea dump helper remained, the Git worktree was clean, and local HEAD matched `origin/main` at the time of validation.
