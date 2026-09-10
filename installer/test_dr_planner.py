@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -99,21 +100,79 @@ class DisasterRecoveryPlannerTests(unittest.TestCase):
             },
         )
 
+    def test_backup_destination_defaults_to_opt(self):
+        path, source = dr_planner.resolve_backup_root(None, environ={})
+        self.assertEqual(path, Path("/opt/local-hybrid-ai-backups"))
+        self.assertEqual(source, "default")
+
+    def test_backup_destination_environment_overrides_default(self):
+        path, source = dr_planner.resolve_backup_root(
+            None,
+            environ={"DR_BACKUP_ROOT": "/srv/dr"},
+        )
+        self.assertEqual(path, Path("/srv/dr"))
+        self.assertEqual(source, "environment")
+
+    def test_backup_destination_cli_overrides_environment(self):
+        path, source = dr_planner.resolve_backup_root(
+            "/mnt/backup/local-ai",
+            environ={"DR_BACKUP_ROOT": "/srv/dr"},
+        )
+        self.assertEqual(path, Path("/mnt/backup/local-ai"))
+        self.assertEqual(source, "cli")
+
+    def test_backup_destination_rejects_relative_path(self):
+        with self.assertRaises(dr_planner.RecoveryError):
+            dr_planner.resolve_backup_root("relative/path", environ={})
+
+    def test_backup_destination_rejects_filesystem_root(self):
+        with self.assertRaises(dr_planner.RecoveryError):
+            dr_planner.resolve_backup_root("/", environ={})
+
+    def test_destination_preflight_is_read_only_for_missing_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            root = parent / "backups" / "nested"
+            self.assertFalse(root.exists())
+            result = dr_planner.preflight_backup_destination(root, "cli")
+            self.assertFalse(root.exists())
+            self.assertFalse(result.root_exists)
+            self.assertTrue(result.writable_parent)
+            self.assertEqual(result.nearest_existing_parent, parent)
+
+    def test_destination_preflight_rejects_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "backup-file"
+            target.write_text("not a directory", encoding="utf-8")
+            with self.assertRaises(dr_planner.RecoveryError):
+                dr_planner.preflight_backup_destination(target, "cli")
+
     def test_backup_plan_payload_is_metadata_only(self):
         entries = dr_planner.build_plan_entries([0, 3, 4, 6], self.manifests)
         artifacts, prerequisites = dr_planner.build_backup_plan(entries)
+        destination = dr_planner.DestinationPreflight(
+            root=Path("/opt/local-hybrid-ai-backups"),
+            source="default",
+            root_exists=False,
+            nearest_existing_parent=Path("/opt"),
+            writable_parent=True,
+        )
         payload = dr_planner.backup_plan_payload(
             ["all"],
             [0, 3, 4, 6],
             artifacts,
             prerequisites,
             source_commit="a" * 40,
+            destination=destination,
         )
         serialized = repr(payload)
         self.assertEqual(payload["kind"], "local-hybrid-ai-backup-plan")
         self.assertFalse(payload["changes_made"])
         self.assertNotIn("LITELLM_SALT_KEY", serialized)
         self.assertEqual(payload["layout"]["checksums"], "checksums.sha256")
+        self.assertEqual(payload["destination"]["root"], "/opt/local-hybrid-ai-backups")
+        self.assertEqual(payload["destination"]["source"], "default")
+        self.assertEqual(payload["destination"]["backup_set_name_pattern"], "backup-YYYYMMDDTHHMMSSZ")
         for artifact in payload["artifacts"]:
             self.assertNotIn("sha256", artifact)
             self.assertNotIn("size_bytes", artifact)
