@@ -39,7 +39,7 @@ class Stack6MemoryVerification:
     def as_dict(self) -> dict[str, object]:
         return {
             "stack": 6,
-            "resource": "agent-portable-memory",
+            "resource": "hermes-knowledge",
             "strategy": "git",
             "status": "PASS",
             "working_tree": str(self.working_tree),
