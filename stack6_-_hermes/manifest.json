@@ -29,7 +29,7 @@
     },
     "resources": [
       {
-        "id": "agent-portable-memory",
+        "id": "hermes-knowledge",
         "class": "externalized",
         "strategy": "git",
         "sensitive": false,
