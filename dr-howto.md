@@ -4,7 +4,7 @@ This document defines the disaster-recovery model and recovery-engine contract f
 
 The design goal is deliberately small: preserve only state whose loss would materially prevent recovery. Everything else must be reconstructable from Git, protected configuration and fresh stack deployment.
 
-> **Current implementation status:** manifest recovery contracts are validated, `dr.py plan` is implemented, and `dr.py backup ... --dry-run` plans the backup set and performs read-only destination preflight. No backup adapter, dump, archive, checksum generation, verification or restore execution is implemented yet.
+> **Current implementation status:** manifest recovery contracts are validated, `dr.py plan` is implemented, and `dr.py backup ... --dry-run` now performs read-only destination and runtime/source preflight. No backup adapter, dump, archive, checksum generation, verification or restore execution is implemented yet.
 
 ## 1. Recovery principles
 
@@ -173,7 +173,7 @@ RECONSTRUCT  no recovery artifact
 
 Planning does not inspect Docker runtime or secret values and makes no changes.
 
-## 8. Backup-set dry-run and destination preflight
+## 8. Backup-set dry-run, destination and runtime/source preflight
 
 The current backup milestone plans a backup set without creating it:
 
@@ -201,15 +201,27 @@ DR_BACKUP_ROOT=/mnt/backup/local-hybrid-ai \
 python3 dr.py backup all --dry-run
 ```
 
-The destination must be an absolute path and cannot be `/`. During dry-run the engine performs a read-only preflight: if the configured root exists it must be a directory; if it does not exist, the engine finds the nearest existing parent and verifies that the current user has write/execute access there. It reports whether the root already exists or would need creation during a future executing backup. The preflight does not create the directory.
+The destination must be an absolute path and cannot be `/`. During dry-run the engine performs a read-only destination preflight: if the configured root exists it must be a directory; if it does not exist, the engine finds the nearest existing parent and verifies that the current user has write/execute access there. It reports whether the root already exists or would need creation during a future executing backup. The preflight does not create the directory.
 
-A future executing backup will create a new timestamped backup-set directory below that root using the contract:
+The same dry-run now performs runtime/source correspondence checks before any adapter is enabled. It reads the operational `.env` without shell evaluation, resolves `BASE_PATH`, validates required configuration by presence only, and never emits protected values. It also validates the manifest-declared sources against the current runtime:
+
+```text
+archive               -> declared runtime path exists and is non-empty
+external-config       -> protected value is present/non-empty
+postgres-custom-dump  -> service is stack-owned, running, DB/user config resolves, pg_isready succeeds
+gitea-native-dump     -> service is stack-owned/running, version is readable, gitea dump --help succeeds
+git                   -> repository_env presence if declared; otherwise contract is informational only
+```
+
+For Gitea, the preflight reports the deployed version and the long options parsed from `gitea dump --help`. This is deliberate discovery: the engine must use the actual deployed command contract rather than assume flags from documentation or another version.
+
+For an externalized `git` resource without `repository_env`, preflight reports `DECLARED` rather than pretending the authoritative external repository was verified. This is non-blocking during the current read-only milestone and keeps the remaining Hermes externalization gap visible.
+
+A future executing backup will create a new timestamped backup-set directory below the selected root using the contract:
 
 ```text
 backup-YYYYMMDDTHHMMSSZ
 ```
-
-The destination root remains configurable so the same engine can later target another local filesystem or mounted backup storage without changing stack manifests.
 
 Calling `dr.py backup` without `--dry-run` still fails closed because adapter execution is not implemented.
 
@@ -284,7 +296,12 @@ The generic engine continues without stack-number conditionals:
 
 ```text
 destination preflight                  DONE (read-only)
-runtime/source prerequisite preflight  NEXT
+runtime/source prerequisite preflight  DONE (read-only)
+-> execution filesystem contract       NEXT
+   restrictive permissions
+   temporary sibling directory
+   collision-safe timestamp naming
+   atomic publication
 -> adapter execution
    archive
    postgres-custom-dump
@@ -295,6 +312,6 @@ runtime/source prerequisite preflight  NEXT
 -> restore planning/execution by declared restore phase
 ```
 
-Before real adapter execution, the engine still needs runtime/source correspondence checks, exact permission/atomic-publication behavior, prerequisite verification without displaying secrets, PostgreSQL command/consistency details, and the exact native Gitea dump/restore behavior for the deployed version.
+Before real adapter execution, the engine still needs exact permission/atomic-publication behavior, PostgreSQL dump consistency details, and the exact native Gitea dump/restore behavior established from the deployed version discovered by preflight.
 
 No recovery engine is complete until it proves both artifact creation and restoration into a clean deployment.
