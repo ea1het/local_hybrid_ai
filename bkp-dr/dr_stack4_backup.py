@@ -5,11 +5,16 @@ Creates a dependency-complete backup set for Stack4 containing:
 - Stack0 platform PKI archive
 - Stack4 native Gitea dump ZIP
 
-For consistency, the live Gitea container is stopped briefly. A one-shot helper
-container using the same image and mounted Gitea volumes performs `gitea dump`
-while the live instance is stopped. The helper explicitly reproduces the
-rootless runtime identity and Gitea paths and performs the dump from its temp
-working directory, as required by Gitea's Docker backup guidance.
+For consistency, the live Gitea container is stopped briefly. Before the stop,
+the adapter inspects the deployed container and derives the execution context
+needed by the dump helper: image, effective configured user, working path,
+GITEA_CUSTOM and the actual app.ini path. The helper then uses the same image
+and mounted Gitea volumes while the live instance is stopped.
+
+Rootless operation is not part of the DR contract. A rootless deployment may
+have an explicit uid/gid; a rootful deployment may rely on the image default
+user. The adapter preserves whichever context is actually deployed and fails
+closed if it cannot determine the active Gitea configuration path.
 
 The live container is restarted immediately after the native dump command
 completes, before copying/validating the ZIP. The helper has no network and is
@@ -43,16 +48,20 @@ GITEA_SERVICE = "gitea"
 GITEA_RELATIVE_PATH = "artifacts/stack4/gitea-state.zip"
 PKI_RELATIVE_PATH = "artifacts/stack0/platform-pki.tar"
 HEALTH_TIMEOUT_SECONDS = 120
-GITEA_ROOTLESS_USER = "1000:1000"
-GITEA_WORK_PATH = "/var/lib/gitea"
-GITEA_CUSTOM_PATH = "/etc/gitea"
-GITEA_CONFIG_PATH = "/etc/gitea/app.ini"
 GITEA_TEMP_PATH = "/tmp"
-GITEA_BINARY = "/usr/local/bin/gitea"
 
 
 class Stack4BackupError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class GiteaExecutionContext:
+    image: str
+    user: str | None
+    work_path: str | None
+    custom_path: str | None
+    config_path: str
 
 
 @dataclass(frozen=True)
@@ -99,8 +108,6 @@ def run_command(args: list[str]) -> subprocess.CompletedProcess[bytes]:
 def bounded_error(label: str, cp: subprocess.CompletedProcess[bytes]) -> Stack4BackupError:
     detail = cp.stderr.decode("utf-8", errors="replace").strip()
     if len(detail) > 2400:
-        # Keep the end of stderr: Gitea emits many informational storage lines
-        # first and normally reports the actionable failure at the end.
         detail = "..." + detail[-2400:]
     return Stack4BackupError(f"{label} failed (rc={cp.returncode}): {detail or 'no diagnostic output'}")
 
@@ -134,14 +141,117 @@ def validate_gitea_dump(path: Path) -> list[str]:
     return names
 
 
-def container_image(service: str = GITEA_SERVICE) -> str:
-    cp = run_command(["docker", "inspect", "-f", "{{.Config.Image}}", service])
+def _env_map(values: object) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if not isinstance(values, list):
+        return result
+    for item in values:
+        if isinstance(item, str) and "=" in item:
+            key, value = item.split("=", 1)
+            result[key] = value
+    return result
+
+
+def _candidate_config_paths(config: dict, mounts: object) -> list[str]:
+    env = _env_map(config.get("Env"))
+    candidates: list[str] = []
+
+    for key in ("GITEA_APP_INI", "GITEA_CONFIG", "GITEA_CONFIG_PATH"):
+        value = env.get(key, "").strip()
+        if value.startswith("/"):
+            candidates.append(value)
+
+    custom = env.get("GITEA_CUSTOM", "").strip()
+    if custom.startswith("/"):
+        candidates.extend([
+            f"{custom.rstrip('/')}/app.ini",
+            f"{custom.rstrip('/')}/conf/app.ini",
+        ])
+
+    if isinstance(mounts, list):
+        for mount in mounts:
+            if not isinstance(mount, dict):
+                continue
+            destination = str(mount.get("Destination") or "").strip()
+            if destination.startswith("/"):
+                destination = destination.rstrip("/")
+                candidates.extend([
+                    f"{destination}/app.ini",
+                    f"{destination}/conf/app.ini",
+                ])
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            unique.append(candidate)
+    return unique
+
+
+def discover_gitea_execution_context(service: str = GITEA_SERVICE) -> GiteaExecutionContext:
+    """Discover dump execution context from the live container.
+
+    No secret-bearing file is read. app.ini discovery tests candidate paths for
+    existence only. If the active config cannot be identified, backup aborts
+    before the controlled stop rather than falling back to historical rootless
+    assumptions.
+    """
+    cp = run_command(["docker", "inspect", service])
     if cp.returncode != 0:
-        raise bounded_error("Gitea image inspection", cp)
-    image = cp.stdout.decode("utf-8", errors="replace").strip()
+        raise bounded_error("Gitea container inspection", cp)
+    try:
+        docs = json.loads(cp.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Stack4BackupError("Gitea container inspection returned invalid JSON") from exc
+    if not isinstance(docs, list) or len(docs) != 1 or not isinstance(docs[0], dict):
+        raise Stack4BackupError("Gitea container inspection returned an unexpected structure")
+
+    doc = docs[0]
+    config = doc.get("Config")
+    if not isinstance(config, dict):
+        raise Stack4BackupError("Gitea container inspection is missing Config")
+
+    image = str(config.get("Image") or "").strip()
     if not image or any(ch.isspace() for ch in image):
         raise Stack4BackupError("Gitea container image could not be resolved safely")
-    return image
+
+    env = _env_map(config.get("Env"))
+    user_value = str(config.get("User") or "").strip()
+    user = user_value or None
+
+    work_value = env.get("GITEA_WORK_DIR", "").strip()
+    if not work_value:
+        work_value = str(config.get("WorkingDir") or "").strip()
+    work_path = work_value if work_value.startswith("/") else None
+
+    custom_value = env.get("GITEA_CUSTOM", "").strip()
+    custom_path = custom_value if custom_value.startswith("/") else None
+
+    config_path = None
+    for candidate in _candidate_config_paths(config, doc.get("Mounts")):
+        cp_test = run_command(["docker", "exec", service, "test", "-f", candidate])
+        if cp_test.returncode == 0:
+            config_path = candidate
+            break
+
+    if config_path is None:
+        raise Stack4BackupError(
+            "active Gitea app.ini path could not be discovered safely; "
+            "refusing to use hard-coded rootless/rootful defaults"
+        )
+
+    if custom_path is None:
+        parent = PurePosixPath(config_path).parent
+        custom_path = str(parent.parent if parent.name == "conf" else parent)
+
+    return GiteaExecutionContext(
+        image=image,
+        user=user,
+        work_path=work_path,
+        custom_path=custom_path,
+        config_path=config_path,
+    )
 
 
 def container_running(service: str = GITEA_SERVICE) -> bool:
@@ -172,45 +282,50 @@ def remove_helper(helper: str) -> None:
             raise bounded_error("Gitea dump helper cleanup", cp)
 
 
-def build_helper_create_command(image: str, helper: str, helper_dump: str) -> list[str]:
-    """Build the rootless Gitea dump helper command.
-
-    The live deployment is Gitea rootless (uid/gid 1000:1000), with work path
-    /var/lib/gitea and config /etc/gitea/app.ini. Gitea's Docker backup guidance
-    also requires running the dump command from the temporary directory used for
-    packaging, so both container working directory and --tempdir are /tmp.
-    """
-    return [
+def build_helper_create_command(context: GiteaExecutionContext, helper: str, helper_dump: str) -> list[str]:
+    """Build a helper command from the currently deployed execution context."""
+    command = [
         "docker", "create",
         "--name", helper,
         "--network", "none",
         "--volumes-from", GITEA_SERVICE,
-        "--user", GITEA_ROOTLESS_USER,
-        "--workdir", GITEA_TEMP_PATH,
-        "--env", f"GITEA_CUSTOM={GITEA_CUSTOM_PATH}",
-        "--entrypoint", GITEA_BINARY,
-        image,
-        "--work-path", GITEA_WORK_PATH,
-        "--custom-path", GITEA_CUSTOM_PATH,
-        "--config", GITEA_CONFIG_PATH,
+    ]
+    if context.user:
+        command.extend(["--user", context.user])
+
+    # Gitea packaging must run from the temp directory used by --tempdir.
+    command.extend(["--workdir", GITEA_TEMP_PATH])
+    if context.custom_path:
+        command.extend(["--env", f"GITEA_CUSTOM={context.custom_path}"])
+
+    # Use the image's PATH instead of assuming a rootless-specific binary path.
+    command.extend(["--entrypoint", "gitea", context.image])
+    if context.work_path:
+        command.extend(["--work-path", context.work_path])
+    if context.custom_path:
+        command.extend(["--custom-path", context.custom_path])
+    command.extend([
+        "--config", context.config_path,
         "dump",
         "--tempdir", GITEA_TEMP_PATH,
         "--file", helper_dump,
         "--type", "zip",
-    ]
+    ])
+    return command
 
 
 def create_gitea_dump_offline(destination: Path) -> tuple[list[str], bool, bool]:
     """Create a native Gitea dump while the live container is stopped.
 
-    Cleanup ordering is deliberate: Gitea restart is attempted first in every
-    post-stop path, then the helper is removed. Any dump/copy/validation error is
-    reported only after service recovery and helper cleanup have been attempted.
+    Execution context is discovered while the service is still live. Cleanup
+    ordering is deliberate: Gitea restart is attempted first in every post-stop
+    path, then the helper is removed. Any dump/copy/validation error is reported
+    only after service recovery and helper cleanup have been attempted.
     """
     if not container_running():
         raise Stack4BackupError("Gitea must be running before a controlled-offline backup")
 
-    image = container_image()
+    context = discover_gitea_execution_context()
     helper = f"local-hybrid-ai-gitea-dump-{secrets.token_hex(8)}"
     helper_dump = "/tmp/gitea-state.zip"
     stopped = False
@@ -224,7 +339,7 @@ def create_gitea_dump_offline(destination: Path) -> tuple[list[str], bool, bool]
             raise bounded_error("controlled Gitea stop", cp_stop)
         stopped = True
 
-        cp_create = run_command(build_helper_create_command(image, helper, helper_dump))
+        cp_create = run_command(build_helper_create_command(context, helper, helper_dump))
         if cp_create.returncode != 0:
             raise bounded_error("Gitea dump helper creation", cp_create)
         helper_created = True
