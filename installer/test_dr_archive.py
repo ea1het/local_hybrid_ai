@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import stat
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -14,6 +15,7 @@ MODULE_PATH = ROOT / "dr_archive.py"
 SPEC = importlib.util.spec_from_file_location("dr_archive", MODULE_PATH)
 dr_archive = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = dr_archive
 SPEC.loader.exec_module(dr_archive)
 
 
