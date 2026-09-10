@@ -1,20 +1,17 @@
 import datetime as dt
-import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ARCHIVE_SPEC = importlib.util.spec_from_file_location("dr_archive", ROOT / "dr_archive.py")
-dr_archive = importlib.util.module_from_spec(ARCHIVE_SPEC)
-assert ARCHIVE_SPEC.loader is not None
-ARCHIVE_SPEC.loader.exec_module(dr_archive)
-RESTORE_SPEC = importlib.util.spec_from_file_location("dr_archive_restore", ROOT / "dr_archive_restore.py")
-dr_archive_restore = importlib.util.module_from_spec(RESTORE_SPEC)
-assert RESTORE_SPEC.loader is not None
-RESTORE_SPEC.loader.exec_module(dr_archive_restore)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import dr_archive
+import dr_archive_restore
 
 
 class DisasterRecoveryArchiveRestoreTests(unittest.TestCase):
