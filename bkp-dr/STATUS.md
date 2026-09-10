@@ -1,6 +1,6 @@
 # DR Status and AI Handoff
 
-Updated after the successful Stack4 consistent-backup/isolated-restore validation and the subsequent generic execution-context end-to-end qualification on 2026-09-11.
+Updated after the successful Stack4 consistent-backup/isolated-restore validation, the generic execution-context end-to-end qualification, and the final full-suite synchronization/cleanup PASS on 2026-09-11.
 
 ## Purpose
 
@@ -59,6 +59,22 @@ First definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20
 - restore verifier did not restart or modify live Gitea.
 
 After removing rootless-specific assumptions, the operator ran the new execution-context preflight: discovery matched the actual rootless deployment and Gitea remained `running=true health=healthy`. Focused Stack4 tests passed. The operator then ran a fresh real generic-context controlled-offline backup + checksum validation + isolated restore verification; the complete end-to-end regression **PASSED**. The exact backup-set path/hash from that second run was not captured in conversation, so do not invent it; use the generated set metadata on the host if that evidence is needed later.
+
+## Final synchronization / validation / cleanup state
+
+The final post-reorganization host validation completed with **PASS** after synchronizing to GitHub. At that point:
+
+- current and target manifests validated;
+- installer and recovery-contract tests passed;
+- the complete current DR suite under `bkp-dr/tests` passed;
+- `install.py all --dry-run` converged successfully;
+- Gitea, LiteLLM PostgreSQL and Firecrawl PostgreSQL remained running/healthy as applicable;
+- Python bytecode/cache and isolated-restore test debris targeted by the cleanup procedure were removed;
+- no residual `local-hybrid-ai-gitea-dump-*` helper container remained;
+- Git worktree was clean;
+- local HEAD matched `origin/main` at the time of validation.
+
+This closes the previously open full-suite-after-reorganization task. Do not assume later commits have been deployed until the host is synchronized again.
 
 ## What remains before generic DR completion
 
