@@ -4,7 +4,7 @@ This document defines the disaster-recovery model and recovery-engine contract f
 
 The design goal is deliberately small: preserve only state whose loss would materially prevent recovery. Everything else must be reconstructable from Git, protected configuration and fresh stack deployment.
 
-> **Current implementation status:** manifest recovery contracts are validated, `dr.py plan` is implemented, and `dr.py backup ... --dry-run` now plans the backup-set layout. No backup adapter, dump, archive, checksum generation, verification or restore execution is implemented yet.
+> **Current implementation status:** manifest recovery contracts are validated, `dr.py plan` is implemented, and `dr.py backup ... --dry-run` plans the backup set and performs read-only destination preflight. No backup adapter, dump, archive, checksum generation, verification or restore execution is implemented yet.
 
 ## 1. Recovery principles
 
@@ -173,9 +173,9 @@ RECONSTRUCT  no recovery artifact
 
 Planning does not inspect Docker runtime or secret values and makes no changes.
 
-## 8. Backup-set dry-run
+## 8. Backup-set dry-run and destination preflight
 
-The second engine milestone plans a backup set without creating it:
+The current backup milestone plans a backup set without creating it:
 
 ```bash
 python3 dr.py backup all --dry-run
@@ -183,9 +183,37 @@ python3 dr.py backup 3 --dry-run
 python3 dr.py backup all --dry-run --json
 ```
 
-Calling `dr.py backup` without `--dry-run` currently fails closed because adapter execution is not implemented.
+The backup root is an engine-level setting, not a stack manifest property. Selection precedence is:
 
-For the current platform, `backup all --dry-run` must plan exactly three artifacts:
+```text
+--destination
+> DR_BACKUP_ROOT
+> /opt/local-hybrid-ai-backups
+```
+
+Examples:
+
+```bash
+python3 dr.py backup all --dry-run \
+  --destination /opt/local-hybrid-ai-backups
+
+DR_BACKUP_ROOT=/mnt/backup/local-hybrid-ai \
+python3 dr.py backup all --dry-run
+```
+
+The destination must be an absolute path and cannot be `/`. During dry-run the engine performs a read-only preflight: if the configured root exists it must be a directory; if it does not exist, the engine finds the nearest existing parent and verifies that the current user has write/execute access there. It reports whether the root already exists or would need creation during a future executing backup. The preflight does not create the directory.
+
+A future executing backup will create a new timestamped backup-set directory below that root using the contract:
+
+```text
+backup-YYYYMMDDTHHMMSSZ
+```
+
+The destination root remains configurable so the same engine can later target another local filesystem or mounted backup storage without changing stack manifests.
+
+Calling `dr.py backup` without `--dry-run` still fails closed because adapter execution is not implemented.
+
+For the current platform, `backup all --dry-run` plans exactly three artifacts:
 
 ```text
 artifacts/stack0/platform-pki.tar
@@ -204,42 +232,35 @@ Reconstructable stacks never acquire artifact slots merely because they own pers
 
 ## 9. Backup-set layout
 
-A completed backup set will use this logical layout:
+With the default root, a completed set will eventually look like:
 
 ```text
-<backup-set>/
-├── backup.json
-├── checksums.sha256
-└── artifacts/
-    ├── stack0/
-    │   └── platform-pki.tar
-    ├── stack3/
-    │   └── litellm-database.dump
-    └── stack4/
-        └── gitea-state.zip
+/opt/local-hybrid-ai-backups/
+└── backup-YYYYMMDDTHHMMSSZ/
+    ├── backup.json
+    ├── checksums.sha256
+    └── artifacts/
+        ├── stack0/
+        │   └── platform-pki.tar
+        ├── stack3/
+        │   └── litellm-database.dump
+        └── stack4/
+            └── gitea-state.zip
 ```
 
 `backup.json` is normative metadata. `checksums.sha256` is a human/tool-friendly integrity index over artifact files. The backup set is not considered complete merely because files with these names exist.
 
 [`backup-set.schema.json`](backup-set.schema.json) defines the metadata contract for a **completed** backup set. Dry-run JSON deliberately uses `kind: local-hybrid-ai-backup-plan`, not `local-hybrid-ai-backup-set`, and contains no fake checksum or size values.
 
-A completed `backup.json` must contain, at minimum:
+A completed `backup.json` must contain, at minimum, schema version/kind, creation timestamp, exact Git source commit, requested/resolved stacks, artifact identities and paths, SHA-256 and byte sizes, and non-artifact prerequisites. Secret values, `.env` contents, database passwords and source-specific manifest config do not belong in backup metadata.
 
-- schema version and kind;
-- creation timestamp;
-- exact Git source commit;
-- requested selectors and resolved stacks;
-- each real artifact's stack/resource identity, strategy, sensitivity, restore phase and relative path;
-- SHA-256 and byte size for each real artifact;
-- non-artifact prerequisites (`REQUIRE` / `EXTERNAL`).
+## 10. Integrity, permissions and completion rules
 
-Secret values, `.env` contents, database passwords and source-specific manifest config do not belong in backup metadata.
+The executing backup command will build into a temporary sibling backup-set directory and publish it only after all requested artifacts and integrity metadata succeed. The final timestamped name must never be reused or silently overwritten.
 
-## 10. Integrity and completion rules
+Because current managed artifacts are sensitive, the engine must create the backup root/set with restrictive permissions and must not rely on permissive process defaults. Exact creation modes and atomic publication are part of the next execution milestone.
 
-The future executing backup command must build into a temporary backup-set directory and publish/rename it only after all requested artifacts succeed and integrity metadata is complete.
-
-A completed set should therefore satisfy:
+A completed set should satisfy:
 
 ```text
 all BACKUP resources produced
@@ -255,25 +276,15 @@ A partially generated directory must never be presented as a successful backup s
 
 ## 11. What is intentionally excluded
 
-The DR design excludes:
-
-- Firecrawl PostgreSQL data;
-- Firecrawl Redis/RabbitMQ state;
-- SearXNG cache/runtime state;
-- PostgreSQL PGDATA physical copies as the normal database restore mechanism;
-- Dockhand runtime volume;
-- Hermes caches, sessions, packages, logs and operational SQLite state;
-- Hermes sandbox workspace/state unless requirements change;
-- Gitea runner registration token/state;
-- Docker containers/images and overlay filesystem internals;
-- `.lock`, temporary files and migration markers.
+The DR design excludes Firecrawl PostgreSQL/Redis/RabbitMQ state, SearXNG runtime/cache, physical PGDATA copies as the normal restore mechanism, Dockhand state, Hermes operational caches/databases/sandbox state, Gitea runner registration state, Docker containers/images/overlay internals, `.lock`, temporary files and migration markers.
 
 ## 12. Remaining engine milestones
 
-The generic engine should continue without stack-number conditionals. The remaining sequence is:
+The generic engine continues without stack-number conditionals:
 
 ```text
-runtime/source preflight
+destination preflight                  DONE (read-only)
+runtime/source prerequisite preflight  NEXT
 -> adapter execution
    archive
    postgres-custom-dump
@@ -284,14 +295,6 @@ runtime/source preflight
 -> restore planning/execution by declared restore phase
 ```
 
-Before real adapter execution, settle and test:
-
-- backup destination and permissions;
-- encryption policy for sensitive artifacts;
-- temporary directory and atomic publication semantics;
-- PostgreSQL consistency and command details;
-- exact Gitea native dump/restore command for the pinned version;
-- prerequisite verification without displaying secret values;
-- failure cleanup that never destroys source/runtime state.
+Before real adapter execution, the engine still needs runtime/source correspondence checks, exact permission/atomic-publication behavior, prerequisite verification without displaying secrets, PostgreSQL command/consistency details, and the exact native Gitea dump/restore behavior for the deployed version.
 
 No recovery engine is complete until it proves both artifact creation and restoration into a clean deployment.
