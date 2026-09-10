@@ -7,12 +7,15 @@ Creates a dependency-complete backup set for Stack4 containing:
 
 For consistency, the live Gitea container is stopped briefly. A one-shot helper
 container using the same image and mounted Gitea volumes performs `gitea dump`
-while the live instance is stopped. The live container is restarted immediately
-after the native dump command completes, before copying/validating the ZIP.
+while the live instance is stopped. The helper explicitly reproduces the
+rootless runtime identity and Gitea paths and performs the dump from its temp
+working directory, as required by Gitea's Docker backup guidance.
 
-The helper has no network and is always removed, including dump failure paths.
-The backup is validated before atomic publication. Repositories and the live
-application database are never modified intentionally by this tool.
+The live container is restarted immediately after the native dump command
+completes, before copying/validating the ZIP. The helper has no network and is
+always removed, including dump failure paths. The backup is validated before
+atomic publication. Repositories and the live application database are never
+modified intentionally by this tool.
 """
 from __future__ import annotations
 
@@ -40,6 +43,12 @@ GITEA_SERVICE = "gitea"
 GITEA_RELATIVE_PATH = "artifacts/stack4/gitea-state.zip"
 PKI_RELATIVE_PATH = "artifacts/stack0/platform-pki.tar"
 HEALTH_TIMEOUT_SECONDS = 120
+GITEA_ROOTLESS_USER = "1000:1000"
+GITEA_WORK_PATH = "/var/lib/gitea"
+GITEA_CUSTOM_PATH = "/etc/gitea"
+GITEA_CONFIG_PATH = "/etc/gitea/app.ini"
+GITEA_TEMP_PATH = "/tmp"
+GITEA_BINARY = "/usr/local/bin/gitea"
 
 
 class Stack4BackupError(RuntimeError):
@@ -89,8 +98,10 @@ def run_command(args: list[str]) -> subprocess.CompletedProcess[bytes]:
 
 def bounded_error(label: str, cp: subprocess.CompletedProcess[bytes]) -> Stack4BackupError:
     detail = cp.stderr.decode("utf-8", errors="replace").strip()
-    if len(detail) > 1200:
-        detail = detail[:1200] + "..."
+    if len(detail) > 2400:
+        # Keep the end of stderr: Gitea emits many informational storage lines
+        # first and normally reports the actionable failure at the end.
+        detail = "..." + detail[-2400:]
     return Stack4BackupError(f"{label} failed (rc={cp.returncode}): {detail or 'no diagnostic output'}")
 
 
@@ -156,11 +167,37 @@ def wait_gitea_healthy(timeout: int = HEALTH_TIMEOUT_SECONDS) -> None:
 def remove_helper(helper: str) -> None:
     cp = run_command(["docker", "rm", "-f", helper])
     if cp.returncode != 0:
-        # `docker rm` returns non-zero if it is already absent. Confirm absence;
-        # otherwise fail because DR must not leak helper containers.
         inspect = run_command(["docker", "inspect", helper])
         if inspect.returncode == 0:
             raise bounded_error("Gitea dump helper cleanup", cp)
+
+
+def build_helper_create_command(image: str, helper: str, helper_dump: str) -> list[str]:
+    """Build the rootless Gitea dump helper command.
+
+    The live deployment is Gitea rootless (uid/gid 1000:1000), with work path
+    /var/lib/gitea and config /etc/gitea/app.ini. Gitea's Docker backup guidance
+    also requires running the dump command from the temporary directory used for
+    packaging, so both container working directory and --tempdir are /tmp.
+    """
+    return [
+        "docker", "create",
+        "--name", helper,
+        "--network", "none",
+        "--volumes-from", GITEA_SERVICE,
+        "--user", GITEA_ROOTLESS_USER,
+        "--workdir", GITEA_TEMP_PATH,
+        "--env", f"GITEA_CUSTOM={GITEA_CUSTOM_PATH}",
+        "--entrypoint", GITEA_BINARY,
+        image,
+        "--work-path", GITEA_WORK_PATH,
+        "--custom-path", GITEA_CUSTOM_PATH,
+        "--config", GITEA_CONFIG_PATH,
+        "dump",
+        "--tempdir", GITEA_TEMP_PATH,
+        "--file", helper_dump,
+        "--type", "zip",
+    ]
 
 
 def create_gitea_dump_offline(destination: Path) -> tuple[list[str], bool, bool]:
@@ -187,13 +224,7 @@ def create_gitea_dump_offline(destination: Path) -> tuple[list[str], bool, bool]
             raise bounded_error("controlled Gitea stop", cp_stop)
         stopped = True
 
-        cp_create = run_command([
-            "docker", "create", "--name", helper, "--network", "none",
-            "--volumes-from", GITEA_SERVICE,
-            "--env", "GITEA_CUSTOM=/etc/gitea",
-            "--entrypoint", "gitea", image,
-            "dump", "--file", helper_dump, "--type", "zip",
-        ])
+        cp_create = run_command(build_helper_create_command(image, helper, helper_dump))
         if cp_create.returncode != 0:
             raise bounded_error("Gitea dump helper creation", cp_create)
         helper_created = True
@@ -287,24 +318,30 @@ def execute_stack4_backup(backup_root: Path) -> CompletedStack4Backup:
         pki_size = pki_path.stat().st_size
         gitea_size = gitea_path.stat().st_size
         metadata = {
-            "schema_version": 1, "kind": "local-hybrid-ai-backup-set",
-            "created_at": created_at, "source_commit": dr.git_head(),
-            "requested": ["4"], "resolved_stacks": plan,
+            "schema_version": 1,
+            "kind": "local-hybrid-ai-backup-set",
+            "created_at": created_at,
+            "source_commit": dr.git_head(),
+            "requested": ["4"],
+            "resolved_stacks": plan,
             "artifacts": [
                 {"stack_id": 0, "resource_id": PKI_RESOURCE_ID, "strategy": "archive", "sensitive": bool(pki_resource["sensitive"]), "restore_phase": pki_resource["config"].get("restore", {}).get("phase"), "relative_path": PKI_RELATIVE_PATH, "sha256": pki_hash, "size_bytes": pki_size},
                 {"stack_id": 4, "resource_id": GITEA_RESOURCE_ID, "strategy": "gitea-native-dump", "sensitive": bool(gitea_resource["sensitive"]), "restore_phase": gitea_resource["config"].get("restore", {}).get("phase"), "relative_path": GITEA_RELATIVE_PATH, "sha256": gitea_hash, "size_bytes": gitea_size},
-            ], "prerequisites": [],
+            ],
+            "prerequisites": [],
         }
         dr_archive.validate_completed_metadata(metadata)
         metadata_path = temp / "backup.json"
         dr_archive.write_private(metadata_path, (json.dumps(metadata, indent=2, sort_keys=True) + "\n").encode("utf-8"))
         metadata_hash = dr_archive.sha256_file(metadata_path)
         dr_archive.write_private(temp / "checksums.sha256", (f"{pki_hash}  {PKI_RELATIVE_PATH}\n{gitea_hash}  {GITEA_RELATIVE_PATH}\n{metadata_hash}  backup.json\n").encode("utf-8"))
+
         for relative, expected in ((PKI_RELATIVE_PATH, pki_hash), (GITEA_RELATIVE_PATH, gitea_hash), ("backup.json", metadata_hash)):
             if dr_archive.sha256_file(temp / relative) != expected:
                 raise Stack4BackupError(f"pre-publication checksum mismatch: {relative}")
         for directory in (stack0_dir, stack4_dir, artifacts, temp):
             dr_archive.fsync_directory(directory)
+
         dr_archive.rename_noreplace(temp, final)
         dr_archive.fsync_directory(backup_root)
         return CompletedStack4Backup(final, pki_hash, pki_size, gitea_hash, gitea_size, len(members), stopped, restarted)
