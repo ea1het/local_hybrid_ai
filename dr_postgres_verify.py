@@ -223,7 +223,7 @@ def verify_stack3_postgres_restore() -> VerificationResult:
     app_owner = validate_identifier(dr.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"), "role")
 
     checks = dr.preflight_runtime_sources(manifests, plan)
-    if not any(c.stack_id == 3 and c.resource_id == RESOURCE_ID and c.check == "postgres-readiness" for c in checks):
+    if not any(c.stack_id == 3 and c.resource_id == RESOURCE_ID and c.check == "postgres-source" for c in checks):
         raise PostgresVerifyError("Stack3 PostgreSQL runtime preflight did not complete")
 
     temp_root = Path(tempfile.mkdtemp(prefix="local-hybrid-ai-pg-restore-test-"))
