@@ -36,6 +36,21 @@ class DisasterRecoveryPostgresVerifyTests(unittest.TestCase):
         with self.assertRaises(dr_postgres_verify.PostgresVerifyError):
             dr_postgres_verify.quote_identifier('litellm";DROP DATABASE postgres;--')
 
+    def test_pg_restore_list_uses_stdin_without_dash_filename(self):
+        command = dr_postgres_verify.pg_restore_list_command()
+        self.assertEqual(command[-2:], ["pg_restore", "--list"])
+        self.assertNotEqual(command[-1], "-")
+
+    def test_pg_restore_database_uses_stdin_without_dash_filename(self):
+        command = dr_postgres_verify.pg_restore_database_command(
+            "dr_restore_deadbeef",
+            "litellm",
+        )
+        self.assertIn("pg_restore", command)
+        self.assertIn("--exit-on-error", command)
+        self.assertNotEqual(command[-1], "-")
+        self.assertNotIn("-", command[command.index("pg_restore") + 1:])
+
 
 if __name__ == "__main__":
     unittest.main()
