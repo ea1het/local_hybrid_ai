@@ -15,21 +15,46 @@ backup-YYYYMMDDTHHMMSSZ/
     └── stack4/gitea-state.zip
 ```
 
-The Gitea artifact is produced with the Gitea application's native `gitea dump`
-command. The temporary native dump exists only under a uniquely named `/tmp`
-path inside the Gitea container, is copied into the private backup-set staging
-directory, validated as a safe ZIP with valid CRCs, and then removed from the
-container. The application is not stopped or restarted.
+## Consistency policy
+
+A completed Stack4 backup uses a **controlled-offline** native dump. The live
+`gitea` container must be running before the operation. The adapter:
+
+1. resolves the exact image used by the live container;
+2. stops only the `gitea` container with a bounded grace period;
+3. creates a uniquely named helper container with no network, using the same
+   Gitea-mounted volumes and the same image;
+4. runs `gitea dump --type zip` in that helper while the live instance is down;
+5. restarts the live `gitea` container immediately when the dump command exits,
+   including the error path;
+6. copies the dump from the stopped helper, removes the helper, validates ZIP
+   paths/CRC, hashes artifacts, validates metadata and atomically publishes the
+   backup set.
+
+The downtime is therefore limited to the native dump itself; ZIP copying and
+backup-set validation happen after Gitea has been restarted. The helper exposes
+no ports and uses `--network none`.
+
+If the source Gitea container cannot be restarted after the controlled stop, the
+adapter fails loudly and does not publish a completed backup set.
+
+## Restore verification
 
 `dr_stack4_inspect.py` validates completed-set checksums and ZIP integrity and
-reports the archive's top-level entries and coarse recovery-content categories.
-It does not extract or restore the archive into the live runtime.
+reports the archive layout.
 
-This milestone intentionally separates **native backup proof** from **restore
-proof**. The exact archive layout produced by the live Gitea 1.27.1 instance is
-first captured and inspected. A subsequent milestone will implement an isolated
-restore procedure against that exact layout rather than guessing Gitea's restore
-semantics.
+`dr_stack4_restore_verify.py` performs an isolated reconstruction proof without
+touching the live Gitea runtime. It validates metadata and checksums, safely
+extracts the native ZIP into a private temporary directory, imports
+`gitea-db.sql` into a brand-new temporary SQLite database, verifies application
+tables/data, discovers restored bare repositories under `repos/`, and runs
+`git fsck --full --no-dangling` against every restored repository. The complete
+temporary restore tree is removed afterwards.
 
-The generic `dr.py backup all` path remains blocked until all managed resources
-have validated real adapters and restore procedures.
+This proves the two critical durable stores represented in the native dump—the
+Gitea application database and Git repository object stores—can be reconstructed
+from the persisted artifact. It deliberately does not replace the active Gitea
+runtime and does not start a second externally reachable Gitea service.
+
+The generic `dr.py backup all` path remains blocked until the remaining recovery
+contracts are closed and the all-stacks execution path is explicitly enabled.
