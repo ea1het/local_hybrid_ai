@@ -33,11 +33,13 @@ PostgreSQL application stacks separate `postgres` admin/bootstrap identity from 
 
 Hermes has no Docker socket. Execution is via SSH to an isolated sandbox that is not attached to `redlocal`. Optional local capability absence must fail closed rather than silently use cloud.
 
+Hermes is intentionally replaceable. The complete Hermes runtime and sandbox are reconstructable/disposable for DR, including `SOUL.md`, SQLite state, caches, packages, sessions and logs. The only current durable Stack6 application state is portable user memory: `MEMORY.md` + `USER.md`, externalized to Git. Future Hermes-generated files remain disposable unless the platform explicitly promotes them to durable state.
+
 ## DR
 
 DR is isolated under [`bkp-dr/`](bkp-dr/README.md). Recovery policy is manifest-driven and narrower than runtime persistence. Global prerequisites are Git source at a known commit/tag and a protected operational `.env`.
 
-Current policy: Stack0 PKI BACKUP; Stack1 RECONSTRUCT; Stack2 RECONSTRUCT; Stack3 LiteLLM DB BACKUP + salt external prerequisite; Stack4 Gitea BACKUP; Stack5 RECONSTRUCT; Stack6 RECONSTRUCT after durable knowledge externalization.
+Current policy: Stack0 PKI BACKUP; Stack1 RECONSTRUCT; Stack2 RECONSTRUCT; Stack3 LiteLLM DB BACKUP + salt external prerequisite; Stack4 Gitea BACKUP; Stack5 RECONSTRUCT; Stack6 RECONSTRUCT with external Git-backed `MEMORY.md` + `USER.md` as the sole durable exception.
 
 Real evidence and exact continuation state are in [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md). Do not enable generic real `backup all` until the blockers in [`pending.md`](pending.md) are closed.
 
