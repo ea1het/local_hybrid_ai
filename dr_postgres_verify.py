@@ -85,11 +85,12 @@ def quote_identifier(value: str) -> str:
 
 
 def docker_admin_prefix() -> list[str]:
-    # The password value never crosses the container boundary. The shell reads
-    # the Stack3-managed read-only secret and exports it only to the child
+    # -i is required because pg_restore reads the custom dump from stdin.
+    # The password value never crosses the container boundary: the container
+    # shell reads the Stack3-managed secret and exports it only to the child
     # PostgreSQL client process. TCP loopback forces password authentication.
     return [
-        "docker", "exec", SERVICE, "sh", "-c",
+        "docker", "exec", "-i", SERVICE, "sh", "-c",
         'export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"; exec "$@"',
         "sh",
     ]
@@ -203,8 +204,6 @@ def sha256_file(path: Path) -> str:
 
 
 def pg_restore_list_command() -> list[str]:
-    # When no input filename is supplied, pg_restore reads the archive from
-    # standard input. A literal "-" is treated as a filename by pg_restore.
     return docker_admin_prefix() + ["pg_restore", "--list"]
 
 
