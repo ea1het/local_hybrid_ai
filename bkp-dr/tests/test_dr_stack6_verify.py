@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ MODULE_PATH = ROOT / "dr_stack6_verify.py"
 SPEC = importlib.util.spec_from_file_location("dr_stack6_verify_tested", MODULE_PATH)
 mod = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = mod
 SPEC.loader.exec_module(mod)
 
 
@@ -73,13 +75,11 @@ class Stack6VerifyTests(unittest.TestCase):
             with self.assertRaises(mod.Stack6VerifyError):
                 mod.verify_stack6_memory(env)
 
-    def test_verifier_rejects_remote_tracking_mismatch(self):
+    def test_verifier_rejects_missing_remote_tracking_ref(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             tree = self.init_repo(root)
             env = self.write_env(root)
-            old = mod.subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD^"], text=True, stdout=mod.subprocess.PIPE)
-            # One-commit repositories have no HEAD^; use an all-zero invalid ref by deleting tracking ref.
             mod.subprocess.run(["git", "-C", str(tree), "update-ref", "-d", "refs/remotes/origin/main"], check=True)
             with self.assertRaises(mod.Stack6VerifyError):
                 mod.verify_stack6_memory(env)
