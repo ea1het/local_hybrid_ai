@@ -76,6 +76,26 @@ class RestoreLiveBootstrapTests(unittest.TestCase):
                 with self.assertRaises(restore_live_cli.BootstrapError):
                     restore_live_cli._install_memory_sync_bootstrap(root / "backup", source)
 
+    def test_enable_memory_sync_starts_profile_and_requires_running_container(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            stacks = root / "stacks"
+            (stacks / "stack6_-_hermes").mkdir(parents=True)
+            values = {"MEMORY_SYNC_CONTAINER": "hermes-memory-sync"}
+            compose_ok = mock.Mock(returncode=0, stdout="", stderr="")
+            inspect_ok = mock.Mock(returncode=0, stdout="true\n", stderr="")
+            with mock.patch.object(restore_live_cli.dr_restore_all, "read_completed_backup_set", return_value={}), \
+                 mock.patch.object(restore_live_cli.dr_restore_live, "_read_env_artifact", return_value=(root / "env", values)), \
+                 mock.patch.object(restore_live_cli.subprocess, "run", side_effect=[compose_ok, inspect_ok]) as run:
+                restore_live_cli._enable_memory_sync(root / "backup", {"stacks_root": str(stacks)})
+
+            compose_cmd = run.call_args_list[0].args[0]
+            self.assertEqual(compose_cmd[:4], ["docker", "compose", "--profile", "git-memory"])
+            self.assertIn("hermes-memory-sync", compose_cmd)
+            self.assertEqual(run.call_args_list[0].kwargs["cwd"], stacks / "stack6_-_hermes")
+            inspect_cmd = run.call_args_list[1].args[0]
+            self.assertEqual(inspect_cmd[-1], "hermes-memory-sync")
+
 
 if __name__ == "__main__":
     unittest.main()
