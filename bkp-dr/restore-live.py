@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -76,11 +77,10 @@ def _install_memory_sync_bootstrap(backup_set: Path, source: Path) -> Path:
     os.chown(target, uid, gid)
     os.chmod(target, 0o700)
 
-    modes = {"ssh_config": 0o600, "id_ed25519": 0o600, "known_hosts": 0o600}
-    for name, mode in modes.items():
+    for name in ("ssh_config", "id_ed25519", "known_hosts"):
         src = source / name
         dst = target / name
-        fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+        fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             with src.open("rb") as inp, os.fdopen(fd, "wb", closefd=False) as out:
                 shutil.copyfileobj(inp, out, 1024 * 1024)
@@ -89,8 +89,38 @@ def _install_memory_sync_bootstrap(backup_set: Path, source: Path) -> Path:
         finally:
             os.close(fd)
         os.chown(dst, uid, gid)
-        os.chmod(dst, mode)
+        os.chmod(dst, 0o600)
     return target
+
+
+def _enable_memory_sync(backup_set: Path, result: dict[str, object]) -> None:
+    metadata = dr_restore_all.read_completed_backup_set(backup_set)
+    _, values = dr_restore_live._read_env_artifact(backup_set, metadata)
+    container = dr.require_env_value(values, "MEMORY_SYNC_CONTAINER", label="MEMORY_SYNC_CONTAINER")
+    stacks_root = Path(str(result["stacks_root"]))
+    stack_dir = stacks_root / "stack6_-_hermes"
+    cp = subprocess.run(
+        ["docker", "compose", "--profile", "git-memory", "up", "-d", "--build", "hermes-memory-sync"],
+        cwd=stack_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if cp.returncode != 0:
+        detail = (cp.stderr or cp.stdout or "").strip()
+        if len(detail) > 1500:
+            detail = "..." + detail[-1500:]
+        raise BootstrapError(f"cannot re-enable Stack6 memory-sync profile: {detail or 'docker compose failed'}")
+    inspect = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Running}}", container],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if inspect.returncode != 0 or inspect.stdout.strip() != "true":
+        raise BootstrapError("Stack6 memory-sync container is not running after profile restore")
 
 
 def _execute_with_optional_bootstrap(backup_set: Path, bootstrap: Path | None) -> dict[str, object]:
@@ -110,12 +140,15 @@ def _execute_with_optional_bootstrap(backup_set: Path, bootstrap: Path | None) -
 
     dr_restore_live._restore_external_git = restore_external_then_bootstrap
     try:
-        return dr_restore_live.execute_restore_all(
+        result = dr_restore_live.execute_restore_all(
             backup_set,
             confirm_clean_target=True,
         ).as_dict()
     finally:
         dr_restore_live._restore_external_git = original
+    _enable_memory_sync(backup_set, result)
+    result["memory_sync_enabled"] = True
+    return result
 
 
 def main() -> int:
@@ -169,6 +202,7 @@ def main() -> int:
         print(f"- BASE_PATH: {result['base_path']}")
         if args.memory_sync_ssh_bootstrap:
             print("- Stack6 memory-sync SSH bootstrap: reprovisioned from external operator material")
+            print("- Stack6 memory-sync profile: running")
     return 0
 
 
