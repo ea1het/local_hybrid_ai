@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 import dr
 import dr_archive
@@ -13,6 +14,10 @@ import dr_filesystem
 import dr_postgres_verify
 import dr_stack3_backup
 import dr_stack4_backup
+
+# Do not back up the bkp-dr compatibility symlink. ADR-0001 protects the
+# canonical operational file at project root.
+dr_backup_all.ENV_SOURCE = Path(__file__).resolve().parent.parent / ".env"
 
 
 def main() -> int:
@@ -33,6 +38,7 @@ def main() -> int:
     else:
         print("DR backup all created")
         print(f"- backup set: {result.path}")
+        print(f"- deployed stacks: {', '.join('stack'+str(s) for s in result.deployed_stacks)}")
         print(f"- artifacts: {result.artifact_count}")
         print(f"- external/required prerequisites verified: {result.prerequisite_count}")
         print("- publication: atomic")
