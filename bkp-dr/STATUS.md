@@ -1,6 +1,6 @@
 # DR Status and AI Handoff
 
-Updated after the successful Stack4 consistent-backup/isolated-restore validation, the generic execution-context end-to-end qualification, the final full-suite synchronization/cleanup PASS, the Stack6 replaceability decision and real Stack6 portable-memory qualification on 2026-09-11.
+Updated after the successful Stack4 consistent-backup/isolated-restore validation, the generic execution-context end-to-end qualification, the Stack6 portable-memory qualification, ADR-0001, and the first real atomic `backup all` PASS on 2026-09-11.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ This file is the continuity document for the next AI/coding agent. Read it toget
 3. ADR-0001 accepts including the protected root operational `.env` directly in each complete DR backup set until a better secret-recovery mechanism exists. It is a global sensitive artifact, not a stack-owned resource. Never print it or commit it.
 4. Stack0 PKI/private identity is preserved so a rebuilt platform retains the same trust identity.
 5. Stack2 Firecrawl/SearXNG data is reconstructable; no Firecrawl PostgreSQL/Redis/RabbitMQ/SearXNG backup is required.
-6. Stack3 preserves the LiteLLM logical PostgreSQL database. `LITELLM_SALT_KEY` is carried by the protected `.env` artifact once ADR-0001 is implemented. PostgreSQL admin credentials may be regenerated on a clean rebuild.
+6. Stack3 preserves the LiteLLM logical PostgreSQL database. `LITELLM_SALT_KEY` is carried by the protected `.env` artifact in complete backup sets. PostgreSQL admin credentials may be regenerated on a clean rebuild.
 7. Stack4 preserves Gitea repositories and durable application state with Gitea's native dump. Definitive consistency policy is a brief controlled stop of only Gitea, native dump using the execution context discovered from the deployed container, restart + health verification, then artifact validation/publication. Rootless vs. rootful is not part of the DR contract.
 8. Stack5 Dockhand is reconstructable; its Docker volume is not a DR target.
 9. Stack6/Hermes is replaceable and reconstructable as a whole. The only current durable application-level exception is user-owned portable memory: Git-backed `MEMORY.md` + `USER.md`.
@@ -21,9 +21,15 @@ This file is the continuity document for the next AI/coding agent. Read it toget
 11. `SOUL.md` is Hermes/Nous Research runtime behavior text, not operator-owned durable data. It is disposable together with Hermes SQLite databases, caches, packages, sessions, logs and the complete sandbox runtime.
 12. Do not back up raw PostgreSQL PGDATA, containers, images, logs, temp files, `.lock`, migration markers, queues or caches merely because they exist.
 
+## Generic full-backup rule
+
+`backup all` is now a real atomic recovery-set operation. Deployment discovery uses the common installer lifecycle's `required_containers`, after validating that those containers are owned by each stack manifest. Stack0 is always included. For other stacks, the presence of any required container marks the stack as deployed; partially stopped/broken deployments are therefore not silently omitted and will fail the normal runtime/source preflight if they cannot be backed up safely.
+
+The resolved deployed-stack dependency closure is then processed from manifest recovery policy. Current executing strategies are `archive`, `postgres-custom-dump` and `gitea-native-dump`; externalized resources remain prerequisites rather than becoming arbitrary backup artifacts. All artifacts plus the global `.env` are created inside one private temporary backup-set directory. Metadata/checksums and fallible integrity checks complete before the terminal no-replace atomic publication step. A failed operation must not publish a final `backup-*` directory.
+
 ## Stack4 execution-context rule
 
-The Stack4 adapter must not assume a historical Gitea layout. Before stopping the live service it discovers image, configured container user when present, work path, `GITEA_CUSTOM`, and the active `app.ini` path from deployment evidence. The helper uses the same image and mounted volumes. If no explicit container user is configured, `--user` is omitted so the image keeps its default identity. `gitea` is invoked through image `PATH`; no rootless-specific binary path is hard-coded. Config discovery fails closed before downtime if the active `app.ini` cannot be identified.
+The Stack4 adapter must not assume a historical Gitea layout. Before stopping the live service it discovers image, configured container user when present, work path, `GITEA_CUSTOM`, and the active `app.ini` path from deployment evidence. The helper uses the same image and mounted Gitea volumes. If no explicit container user is configured, `--user` is omitted so the image keeps its default identity. `gitea` is invoked through image `PATH`; no rootless-specific binary path is hard-coded. Config discovery fails closed before downtime if the active `app.ini` cannot be identified.
 
 Synthetic unit coverage models both rootless-style and rootful-style deployments. The current real deployment is rootless and its discovered context was `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, work path `/var/lib/gitea`, custom path `/etc/gitea`, config `/etc/gitea/app.ini`. The generic-context implementation subsequently passed a fresh real controlled-offline backup and isolated restore end-to-end regression. Therefore rootless is deployment evidence, not the recovery contract. After a future image/layout/rootless-rootful transition, qualify that new deployment again with a real backup + isolated restore.
 
@@ -58,7 +64,7 @@ PKI plus LiteLLM custom dump. LiteLLM dump SHA-256: `b1d2f6d804daeec2e44a7ca5d55
 
 ### Stack4
 
-An earlier online native dump exists at `/opt/local-hybrid-ai-backups/backup-20260910T220115Z`; it is historical validation evidence, not the definitive consistency model.
+An earlier online native dump exists at `/opt/local-hybrid-ai-backups/backup-20260910T220115Z`; it is historical validation evidence, **not the definitive consistency model**.
 
 First definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z`.
 
@@ -77,15 +83,37 @@ First definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20
 
 After removing rootless-specific assumptions, the operator ran the new execution-context preflight and then a fresh real generic-context controlled-offline backup + checksum validation + isolated restore verification; the complete end-to-end regression passed. The exact second backup-set path/hash was not captured in conversation, so do not invent it.
 
+### Full atomic backup all
+
+Real recovery point: `/opt/local-hybrid-ai-backups/backup-20260911T004927Z`.
+
+Executing source commit: `f732f0e1bca533556d9a60fef5bd373b51675da2`.
+
+Qualification evidence:
+
+- focused backup-all tests: 4/4 PASS;
+- existing planner regression: 25/25 PASS;
+- Stack6 verifier regression: 5/5 PASS;
+- global dry-run/runtime source preflight PASS;
+- deployed stacks detected: 0,1,2,3,4,5,6;
+- artifact count: 4 (`operational.env` + Stack0 PKI + Stack3 LiteLLM DB + Stack4 Gitea dump);
+- prerequisites: 2 (Stack3 protected-config requirement represented by the now-backed-up `.env`, plus Stack6 external Git memory declaration);
+- publication reported atomic;
+- Gitea returned `running=true health=healthy`;
+- no `local-hybrid-ai-gitea-dump-*` helper remained;
+- source worktree ended clean.
+
+This is the first single recovery point containing the platform's currently declared managed recovery artifacts plus the protected operational environment. It still needs artifact-level restore verification from this exact set before it becomes the basis for generic `restore all` qualification.
+
 ## Global `.env` decision
 
-[`ADR-0001`](../ADRs/ADR-0001-backup-operational-env.md) accepts a pragmatic recovery compromise: the exact protected operational root `.env` will be copied into each complete backup set as a sensitive global artifact. This removes the external-config survival gap and makes the matching recovery point carry values such as `LITELLM_SALT_KEY`.
+[`ADR-0001`](../ADRs/ADR-0001-backup-operational-env.md) accepts a pragmatic recovery compromise: the exact protected operational root `.env` is copied into each complete backup set as a sensitive global artifact. This removes the external-config survival gap and makes the matching recovery point carry values such as `LITELLM_SALT_KEY`.
 
-This is a logical contract decision only until the engine/schema implement the artifact. The future `backup all` must copy it without printing values, checksum it, keep it inside the private atomic publication boundary and mark the backup set highly sensitive. Future encryption/off-host protection may supersede the storage mechanics without changing the logical need to restore operational configuration before PREPARE.
+Encryption/off-host protection may supersede the storage mechanics later without changing the logical requirement that operational configuration be restored before PREPARE.
 
 ## What remains before generic DR completion
 
-There is no remaining Stack6 data gap. Remaining P0 work is now implementation/orchestration: represent and back up global `.env`; integrate manifest-driven real `backup all` using the proven Stack0/Stack3/Stack4 adapters plus externalized-resource verification; implement generic `restore all` from backup metadata and manifest restore phases; then prove a clean-environment full rebuild/restore. Hardening for destination overlap, schema/type validation, encryption/retention/off-host and older archive publication semantics remains tracked in [`../pending.md`](../pending.md).
+The generic real `backup all` milestone is complete and host-qualified. Remaining P0 work is the inverse path: verify every artifact from the exact full recovery point, implement manifest-phase-driven `restore all`, then prove a clean-environment full rebuild/restore. Hardening for destination overlap, schema/type validation, encryption/retention/off-host and older archive publication semantics remains tracked in [`../pending.md`](../pending.md).
 
 Do not destroy the current host to test recovery. Use an isolated temporary environment until the operator explicitly authorizes destructive rebuild testing.
 
