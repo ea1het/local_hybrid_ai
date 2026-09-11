@@ -19,7 +19,7 @@ die() { printf '[buzz-prepare] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ -f "${ENV_FILE}" ]] || die "missing ${ENV_FILE}"
 [[ -f "${DOCKERFILE}" ]] || die "missing ${DOCKERFILE}"
 
-for cmd in docker install stat mktemp cmp mv rm cat; do
+for cmd in docker install stat mktemp mv rm cat; do
   command -v "${cmd}" >/dev/null 2>&1 || die "missing required command: ${cmd}"
 done
 
@@ -30,14 +30,19 @@ set -a
 source "${ENV_FILE}"
 set +a
 
-for key in BASE_PATH HERMES_SERVICE HERMES_UID HERMES_GID HERMES_IMAGE HERMES_VERSION BUZZ_CLI_PATH; do
+for key in BASE_PATH HERMES_SERVICE HERMES_UID HERMES_GID HERMES_IMAGE HERMES_VERSION; do
   [[ -n "${!key:-}" ]] || die "missing ${key} in ${ENV_FILE}"
 done
+
+# Buzz is optional as an integration, but the executable is not optional as a
+# reconstructable Stack6 dependency. An empty BUZZ_CLI_PATH therefore resolves
+# to the managed runtime location also used by Compose.
+BUZZ_CLI_PATH="${BUZZ_CLI_PATH:-${BUZZ_EXPECTED_CONTAINER_PATH}}"
 
 [[ "${BASE_PATH}" == /* && "${BASE_PATH}" != "/" ]] || die "BASE_PATH must be an absolute non-root path"
 [[ "${HERMES_SERVICE}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] || die "unsafe HERMES_SERVICE"
 [[ "${BUZZ_CLI_PATH}" == "${BUZZ_EXPECTED_CONTAINER_PATH}" ]] \
-  || die "BUZZ_CLI_PATH must be ${BUZZ_EXPECTED_CONTAINER_PATH}"
+  || die "BUZZ_CLI_PATH must be empty or ${BUZZ_EXPECTED_CONTAINER_PATH}"
 [[ "${HERMES_VERSION}" != "latest" ]] || die "HERMES_VERSION cannot be latest"
 
 HERMES_DATA="${BASE_PATH%/}/${HERMES_SERVICE}/data"
