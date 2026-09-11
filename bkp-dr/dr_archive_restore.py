@@ -2,7 +2,8 @@
 """Isolated restore verifier for the Stack0 archive DR milestone.
 
 This command never restores into the live runtime path. It validates a completed
-backup set, extracts its archive into a private temporary directory, compares the
+backup set, locates the Stack0 platform-pki archive even inside a multi-artifact
+full backup set, extracts it into a private temporary directory, compares the
 restored tree with an optional live source tree, and removes the temporary tree.
 """
 from __future__ import annotations
@@ -91,18 +92,29 @@ def validate_completed_backup_set(backup_set: Path) -> tuple[dict, Path]:
         raise ArchiveRestoreError("backup set is missing metadata or checksum index")
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        dr_archive.validate_completed_metadata(metadata)
+
+        # dr_archive.validate_completed_metadata predates optional global
+        # artifacts. Validate the original v1 stack-owned subset here while
+        # preserving the real backup.json bytes/hash below. Full-set/global
+        # validation belongs to the generic restore engine.
+        legacy_view = dict(metadata)
+        legacy_view.pop("global_artifacts", None)
+        dr_archive.validate_completed_metadata(legacy_view)
     except (OSError, json.JSONDecodeError, dr_archive.ArchiveBackupError) as exc:
         raise ArchiveRestoreError(f"invalid backup metadata: {exc}") from exc
 
     artifacts = metadata.get("artifacts", [])
-    if len(artifacts) != 1:
-        raise ArchiveRestoreError("this verifier requires exactly one archive artifact")
-    artifact_meta = artifacts[0]
-    if artifact_meta.get("stack_id") != 0 or artifact_meta.get("resource_id") != "platform-pki":
-        raise ArchiveRestoreError("backup set is not the Stack0 platform-pki archive")
-    if artifact_meta.get("strategy") != "archive":
-        raise ArchiveRestoreError("artifact strategy is not archive")
+    candidates = [
+        item for item in artifacts
+        if item.get("stack_id") == 0
+        and item.get("resource_id") == "platform-pki"
+        and item.get("strategy") == "archive"
+    ]
+    if len(candidates) != 1:
+        raise ArchiveRestoreError(
+            "backup set must contain exactly one Stack0 platform-pki archive artifact"
+        )
+    artifact_meta = candidates[0]
 
     artifact = backup_set / artifact_meta["relative_path"]
     try:
@@ -237,7 +249,7 @@ def verify_restore(backup_set: Path, *, compare_source: Path | None = None) -> R
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify Stack0 archive restore in an isolated temporary directory")
-    parser.add_argument("backup_set", help="completed Stack0 backup-set directory")
+    parser.add_argument("backup_set", help="completed backup-set directory containing Stack0 platform-pki")
     parser.add_argument("--compare-source", help="optional live source tree to compare without modifying it")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
