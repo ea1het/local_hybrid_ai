@@ -1,25 +1,29 @@
 # Pending Work
 
-This is the project-wide backlog of work explicitly deferred or left incomplete in the Local Hybrid AI design conversations. Completed items should be removed or moved to Git history when closed; do not turn this into a historical changelog.
+This is the project-wide backlog of work explicitly deferred or left incomplete in the Local Hybrid AI design conversations. Completed items should be removed from active backlog rather than leaving obsolete next steps.
 
-## P0 — DR completion
+## P0 — DR operational hardening
 
-- **Generic `restore all` execution.** The read-only planner, isolated filesystem staging, and isolated managed-state reconstruction are now host-qualified against the canonical recovery point. Stack3 restored 75 PostgreSQL tables (25 non-empty) into a disposable PostgreSQL container; Stack4 rebuilt its SQLite database with 116 tables (38 non-empty), validated 8 repositories, and successfully started an isolated healthy Gitea instance. Drill containers used no published ports or platform network and were removed; production container identities and health remained unchanged. The next bounded step is the new end-to-end isolated recovery drill (`bkp-dr/dr_restore_drill.py` / `restore-drill.py`) from a fresh destination, then lifecycle PREPARE/DEPLOY/VERIFY in a genuinely isolated clean target. Do not enable live-host mutation before clean-target qualification.
-- **Clean-environment lifecycle restore drill.** After the end-to-end artifact/state drill passes, prove PREPARE/DEPLOY/READY/VERIFY for reconstructed stacks in an isolated Docker environment. Do not destroy or repurpose the current reference host without explicit authorization.
-- **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. ADR-0001 deliberately accepts plaintext `.env` inside the private backup set for now; define encryption-at-rest, retention generations, off-host copy and verification policy as later hardening.
+- **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. ADR-0001 deliberately accepts plaintext `.env` inside the private backup set for now; define encryption-at-rest, retention generations, off-host copy and verification policy.
+- **External recovery prerequisites.** Document/operator-package the Stack6 memory-sync SSH bootstrap needed when the configured portable-memory Git origin requires it. It remains an external prerequisite rather than a Hermes application backup artifact.
+
+The core `backup all` + `restore all` path is no longer pending: it has passed a real destructive clean-target recovery of the reference host.
 
 ## P1 — DR engine hardening
 
 - Reject backup destination equal to or below `STACKS_ROOT` or `BASE_PATH`, and reject source/destination overlap before real backup execution.
-- Harden `stack0_-_platform/manifests.py` recovery validation against malformed non-string `mode`, `class` and `strategy` values instead of allowing membership operations to raise `TypeError`.
+- Harden recovery validation against malformed non-string `mode`, `class` and `strategy` values instead of allowing membership operations to raise `TypeError`.
 - Reject boolean `schema_version` explicitly (`True == 1` in Python must not validate as schema version 1).
-- Harden/retire the older `dr_archive.py` post-publication verification path so every adapter performs all fallible integrity checks before the terminal atomic publication step.
+- Harden/retire older archive post-publication verification so every adapter performs all fallible integrity checks before terminal atomic publication.
 - Add direct unit tests for Stack4 helper failure paths: dump failure, restart failure, health timeout, helper cleanup failure and combined failure handling.
-- Replace the temporary `bkp-dr` compatibility symlinks/project-root assumptions with an explicit project-root resolver so DR code can live cleanly under `bkp-dr` without filesystem aliases.
-- Refactor the managed restore drill so strategy adapters are registered generically rather than relying on resource-id-specific helper calls; preserve the current no-stack-number-special-cases rule in orchestration.
+- Replace temporary `bkp-dr` compatibility symlinks/project-root assumptions with an explicit project-root resolver.
+- Refactor managed restore strategy dispatch toward a generic adapter registry while preserving the no-stack-number-special-cases orchestration rule.
+- Normalize the global-artifact accessor around schema field `resource_id`; destructive recovery exposed historical `id`/`resource_id` compatibility assumptions in recovery tooling.
+- Keep bounded/resumable recovery fail-closed. Do not blindly re-import Stack3/Stack4 managed state after a late lifecycle failure.
 
 ## P1 — Installer/platform hardening
 
+- **READY after restart-causing RECONCILE.** Destructive recovery exposed a historical Stack6 race: Hermes could be recreated by reconcile and immediately observed as `running/starting`. Ensure the current generic lifecycle waits for required runtime readiness after any reconcile that restarts/recreates required services before final VERIFY.
 - Add explicit configuration/version drift detection. Current installer state observation can treat an already healthy running stack as converged even when tracked Compose/config changed. Design an explicit `--converge`/`--upgrade` model rather than silently recreating services.
 - Add a common-installer concurrency lock so two installer executions cannot mutate lifecycle state concurrently.
 - Decide whether the current explicit Stack4 `04-gitmem` operation should remain outside the common installer permanently or gain a normalized lifecycle representation.
@@ -31,24 +35,41 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 ## P2 — Operational follow-up
 
-- Decide whether historical local backup sets should eventually be retained, rotated or moved off-host. Do not delete the verified Stack0/Stack3/Stack4/full sets as generic cleanup.
-- The Stack3 migration rollback dump under `/root/litellm-postgres-migration-20260908-150526/litellm.dump` is operator-owned cleanup. The operator has stated that `/root` cleanup will be handled manually; automation must not remove it.
-- Review the historical runtime marker `/opt/docker/runtime/service_-_litellm-postgres/.migration-from-stack2-complete`; it is no longer part of normal installation, but deletion should be a separate bounded cleanup decision after confirming no code depends on it.
+- Decide whether historical local backup sets should eventually be retained, rotated or moved off-host. Do not delete verified recovery evidence as generic cleanup.
+- The Stack3 migration rollback dump under `/root/litellm-postgres-migration-20260908-150526/litellm.dump` is operator-owned cleanup. Automation must not remove it.
+- Review any historical migration marker only as a separate bounded cleanup decision after confirming no code depends on it.
+- The destructive recovery test directories/checkouts and historical backup sets should be cleaned only by an explicit operator-approved retention decision, not as incidental installer/DR cleanup.
 
-## Closed in the latest DR iteration
+## Closed — core DR recovery path
 
-The generic real `backup all` path and its exact stored recovery point are fully qualified on the reference host. Canonical set: `/opt/local-hybrid-ai-backups/backup-20260911T004927Z`, created from source commit `f732f0e1bca533556d9a60fef5bd373b51675da2`.
+A fresh pre-wipe recovery point was created at:
 
-Creation detected deployed stacks 0-6 from the validated installer lifecycle/manifest ownership contract, included the protected operational `.env` as a global sensitive artifact per ADR-0001, created Stack0 PKI, Stack3 LiteLLM custom PostgreSQL dump and Stack4 controlled-offline Gitea native dump inside one private temporary recovery set, preserved Stack6 as an external Git prerequisite, and published atomically. Gitea returned healthy, no dump helper remained and Git ended clean.
+```text
+/opt/local-hybrid-ai-backups/backup-20260911T172551Z
+source_commit = 7cbfa2874f6e865a4de6e2854b2589de52a39913
+```
 
-The exact same set passed stored-artifact recovery qualification: all checksums passed; Stack0 PKI isolated extraction/fingerprint matched; Stack3 restored 75/75 tables with 25 non-empty tables; Stack4 restored 116 SQLite tables with 38 non-empty tables and 8/8 repositories passed `git fsck`; the backed-up operational `.env` SHA-256 matched the protected file; Stack6 external Git memory verification passed; live services remained unchanged/healthy; Git ended clean.
+The operator explicitly authorized a destructive clean-target proof. Platform containers/reconstructable Docker objects were removed and `/opt/docker` was destroyed. Recovery tooling lived outside the target and reconstructed the platform from the recorded recovery point/source commit.
 
-The generic read-only `restore all` planner is implemented and host-qualified. Isolated filesystem staging is also host-qualified: recorded source commit, protected `.env` mode `0600`, external-config prerequisite, and Stack0 PKI were reconstructed outside live runtime.
+The exercise exposed and fixed recovery-tooling issues (`resource_id` global-artifact lookup, byte-exact restored-source verification) plus a historical Stack6 readiness race. A bounded resume then passed without another wipe or blind database re-import.
 
-The isolated managed-state drill is now host-qualified as well. From the canonical backup it restored Stack3 into a new disposable PostgreSQL container (75 tables, 25 non-empty), rebuilt Stack4's **SQLite** database from `gitea-db.sql` (116 tables, 38 non-empty), validated 8 Git repositories, and started an isolated healthy Gitea. No ports were published, no drill service joined the platform network, drill containers were removed, the canonical backup checksums remained valid, production Gitea/LiteLLM container identities remained unchanged, production services stayed healthy, and Git ended clean at `a26be49a71b1747104f6024675ea0c83c6570c5c`.
+Final recovery evidence:
 
-The distinction is explicit: Stack3/LiteLLM uses PostgreSQL; Stack4/Gitea uses SQLite plus filesystem/repositories. PostgreSQL is not part of the Gitea recovery path.
+- resolved stacks 0-6;
+- LiteLLM PostgreSQL: 75 tables;
+- Gitea: 116 SQLite tables and 8 validated repositories;
+- portable memory HEAD `e9c220aa26b29303a18fa4b3f43f1c6edc0760ca`;
+- Stack6 `hermes-memory-sync` returned running;
+- all expected containers returned running/healthy where healthchecks exist;
+- recovery-point checksums remained valid;
+- restored source matched the recorded source commit byte-for-byte.
 
-The Stack6 persistence boundary remains explicit: Hermes and the complete sandbox/runtime are replaceable and reconstructable. `SOUL.md` is runtime-generated Nous Research behavior text and is not a DR resource. The only durable application-level exception is the externalized Git-backed user memory contract (`MEMORY.md` + `USER.md`). The Git remote may be Gitea, another Git service/SaaS, or another configured repository; Stack6 does not acquire a required Stack4 dependency from DR.
+Therefore core `backup all` + clean-target `restore all` is functionally qualified. Remaining DR items are hardening/operations rather than an unproven recovery path.
 
-ADR-0001 records the accepted compromise that the protected operational `.env` is included directly in complete backup sets until a better secret-recovery mechanism exists.
+## Closed — Stack6 Buzz reconstruction
+
+The destructive wipe revealed that Buzz had historically been compiled from GitHub and manually copied into Hermes runtime. That implicit dependency is now declarative and reconstructable.
+
+Stack6 PREPARE always provisions the Buzz CLI from pinned source even when Buzz is not configured for use. Buzz remains optional as an integration; the executable is reconstructable platform software and is **not** a backup artifact.
+
+Host qualification passed after rebuilding pinned Buzz commit `78618804ec86a014524ad7d1fb55928e8f5c3edf` with `cargo build --locked --release -p buzz-cli`. The resulting 17,516,960-byte executable was installed at `/opt/docker/runtime/service_-_hermes/data/bin/buzz` with mode `0755`, owner `10000:10000`, and executed successfully inside Hermes via `/opt/data/bin/buzz --help`. After the operator manually restarted the Hermes gateway, the web UI reported Telegram, API server and Buzz connected.
