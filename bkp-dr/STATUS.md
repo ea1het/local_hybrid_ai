@@ -1,6 +1,6 @@
 # DR Status and AI Handoff
 
-Updated after the successful real atomic `backup all`, stored-artifact recovery qualification, and first generic read-only `restore all` planner implementation on 2026-09-11.
+Updated after the successful real atomic `backup all`, stored-artifact recovery qualification, generic read-only `restore all` planner host qualification, and implementation of isolated filesystem restore staging on 2026-09-11.
 
 ## Purpose
 
@@ -107,17 +107,19 @@ Older focused restore verifiers assumed a single-purpose backup set. The full re
 
 ## Generic restore-all planner
 
-[`dr_restore_all.py`](dr_restore_all.py) and [`restore-all.py`](restore-all.py) now implement the first inverse-path milestone. It is intentionally read-only and refuses real execution. The planner validates completed backup metadata, requires exact checksum-index coverage of every declared artifact plus `backup.json`, verifies every stored file checksum, confirms the recorded source commit exists in the local Git object database, correlates backup artifacts/prerequisites with current manifest strategy and restore-phase declarations, validates installer lifecycle/directory correspondence, and emits the ordered restore phases.
-
-Current ordered phase contract is:
+[`dr_restore_all.py`](dr_restore_all.py) and [`restore-all.py`](restore-all.py) implement the first inverse-path milestone. The planner is intentionally read-only and real restore execution remains blocked. It validates completed backup metadata, exact checksum-index coverage, every stored file checksum, availability of the recorded source commit, current manifest strategy/restore-phase correspondence, installer lifecycle/directory correspondence, and emits the ordered phase contract:
 
 ```text
 global -> pre-prepare -> prepare -> post-prepare-pre-deploy -> deploy -> post-deploy -> external -> verify
 ```
 
-The global phase includes the recorded Git source target and protected `operational.env`. Stack0 PKI is selected by strategy/metadata for `pre-prepare`; Stack3 PostgreSQL and Stack4 Gitea artifacts are selected for `post-prepare-pre-deploy`; external Git prerequisites are verified after deployment; lifecycle PREPARE/DEPLOY/VERIFY operations are derived from the recorded stack set and installer registry. The generic planner contains no Stack3/Stack4/Stack6 orchestration branches.
+The reference host has now qualified this planner against the canonical recovery point. The real dry-run resolved stacks 0-6, verified five checksummed files, placed source + `operational.env` + `litellm-salt` in global, Stack0 PKI in `pre-prepare`, Stack3 PostgreSQL + Stack4 Gitea in `post-prepare-pre-deploy`, Stack6 Git memory in `external`, and all stack lifecycle phases in order. Focused and complete DR tests passed, a no-`--dry-run` invocation failed closed with the expected blocked-execution return code, the installer remained converged, runtime stayed healthy, and Git ended clean at the qualified source revision.
 
-Focused tests are in [`tests/test_dr_restore_all.py`](tests/test_dr_restore_all.py). Host qualification against the canonical full recovery point is the next step. Real mutation remains blocked until this planner/preflight passes and strategy-specific restore execution is implemented and isolated-target qualified.
+## Isolated filesystem staging milestone
+
+[`dr_restore_stage.py`](dr_restore_stage.py) and [`restore-stage.py`](restore-stage.py) implement the next bounded executing slice. They execute only phases that can be proven without touching live services: materialize the recorded Git commit into an isolated source tree, copy the protected `operational.env` into that staged source with mode `0600`, verify `REQUIRE`/`external-config` prerequisites from the staged environment without printing values, and extract `pre-prepare` archive artifacts into an isolated runtime root. The v1 archive contract restores the Stack0 `pki/` tree under the isolated platform runtime.
+
+This staging executor does **not** run PREPARE/DEPLOY, restore PostgreSQL, restore Gitea, mutate external Git, or touch `/opt/docker/runtime`. On failure it removes only its own isolated staging destination. Focused tests are in [`tests/test_dr_restore_stage.py`](tests/test_dr_restore_stage.py). Host qualification of this staging slice against the canonical recovery point is the next step.
 
 ## Global `.env` decision
 
@@ -127,9 +129,9 @@ Encryption/off-host protection may supersede the storage mechanics later without
 
 ## Next-agent boundary
 
-The next P0 step is to qualify the read-only `restore all` planner on the reference host, then implement strategy-driven execution against an isolated clean target. Execution must validate schema/checksums/source commit before mutation, restore global `.env` before PREPARE, restore Stack0 PKI at `pre-prepare`, restore managed Stack3/Stack4 state at their declared phases, reconstruct disposable stacks through the normal lifecycle, and verify externalized resources such as Stack6 Git without assuming Stack4 hosts them.
+The next P0 step is to qualify isolated filesystem staging on the reference host, then extend execution into a genuinely isolated clean service environment. Strategy adapters must continue to own strategy mechanics; generic orchestration must not branch on stack IDs. PostgreSQL/Gitea restore execution must target isolated services/data roots before any live-host recovery path is enabled.
 
-Do not hard-code `if stack_id == 3/4/6` orchestration. Strategy adapters own strategy mechanics. The initial execution qualification must be isolated/clean-environment; do not destroy the current reference host without explicit operator authorization.
+Do not destroy the current reference host without explicit operator authorization.
 
 ## Operator shell safety
 
