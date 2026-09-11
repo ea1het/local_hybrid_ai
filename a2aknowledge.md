@@ -47,9 +47,9 @@ That exact stored set passed recovery qualification: checksums PASS; Stack0 PKI 
 
 Older focused verifiers exposed a coupling to single-purpose backup sets. Full-set compatibility is now the rule: a strategy adapter must locate/select its own resource inside a multi-resource recovery point. Do not reintroduce assumptions that a backup set contains only one stack/resource.
 
-The next P0 is generic `restore all`, driven by completed `backup.json`, manifest strategies and declared restore phases. Validate schema/checksums/source commit before mutation; restore global `.env` before PREPARE; restore Stack0 PKI at `pre-prepare`; restore managed Stack3/Stack4 state in declared phases; reconstruct disposable stacks through normal lifecycle; verify externalized resources without assuming their hosting implementation. Do not hard-code stack IDs in the generic orchestrator.
+The first generic inverse-path milestone now exists: `bkp-dr/dr_restore_all.py` plus `bkp-dr/restore-all.py --dry-run`. It is strictly read-only and real mutation is blocked. It validates completed backup metadata, exact checksum-index coverage and hashes, verifies the recorded source commit exists locally, correlates stored artifacts/prerequisites with manifest strategies/restore phases, validates installer lifecycle correspondence and emits the ordered phase contract `global -> pre-prepare -> prepare -> post-prepare-pre-deploy -> deploy -> post-deploy -> external -> verify`. No Stack3/Stack4/Stack6 special-case orchestration belongs in this planner.
 
-The first end-to-end `restore all` qualification must use an isolated clean environment. Do not destroy the reference host without explicit operator authorization. Exact evidence and continuation details are in [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md).
+The next P0 is host qualification of that planner against the canonical full recovery point, followed by strategy-driven execution against an isolated clean target. The first end-to-end `restore all` qualification must not use the reference host as a destructive target. Exact evidence and continuation details are in [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md).
 
 ## Operator shell safety
 
