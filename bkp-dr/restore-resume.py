@@ -62,8 +62,24 @@ def verify_source(backup_set: Path, stacks_root: Path, source_commit: str) -> No
     target = stacks_root / "install.py"
     if not target.is_file() or target.is_symlink():
         raise ResumeError("restored source is incomplete: install.py missing")
-    cp = run(["git", "show", f"{source_commit}:install.py"], cwd=dr_restore_all.PROJECT_ROOT)
-    expected = require_ok(cp, "recorded source lookup").encode("utf-8")
+
+    # Compare exact bytes. The generic text helper intentionally strips stdout,
+    # which is correct for scalar command results but corrupts file-content
+    # comparison by removing the trailing newline from `git show <ref>:path`.
+    cp = subprocess.run(
+        ["git", "show", f"{source_commit}:install.py"],
+        cwd=dr_restore_all.PROJECT_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if cp.returncode != 0:
+        detail = (cp.stderr or cp.stdout).decode("utf-8", errors="replace").strip()
+        if len(detail) > 2000:
+            detail = "..." + detail[-2000:]
+        raise ResumeError(f"recorded source lookup failed: {detail or 'no diagnostic output'}")
+
+    expected = cp.stdout
     actual = target.read_bytes()
     if hashlib.sha256(actual).digest() != hashlib.sha256(expected).digest():
         raise ResumeError("restored source no longer matches backup source commit")
