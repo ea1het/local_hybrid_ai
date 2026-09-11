@@ -14,7 +14,6 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import stat
 import subprocess
 import tempfile
@@ -23,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import dr
-import dr_archive
 import dr_restore_all
 import dr_restore_managed
 import dr_restore_stage
@@ -147,9 +145,9 @@ def require_clean_target(stacks_root: Path, base_path: Path, manifests: dict[int
 def _materialize_source(commit: str, stacks_root: Path) -> None:
     stacks_root.parent.mkdir(parents=True, exist_ok=True)
     if stacks_root.exists():
-        os.chmod(stacks_root, 0o700)
+        os.chmod(stacks_root, 0o755)
     else:
-        stacks_root.mkdir(mode=0o700)
+        stacks_root.mkdir(mode=0o755)
     fd, tar_name = tempfile.mkstemp(prefix="restore-platform-source-", suffix=".tar", dir=stacks_root.parent)
     os.close(fd)
     tar_path = Path(tar_name)
@@ -204,7 +202,8 @@ def _run_lifecycle_commands(stacks_root: Path, lifecycle: dict, manifests: dict[
         for command in entry.get(phase, []):
             if not isinstance(command, list) or not command:
                 raise RestoreLiveError(f"invalid target lifecycle {phase} command for stack{sid}")
-            cp = _run(command, cwd=stacks_root / manifests[sid]["directory"])
+            actual = ["bash", command[0], *command[1:]] if command[0].startswith("./") else command
+            cp = _run(actual, cwd=stacks_root / manifests[sid]["directory"])
             _require_ok(cp, f"stack{sid} {phase}")
 
 
@@ -254,13 +253,17 @@ def _restore_postgres(backup_set: Path, artifact: dict, resource: dict, stacks_r
     bootstrap = stack_dir / "02-postgres.sh"
     if not bootstrap.is_file():
         raise RestoreLiveError("postgres-custom-dump restore requires stack-owned 02-postgres.sh bootstrap")
-    cp = _run(["./02-postgres.sh"], cwd=stack_dir)
+    cp = _run(["bash", "./02-postgres.sh"], cwd=stack_dir)
     _require_ok(cp, "PostgreSQL restore bootstrap")
     _wait_postgres(service)
     dump = backup_set / artifact["relative_path"]
     with dump.open("rb") as handle:
         cp2 = subprocess.run(
-            ["docker", "exec", "-i", service, "pg_restore", "--no-owner", "--no-privileges", "-U", "postgres", "-d", db_name],
+            [
+                "docker", "exec", "-i", service,
+                "pg_restore", "--no-owner", "--no-privileges", f"--role={user}",
+                "-U", "postgres", "-d", db_name,
+            ],
             stdin=handle,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -348,22 +351,21 @@ def _restore_external_git(metadata: dict, stacks_root: Path, manifests: dict[int
         hook = stack_dir / "04-gitmem.sh"
         if not hook.is_file():
             raise RestoreLiveError("git externalization restore requires stack-owned 04-gitmem.sh hook")
-        cp = _run(["./04-gitmem.sh"], cwd=stack_dir)
+        cp = _run(["bash", "./04-gitmem.sh"], cwd=stack_dir)
         _require_ok(cp, f"stack{sid} external Git restore")
         count += 1
     return count
 
 
-def _deploy_without_external_consumers(stacks_root: Path, plan: list[int], external_stack_ids: set[int]) -> None:
-    first = [str(sid) for sid in plan if sid not in external_stack_ids]
-    if first:
-        cp = _run(["python3", "install.py", *first], cwd=stacks_root)
-        _require_ok(cp, "base restore deployment")
-    for sid in plan:
-        if sid not in external_stack_ids:
-            continue
-        cp = _run(["python3", "install.py", str(sid)], cwd=stacks_root)
-        _require_ok(cp, f"stack{sid} restore deployment")
+def _install(stacks_root: Path, selectors: list[int], *, reconcile: bool = False, label: str) -> None:
+    if not selectors:
+        return
+    cmd = ["python3", "install.py", *[str(sid) for sid in selectors]]
+    if reconcile:
+        cmd.append("--reconcile")
+    cmd.append("--yes")
+    cp = _run(cmd, cwd=stacks_root)
+    _require_ok(cp, label)
 
 
 def execute_restore_all(backup_set: Path, *, confirm_clean_target: bool = False) -> RestoreLiveResult:
@@ -382,9 +384,9 @@ def execute_restore_all(backup_set: Path, *, confirm_clean_target: bool = False)
     stacks_root = _absolute_safe_path(values, "STACKS_ROOT")
     base_path = _absolute_safe_path(values, "BASE_PATH")
 
-    # The recovery-tool checkout itself must remain outside the target being rebuilt.
     recovery_root = dr_restore_all.PROJECT_ROOT.resolve()
-    if recovery_root == stacks_root.resolve() or stacks_root.resolve() in recovery_root.parents or recovery_root in stacks_root.resolve().parents:
+    target_root = stacks_root.resolve()
+    if recovery_root == target_root or target_root in recovery_root.parents or recovery_root in target_root.parents:
         raise RestoreLiveError("recovery tooling must run from a checkout outside STACKS_ROOT")
 
     require_clean_target(stacks_root, base_path, manifests, plan)
@@ -394,27 +396,34 @@ def execute_restore_all(backup_set: Path, *, confirm_clean_target: bool = False)
     target_manifests = _load_target_manifests(stacks_root, plan)
     lifecycle = _load_target_lifecycle(stacks_root)
 
-    # Exact recorded source policy must still describe the same backup resources.
     for sid in plan:
         if target_manifests[sid].get("directory") != manifests[sid].get("directory"):
             raise RestoreLiveError(f"recorded source/current recovery contract directory drift for stack{sid}")
 
     base_path.mkdir(parents=True, exist_ok=True)
     _restore_preprepare_archives(backup_set, metadata, base_path, target_manifests)
-    _run_lifecycle_commands(stacks_root, lifecycle, target_manifests, plan, "prepare")
-    pg_tables, gitea_tables, gitea_repos = _restore_managed(
-        backup_set, metadata, stacks_root, base_path, target_manifests, values
-    )
 
     external_stack_ids = {
         p["stack_id"] for p in metadata.get("prerequisites", []) if p.get("kind") == "EXTERNAL"
     }
-    external_restored = _restore_external_git(metadata, stacks_root, target_manifests)
-    _deploy_without_external_consumers(stacks_root, plan, external_stack_ids)
+    base_stack_ids = [sid for sid in plan if sid not in external_stack_ids]
+    external_ordered = [sid for sid in plan if sid in external_stack_ids]
 
-    # Final common-installer pass proves READY/VERIFY across the entire recovered closure.
-    cp = _run(["python3", "install.py", *[str(sid) for sid in plan], "--reconcile"], cwd=stacks_root)
-    _require_ok(cp, "final restore READY/VERIFY/reconcile")
+    # Prepare and recover durable state for the base closure first. Keeping the
+    # external consumer unprepared prevents provider reconciliation from starting
+    # it before its externalized state has been adopted.
+    _run_lifecycle_commands(stacks_root, lifecycle, target_manifests, base_stack_ids, "prepare")
+    pg_tables, gitea_tables, gitea_repos = _restore_managed(
+        backup_set, metadata, stacks_root, base_path, target_manifests, values
+    )
+    _install(stacks_root, base_stack_ids, label="base restore deployment")
+
+    _run_lifecycle_commands(stacks_root, lifecycle, target_manifests, external_ordered, "prepare")
+    external_restored = _restore_external_git(metadata, stacks_root, target_manifests)
+    for sid in external_ordered:
+        _install(stacks_root, [sid], label=f"stack{sid} restore deployment")
+
+    _install(stacks_root, plan, reconcile=True, label="final restore READY/VERIFY/reconcile")
 
     return RestoreLiveResult(
         backup_set=backup_set,
