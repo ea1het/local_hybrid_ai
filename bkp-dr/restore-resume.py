@@ -42,9 +42,20 @@ def require_ok(cp: subprocess.CompletedProcess[str], label: str) -> str:
     return cp.stdout.strip()
 
 
-def load_env(backup_set: Path) -> tuple[Path, dict[str, str]]:
+def read_env_artifact(backup_set: Path) -> tuple[Path, dict[str, str]]:
+    """Read the canonical global operational-env artifact from a backup set."""
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
-    return dr_restore_live._read_env_artifact(backup_set, metadata)
+    matches = [
+        artifact
+        for artifact in metadata.get("global_artifacts", [])
+        if artifact.get("resource_id") == "operational-env"
+    ]
+    if len(matches) != 1:
+        raise ResumeError("backup set must contain exactly one operational-env global artifact")
+    env_path = backup_set / matches[0]["relative_path"]
+    if not env_path.is_file() or env_path.is_symlink():
+        raise ResumeError("operational environment artifact is missing or invalid")
+    return env_path, dr.read_dotenv_presence(env_path)
 
 
 def verify_source(backup_set: Path, stacks_root: Path, source_commit: str) -> None:
@@ -151,8 +162,7 @@ def enable_memory_sync(stacks_root: Path, values: dict[str, str]) -> None:
 
 def resume(backup_set: Path, bootstrap: Path) -> dict[str, object]:
     plan = dr_restore_all.plan_restore_all(backup_set)
-    metadata = dr_restore_all.read_completed_backup_set(backup_set)
-    env_artifact, values = dr_restore_live._read_env_artifact(backup_set, metadata)
+    env_artifact, values = read_env_artifact(backup_set)
     stacks_root = dr_restore_live._absolute_safe_path(values, "STACKS_ROOT")
     base_path = dr_restore_live._absolute_safe_path(values, "BASE_PATH")
     resolved = list(plan.resolved_stacks)
