@@ -1,6 +1,6 @@
 # DR Status and AI Handoff
 
-Updated after the successful real atomic `backup all` and stored-artifact recovery qualification on 2026-09-11.
+Updated after the successful real atomic `backup all`, stored-artifact recovery qualification, and first generic read-only `restore all` planner implementation on 2026-09-11.
 
 ## Purpose
 
@@ -105,6 +105,20 @@ Therefore `backup all` is not merely creation-qualified: every currently declare
 
 Older focused restore verifiers assumed a single-purpose backup set. The full recovery point exposed that coupling. The archive verifier, common completed-metadata validator, PostgreSQL stored-artifact verifier and Stack4 metadata/restore path were updated so a strategy adapter locates its own resource inside a multi-resource set rather than requiring that resource to be the only content. Future `restore all` must preserve this rule: orchestration is generic; strategy adapters consume the resource selected from metadata.
 
+## Generic restore-all planner
+
+[`dr_restore_all.py`](dr_restore_all.py) and [`restore-all.py`](restore-all.py) now implement the first inverse-path milestone. It is intentionally read-only and refuses real execution. The planner validates completed backup metadata, requires exact checksum-index coverage of every declared artifact plus `backup.json`, verifies every stored file checksum, confirms the recorded source commit exists in the local Git object database, correlates backup artifacts/prerequisites with current manifest strategy and restore-phase declarations, validates installer lifecycle/directory correspondence, and emits the ordered restore phases.
+
+Current ordered phase contract is:
+
+```text
+global -> pre-prepare -> prepare -> post-prepare-pre-deploy -> deploy -> post-deploy -> external -> verify
+```
+
+The global phase includes the recorded Git source target and protected `operational.env`. Stack0 PKI is selected by strategy/metadata for `pre-prepare`; Stack3 PostgreSQL and Stack4 Gitea artifacts are selected for `post-prepare-pre-deploy`; external Git prerequisites are verified after deployment; lifecycle PREPARE/DEPLOY/VERIFY operations are derived from the recorded stack set and installer registry. The generic planner contains no Stack3/Stack4/Stack6 orchestration branches.
+
+Focused tests are in [`tests/test_dr_restore_all.py`](tests/test_dr_restore_all.py). Host qualification against the canonical full recovery point is the next step. Real mutation remains blocked until this planner/preflight passes and strategy-specific restore execution is implemented and isolated-target qualified.
+
 ## Global `.env` decision
 
 [`ADR-0001`](../ADRs/ADR-0001-backup-operational-env.md) accepts a pragmatic recovery compromise: the exact protected operational root `.env` is copied into each complete backup set as a sensitive global artifact. This removes the external-config survival gap and makes the matching recovery point carry values such as `LITELLM_SALT_KEY`.
@@ -113,9 +127,9 @@ Encryption/off-host protection may supersede the storage mechanics later without
 
 ## Next-agent boundary
 
-Do not add more backup formats before implementing the inverse path unless a newly introduced stack declares new durable state. The next P0 is generic `restore all`, driven by completed `backup.json`, manifest recovery strategies and declared restore phases. It must validate schema/checksums/source commit before mutation, restore global `.env` before PREPARE, restore Stack0 PKI at `pre-prepare`, restore managed Stack3/Stack4 state at their declared phases, reconstruct disposable stacks through the normal installer/lifecycle, and verify externalized resources such as Stack6 Git without assuming Stack4 hosts them.
+The next P0 step is to qualify the read-only `restore all` planner on the reference host, then implement strategy-driven execution against an isolated clean target. Execution must validate schema/checksums/source commit before mutation, restore global `.env` before PREPARE, restore Stack0 PKI at `pre-prepare`, restore managed Stack3/Stack4 state at their declared phases, reconstruct disposable stacks through the normal lifecycle, and verify externalized resources such as Stack6 Git without assuming Stack4 hosts them.
 
-Do not hard-code `if stack_id == 3/4/6` orchestration. Strategy adapters own strategy mechanics. The initial qualification must be isolated/clean-environment; do not destroy the current reference host without explicit operator authorization.
+Do not hard-code `if stack_id == 3/4/6` orchestration. Strategy adapters own strategy mechanics. The initial execution qualification must be isolated/clean-environment; do not destroy the current reference host without explicit operator authorization.
 
 ## Operator shell safety
 
