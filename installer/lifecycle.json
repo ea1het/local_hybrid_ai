@@ -54,7 +54,7 @@
       "required_containers": ["hermes", "hermes-sandbox", "hermes-sandbox-cleanup"],
       "prepare": [["./01-prepare.sh"], ["./03-buzz.sh"]],
       "deploy": [["./05-maintenance-sidecars.sh"], ["docker", "compose", "up", "-d", "--build"]],
-      "reconcile": [["./06-reconcile-capabilities.sh", "--restart"]],
+      "reconcile": [["./06-reconcile-capabilities.sh", "--restart"], ["./07-wait-ready.sh"]],
       "verify": [["docker", "compose", "config", "--quiet"]]
     }
   }
