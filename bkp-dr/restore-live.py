@@ -11,6 +11,7 @@ from pathlib import Path
 
 import dr
 import dr_restore_all
+import dr_restore_compat
 import dr_restore_live
 
 
@@ -19,12 +20,7 @@ class BootstrapError(RuntimeError):
 
 
 def _read_env_artifact(backup_set: Path, metadata: dict) -> tuple[Path, dict[str, str]]:
-    """Read the global operational-env artifact using the backup-set contract.
-
-    backup-all emits global artifacts with `resource_id`, exactly like regular
-    manifest artifacts. Keep this compatibility shim in the CLI until the core
-    restore module is normalized in a follow-up refactor.
-    """
+    """Read the global operational-env artifact using the backup-set contract."""
     matches = [
         artifact
         for artifact in metadata.get("global_artifacts", [])
@@ -42,10 +38,11 @@ def _read_env_artifact(backup_set: Path, metadata: dict) -> tuple[Path, dict[str
     return env_path, dr.read_dotenv_presence(env_path)
 
 
-# The current core executor predates the final global-artifact field name and
-# looks for `id`. Override only this metadata accessor so both preflight and the
-# executor consume the canonical `resource_id` emitted by backup-all.
+# Compatibility shims belong to the recovery tooling, not the historical target
+# source.  The backup contract uses `resource_id`, and older backed-up installer
+# revisions can race Docker health immediately after reconcile restarts a service.
 dr_restore_live._read_env_artifact = _read_env_artifact
+dr_restore_live._install = dr_restore_compat.install_with_readiness_compat
 
 
 def check_clean(backup_set: Path) -> dict[str, object]:
@@ -141,6 +138,7 @@ def _enable_memory_sync(backup_set: Path, result: dict[str, object]) -> None:
         if len(detail) > 1500:
             detail = "..." + detail[-1500:]
         raise BootstrapError(f"cannot re-enable Stack6 memory-sync profile: {detail or 'docker compose failed'}")
+    dr_restore_compat.wait_required_runtime(stacks_root, [6], timeout=240)
     inspect = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Running}}", container],
         stdout=subprocess.PIPE,
@@ -203,7 +201,15 @@ def main() -> int:
                 raise dr_restore_live.RestoreLiveError("real restore requires explicit clean-target confirmation")
             bootstrap = Path(args.memory_sync_ssh_bootstrap) if args.memory_sync_ssh_bootstrap else None
             result = _execute_with_optional_bootstrap(backup_set, bootstrap)
-    except (BootstrapError, dr_restore_live.RestoreLiveError, dr_restore_all.RestoreAllError, dr.RecoveryError, OSError, ValueError) as exc:
+    except (
+        BootstrapError,
+        dr_restore_compat.RestoreCompatibilityError,
+        dr_restore_live.RestoreLiveError,
+        dr_restore_all.RestoreAllError,
+        dr.RecoveryError,
+        OSError,
+        ValueError,
+    ) as exc:
         print(f"RESTORE ALL ERROR: {exc}", file=sys.stderr)
         return 1
 
