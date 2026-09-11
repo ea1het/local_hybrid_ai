@@ -23,7 +23,6 @@ The core `backup all` + `restore all` path is no longer pending: it has passed a
 
 ## P1 — Installer/platform hardening
 
-- **READY after restart-causing RECONCILE.** Destructive recovery exposed a historical Stack6 race: Hermes could be recreated by reconcile and immediately observed as `running/starting`. Ensure the current generic lifecycle waits for required runtime readiness after any reconcile that restarts/recreates required services before final VERIFY.
 - Add explicit configuration/version drift detection. Current installer state observation can treat an already healthy running stack as converged even when tracked Compose/config changed. Design an explicit `--converge`/`--upgrade` model rather than silently recreating services.
 - Add a common-installer concurrency lock so two installer executions cannot mutate lifecycle state concurrently.
 - Decide whether the current explicit Stack4 `04-gitmem` operation should remain outside the common installer permanently or gain a normalized lifecycle representation.
@@ -51,7 +50,7 @@ source_commit = 7cbfa2874f6e865a4de6e2854b2589de52a39913
 
 The operator explicitly authorized a destructive clean-target proof. Platform containers/reconstructable Docker objects were removed and `/opt/docker` was destroyed. Recovery tooling lived outside the target and reconstructed the platform from the recorded recovery point/source commit.
 
-The exercise exposed and fixed recovery-tooling issues (`resource_id` global-artifact lookup, byte-exact restored-source verification) plus a historical Stack6 readiness race. A bounded resume then passed without another wipe or blind database re-import.
+The exercise exposed and fixed recovery-tooling issues (`resource_id` global-artifact lookup, byte-exact restored-source verification), a historical Stack6 readiness race, and a restore-resume omission where `hermes-memory-sync` was started without persisting Stack6 `desired-state=enabled`. The resume path now persists that operator intent independently of whether the configured Git origin is local Gitea or another Git service.
 
 Final recovery evidence:
 
@@ -65,6 +64,10 @@ Final recovery evidence:
 - restored source matched the recorded source commit byte-for-byte.
 
 Therefore core `backup all` + clean-target `restore all` is functionally qualified. Remaining DR items are hardening/operations rather than an unproven recovery path.
+
+## Closed — recovered-source normalization
+
+The recovered historical source tree was replaced by a clean checkout of current `main` while preserving the operational `.env`, PREPARED locks and all runtime data. Stack0's managed `.env -> ../.env` symlink set was re-established for stacks 0-6. The common installer passed across all stacks, Stack6 explicit reconcile now executes `06-reconcile-capabilities.sh --restart` followed by `07-wait-ready.sh`, and the host-qualified run observed Hermes return `running/healthy` before VERIFY. Git-memory operator intent was then restored declaratively to `enabled`; `hermes-memory-sync` returned running. Final result: `PLATFORM SOURCE NORMALIZATION — PASS`.
 
 ## Closed — Stack6 Buzz reconstruction
 
