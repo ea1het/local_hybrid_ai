@@ -1,24 +1,25 @@
 # DR Status and AI Handoff
 
-Updated after the successful Stack4 consistent-backup/isolated-restore validation, the generic execution-context end-to-end qualification, the final full-suite synchronization/cleanup PASS, and the Stack6 replaceability decision on 2026-09-11.
+Updated after the successful Stack4 consistent-backup/isolated-restore validation, the generic execution-context end-to-end qualification, the final full-suite synchronization/cleanup PASS, the Stack6 replaceability decision and real Stack6 portable-memory qualification on 2026-09-11.
 
 ## Purpose
 
-This file is the continuity document for the next AI/coding agent. Read it together with [`README.md`](README.md), [`dr-howto.md`](dr-howto.md), [`../a2aknowledge.md`](../a2aknowledge.md), [`../pending.md`](../pending.md), the affected stack manifest/README and current Git history before changing anything.
+This file is the continuity document for the next AI/coding agent. Read it together with [`README.md`](README.md), [`dr-howto.md`](dr-howto.md), [`../a2aknowledge.md`](../a2aknowledge.md), [`../pending.md`](../pending.md), [`../ADRs/`](../ADRs/), the affected stack manifest/README and current Git history before changing anything.
 
 ## Architecture decisions already made
 
 1. Recovery policy is manifest-driven. Do not discover every persistent mount and assume it must be backed up.
 2. Source is Git at a known commit/tag. Operational mutable state is outside the checkout under `/opt/docker/runtime`.
-3. A protected operational `.env` is a global DR prerequisite. Never print it or commit it.
+3. ADR-0001 accepts including the protected root operational `.env` directly in each complete DR backup set until a better secret-recovery mechanism exists. It is a global sensitive artifact, not a stack-owned resource. Never print it or commit it.
 4. Stack0 PKI/private identity is preserved so a rebuilt platform retains the same trust identity.
 5. Stack2 Firecrawl/SearXNG data is reconstructable; no Firecrawl PostgreSQL/Redis/RabbitMQ/SearXNG backup is required.
-6. Stack3 preserves the LiteLLM logical PostgreSQL database plus the original `LITELLM_SALT_KEY`. PostgreSQL admin credentials may be regenerated on a clean rebuild.
+6. Stack3 preserves the LiteLLM logical PostgreSQL database. `LITELLM_SALT_KEY` is carried by the protected `.env` artifact once ADR-0001 is implemented. PostgreSQL admin credentials may be regenerated on a clean rebuild.
 7. Stack4 preserves Gitea repositories and durable application state with Gitea's native dump. Definitive consistency policy is a brief controlled stop of only Gitea, native dump using the execution context discovered from the deployed container, restart + health verification, then artifact validation/publication. Rootless vs. rootful is not part of the DR contract.
 8. Stack5 Dockhand is reconstructable; its Docker volume is not a DR target.
 9. Stack6/Hermes is replaceable and reconstructable as a whole. The only current durable application-level exception is user-owned portable memory: Git-backed `MEMORY.md` + `USER.md`.
-10. `SOUL.md` is Hermes/Nous Research runtime behavior text, not operator-owned durable data. It is disposable together with Hermes SQLite databases, caches, packages, sessions, logs and the complete sandbox runtime.
-11. Do not back up raw PostgreSQL PGDATA, containers, images, logs, temp files, `.lock`, migration markers, queues or caches merely because they exist.
+10. Stack6's Git remote is configuration, not a required Stack4 dependency. It may be Gitea, another Git SaaS/service, or another configured repository. DR must verify the configured externalized source, not assume where it is hosted.
+11. `SOUL.md` is Hermes/Nous Research runtime behavior text, not operator-owned durable data. It is disposable together with Hermes SQLite databases, caches, packages, sessions, logs and the complete sandbox runtime.
+12. Do not back up raw PostgreSQL PGDATA, containers, images, logs, temp files, `.lock`, migration markers, queues or caches merely because they exist.
 
 ## Stack4 execution-context rule
 
@@ -37,7 +38,9 @@ USER.md     durable / Git-backed
 
 Everything else produced by Hermes is reconstructable/disposable unless the platform makes a future explicit decision to promote it. In particular, `SOUL.md`, Hermes SQLite databases and the entire `service_-_hermes-sandbox` tree are not recovery targets.
 
-The Stack6 manifest keeps `hermes-knowledge` as an externalized Git resource for compatibility, now with `GITMEM_REPOSITORY` explicitly declared as its source. [`dr_stack6_verify.py`](dr_stack6_verify.py) is the read-only qualification tool: it verifies configured origin/branch, tracked regular `MEMORY.md` + `USER.md`, a clean working tree and local HEAD equal to the existing `origin/<branch>` tracking ref. It does not fetch, pull, commit, push or modify runtime. Host qualification of this new verifier is the only remaining Stack6-specific DR check.
+The Stack6 manifest declares the portable memory as an externalized Git resource with `GITMEM_REPOSITORY` as its configured source. [`dr_stack6_verify.py`](dr_stack6_verify.py) is read-only: it verifies configured origin/branch, tracked regular `MEMORY.md` + `USER.md`, a clean working tree and local HEAD equal to the existing `origin/<branch>` tracking ref. It does not fetch, pull, commit, push or modify runtime.
+
+The reference host qualification PASSED at source commit `21178fc8c71588d18252948ee3ecdea13bf718cc`: 5 focused Stack6 verifier tests passed; 8 recovery-contract tests passed; 25 planner tests passed; the real verifier reported branch `main`, HEAD `e9c220aa26b29303a18fa4b3f43f1c6edc0760ca`, required files `MEMORY.md` + `USER.md`; the global `backup all --dry-run` preflight passed; Hermes/sandbox/memory-sync/cleanup remained running/healthy as applicable; Git ended clean. Stack6 has no remaining data-backup gap.
 
 ## Verified real evidence
 
@@ -74,13 +77,15 @@ First definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20
 
 After removing rootless-specific assumptions, the operator ran the new execution-context preflight and then a fresh real generic-context controlled-offline backup + checksum validation + isolated restore verification; the complete end-to-end regression passed. The exact second backup-set path/hash was not captured in conversation, so do not invent it.
 
-## Final synchronization / validation / cleanup state
+## Global `.env` decision
 
-The previous post-reorganization host validation completed with PASS: manifests validated, installer/recovery tests passed, the complete DR suite passed, `install.py all --dry-run` converged, critical services remained healthy, generated test debris was cleaned, no Gitea dump helper remained and Git was clean/synchronized at that time. Later Stack6 verifier/documentation commits still require a new host fast-forward and focused validation.
+[`ADR-0001`](../ADRs/ADR-0001-backup-operational-env.md) accepts a pragmatic recovery compromise: the exact protected operational root `.env` will be copied into each complete backup set as a sensitive global artifact. This removes the external-config survival gap and makes the matching recovery point carry values such as `LITELLM_SALT_KEY`.
+
+This is a logical contract decision only until the engine/schema implement the artifact. The future `backup all` must copy it without printing values, checksum it, keep it inside the private atomic publication boundary and mark the backup set highly sensitive. Future encryption/off-host protection may supersede the storage mechanics without changing the logical need to restore operational configuration before PREPARE.
 
 ## What remains before generic DR completion
 
-Stack6 no longer has a data-externalization gap. Remaining work is platform/engine work: qualify the new Stack6 verifier on the host; decide protected `.env` backup; encryption/retention/off-host policy; harden destination/source overlap and manifest type validation; harden the older archive publication path; integrate generic real `backup all`; then perform a clean-environment full rebuild/restore proof. See [`../pending.md`](../pending.md).
+There is no remaining Stack6 data gap. Remaining P0 work is now implementation/orchestration: represent and back up global `.env`; integrate manifest-driven real `backup all` using the proven Stack0/Stack3/Stack4 adapters plus externalized-resource verification; implement generic `restore all` from backup metadata and manifest restore phases; then prove a clean-environment full rebuild/restore. Hardening for destination overlap, schema/type validation, encryption/retention/off-host and older archive publication semantics remains tracked in [`../pending.md`](../pending.md).
 
 Do not destroy the current host to test recovery. Use an isolated temporary environment until the operator explicitly authorizes destructive rebuild testing.
 
