@@ -37,11 +37,19 @@ Hermes is intentionally replaceable. The complete Hermes runtime and sandbox are
 
 ## DR
 
-DR is isolated under [`bkp-dr/`](bkp-dr/README.md). Recovery policy is manifest-driven and narrower than runtime persistence. Global prerequisites are Git source at a known commit/tag and a protected operational `.env`.
+DR is isolated under [`bkp-dr/`](bkp-dr/README.md). Recovery policy is manifest-driven and narrower than runtime persistence. ADR-0001 currently carries the exact protected operational root `.env` inside each complete private backup set as a global sensitive artifact; never print or commit it.
 
-Current policy: Stack0 PKI BACKUP; Stack1 RECONSTRUCT; Stack2 RECONSTRUCT; Stack3 LiteLLM DB BACKUP + salt external prerequisite; Stack4 Gitea BACKUP; Stack5 RECONSTRUCT; Stack6 RECONSTRUCT with external Git-backed `MEMORY.md` + `USER.md` as the sole durable exception.
+Current policy: Stack0 PKI BACKUP; Stack1 RECONSTRUCT; Stack2 RECONSTRUCT; Stack3 LiteLLM DB BACKUP with its salt carried by the protected `.env`; Stack4 Gitea BACKUP; Stack5 RECONSTRUCT; Stack6 RECONSTRUCT with external Git-backed `MEMORY.md` + `USER.md` as the sole durable exception. Stack6's Git remote is configuration, not a required Stack4 dependency: it may be Gitea, another Git service/SaaS, or another configured repository.
 
-Real evidence and exact continuation state are in [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md). Do not enable generic real `backup all` until the blockers in [`pending.md`](pending.md) are closed.
+Generic real `backup all` is implemented and host-qualified. It detects deployed stacks from validated manifest/lifecycle `required_containers`, stages artifacts privately, executes manifest recovery strategies, includes the global `.env`, writes checksums/metadata and publishes the final set atomically. The canonical qualified set is `/opt/local-hybrid-ai-backups/backup-20260911T004927Z`, created from source commit `f732f0e1bca533556d9a60fef5bd373b51675da2`.
+
+That exact stored set passed recovery qualification: checksums PASS; Stack0 PKI isolated fingerprint PASS; Stack3 stored PostgreSQL dump restored 75/75 tables with 25 non-empty; Stack4 stored Gitea dump restored 116 SQLite tables and 8/8 repositories passed `git fsck`; backed-up `.env` hash matched live protected `.env` at qualification time; Stack6 external Git verifier PASS; live services remained unchanged/healthy.
+
+Older focused verifiers exposed a coupling to single-purpose backup sets. Full-set compatibility is now the rule: a strategy adapter must locate/select its own resource inside a multi-resource recovery point. Do not reintroduce assumptions that a backup set contains only one stack/resource.
+
+The next P0 is generic `restore all`, driven by completed `backup.json`, manifest strategies and declared restore phases. Validate schema/checksums/source commit before mutation; restore global `.env` before PREPARE; restore Stack0 PKI at `pre-prepare`; restore managed Stack3/Stack4 state in declared phases; reconstruct disposable stacks through normal lifecycle; verify externalized resources without assuming their hosting implementation. Do not hard-code stack IDs in the generic orchestrator.
+
+The first end-to-end `restore all` qualification must use an isolated clean environment. Do not destroy the reference host without explicit operator authorization. Exact evidence and continuation details are in [`bkp-dr/STATUS.md`](bkp-dr/STATUS.md).
 
 ## Operator shell safety
 
@@ -51,7 +59,7 @@ The operator pastes command blocks into an existing interactive shell. Do not pu
 
 Do not run `docker compose down -v`, broad Docker prune, delete `/opt/docker/runtime`, overwrite `.env` from the template, print secrets, rotate persistent identities merely because they can be regenerated, reset PGDATA, give Hermes Docker socket access, attach its sandbox to `redlocal`, silently enable cloud fallback, or infer DR importance solely from a bind mount/volume/database file.
 
-The operator owns cleanup of rollback material under `/root`; do not automate its deletion.
+The operator owns cleanup of rollback material under `/root`; do not automate its deletion. Verified backup sets under `/opt/local-hybrid-ai-backups` are recovery evidence, not cleanup debris.
 
 ## Change procedure
 
