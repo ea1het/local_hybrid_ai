@@ -4,11 +4,11 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 ## P0 — DR completion
 
-- **Qualify the Stack6 portable-memory verifier on the reference host.** `dr_stack6_verify.py` now defines the read-only proof for the only durable Stack6 exception: Git-backed `MEMORY.md` + `USER.md`. Run its focused tests and real verifier after synchronizing the host; once it passes, Stack6 has no remaining data-backup gap.
-- **Protected `.env` DR policy.** `.env` is a required global recovery prerequisite and contains persistent identity such as `LITELLM_SALT_KEY`, but the engine currently does not create a protected copy. Decide encrypted backup mechanism, storage, rotation and restore procedure without exposing values.
-- **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. Define encryption-at-rest, retention generations, off-host copy and verification policy.
-- **Generic real `backup all`.** Integrate already-proven Stack0/Stack3/Stack4 adapters through the generic manifest-driven engine rather than stack-number conditionals. Stack6 contributes no backup artifact; its externalized Git memory is a prerequisite verified separately.
-- **Clean-environment restore drill.** Rebuild into an isolated/temporary clean environment from Git + protected `.env` + PKI + LiteLLM dump + Gitea dump, then restore/reconnect portable user memory. Do not destroy the current host without explicit authorization.
+- **Implement `.env` as a real global backup artifact.** ADR-0001 accepts including the protected root operational `.env` in each complete DR backup set. The engine/schema still need to represent, copy, checksum and later restore it before stack preparation without exposing values.
+- **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. ADR-0001 deliberately accepts plaintext `.env` inside the private backup set for now; define encryption-at-rest, retention generations, off-host copy and verification policy as a later hardening step.
+- **Generic real `backup all`.** Integrate the already-proven Stack0/Stack3/Stack4 adapters through the generic manifest-driven engine rather than stack-number conditionals, add the global `.env` artifact, and run externalized-resource verifiers such as Stack6. Publication must remain atomic: no final backup-set directory if any artifact/prerequisite/verification fails.
+- **Generic `restore all`.** Build restore orchestration from completed backup-set metadata plus manifest restore phases. Restore the global `.env` first, Stack0 PKI `pre-prepare`, Stack3/Stack4 managed state in their declared phases, reconstruct disposable stacks through the normal installer, and verify externalized resources without inventing stack-specific workflows.
+- **Clean-environment restore drill.** Rebuild into an isolated/temporary clean environment from one complete backup set + Git source and prove end-to-end recovery. Do not destroy the current host without explicit authorization.
 
 ## P1 — DR engine hardening
 
@@ -38,8 +38,12 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 ## Closed in the latest DR iteration
 
-The Stack6 persistence boundary is now explicit: Hermes and the complete sandbox/runtime are replaceable and reconstructable. `SOUL.md` is runtime-generated Nous Research behavior text and is not a DR resource. Hermes SQLite databases, caches, packages, sessions, logs and sandbox state are disposable. The only durable application-level exception is the externalized Git-backed user memory contract (`MEMORY.md` + `USER.md`). No further Hermes-runtime externalization is planned.
+The Stack6 portable-memory verifier passed its focused unit tests and real read-only qualification on the reference host. The configured Git checkout was clean, `MEMORY.md` and `USER.md` were tracked, local HEAD matched the existing remote-tracking branch, all Stack6 containers remained running/healthy as applicable, and the global DR dry-run converged. Stack6 has no remaining data-backup gap.
+
+The Stack6 persistence boundary is explicit: Hermes and the complete sandbox/runtime are replaceable and reconstructable. `SOUL.md` is runtime-generated Nous Research behavior text and is not a DR resource. Hermes SQLite databases, caches, packages, sessions, logs and sandbox state are disposable. The only durable application-level exception is the externalized Git-backed user memory contract (`MEMORY.md` + `USER.md`). The Git remote may be Gitea, another Git service/SaaS, or another configured repository; Stack6 does not acquire a required Stack4 dependency from DR.
+
+ADR-0001 records the accepted compromise that the protected operational `.env` will be included directly in complete backup sets until a better secret-recovery mechanism exists.
 
 The Stack4 Gitea adapter no longer treats rootless operation as part of the DR contract. It discovers the deployed execution context before the controlled stop, has synthetic rootless/rootful coverage, and the current rootless deployment passed a real controlled-offline backup plus isolated restore regression with the generic-context implementation. Future deployment variants must still pass preflight discovery unambiguously; no rootless-specific follow-up remains open.
 
-The post-reorganization validation/cleanup pass has also completed successfully on the reference host: manifests validated, installer tests passed, the complete current DR test suite passed from `bkp-dr/tests`, `install.py all --dry-run` converged, critical services remained healthy, generated Python/restore test debris was cleaned, no Gitea dump helper remained, the Git worktree was clean, and local HEAD matched `origin/main` at the time of validation.
+The post-reorganization validation/cleanup pass also completed successfully on the reference host: manifests validated, installer tests passed, the complete current DR test suite passed from `bkp-dr/tests`, `install.py all --dry-run` converged, critical services remained healthy, generated Python/restore test debris was cleaned, no Gitea dump helper remained, the Git worktree was clean, and local HEAD matched `origin/main` at the time of validation.
