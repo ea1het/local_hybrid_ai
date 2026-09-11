@@ -5,7 +5,6 @@ import argparse
 import json
 import os
 import shutil
-import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -19,11 +18,41 @@ class BootstrapError(RuntimeError):
     pass
 
 
+def _read_env_artifact(backup_set: Path, metadata: dict) -> tuple[Path, dict[str, str]]:
+    """Read the global operational-env artifact using the backup-set contract.
+
+    backup-all emits global artifacts with `resource_id`, exactly like regular
+    manifest artifacts. Keep this compatibility shim in the CLI until the core
+    restore module is normalized in a follow-up refactor.
+    """
+    matches = [
+        artifact
+        for artifact in metadata.get("global_artifacts", [])
+        if artifact.get("resource_id") == "operational-env"
+    ]
+    if len(matches) != 1:
+        raise dr_restore_live.RestoreLiveError(
+            "backup set must contain exactly one operational-env global artifact"
+        )
+    env_path = backup_set / matches[0]["relative_path"]
+    if not env_path.is_file() or env_path.is_symlink():
+        raise dr_restore_live.RestoreLiveError(
+            "operational environment artifact is missing or invalid"
+        )
+    return env_path, dr.read_dotenv_presence(env_path)
+
+
+# The current core executor predates the final global-artifact field name and
+# looks for `id`. Override only this metadata accessor so both preflight and the
+# executor consume the canonical `resource_id` emitted by backup-all.
+dr_restore_live._read_env_artifact = _read_env_artifact
+
+
 def check_clean(backup_set: Path) -> dict[str, object]:
     plan = dr_restore_all.plan_restore_all(backup_set)
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
     manifests = dr.load_manifests()
-    env_path, values = dr_restore_live._read_env_artifact(backup_set, metadata)
+    env_path, values = _read_env_artifact(backup_set, metadata)
     stacks_root = dr_restore_live._absolute_safe_path(values, "STACKS_ROOT")
     base_path = dr_restore_live._absolute_safe_path(values, "BASE_PATH")
     dr_restore_live.require_clean_target(stacks_root, base_path, manifests, list(plan.resolved_stacks))
@@ -53,7 +82,7 @@ def _validate_memory_sync_bootstrap(path: Path) -> Path:
 
 def _install_memory_sync_bootstrap(backup_set: Path, source: Path) -> Path:
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
-    _, values = dr_restore_live._read_env_artifact(backup_set, metadata)
+    _, values = _read_env_artifact(backup_set, metadata)
     base_path = dr_restore_live._absolute_safe_path(values, "BASE_PATH")
     service = dr.require_env_value(values, "MEMORY_SYNC_SERVICE", label="MEMORY_SYNC_SERVICE")
     if not service.startswith("service_-") or "/" in service or service in {"service_-", ".", ".."}:
@@ -95,7 +124,7 @@ def _install_memory_sync_bootstrap(backup_set: Path, source: Path) -> Path:
 
 def _enable_memory_sync(backup_set: Path, result: dict[str, object]) -> None:
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
-    _, values = dr_restore_live._read_env_artifact(backup_set, metadata)
+    _, values = _read_env_artifact(backup_set, metadata)
     container = dr.require_env_value(values, "MEMORY_SYNC_CONTAINER", label="MEMORY_SYNC_CONTAINER")
     stacks_root = Path(str(result["stacks_root"]))
     stack_dir = stacks_root / "stack6_-_hermes"
