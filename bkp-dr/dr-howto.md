@@ -12,7 +12,7 @@ The intended recovery inputs are:
 
 ```text
 Git source at a known commit/tag
-+ protected operational .env
++ protected operational .env carried by the complete backup set (ADR-0001)
 + Stack0 platform PKI
 + Stack3 LiteLLM logical database dump
 + Stack4 Gitea application-native dump
@@ -47,22 +47,25 @@ Valid modes are `reconstructable`, `managed`, and `mixed`. Resource classes are 
 
 Stack0 PKI survives rebuild and is restored `pre-prepare`. Stack2 and Stack5 are disposable. LiteLLM uses a logical PostgreSQL dump rather than PGDATA and requires the original `LITELLM_SALT_KEY`. Gitea uses a controlled-offline native application dump.
 
-Stack6 is fully replaceable. `SOUL.md` is runtime-generated Hermes/Nous Research behavior text and is not DR data. Hermes SQLite databases, caches, packages, sessions, logs and the complete sandbox tree are disposable. New Hermes-generated files remain disposable unless the platform explicitly promotes them to durable state.
+Stack6 is fully replaceable. `SOUL.md` is runtime-generated Hermes/Nous Research behavior text and is not DR data. Hermes SQLite databases, caches, packages, sessions, logs and the complete sandbox tree are disposable. New Hermes-generated files remain disposable unless the platform explicitly promotes them to durable state. The Stack6 Git remote is configuration, not a Stack4 dependency: it may be Gitea, another Git service/SaaS, or another configured repository.
 
 ## 4. Protected configuration
 
-The operational `.env` is a protected recovery prerequisite outside Git. Recovery tooling must never print it, commit it, or place secret values into unprotected metadata. The final encrypted backup/rotation/off-host policy for `.env` remains open.
+ADR-0001 accepts the current pragmatic model: every complete `backup all` set carries an exact protected copy of the operational root `.env` as `artifacts/global/operational.env`, mode `0600`, inside a private `0700` backup set. Recovery tooling must never print it or commit it. Encryption/retention/off-host protection remains later hardening; it does not change the logical requirement to restore the operational configuration before PREPARE.
 
-## 5. Planner and dry-run
+## 5. Planner, dry-run and real backup all
 
 ```bash
 python3 bkp-dr/dr.py plan all
 python3 bkp-dr/dr.py backup all --dry-run
+python3 bkp-dr/backup-all.py --json
 ```
 
-Planning classifies resources as `BACKUP`, `REQUIRE`, `EXTERNAL`, or `RECONSTRUCT`. Backup dry-run performs destination and runtime/source preflight. Destination precedence is `--destination`, then `DR_BACKUP_ROOT`, then `/opt/local-hybrid-ai-backups`.
+Planning classifies resources as `BACKUP`, `REQUIRE`, `EXTERNAL`, or `RECONSTRUCT`. Deployment discovery for real `backup all` uses each manifest/lifecycle `required_containers`, after validating container ownership. Stack0 is always included. For other stacks, the presence of any required container marks the stack deployed; a partial/broken deployment is therefore not silently omitted and must pass normal runtime/source preflight.
 
-The Stack6 manifest now declares `GITMEM_REPOSITORY` as the configured source for its external Git resource. [`dr_stack6_verify.py`](dr_stack6_verify.py) performs the stronger read-only portable-memory proof: configured origin/branch, tracked regular `MEMORY.md` + `USER.md`, clean working tree and local HEAD aligned with the existing remote-tracking branch. It performs no fetch/pull/commit/push/reset.
+Real backup execution stages all artifacts privately, performs fallible integrity work before publication, writes metadata/checksums, and publishes the final `backup-*` directory atomically with no replacement of an existing recovery point.
+
+The Stack6 manifest declares `GITMEM_REPOSITORY` as the configured source for its external Git resource. [`dr_stack6_verify.py`](dr_stack6_verify.py) performs the stronger read-only portable-memory proof: configured origin/branch, tracked regular `MEMORY.md` + `USER.md`, clean working tree and local HEAD aligned with the existing remote-tracking branch. It performs no fetch/pull/commit/push/reset.
 
 ## 6. Execution filesystem contract
 
@@ -78,23 +81,23 @@ Validated reference destination:
 
 ### Stack0
 
-`dr_archive.py` creates the bounded PKI archive and `dr_archive_restore.py` verifies isolated extraction. Real backup and isolated restore verification have passed.
+`dr_archive.py` creates the bounded PKI archive and `dr_archive_restore.py` verifies isolated extraction. Real backup and isolated restore verification have passed. The verifier now accepts a complete multi-resource backup set and selects the Stack0 `platform-pki` archive rather than assuming a Stack0-only set.
 
 ### Stack3
 
-`dr_stack3_backup.py` creates a dependency-complete Stack0 + LiteLLM custom-format PostgreSQL dump. `dr_stack3_restore_verify.py` restores into a temporary database, validates table inventory/data presence and removes the temporary DB. Real backup and isolated restore verification have passed.
+`dr_stack3_backup.py` creates the LiteLLM custom-format PostgreSQL dump. `dr_postgres_artifact_verify.py` verifies the dump stored in a complete recovery point by restoring it into a temporary database, comparing the restored table inventory, checking non-empty data presence and removing the temporary database. Live LiteLLM is not modified.
 
 ### Stack4
 
-`dr_stack4_backup.py` creates a dependency-complete Stack0 + Gitea native dump. Consistency requires a brief controlled stop of Gitea. The helper derives the deployed Gitea execution context rather than assuming rootless paths/users. `dr_stack4_restore_verify.py` imports the SQLite dump into a temporary database and runs `git fsck` against restored repositories. Real controlled-offline backup and isolated restore verification have passed, including a fresh regression after removal of rootless-specific assumptions.
+`dr_stack4_backup.py` creates the Gitea native dump. Consistency requires a brief controlled stop of Gitea. The helper derives the deployed Gitea execution context rather than assuming rootless paths/users. `dr_stack4_restore_verify.py` can select Stack4 from a complete backup set, imports the SQLite dump into a temporary database and runs `git fsck` against restored repositories. Live Gitea is not modified by restore verification.
 
 ### Stack6
 
-No backup artifact is created. The durable exception is external Git-backed user memory. Host qualification of [`dr_stack6_verify.py`](dr_stack6_verify.py) is required before marking this prerequisite fully verified.
+No backup artifact is created. The durable exception is external Git-backed user memory. Host qualification of [`dr_stack6_verify.py`](dr_stack6_verify.py) passed: the configured repository was clean/aligned and contained tracked regular `MEMORY.md` + `USER.md`. `SOUL.md`, Hermes runtime and sandbox state are not required.
 
 ## 8. Completed backup-set layout
 
-A completed set uses:
+A complete set uses:
 
 ```text
 /opt/local-hybrid-ai-backups/
@@ -102,11 +105,23 @@ A completed set uses:
     ├── backup.json
     ├── checksums.sha256
     └── artifacts/
+        ├── global/
+        │   └── operational.env
         └── stackN/
             └── resource artifact
 ```
 
 [`backup-set.schema.json`](backup-set.schema.json) defines completed metadata. Secret values do not belong in metadata.
+
+The first fully qualified global recovery point is:
+
+```text
+/opt/local-hybrid-ai-backups/backup-20260911T004927Z
+source commit: f732f0e1bca533556d9a60fef5bd373b51675da2
+resolved stacks: 0,1,2,3,4,5,6
+```
+
+Its creation passed atomically with four artifacts (`operational.env`, Stack0 PKI, Stack3 LiteLLM DB, Stack4 Gitea) and two declared prerequisites. The exact stored set then passed artifact-level recovery qualification: all checksums OK; PKI isolated extraction/fingerprint PASS; LiteLLM stored dump restored 75/75 tables with 25 non-empty tables and temporary DB cleanup PASS; Gitea stored dump restored 116 SQLite tables with 38 non-empty tables and 8/8 repositories passing `git fsck`; `.env` live/backup SHA-256 matched; Stack6 external Git verification PASS. Restore verifiers did not modify the live services.
 
 ## 9. Intentionally excluded
 
@@ -118,18 +133,16 @@ For Stack6 it additionally excludes `SOUL.md`, all Hermes operational SQLite dat
 
 ```text
 Stack0 backup + isolated restore                  DONE
-Stack3 backup + isolated restore                  DONE
+Stack3 backup + stored-artifact isolated restore  DONE
 Stack4 consistent backup + isolated restore       DONE
 Stack4 rootless/rootful-context hardening         DONE + real regression PASS
-Stack6 persistence boundary                       DECIDED
-Stack6 portable-memory verifier                   IMPLEMENTED; host qualification NEXT
-protected .env backup policy                      OPEN
-backup encryption/retention/off-host policy       OPEN
-destination/source overlap hardening              OPEN
-manifest validator type hardening                 OPEN
-old archive publication-path hardening            OPEN
-generic real backup all orchestration             OPEN
+Stack6 persistence boundary + verifier             DONE + host PASS
+protected .env backup policy                      DONE via ADR-0001
+real atomic backup all                             DONE + host PASS
+full recovery-point artifact qualification         DONE + host PASS
+generic restore all orchestration                  NEXT
 clean-environment full rebuild/restore proof       OPEN
+backup encryption/retention/off-host policy        HARDENING
 ```
 
-No recovery design is complete until the artifacts/prerequisites can reproduce the intended platform in a clean environment without relying on undeclared runtime state.
+No recovery design is complete until the artifacts/prerequisites can reproduce the intended platform in a clean environment without relying on undeclared runtime state. Do not destroy the reference host to test recovery; use an isolated clean environment until the operator explicitly authorizes destructive testing.
