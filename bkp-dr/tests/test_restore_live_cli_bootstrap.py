@@ -23,6 +23,42 @@ class RestoreLiveBootstrapTests(unittest.TestCase):
             (source / name).write_text(f"{name}\n", encoding="utf-8")
         return source
 
+    def test_global_operational_env_uses_resource_id_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            env = root / "artifacts" / "global" / "operational.env"
+            env.parent.mkdir(parents=True)
+            env.write_text("STACKS_ROOT=/opt/docker/stacks\nBASE_PATH=/opt/docker/runtime\n", encoding="utf-8")
+            metadata = {
+                "global_artifacts": [
+                    {
+                        "resource_id": "operational-env",
+                        "relative_path": "artifacts/global/operational.env",
+                    }
+                ]
+            }
+            path, values = restore_live_cli._read_env_artifact(root, metadata)
+            self.assertEqual(path, env)
+            self.assertEqual(values["STACKS_ROOT"], "/opt/docker/stacks")
+            self.assertEqual(values["BASE_PATH"], "/opt/docker/runtime")
+
+    def test_global_operational_env_rejects_wrong_field_name(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            env = root / "artifacts" / "global" / "operational.env"
+            env.parent.mkdir(parents=True)
+            env.write_text("STACKS_ROOT=/opt/docker/stacks\n", encoding="utf-8")
+            metadata = {
+                "global_artifacts": [
+                    {
+                        "id": "operational-env",
+                        "relative_path": "artifacts/global/operational.env",
+                    }
+                ]
+            }
+            with self.assertRaises(restore_live_cli.dr_restore_live.RestoreLiveError):
+                restore_live_cli._read_env_artifact(root, metadata)
+
     def test_validate_rejects_missing_required_material(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             source = Path(td) / "bootstrap"
@@ -43,7 +79,7 @@ class RestoreLiveBootstrapTests(unittest.TestCase):
                 "HERMES_GID": "1000",
             }
             with mock.patch.object(restore_live_cli.dr_restore_all, "read_completed_backup_set", return_value={}), \
-                 mock.patch.object(restore_live_cli.dr_restore_live, "_read_env_artifact", return_value=(root / "env", values)), \
+                 mock.patch.object(restore_live_cli, "_read_env_artifact", return_value=(root / "env", values)), \
                  mock.patch.object(restore_live_cli.dr_restore_live, "_absolute_safe_path", return_value=base), \
                  mock.patch.object(restore_live_cli.os, "chown"):
                 target = restore_live_cli._install_memory_sync_bootstrap(root / "backup", source)
@@ -71,7 +107,7 @@ class RestoreLiveBootstrapTests(unittest.TestCase):
                 "HERMES_GID": "1000",
             }
             with mock.patch.object(restore_live_cli.dr_restore_all, "read_completed_backup_set", return_value={}), \
-                 mock.patch.object(restore_live_cli.dr_restore_live, "_read_env_artifact", return_value=(root / "env", values)), \
+                 mock.patch.object(restore_live_cli, "_read_env_artifact", return_value=(root / "env", values)), \
                  mock.patch.object(restore_live_cli.dr_restore_live, "_absolute_safe_path", return_value=base):
                 with self.assertRaises(restore_live_cli.BootstrapError):
                     restore_live_cli._install_memory_sync_bootstrap(root / "backup", source)
@@ -85,7 +121,7 @@ class RestoreLiveBootstrapTests(unittest.TestCase):
             compose_ok = mock.Mock(returncode=0, stdout="", stderr="")
             inspect_ok = mock.Mock(returncode=0, stdout="true\n", stderr="")
             with mock.patch.object(restore_live_cli.dr_restore_all, "read_completed_backup_set", return_value={}), \
-                 mock.patch.object(restore_live_cli.dr_restore_live, "_read_env_artifact", return_value=(root / "env", values)), \
+                 mock.patch.object(restore_live_cli, "_read_env_artifact", return_value=(root / "env", values)), \
                  mock.patch.object(restore_live_cli.subprocess, "run", side_effect=[compose_ok, inspect_ok]) as run:
                 restore_live_cli._enable_memory_sync(root / "backup", {"stacks_root": str(stacks)})
 
