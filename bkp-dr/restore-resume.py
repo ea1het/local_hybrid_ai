@@ -165,7 +165,57 @@ def verify_bootstrap(source: Path, base_path: Path, values: dict[str, str]) -> N
             raise ResumeError(f"memory-sync SSH material differs from bootstrap: {name}")
 
 
-def enable_memory_sync(stacks_root: Path, values: dict[str, str]) -> None:
+def persist_git_memory_intent(base_path: Path, values: dict[str, str]) -> None:
+    """Persist Stack6 operator intent independently of the Git provider implementation.
+
+    The memory-sync sidecar may target local Gitea or any other configured Git
+    service. Recovery therefore must not infer a Stack4 dependency merely to set
+    the durable Stack6 desired-state marker.
+    """
+    service = dr.require_env_value(values, "MEMORY_SYNC_SERVICE", label="MEMORY_SYNC_SERVICE")
+    uid_text = dr.require_env_value(values, "HERMES_UID", label="HERMES_UID")
+    gid_text = dr.require_env_value(values, "HERMES_GID", label="HERMES_GID")
+    try:
+        uid = int(uid_text)
+        gid = int(gid_text)
+    except ValueError as exc:
+        raise ResumeError("invalid HERMES_UID/HERMES_GID for Git-memory desired state") from exc
+    if uid < 0 or gid < 0:
+        raise ResumeError("invalid negative HERMES_UID/HERMES_GID")
+
+    root = base_path / service
+    if root.is_symlink():
+        raise ResumeError("memory-sync runtime root must not be a symlink")
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / "desired-state"
+    if target.exists() and target.is_symlink():
+        raise ResumeError("Git-memory desired-state must not be a symlink")
+
+    temp = root / f".desired-state.restore-{os.getpid()}"
+    try:
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write("enabled\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chown(temp, uid, gid)
+            os.chmod(temp, 0o640)
+            os.replace(temp, target)
+        finally:
+            if temp.exists():
+                temp.unlink()
+    except OSError as exc:
+        raise ResumeError(f"cannot persist Git-memory desired state: {exc}") from exc
+
+    if target.read_text(encoding="utf-8") != "enabled\n":
+        raise ResumeError("Git-memory desired-state verification failed")
+    if (target.stat().st_mode & 0o777) != 0o640:
+        raise ResumeError("Git-memory desired-state mode is not 0640")
+
+
+def enable_memory_sync(stacks_root: Path, base_path: Path, values: dict[str, str]) -> None:
+    persist_git_memory_intent(base_path, values)
     container = dr.require_env_value(values, "MEMORY_SYNC_CONTAINER", label="MEMORY_SYNC_CONTAINER")
     stack_dir = stacks_root / "stack6_-_hermes"
     cp = run(["docker", "compose", "--profile", "git-memory", "up", "-d", "--build", "hermes-memory-sync"], cwd=stack_dir)
@@ -199,7 +249,7 @@ def resume(backup_set: Path, bootstrap: Path) -> dict[str, object]:
     dr_restore_compat.install_with_readiness_compat(
         stacks_root, resolved, reconcile=True, label="final restore READY/VERIFY/reconcile"
     )
-    enable_memory_sync(stacks_root, values)
+    enable_memory_sync(stacks_root, base_path, values)
     dr_restore_compat.install_with_readiness_compat(
         stacks_root, resolved, reconcile=False, label="post-resume final verification"
     )
@@ -239,6 +289,7 @@ def main() -> int:
         print(f"- Gitea repositories: {result['gitea_repositories']}")
         print(f"- portable memory HEAD: {result['memory_head']}")
         print("- Stack6 memory-sync profile: running")
+        print("- Stack6 Git-memory desired state: enabled")
     return 0
 
 
