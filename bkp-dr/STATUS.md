@@ -1,10 +1,10 @@
 # DR Status and AI Handoff
 
-Updated after the successful Stack4 consistent-backup/isolated-restore validation, the generic execution-context end-to-end qualification, the Stack6 portable-memory qualification, ADR-0001, and the first real atomic `backup all` PASS on 2026-09-11.
+Updated after the successful real atomic `backup all` and stored-artifact recovery qualification on 2026-09-11.
 
 ## Purpose
 
-This file is the continuity document for the next AI/coding agent. Read it together with [`README.md`](README.md), [`dr-howto.md`](dr-howto.md), [`../a2aknowledge.md`](../a2aknowledge.md), [`../pending.md`](../pending.md), [`../ADRs/`](../ADRs/), the affected stack manifest/README and current Git history before changing anything.
+This is the continuity document for the next AI/coding agent. Read it together with [`README.md`](README.md), [`dr-howto.md`](dr-howto.md), [`../a2aknowledge.md`](../a2aknowledge.md), [`../pending.md`](../pending.md), [`../ADRs/`](../ADRs/), the affected stack manifest/README and current Git history before changing anything.
 
 ## Architecture decisions already made
 
@@ -23,15 +23,15 @@ This file is the continuity document for the next AI/coding agent. Read it toget
 
 ## Generic full-backup rule
 
-`backup all` is now a real atomic recovery-set operation. Deployment discovery uses the common installer lifecycle's `required_containers`, after validating that those containers are owned by each stack manifest. Stack0 is always included. For other stacks, the presence of any required container marks the stack as deployed; partially stopped/broken deployments are therefore not silently omitted and will fail the normal runtime/source preflight if they cannot be backed up safely.
+`backup all` is a real atomic recovery-set operation. Deployment discovery uses the common installer lifecycle's `required_containers`, after validating that those containers are owned by each stack manifest. Stack0 is always included. For other stacks, the presence of any required container marks the stack as deployed; partially stopped/broken deployments are therefore not silently omitted and will fail normal runtime/source preflight if they cannot be backed up safely.
 
-The resolved deployed-stack dependency closure is then processed from manifest recovery policy. Current executing strategies are `archive`, `postgres-custom-dump` and `gitea-native-dump`; externalized resources remain prerequisites rather than becoming arbitrary backup artifacts. All artifacts plus the global `.env` are created inside one private temporary backup-set directory. Metadata/checksums and fallible integrity checks complete before the terminal no-replace atomic publication step. A failed operation must not publish a final `backup-*` directory.
+The resolved deployed-stack dependency closure is processed from manifest recovery policy. Current executing strategies are `archive`, `postgres-custom-dump` and `gitea-native-dump`; externalized resources remain prerequisites rather than becoming arbitrary backup artifacts. All artifacts plus the global `.env` are created inside one private temporary backup-set directory. Metadata/checksums and fallible integrity checks complete before terminal no-replace atomic publication. A failed operation must not publish a final `backup-*` directory.
 
 ## Stack4 execution-context rule
 
 The Stack4 adapter must not assume a historical Gitea layout. Before stopping the live service it discovers image, configured container user when present, work path, `GITEA_CUSTOM`, and the active `app.ini` path from deployment evidence. The helper uses the same image and mounted Gitea volumes. If no explicit container user is configured, `--user` is omitted so the image keeps its default identity. `gitea` is invoked through image `PATH`; no rootless-specific binary path is hard-coded. Config discovery fails closed before downtime if the active `app.ini` cannot be identified.
 
-Synthetic unit coverage models both rootless-style and rootful-style deployments. The current real deployment is rootless and its discovered context was `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, work path `/var/lib/gitea`, custom path `/etc/gitea`, config `/etc/gitea/app.ini`. The generic-context implementation subsequently passed a fresh real controlled-offline backup and isolated restore end-to-end regression. Therefore rootless is deployment evidence, not the recovery contract. After a future image/layout/rootless-rootful transition, qualify that new deployment again with a real backup + isolated restore.
+Synthetic unit coverage models both rootless-style and rootful-style deployments. The current real deployment is rootless and its discovered context was `docker.gitea.com/gitea:1.27.1-rootless`, user `1000:1000`, work path `/var/lib/gitea`, custom path `/etc/gitea`, config `/etc/gitea/app.ini`. The generic-context implementation passed a fresh real controlled-offline backup and isolated restore end-to-end regression. Rootless is deployment evidence, not the recovery contract.
 
 ## Stack6 persistence rule
 
@@ -44,66 +44,66 @@ USER.md     durable / Git-backed
 
 Everything else produced by Hermes is reconstructable/disposable unless the platform makes a future explicit decision to promote it. In particular, `SOUL.md`, Hermes SQLite databases and the entire `service_-_hermes-sandbox` tree are not recovery targets.
 
-The Stack6 manifest declares the portable memory as an externalized Git resource with `GITMEM_REPOSITORY` as its configured source. [`dr_stack6_verify.py`](dr_stack6_verify.py) is read-only: it verifies configured origin/branch, tracked regular `MEMORY.md` + `USER.md`, a clean working tree and local HEAD equal to the existing `origin/<branch>` tracking ref. It does not fetch, pull, commit, push or modify runtime.
+The Stack6 manifest declares portable memory as an externalized Git resource with `GITMEM_REPOSITORY` as its configured source. [`dr_stack6_verify.py`](dr_stack6_verify.py) is read-only: it verifies configured origin/branch, tracked regular `MEMORY.md` + `USER.md`, a clean working tree and local HEAD equal to the existing remote-tracking ref. It does not fetch, pull, commit, push or modify runtime.
 
-The reference host qualification PASSED at source commit `21178fc8c71588d18252948ee3ecdea13bf718cc`: 5 focused Stack6 verifier tests passed; 8 recovery-contract tests passed; 25 planner tests passed; the real verifier reported branch `main`, HEAD `e9c220aa26b29303a18fa4b3f43f1c6edc0760ca`, required files `MEMORY.md` + `USER.md`; the global `backup all --dry-run` preflight passed; Hermes/sandbox/memory-sync/cleanup remained running/healthy as applicable; Git ended clean. Stack6 has no remaining data-backup gap.
+Reference-host qualification passed at source commit `21178fc8c71588d18252948ee3ecdea13bf718cc`; the real verifier reported branch `main`, HEAD `e9c220aa26b29303a18fa4b3f43f1c6edc0760ca`, required files `MEMORY.md` + `USER.md`, and no Hermes/sandbox/SOUL state requirement. Stack6 has no remaining data-backup gap.
 
 ## Verified real evidence
 
-### Stack0
+### Historical focused sets
 
-Real set: `/opt/local-hybrid-ai-backups/backup-20260910T162652Z`.
+- Stack0 real set: `/opt/local-hybrid-ai-backups/backup-20260910T162652Z`; PKI isolated extraction/fingerprint verification passed.
+- Stack3 dependency-complete set: `/opt/local-hybrid-ai-backups/backup-20260910T215453Z`; LiteLLM temporary restore verification passed.
+- Stack4 online historical set: `/opt/local-hybrid-ai-backups/backup-20260910T220115Z`; not definitive consistency evidence.
+- Stack4 first definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z`; Gitea restore imported 116 SQLite tables and 8/8 repositories passed `git fsck`.
+- A later generic-context Stack4 controlled-offline regression also passed; its exact set path/hash was not captured, so do not invent it.
 
-`platform-pki.tar` SHA-256: `5e1b3156281c061678f9f4c607958e45760e7b031823edb408e40b71c6df5597`, 20480 bytes. Isolated extraction/fingerprint verification passed without modifying source PKI.
+### Fully qualified atomic backup all
 
-### Stack3
+Canonical qualified recovery point:
 
-Dependency-complete real set: `/opt/local-hybrid-ai-backups/backup-20260910T215453Z`.
+```text
+/opt/local-hybrid-ai-backups/backup-20260911T004927Z
+```
 
-PKI plus LiteLLM custom dump. LiteLLM dump SHA-256: `b1d2f6d804daeec2e44a7ca5d5515698de5a44b97b32b30135173e4651ac9cb1`, 299304 bytes. Temporary restore DB verification passed: 408 catalog entries, 75/75 tables, 25 non-empty tables; temporary DB removed; live DB untouched.
+Backup execution source commit:
 
-### Stack4
+```text
+f732f0e1bca533556d9a60fef5bd373b51675da2
+```
 
-An earlier online native dump exists at `/opt/local-hybrid-ai-backups/backup-20260910T220115Z`; it is historical validation evidence, **not the definitive consistency model**.
+Creation evidence:
 
-First definitive controlled-offline set: `/opt/local-hybrid-ai-backups/backup-20260910T224812Z`.
-
-- controlled-offline mode;
-- Gitea stopped briefly and restarted successfully;
-- Gitea healthy before and after;
-- no helper container remained;
-- PKI SHA-256 unchanged: `5e1b3156281c061678f9f4c607958e45760e7b031823edb408e40b71c6df5597`;
-- Gitea ZIP SHA-256: `a1722839b8ea4c7258804bdd03576f31306c7ebb0ae3f7751a1fb644322a521f`;
-- Gitea ZIP size: 467179130 bytes; 586 members;
-- backup-set checksums passed;
-- isolated restore imported 116 SQLite tables, 38 non-empty;
-- 8 repositories discovered and 8/8 passed `git fsck --full --no-dangling`;
-- restore temporary tree removed;
-- restore verifier did not restart or modify live Gitea.
-
-After removing rootless-specific assumptions, the operator ran the new execution-context preflight and then a fresh real generic-context controlled-offline backup + checksum validation + isolated restore verification; the complete end-to-end regression passed. The exact second backup-set path/hash was not captured in conversation, so do not invent it.
-
-### Full atomic backup all
-
-Real recovery point: `/opt/local-hybrid-ai-backups/backup-20260911T004927Z`.
-
-Executing source commit: `f732f0e1bca533556d9a60fef5bd373b51675da2`.
-
-Qualification evidence:
-
-- focused backup-all tests: 4/4 PASS;
-- existing planner regression: 25/25 PASS;
-- Stack6 verifier regression: 5/5 PASS;
+- focused backup-all tests 4/4 PASS;
+- planner regression 25/25 PASS;
+- Stack6 verifier regression 5/5 PASS;
 - global dry-run/runtime source preflight PASS;
 - deployed stacks detected: 0,1,2,3,4,5,6;
-- artifact count: 4 (`operational.env` + Stack0 PKI + Stack3 LiteLLM DB + Stack4 Gitea dump);
-- prerequisites: 2 (Stack3 protected-config requirement represented by the now-backed-up `.env`, plus Stack6 external Git memory declaration);
-- publication reported atomic;
-- Gitea returned `running=true health=healthy`;
-- no `local-hybrid-ai-gitea-dump-*` helper remained;
-- source worktree ended clean.
+- artifact count 4: global `operational.env`, Stack0 PKI, Stack3 LiteLLM DB, Stack4 Gitea native dump;
+- prerequisite count 2: Stack3 protected-config declaration and Stack6 external Git declaration;
+- atomic publication PASS;
+- Gitea returned running/healthy;
+- no dump helper remained;
+- source worktree clean.
 
-This is the first single recovery point containing the platform's currently declared managed recovery artifacts plus the protected operational environment. It still needs artifact-level restore verification from this exact set before it becomes the basis for generic `restore all` qualification.
+Stored-artifact recovery qualification from that exact same set subsequently passed:
+
+- full-set compatibility tests 4/4 PASS;
+- archive restore regression 6/6 PASS;
+- all backup-set checksums PASS;
+- Stack0 PKI: isolated extraction, 3 archive members, restored/source fingerprint match PASS, temporary cleanup PASS, live runtime untouched;
+- Stack3 LiteLLM: stored dump 299321 bytes, 408 catalog entries, 75/75 source/restored tables, 25 non-empty restored tables, temporary restore DB removed, live DB untouched, container not restarted;
+- Stack4 Gitea: 586 ZIP members, 116 SQLite tables, 38 non-empty tables, 8/8 repositories passed `git fsck`, temporary restore removed, live Gitea untouched/not restarted by verifier;
+- global `operational.env`: backup SHA-256 exactly matched the live root `.env` at qualification time;
+- Stack6 externalized memory verifier PASS on branch `main`, HEAD `e9c220aa26b29303a18fa4b3f43f1c6edc0760ca`, tracked `MEMORY.md` + `USER.md`; runtime Hermes/sandbox/SOUL not required;
+- Gitea, LiteLLM PostgreSQL, LiteLLM, Hermes, sandbox and memory-sync remained running/healthy as applicable;
+- Git worktree ended clean.
+
+Therefore `backup all` is not merely creation-qualified: every currently declared recovery component in the canonical full recovery point has been independently verified from the stored artifact/prerequisite without modifying live application state.
+
+## Full-set verifier compatibility lesson
+
+Older focused restore verifiers assumed a single-purpose backup set. The full recovery point exposed that coupling. The archive verifier, common completed-metadata validator, PostgreSQL stored-artifact verifier and Stack4 metadata/restore path were updated so a strategy adapter locates its own resource inside a multi-resource set rather than requiring that resource to be the only content. Future `restore all` must preserve this rule: orchestration is generic; strategy adapters consume the resource selected from metadata.
 
 ## Global `.env` decision
 
@@ -111,11 +111,11 @@ This is the first single recovery point containing the platform's currently decl
 
 Encryption/off-host protection may supersede the storage mechanics later without changing the logical requirement that operational configuration be restored before PREPARE.
 
-## What remains before generic DR completion
+## Next-agent boundary
 
-The generic real `backup all` milestone is complete and host-qualified. Remaining P0 work is the inverse path: verify every artifact from the exact full recovery point, implement manifest-phase-driven `restore all`, then prove a clean-environment full rebuild/restore. Hardening for destination overlap, schema/type validation, encryption/retention/off-host and older archive publication semantics remains tracked in [`../pending.md`](../pending.md).
+Do not add more backup formats before implementing the inverse path unless a newly introduced stack declares new durable state. The next P0 is generic `restore all`, driven by completed `backup.json`, manifest recovery strategies and declared restore phases. It must validate schema/checksums/source commit before mutation, restore global `.env` before PREPARE, restore Stack0 PKI at `pre-prepare`, restore managed Stack3/Stack4 state at their declared phases, reconstruct disposable stacks through the normal installer/lifecycle, and verify externalized resources such as Stack6 Git without assuming Stack4 hosts them.
 
-Do not destroy the current host to test recovery. Use an isolated temporary environment until the operator explicitly authorizes destructive rebuild testing.
+Do not hard-code `if stack_id == 3/4/6` orchestration. Strategy adapters own strategy mechanics. The initial qualification must be isolated/clean-environment; do not destroy the current reference host without explicit operator authorization.
 
 ## Operator shell safety
 
@@ -123,4 +123,4 @@ Commands pasted into the operator's interactive shell must not use global `set -
 
 ## Known cleanup boundary
 
-The operator owns deletion of rollback material under `/root`; do not delete it or provide automatic `/root` cleanup. Backup sets under `/opt/local-hybrid-ai-backups` are recovery evidence and are not test debris unless the operator explicitly reclassifies them.
+The operator owns deletion of rollback material under `/root`; do not delete it or provide automatic `/root` cleanup. Backup sets under `/opt/local-hybrid-ai-backups` are recovery evidence and are not test debris unless the operator explicitly reclassifies them. Everything under `/opt/docker/runtime/service_-_hermes-sandbox` is disposable for DR purposes, but broad runtime deletion is not part of routine qualification cleanup.
