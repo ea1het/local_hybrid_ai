@@ -1,0 +1,43 @@
+name: Stack7 - Open WebUI
+
+services:
+  open-webui:
+    image: ${OPENWEBUI_IMAGE:?Set OPENWEBUI_IMAGE in .env}:${OPENWEBUI_VERSION:?Set OPENWEBUI_VERSION in .env}
+    container_name: open-webui
+    restart: unless-stopped
+
+    networks:
+      - redlocal
+
+    volumes:
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_open-webui/data:/app/backend/data
+
+    environment:
+      OPENAI_API_BASE_URL: ${OPENWEBUI_LITELLM_BASE_URL:?Set OPENWEBUI_LITELLM_BASE_URL in .env}
+      OPENAI_API_KEY: ${OPENWEBUI_LITELLM_API_KEY:?Set OPENWEBUI_LITELLM_API_KEY in .env}
+      WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY:?Set OPENWEBUI_SECRET_KEY in .env}
+      ENABLE_OPENAI_API: "true"
+      ENABLE_OLLAMA_API: "false"
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).read()"
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 45s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+networks:
+  redlocal:
+    external: true
+    name: ${NETWORK_NAME:-redlocal}
