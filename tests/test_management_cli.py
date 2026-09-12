@@ -39,6 +39,22 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertEqual(len(payload["components"]), expected)
         self.assertTrue(all("selected" in row for row in payload["components"]))
 
+    def test_human_upgrade_table_uses_numeric_stack_column_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("upgrade", "check", "--offline", runtime_root=tmp)
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        data_lines = [line for line in cp.stdout.splitlines() if line and not line.startswith("STACK") and not line.startswith("-")]
+        self.assertTrue(any(line.startswith("7 ") and "open-webui" in line for line in data_lines))
+        self.assertFalse(any(line.startswith("stack") for line in data_lines))
+
+    def test_json_upgrade_contract_keeps_stable_stack_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        payload = json.loads(cp.stdout)
+        open_webui = next(row for row in payload["components"] if row["component"] == "open-webui")
+        self.assertEqual(open_webui["stack"], "stack7")
+
     def test_stack7_shorthand_select_persists_plan_without_runtime_change(self):
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("upgrade", "stack7", "select", "v0.12.0", runtime_root=tmp)
