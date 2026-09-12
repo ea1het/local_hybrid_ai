@@ -18,4 +18,4 @@ Local backup media remains plaintext at rest. Encryption, retention and off-host
 
 - `adr/0001-backup-operational-env.md`
 - `docs/dr/howto.md`
-- `tests/dr/test_dr_backup_all.py`
+- `tests/disaster_recovery/test_dr_backup_all.py`
