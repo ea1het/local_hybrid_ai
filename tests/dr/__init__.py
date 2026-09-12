@@ -1,12 +1,7 @@
-"""DR test package bootstrap.
+"""Centralized disaster-recovery tests.
 
-DR implementation modules intentionally remain under ``bkp-dr``. Centralizing the
-tests must not force production modules into the repository root, so discovery
-adds that implementation directory to ``sys.path`` before importing test modules.
+Production DR modules remain under ``bkp-dr``.  This package deliberately does not
+modify ``sys.path``: each test that imports implementation modules owns that
+bootstrap explicitly, which avoids the package name ``tests.dr`` shadowing the
+production ``bkp-dr/dr.py`` module during unittest discovery.
 """
-from pathlib import Path
-import sys
-
-DR_ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
-if str(DR_ROOT) not in sys.path:
-    sys.path.insert(0, str(DR_ROOT))
