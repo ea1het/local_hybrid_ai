@@ -29,7 +29,6 @@ def build_parser() -> argparse.ArgumentParser:
         prog="local-ai",
         description="Supported management CLI for the Local Hybrid AI installation",
     )
-    parser.add_argument("--json", action="store_true", help="machine-readable output when supported")
     sub = parser.add_subparsers(dest="command")
 
     install = sub.add_parser("install", help="install or reconcile stacks")
@@ -68,29 +67,33 @@ def restore_command(args: list[str], json_output: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    json_output = "--json" in raw
+    raw = [arg for arg in raw if arg != "--json"]
+
     parser = build_parser()
-    ns = parser.parse_args(argv)
+    ns = parser.parse_args(raw)
     if ns.command is None:
         parser.print_help()
         return 0
 
     if ns.command == "install":
-        if ns.json:
+        if json_output:
             _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
             return 2
         return _run_internal(ROOT / "install.py", ns.args)
 
     if ns.command == "backup":
         args = list(ns.args)
-        if ns.json and "--json" not in args:
+        if json_output and "--json" not in args:
             args.append("--json")
         return _run_internal(ROOT / "bkp-dr" / "backup-all.py", args)
 
     if ns.command == "restore":
-        return restore_command(ns.args, ns.json)
+        return restore_command(ns.args, json_output)
 
     if ns.command == "upgrade":
-        return upgrade.main(ns.args, json_output=ns.json)
+        return upgrade.main(ns.args, json_output=json_output)
 
     parser.error("unsupported command")
     return 2
