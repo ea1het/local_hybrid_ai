@@ -1,9 +1,9 @@
 # Architecture Decision Records
 
-This directory contains durable architecture decisions for Local Hybrid AI.
+ADRs preserve architectural choices that are expensive to rediscover from implementation alone.
 
-ADRs record decisions whose rationale matters to future maintainers and AI agents. They are not implementation logs. Once accepted, an ADR remains in history even if a later ADR supersedes it.
+| ADR | Status | Decision |
+|---|---|---|
+| [0001](0001-backup-operational-env.md) | Accepted | Carry protected operational configuration in complete DR recovery points |
 
-Current records:
-
-- [`ADR-0001-backup-operational-env.md`](ADR-0001-backup-operational-env.md) — include the protected operational `.env` in DR backup sets.
+Security rationale belongs in `sdr/`. A decision may reference both an ADR and an SDR when architecture and threat treatment overlap.

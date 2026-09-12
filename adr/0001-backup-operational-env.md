@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-11
 - Scope: Backup / disaster recovery
+- Security record: [`SDR-0001`](../sdr/0001-protected-operational-config-in-backups.md)
 
 ## Context
 
@@ -47,6 +48,10 @@ Negative consequences:
 - backup sets become highly sensitive because they contain plaintext operational secrets;
 - filesystem permissions, future encryption-at-rest, retention and off-host handling become more important;
 - compromise of a backup set can expose credentials that were valid at backup time.
+
+## Security relationship
+
+This ADR establishes the recovery architecture. [`SDR-0001`](../sdr/0001-protected-operational-config-in-backups.md) records the confidentiality threat, compensating filesystem controls and the residual plaintext-at-rest risk. The two records are intentionally related rather than duplicated.
 
 ## Follow-up
 
