@@ -6,6 +6,7 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 - **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. ADR-0001 deliberately accepts plaintext `.env` inside the private backup set for now; define encryption-at-rest, retention generations, off-host copy and verification policy.
 - **External recovery prerequisites.** Document/operator-package the Stack6 memory-sync SSH bootstrap needed when the configured portable-memory Git origin requires it. It remains an external prerequisite rather than a Hermes application backup artifact.
+- **Stack7 first global recovery point.** Create the first `backup all` after Stack7/Open WebUI integration is finalized, verify the `open-webui-data` artifact/checksum and perform an isolated restore qualification that proves users/chats/configuration are recoverable without touching production. This is deliberately pending until the SearXNG + Firecrawl integration is qualified.
 
 The core `backup all` + `restore all` path is no longer pending: it has passed a real destructive clean-target recovery of the reference host.
 
@@ -28,9 +29,11 @@ The core `backup all` + `restore all` path is no longer pending: it has passed a
 - Decide whether the current explicit Stack4 `04-gitmem` operation should remain outside the common installer permanently or gain a normalized lifecycle representation.
 - Keep `.lock` semantics unchanged: PREPARED only, never deployed/healthy/ready.
 
-## P2 — Next stack
+## P2 — Stack7/Open WebUI closure
 
-- **Open WebUI** remains the next planned independent atomic stack. Before implementation define stack ID/directory, ownership, persistence/database model, required and optional dependencies, consumed/provided capabilities, secret provenance, readiness, Stack1 ingress relationship, recovery contract, tests and documentation. Do not add Open-WebUI-specific branches to generic installer/DR engines when manifests can express the relationship.
+- Qualify the newly declared optional `web.search` and `web.extract` capabilities against the deployed Stack2 SearXNG/Firecrawl services.
+- Because Open WebUI web settings are persistent `ConfigVar` values, apply the web-search/loader settings through the Open WebUI Admin UI on the already-initialized instance (or deliberately adopt `ENABLE_PERSISTENT_CONFIG=false` only if the whole instance is to become environment-authoritative). Do not assume a container restart overwrites persisted web settings.
+- After the web integration is qualified, execute the pending Stack7-aware global backup and isolated restore proof listed under P0.
 
 ## P2 — Operational follow-up
 
@@ -38,6 +41,12 @@ The core `backup all` + `restore all` path is no longer pending: it has passed a
 - The Stack3 migration rollback dump under `/root/litellm-postgres-migration-20260908-150526/litellm.dump` is operator-owned cleanup. Automation must not remove it.
 - Review any historical migration marker only as a separate bounded cleanup decision after confirming no code depends on it.
 - The destructive recovery test directories/checkouts and historical backup sets should be cleaned only by an explicit operator-approved retention decision, not as incidental installer/DR cleanup.
+
+## Closed — Stack7/Open WebUI base implementation
+
+Stack7 is implemented as an independent atomic application stack. It requires Stack0 + Stack3, consumes `ai.gateway`, provides `ai.chat-ui`, persists `/app/backend/data`, uses a dedicated LiteLLM virtual key and `WEBUI_SECRET_KEY`, and is optionally exposed by Stack1 at `https://chat.casa.lan`.
+
+Platform qualification passed: manifests/installer/DR regression gate, bootstrap, container readiness, `redlocal`, no host port, HAProxy ingress, dedicated LiteLLM credential, model discovery, real inference through `basic_autorouter`, dynamic oMLX model switching and installer idempotency all passed. Stack7 now additionally declares Stack2 as an optional provider of `web.search` and `web.extract`; final web capability and DR qualification remain active backlog items above.
 
 ## Closed — core DR recovery path
 
