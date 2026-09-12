@@ -11,9 +11,9 @@ flowchart LR
     T --> E[Runtime qualification when needed]
 ```
 
-Each scenario uses a stable tag such as `@DR-BACKUP-001`. Tests should reuse that identifier whenever practical. A scenario describes externally meaningful behaviour, not implementation detail.
+Each scenario uses a stable tag such as `@DR-BACKUP-001`. Tests should reuse that identifier whenever practical. The current mapping is in [traceability.md](traceability.md).
 
-Rules:
+A scenario describes externally meaningful behaviour, not implementation detail. Rules:
 
 1. Specify behaviour that matters to an operator, user, recovery process or security boundary.
 2. Prefer one scenario to one test contract; several low-level unit tests may support one scenario.
