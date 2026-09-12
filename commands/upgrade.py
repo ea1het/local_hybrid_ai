@@ -186,12 +186,18 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
     return rows
 
 
+def human_stack_id(stack: str) -> str:
+    """Compact presentation only; machine/API identity remains e.g. stack7."""
+    match = re.fullmatch(r"stack(\d+)", stack)
+    return match.group(1) if match else stack
+
+
 def print_table(rows: list[dict]) -> None:
     headers = ("STACK", "COMPONENT", "CURRENT", "AVAILABLE", "SELECTED")
     values = [headers]
     for row in rows:
         values.append((
-            row["stack"], row["component"], row["current"], row["available"], row["selected"] or "-"
+            human_stack_id(row["stack"]), row["component"], row["current"], row["available"], row["selected"] or "-"
         ))
     widths = [max(len(str(row[i])) for row in values) for i in range(5)]
     for index, row in enumerate(values):
