@@ -35,6 +35,23 @@ class Stack7OpenWebUIContractTests(unittest.TestCase):
         self.assertIn("/app/backend/data", compose)
         self.assertIn("ENABLE_OLLAMA_API: \"false\"", compose)
 
+    def test_compose_seeds_expected_fresh_instance_defaults(self):
+        compose = (STACK / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn('DEFAULT_MODELS: "basic_autorouter"', compose)
+        self.assertIn('ENABLE_EVALUATION_ARENA_MODELS: "false"', compose)
+        self.assertNotIn("ENABLE_PERSISTENT_CONFIG", compose)
+        self.assertNotIn("BYPASS_MODEL_ACCESS_CONTROL", compose)
+
+    def test_model_policy_reconciler_is_stack_owned(self):
+        reconcile = (STACK / "03-reconcile-model-policy.py").read_text(encoding="utf-8")
+        self.assertIn('MODEL_ID = "basic_autorouter"', reconcile)
+        self.assertIn('"web_search": True', reconcile)
+        self.assertIn('"defaultFeatureIds": ["web_search"]', reconcile)
+        self.assertIn('principal_id="*"', reconcile)
+        self.assertIn('permission="read"', reconcile)
+        self.assertNotIn("sqlite3", reconcile)
+        self.assertNotIn("BYPASS_MODEL_ACCESS_CONTROL", reconcile)
+
     def test_recovery_uses_quiesced_sensitive_archive(self):
         data = json.loads((STACK / "manifest.json").read_text(encoding="utf-8"))
         resource = next(r for r in data["recovery"]["resources"] if r["id"] == "open-webui-data")
