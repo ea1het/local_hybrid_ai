@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "stacks": [
+    {"id":"stack0","components":[
+      {"id":"platform-foundation","selectable":false}
+    ]},
+    {"id":"stack1","components":[
+      {"id":"haproxy","service":"haproxy","container":"haproxy","compose":"stack1_-_haproxy_web/docker-compose.yml","upstream":"haproxy/haproxy"}
+    ]},
+    {"id":"stack2","components":[
+      {"id":"searxng","service":"searxng","container":"searxng","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"searxng/searxng"},
+      {"id":"firecrawl","service":"firecrawl-api","container":"firecrawl-api","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl"},
+      {"id":"firecrawl-playwright","service":"firecrawl-playwright","container":"firecrawl-playwright","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl"},
+      {"id":"redis","service":"firecrawl-redis","container":"firecrawl-redis","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"redis/redis"},
+      {"id":"rabbitmq","service":"firecrawl-rabbitmq","container":"firecrawl-rabbitmq","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"rabbitmq/rabbitmq-server"},
+      {"id":"nuq-postgres","service":"firecrawl-postgres","container":"firecrawl-postgres","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl"}
+    ]},
+    {"id":"stack3","components":[
+      {"id":"postgresql","service":"litellm-postgres","container":"litellm-postgres","compose":"stack3_-_litellm/docker-compose.yml","upstream":"postgres/postgres"},
+      {"id":"litellm","service":"litellm","container":"litellm","compose":"stack3_-_litellm/docker-compose.yml","upstream":"BerriAI/litellm"}
+    ]},
+    {"id":"stack4","components":[
+      {"id":"gitea","service":"gitea","container":"gitea","compose":"stack4_-_gitea/docker-compose.yml","upstream":"go-gitea/gitea"}
+    ]},
+    {"id":"stack5","components":[
+      {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand"}
+    ]},
+    {"id":"stack6","components":[
+      {"id":"hermes","service":"hermes","container":"hermes","compose":"stack6_-_hermes/docker-compose.yml","upstream":"NousResearch/hermes-agent"},
+      {"id":"sandbox","service":"sandbox","container":"hermes-sandbox","compose":"stack6_-_hermes/docker-compose.yml","selectable":false}
+    ]},
+    {"id":"stack7","components":[
+      {"id":"open-webui","service":"open-webui","container":"open-webui","compose":"stack7_-_open-webui/docker-compose.yml","upstream":"open-webui/open-webui"}
+    ]}
+  ]
+}

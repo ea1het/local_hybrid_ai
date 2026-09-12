@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""Sole supported management entry point for local_hybrid_ai."""
+from commands.cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

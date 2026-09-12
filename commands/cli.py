@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from commands import upgrade
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_VERSION = "1"
+
+
+def _run_internal(path: Path, args: list[str]) -> int:
+    return subprocess.run([sys.executable, str(path), *args], cwd=ROOT).returncode
+
+
+def _json_error(code: str, message: str) -> None:
+    print(json.dumps({
+        "schema_version": SCHEMA_VERSION,
+        "success": False,
+        "error": {"code": code, "message": message},
+    }, indent=2))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="local-ai",
+        description="Supported management CLI for the Local Hybrid AI installation",
+    )
+    parser.add_argument("--json", action="store_true", help="machine-readable output when supported")
+    sub = parser.add_subparsers(dest="command")
+
+    install = sub.add_parser("install", help="install or reconcile stacks")
+    install.add_argument("args", nargs=argparse.REMAINDER)
+
+    backup = sub.add_parser("backup", help="create a recovery point")
+    backup.add_argument("args", nargs=argparse.REMAINDER)
+
+    restore = sub.add_parser("restore", help="disaster-recovery operations")
+    restore.add_argument("args", nargs=argparse.REMAINDER)
+
+    up = sub.add_parser("upgrade", help="inspect and manage the local upgrade plan")
+    up.add_argument("args", nargs=argparse.REMAINDER)
+
+    return parser
+
+
+def restore_command(args: list[str], json_output: bool) -> int:
+    if not args:
+        print("Usage: ./local-ai restore <plan|drill|apply|resume> ...", file=sys.stderr)
+        return 2
+    action, *rest = args
+    mapping = {
+        "plan": ROOT / "bkp-dr" / "restore-all.py",
+        "drill": ROOT / "bkp-dr" / "restore-drill.py",
+        "apply": ROOT / "bkp-dr" / "restore-live.py",
+        "resume": ROOT / "bkp-dr" / "restore-resume.py",
+    }
+    script = mapping.get(action)
+    if script is None:
+        print(f"Unknown restore action: {action}", file=sys.stderr)
+        return 2
+    if json_output and "--json" not in rest:
+        rest.append("--json")
+    return _run_internal(script, rest)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    ns = parser.parse_args(argv)
+    if ns.command is None:
+        parser.print_help()
+        return 0
+
+    if ns.command == "install":
+        if ns.json:
+            _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
+            return 2
+        return _run_internal(ROOT / "install.py", ns.args)
+
+    if ns.command == "backup":
+        args = list(ns.args)
+        if ns.json and "--json" not in args:
+            args.append("--json")
+        return _run_internal(ROOT / "bkp-dr" / "backup-all.py", args)
+
+    if ns.command == "restore":
+        return restore_command(ns.args, ns.json)
+
+    if ns.command == "upgrade":
+        return upgrade.main(ns.args, json_output=ns.json)
+
+    parser.error("unsupported command")
+    return 2
