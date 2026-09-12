@@ -6,6 +6,7 @@ Atomic Open WebUI chat frontend for the Local Hybrid AI platform.
 
 - Requires Stack0 and Stack3.
 - Optionally exposed by Stack1 at `https://chat.casa.lan`.
+- Optionally consumes Stack2 capabilities `web.search` and `web.extract`.
 - Consumes `ai.gateway` from LiteLLM using the OpenAI-compatible API.
 - Provides `ai.chat-ui`.
 - Owns only `open-webui` and `${BASE_PATH}/service_-_open-webui`.
@@ -40,7 +41,31 @@ Stack7 uses two independent persistent secrets from the protected central `.env`
 - `OPENWEBUI_SECRET_KEY`: Open WebUI cryptographic/session identity. Never rotate implicitly after persistent state exists.
 - `OPENWEBUI_LITELLM_API_KEY`: dedicated least-privilege LiteLLM inference credential for Open WebUI. Do not reuse the LiteLLM administrative master key or the Hermes key.
 
-Open WebUI persists provider connection configuration in its internal database after first launch. Changing only the environment later may not overwrite persisted connection settings; use the Open WebUI admin interface for intentional post-bootstrap connection changes.
+Open WebUI persists provider and web-tool configuration in its internal database after first launch. Many web-related settings are Open WebUI `ConfigVar` values: on an existing instance, the persisted database value takes precedence over a newly-added Compose environment variable. For an already-initialized deployment, use the Admin UI for the one-time change unless the whole instance is deliberately managed with `ENABLE_PERSISTENT_CONFIG=false`.
+
+## Web search and page extraction
+
+Stack7 does not run its own search or scraping containers. It consumes the services owned by Stack2 over `redlocal`:
+
+- web search: SearXNG at `http://searxng:8080`;
+- page loading/extraction: Firecrawl at `http://firecrawl-api:3002`.
+
+Compose configures the Open WebUI defaults with:
+
+```text
+ENABLE_WEB_SEARCH=true
+WEB_SEARCH_ENGINE=searxng
+SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>
+WEB_SEARCH_RESULT_COUNT=5
+WEB_SEARCH_CONCURRENT_REQUESTS=10
+WEB_LOADER_ENGINE=firecrawl
+FIRECRAWL_API_BASE_URL=http://firecrawl-api:3002
+FIRECRAWL_TIMEOUT=30000
+```
+
+The current self-hosted Firecrawl deployment has authentication disabled, therefore `FIRECRAWL_API_KEY` is intentionally empty. SearXNG JSON output is enabled by Stack2's managed `settings.yml`, which is required by Open WebUI's SearXNG integration.
+
+Stack2 remains optional to Stack7: chat/inference through LiteLLM continues to work if Stack2 is unavailable, while web search/extraction is degraded until those optional capabilities return.
 
 ## Persistence and DR
 
