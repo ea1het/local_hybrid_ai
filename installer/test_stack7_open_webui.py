@@ -39,6 +39,7 @@ class Stack7OpenWebUIContractTests(unittest.TestCase):
         compose = (STACK / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn('DEFAULT_MODELS: "basic_autorouter"', compose)
         self.assertIn('ENABLE_EVALUATION_ARENA_MODELS: "false"', compose)
+        self.assertIn("DEFAULT_INTERFACE_SETTINGS: '{\"webSearch\":\"always\"}'", compose)
         self.assertNotIn("ENABLE_PERSISTENT_CONFIG", compose)
         self.assertNotIn("BYPASS_MODEL_ACCESS_CONTROL", compose)
 
