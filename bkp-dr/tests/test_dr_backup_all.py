@@ -1,4 +1,3 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,16 +7,18 @@ import dr_backup_all
 
 
 class CP:
-    def __init__(self, rc):
-        self.returncode=rc; self.stdout=""; self.stderr=""
+    def __init__(self, rc=0, stdout="", stderr=""):
+        self.returncode = rc
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 class BackupAllTests(unittest.TestCase):
     def manifests(self):
         return {
-            0:{"directory":"stack0","owns":[]},
-            1:{"directory":"stack1","owns":["container:a","container:b"]},
-            2:{"directory":"stack2","owns":["container:c"]},
+            0:{"id":0,"directory":"stack0","owns":[]},
+            1:{"id":1,"directory":"stack1","owns":["container:a","container:b"]},
+            2:{"id":2,"directory":"stack2","owns":["container:c"]},
         }
 
     def lifecycle(self):
@@ -51,6 +52,38 @@ class BackupAllTests(unittest.TestCase):
             dr_backup_all._copy_private(source,dest)
             self.assertEqual(dest.read_bytes(),payload)
             self.assertEqual(dest.stat().st_mode & 0o777,0o600)
+
+    def test_quiesced_archive_stops_archives_restarts_and_waits(self):
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); source=base/"service"/"data"; source.mkdir(parents=True)
+            (source/"db.sqlite").write_text("state",encoding="utf-8")
+            destination=base/"backup.tar"
+            resource={"config":{"source":{"type":"runtime-path","path":"${BASE_PATH}/service/data"},"quiesce_container":"open-webui"}}
+            manifest={"id":7,"owns":["container:open-webui"]}
+            commands=[]
+
+            def runner(cmd):
+                commands.append(cmd)
+                if cmd[:4]==["docker","inspect","-f","{{.State.Running}}"]:
+                    return CP(stdout="true\n")
+                if cmd[:4]==["docker","inspect","-f","{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}"]:
+                    return CP(stdout="running|healthy\n")
+                return CP(stdout="open-webui\n")
+
+            with patch.object(dr_backup_all.dr,"run_command",side_effect=runner):
+                dr_backup_all._create_archive_artifact(resource,manifest,base,destination)
+
+            self.assertTrue(destination.is_file())
+            self.assertIn(["docker","stop","--time","30","open-webui"],commands)
+            self.assertIn(["docker","start","open-webui"],commands)
+
+    def test_quiesced_archive_rejects_foreign_container(self):
+        with tempfile.TemporaryDirectory() as td:
+            base=Path(td); source=base/"service"/"data"; source.mkdir(parents=True)
+            resource={"config":{"source":{"type":"runtime-path","path":"${BASE_PATH}/service/data"},"quiesce_container":"foreign"}}
+            manifest={"id":7,"owns":["container:open-webui"]}
+            with self.assertRaises(dr_backup_all.BackupAllError):
+                dr_backup_all._create_archive_artifact(resource,manifest,base,base/"backup.tar")
 
 
 if __name__=="__main__": unittest.main()
