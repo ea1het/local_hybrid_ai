@@ -26,6 +26,7 @@ class RecoveryContractTests(unittest.TestCase):
             4: "managed",
             5: "reconstructable",
             6: "reconstructable",
+            7: "mixed",
         }
         actual = {
             stack_id: data["recovery"]["contract"]["mode"]
@@ -77,6 +78,20 @@ class RecoveryContractTests(unittest.TestCase):
     def test_recovery_contract_rejects_unknown_fields(self):
         data = copy.deepcopy(self.manifests[1])
         data["recovery"]["contract"]["future_magic"] = True
+        with self.assertRaises(SystemExit):
+            manifest_registry.validate_recovery(data, self.schema, Path("manifest.json"))
+
+    def test_stack7_quiesced_archive_is_valid(self):
+        data = copy.deepcopy(self.manifests[7])
+        resource = next(r for r in data["recovery"]["resources"] if r["id"] == "open-webui-data")
+        self.assertEqual(resource["strategy"], "archive")
+        self.assertEqual(resource["config"]["quiesce_container"], "open-webui")
+        manifest_registry.validate_recovery(data, self.schema, Path("manifest.json"))
+
+    def test_archive_rejects_empty_quiesce_container(self):
+        data = copy.deepcopy(self.manifests[7])
+        resource = next(r for r in data["recovery"]["resources"] if r["id"] == "open-webui-data")
+        resource["config"]["quiesce_container"] = ""
         with self.assertRaises(SystemExit):
             manifest_registry.validate_recovery(data, self.schema, Path("manifest.json"))
 
