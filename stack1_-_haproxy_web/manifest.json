@@ -6,7 +6,7 @@
   "kind": "application",
   "atomic": true,
   "requires": [0],
-  "optional": [2, 3, 4, 5, 6],
+  "optional": [2, 3, 4, 5, 6, 7],
   "provides": ["ingress.https", "web.static"],
   "owns": ["container:haproxy", "container:web", "runtime:service_-_haproxy", "runtime:service_-_web"],
   "recovery": {
