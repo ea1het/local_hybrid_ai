@@ -34,6 +34,27 @@ The utility:
 
 It is intentionally **not** part of `installer/lifecycle.json`: secret issuance and mutation of the global operational environment are explicit operator actions, not PREPARE side effects.
 
+## Model policy bootstrap
+
+For a fresh Open WebUI database, Compose seeds these instance defaults:
+
+```text
+DEFAULT_MODELS=basic_autorouter
+ENABLE_EVALUATION_ARENA_MODELS=false
+```
+
+Persistent ConfigVar values remain enabled; Stack7 deliberately does **not** set `ENABLE_PERSISTENT_CONFIG=false`. Therefore later deliberate administrative changes remain persistent and, on an already initialized database, persisted values take precedence over newly-added environment defaults.
+
+After the first Open WebUI administrator account exists, run:
+
+```bash
+python3 stack7_-_open-webui/03-reconcile-model-policy.py
+```
+
+The reconciler is idempotent and Stack7-owned. It executes inside the pinned Open WebUI container and uses Open WebUI's ORM/data layer rather than editing SQLite directly. It ensures `basic_autorouter` is active, preserves existing model metadata while enabling the declared capabilities, sets `web_search` as a default feature, and adds the Open WebUI public-read access grant (`user:*:read`). It does not touch LiteLLM and does not enable `BYPASS_MODEL_ACCESS_CONTROL`.
+
+The first-admin dependency is intentional: Open WebUI model records have an owner. Stack7 does not manufacture an administrator identity or introduce a bootstrap admin password solely to satisfy this policy step.
+
 ## Secrets
 
 Stack7 uses two independent persistent secrets from the protected central `.env`:
