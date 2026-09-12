@@ -6,9 +6,8 @@ This is the project-wide backlog of work explicitly deferred or left incomplete 
 
 - **Backup encryption, retention and off-host policy.** `/opt/local-hybrid-ai-backups` is currently local/staging. ADR-0001 deliberately accepts plaintext `.env` inside the private backup set for now; define encryption-at-rest, retention generations, off-host copy and verification policy.
 - **External recovery prerequisites.** Document/operator-package the Stack6 memory-sync SSH bootstrap needed when the configured portable-memory Git origin requires it. It remains an external prerequisite rather than a Hermes application backup artifact.
-- **Stack7 first global recovery point.** Create the first `backup all` after Stack7/Open WebUI integration is finalized, verify the `open-webui-data` artifact/checksum and perform an isolated restore qualification that proves users/chats/configuration are recoverable without touching production. This is deliberately pending until the SearXNG + Firecrawl integration is qualified.
 
-The core `backup all` + `restore all` path is no longer pending: it has passed a real destructive clean-target recovery of the reference host.
+The core `backup all` + `restore all` path is no longer pending: it has passed a real destructive clean-target recovery of the reference host. Stack7 now also has a qualified global recovery point and isolated restore proof; see the closed section below.
 
 ## P1 — DR engine hardening
 
@@ -29,12 +28,6 @@ The core `backup all` + `restore all` path is no longer pending: it has passed a
 - Decide whether the current explicit Stack4 `04-gitmem` operation should remain outside the common installer permanently or gain a normalized lifecycle representation.
 - Keep `.lock` semantics unchanged: PREPARED only, never deployed/healthy/ready.
 
-## P2 — Stack7/Open WebUI closure
-
-- Qualify the newly declared optional `web.search` and `web.extract` capabilities against the deployed Stack2 SearXNG/Firecrawl services.
-- Because Open WebUI web settings are persistent `ConfigVar` values, apply the web-search/loader settings through the Open WebUI Admin UI on the already-initialized instance (or deliberately adopt `ENABLE_PERSISTENT_CONFIG=false` only if the whole instance is to become environment-authoritative). Do not assume a container restart overwrites persisted web settings.
-- After the web integration is qualified, execute the pending Stack7-aware global backup and isolated restore proof listed under P0.
-
 ## P2 — Operational follow-up
 
 - Decide whether historical local backup sets should eventually be retained, rotated or moved off-host. Do not delete verified recovery evidence as generic cleanup.
@@ -42,11 +35,27 @@ The core `backup all` + `restore all` path is no longer pending: it has passed a
 - Review any historical migration marker only as a separate bounded cleanup decision after confirming no code depends on it.
 - The destructive recovery test directories/checkouts and historical backup sets should be cleaned only by an explicit operator-approved retention decision, not as incidental installer/DR cleanup.
 
-## Closed — Stack7/Open WebUI base implementation
+## Closed — Stack7/Open WebUI implementation, web capability and DR qualification
 
 Stack7 is implemented as an independent atomic application stack. It requires Stack0 + Stack3, consumes `ai.gateway`, provides `ai.chat-ui`, persists `/app/backend/data`, uses a dedicated LiteLLM virtual key and `WEBUI_SECRET_KEY`, and is optionally exposed by Stack1 at `https://chat.casa.lan`.
 
-Platform qualification passed: manifests/installer/DR regression gate, bootstrap, container readiness, `redlocal`, no host port, HAProxy ingress, dedicated LiteLLM credential, model discovery, real inference through `basic_autorouter`, dynamic oMLX model switching and installer idempotency all passed. Stack7 now additionally declares Stack2 as an optional provider of `web.search` and `web.extract`; final web capability and DR qualification remain active backlog items above.
+Platform qualification passed: manifests/installer/DR regression gate, bootstrap, container readiness, `redlocal`, no host port, HAProxy ingress, dedicated LiteLLM credential, model discovery, real inference through `basic_autorouter`, dynamic oMLX model switching and installer idempotency. Fresh-instance defaults were additionally qualified with `basic_autorouter` selected, Arena disabled and `DEFAULT_INTERFACE_SETTINGS={"webSearch":"always"}`. The idempotent model-policy reconciler makes `basic_autorouter` active, grants public read access and enables its `web_search` capability/default feature after the first real administrator exists.
+
+Regular-user web qualification passed on 2026-09-12: the regular user saw only `basic_autorouter`, it was selected by default, Web Search was active by default, Arena was absent, and real `search_web` plus `fetch_url` operations retrieved external source content. Stack7 is configured to consume Stack2 SearXNG and Firecrawl over `redlocal`. Per-request provider correlation was not observable in the current container logs, so that logging limitation is recorded explicitly rather than misrepresented as evidence.
+
+The first Stack7-aware global recovery point was then created and published atomically:
+
+```text
+/opt/local-hybrid-ai-backups/backup-20260912T213405Z
+source_commit = c087f83c3a36304921a67d7cd888696d176868ab
+resolved stacks = 0,1,2,3,4,5,6,7
+artifacts = 5
+prerequisites = 3
+```
+
+The complete checksum index passed, including `artifacts/stack7/open-webui-data.tar` (933,140,480 bytes). The Stack7 archive was restored in an isolated temporary runtime using the DR engine's own safe archive extractor. It restored 119 archive members and recovered `webui.db` with two users (one admin, one regular user), two chats, one active `basic_autorouter` row, one `user:*:read` model grant, `ui.default_models="basic_autorouter"`, `evaluation.arena.enable=false`, and `ui.default_interface_settings={"webSearch":"always"}`. Temporary staging cleanup passed, `live runtime modified: no`, and the live `open-webui` container remained `running/healthy`.
+
+Therefore the former Stack7 web-capability and first-global-recovery-point backlog is closed.
 
 ## Closed — core DR recovery path
 
