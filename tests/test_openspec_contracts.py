@@ -8,21 +8,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def load_manifests() -> dict[int, dict]:
+    manifests: dict[int, dict] = {}
+    for path in sorted(ROOT.glob("stack*_*/manifest.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        manifests[data["id"]] = data
+    return manifests
+
+
 class OpenSpecContractTests(unittest.TestCase):
     """Near-direct executable evidence for selected Gherkin contracts."""
 
     def test_PLATFORM_DEP_001_required_dependencies_are_declared(self):
-        manifests = {}
-        for path in sorted(ROOT.glob("stack*_ -_*/manifest.json")):
-            manifests[json.loads(path.read_text(encoding="utf-8"))["id"]] = json.loads(path.read_text(encoding="utf-8"))
-        # glob above is intentionally not relied on: stack names contain no space.
-        manifests = {
-            json.loads(path.read_text(encoding="utf-8"))["id"]: json.loads(path.read_text(encoding="utf-8"))
-            for path in sorted(ROOT.glob("stack*_ -_*/manifest.json"))
-        } if manifests else {
-            json.loads(path.read_text(encoding="utf-8"))["id"]: json.loads(path.read_text(encoding="utf-8"))
-            for path in sorted(ROOT.glob("stack*_*/manifest.json"))
-        }
+        manifests = load_manifests()
         self.assertEqual(manifests[6]["requires"], [0, 3])
         self.assertEqual(manifests[7]["requires"], [0, 3])
         for sid, manifest in manifests.items():
@@ -36,14 +34,14 @@ class OpenSpecContractTests(unittest.TestCase):
         self.assertEqual(reconcile[1], ["./07-wait-ready.sh"])
 
     def test_DR_BACKUP_001_stack7_artifact_is_declared(self):
-        manifest = json.loads((ROOT / "stack7_-_open-webui" / "manifest.json").read_text(encoding="utf-8"))
+        manifest = load_manifests()[7]
         resource = next(r for r in manifest["recovery"]["resources"] if r["id"] == "open-webui-data")
         self.assertEqual(resource["strategy"], "archive")
         self.assertTrue(resource["sensitive"])
         self.assertEqual(resource["config"]["quiesce_container"], "open-webui")
 
     def test_DR_STACK7_001_restore_contract_preserves_data_and_identity(self):
-        manifest = json.loads((ROOT / "stack7_-_open-webui" / "manifest.json").read_text(encoding="utf-8"))
+        manifest = load_manifests()[7]
         resources = {r["id"]: r for r in manifest["recovery"]["resources"]}
         self.assertEqual(resources["open-webui-data"]["config"]["restore"]["phase"], "post-prepare-pre-deploy")
         self.assertEqual(resources["open-webui-secret-key"]["strategy"], "external-config")
