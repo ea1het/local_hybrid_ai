@@ -15,6 +15,11 @@ class RepositoryLayoutTests(unittest.TestCase):
                 offenders.append(str(rel))
         self.assertEqual(offenders, [])
 
+    def test_dr_tests_do_not_shadow_production_dr_module(self):
+        self.assertFalse((ROOT / "tests" / "dr").exists())
+        self.assertTrue((ROOT / "tests" / "disaster_recovery").is_dir())
+        self.assertTrue((ROOT / "bkp-dr" / "dr.py").is_file())
+
     def test_documentation_and_decision_roots_are_normalized(self):
         self.assertTrue((ROOT / "docs").is_dir())
         self.assertTrue((ROOT / "adr").is_dir())
