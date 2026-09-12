@@ -1,15 +1,15 @@
 # Stack5 — Dockhand
 
-[Home](../README.md) · [Install](../INSTALLATION.md) · [DR](../bkp-dr/README.md) · [Pending](../pending.md)
-
-Stack5 owns the Dockhand container-management UI and requires Stack0.
+Container-management UI for the local platform.
 
 ```mermaid
 flowchart LR
-  S0[Stack0] --> S5[Stack5 Dockhand]
-  S5 --> D[Container management UI]
+    Operator --> Dockhand
+    Dockhand --> Docker[Docker management surface]
 ```
 
-DR classification: **reconstructable**. The existence of persistent Docker storage such as `dockhand_data` does not by itself make it a recovery artifact. Do not add it to backups merely because it is persistent.
+**Requires:** Stack0.  
+**DR:** reconstructable; Dockhand runtime state is not a recovery target.  
+**Purpose:** operational convenience, not a dependency of the AI data path.
 
-Use [`manifest.json`](manifest.json), Compose configuration and lifecycle scripts as executable truth.
+The common installer owns deployment; no tests live inside this stack.

@@ -1,20 +1,21 @@
 # Stack2 — SearXNG + Firecrawl
 
-[Home](../README.md) · [Install](../INSTALLATION.md) · [DR](../bkp-dr/README.md) · [Secrets](../.env.secretsexplained.md)
-
-Stack2 provides local `web.search` and `web.extract`. It requires Stack0 and is an optional capability provider for Stack6.
+Provides local web search and page extraction to AI consumers.
 
 ```mermaid
 flowchart LR
-  S0[Stack0] --> S2[Stack2]
-  S2 -. web.search/web.extract .-> S6[Stack6 Hermes]
-  FC[Firecrawl] --> PG[(PostgreSQL database postgres)]
-  FC --> R[Redis/RabbitMQ]
-  S2 --> SX[SearXNG]
+    Consumer -->|web.search| SearXNG
+    Consumer -->|web.extract| Firecrawl
+    Firecrawl --> Playwright
+    Firecrawl --> Redis
+    Firecrawl --> RabbitMQ
+    Firecrawl --> PostgreSQL
+    Firecrawl --> SearXNG
 ```
 
-PostgreSQL uses `postgres` only for bootstrap/ownership/pg_cron and dedicated non-admin role `firecrawl` for application connectivity. Admin password is a restricted runtime secret; `FIRECRAWL_DB_PASSWORD` is the application credential. Existing PGDATA must be preserved during normal maintenance.
+**Requires:** Stack0.  
+**Provides:** `web.search`, `web.extract`.  
+**Consumers:** Stack6 and Stack7 optionally.  
+**DR:** reconstructable; SearXNG cache and Firecrawl DB/queue state are not recovery artifacts.
 
-Readiness must prove both SearXNG and Firecrawl usable before optional consumers are reconciled. DR classification: **reconstructable**; Firecrawl PostgreSQL, Redis, RabbitMQ and SearXNG state are intentionally not full-rebuild backup targets.
-
-Executable truth: [`manifest.json`](manifest.json), Compose file and lifecycle/readiness scripts in this directory.
+Internal services stay on `redlocal`. Configuration secrets are described in [../docs/configuration/env-secrets.md](../docs/configuration/env-secrets.md).

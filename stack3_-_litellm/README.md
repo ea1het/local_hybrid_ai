@@ -1,18 +1,18 @@
 # Stack3 — LiteLLM
 
-[Home](../README.md) · [Install](../INSTALLATION.md) · [DR](../bkp-dr/README.md) · [DR status](../bkp-dr/STATUS.md)
-
-Stack3 is the inference/model-policy and MCP gateway. It requires Stack0 and is a required dependency of Stack6. It provides `ai.gateway` and `ai.mcp-gateway`.
+Central OpenAI-compatible inference gateway and model-policy boundary.
 
 ```mermaid
 flowchart LR
-  S0[Stack0] --> S3[Stack3 LiteLLM]
-  S3 --> PG[(LiteLLM PostgreSQL)]
-  S3 -->|required gateway| S6[Stack6 Hermes]
-  S3 --> LOCAL[Local model runtime]
-  S3 -. explicit policy .-> CLOUD[Cloud providers]
+    Models[Local / remote model providers] --> LiteLLM
+    LiteLLM --> Hermes[Stack6 Hermes]
+    LiteLLM --> WebUI[Stack7 Open WebUI]
+    PostgreSQL[(LiteLLM PostgreSQL)] --- LiteLLM
 ```
 
-PostgreSQL separates admin `postgres` from the configured LiteLLM application role. The admin password is a restricted runtime secret; `LITELLM_DB_PASSWORD` is the application credential. Existing PGDATA must not be reset/chowned recursively.
+**Requires:** Stack0.  
+**Provides:** `ai.gateway` and model/MCP gateway capabilities.  
+**Required by:** Stack6 and Stack7.  
+**DR:** logical PostgreSQL dump plus protected `LITELLM_SALT_KEY`; raw PGDATA is not backed up.
 
-DR classification: **mixed**. Preserve a logical custom-format LiteLLM database dump plus the original `LITELLM_SALT_KEY` as protected external configuration. PostgreSQL admin credentials may be regenerated on clean rebuild. Real dependency-complete backup + temporary-database restore verification has passed; see [`../bkp-dr/STATUS.md`](../bkp-dr/STATUS.md).
+Applications use dedicated least-privilege virtual keys rather than the master key; see [../sdr/0003-least-privilege-ai-gateway-credentials.md](../sdr/0003-least-privilege-ai-gateway-credentials.md). MCP notes are in [mcp.md](mcp.md).

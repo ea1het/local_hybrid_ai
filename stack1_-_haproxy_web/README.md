@@ -1,13 +1,18 @@
 # Stack1 — HAProxy + Web
 
-[Home](../README.md) · [Install](../INSTALLATION.md) · [DR](../bkp-dr/README.md) · [Pending](../pending.md)
-
-Stack1 owns ingress/static-web runtime. It requires Stack0 only. Application backends exposed through HAProxy remain owned by their application stacks; Stack1 must not create hidden dependencies merely because it can route to them.
+Owns user-facing HTTP ingress and the small static landing page. Application backends remain owned by their own stacks.
 
 ```mermaid
 flowchart LR
-  S0[Stack0] --> S1[Stack1 HAProxy/Web]
-  S1 -. routes .-> APP[Optional application backends]
+    User --> HAProxy
+    HAProxy --> Web[Static web]
+    HAProxy -. configured routes .-> Apps[Application stacks]
+    HAProxy --- Redlocal[redlocal]
 ```
 
-DR classification: **reconstructable**. No Stack1 runtime data is currently a managed backup resource. Use [`manifest.json`](manifest.json) and the stack scripts/Compose configuration as executable truth.
+**Requires:** Stack0.  
+**Provides:** ingress/web.  
+**DR:** reconstructable; no durable Stack1 artifact.  
+**Security boundary:** backends should normally stay on `redlocal` instead of publishing host ports.
+
+Key files: `docker-compose.yml`, `config/haproxy/haproxy.cfg`, `manifest.json`.
