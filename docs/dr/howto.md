@@ -2,9 +2,11 @@
 
 The DR rule is simple: preserve only state whose loss would prevent a correct rebuild. A Docker volume or bind mount is not a backup target unless a manifest declares it.
 
+`./local-ai` is the supported operator and integration boundary. Files under `bkp-dr/` remain the internal DR engine and schema ownership area; external automation must not couple to their direct invocation contracts.
+
 ```mermaid
 flowchart LR
-    Source[Known Git commit] --> Recovery
+    Source[Known project source] --> Recovery
     Env[Protected operational .env] --> Recovery
     PKI[Stack0 PKI] --> Recovery
     LiteLLM[Stack3 logical DB dump] --> Recovery
@@ -30,19 +32,26 @@ Schemas are implementation-owned by [`../../bkp-dr/`](../../bkp-dr/): [`recovery
 
 ## Backup
 
+Supported operator entry point:
+
 ```bash
-python3 bkp-dr/dr.py plan all
-python3 bkp-dr/dr.py backup all --dry-run
-python3 bkp-dr/backup-all.py --json
+./local-ai backup
 ```
 
-A real `backup all` validates source/runtime prerequisites, stages sensitive data privately, performs integrity checks, writes `backup.json` and `checksums.sha256`, then atomically publishes one immutable `backup-*` directory. The operational `.env` is a sensitive global artifact; its contents never belong in logs or metadata. See [ADR-0001](../../adr/0001-backup-operational-env.md) and [SDR-0001](../../sdr/0001-protected-operational-config-in-backups.md).
+For machine consumers, use the JSON contract where supported:
+
+```bash
+./local-ai --json backup
+```
+
+A real backup validates source/runtime prerequisites, stages sensitive data privately, performs integrity checks, writes `backup.json` and `checksums.sha256`, then atomically publishes one immutable `backup-*` directory. The operational `.env` is a sensitive global artifact; its contents never belong in logs or metadata. See [ADR-0001](../../adr/0001-backup-operational-env.md) and [SDR-0001](../../sdr/0001-protected-operational-config-in-backups.md).
 
 ## Restore
 
 ```mermaid
 flowchart LR
-    Validate[Validate backup + checksums] --> Source[Materialize recorded source]
+    CLI[./local-ai restore] --> Validate[Validate backup + checksums]
+    Validate --> Source[Materialize recorded source]
     Source --> Config[Restore protected config]
     Config --> Pre[Pre-prepare archives]
     Pre --> Prepare[PREPARE]
@@ -51,6 +60,8 @@ flowchart LR
     Deploy --> Ready[READY / VERIFY]
     Ready --> External[External prerequisite convergence]
 ```
+
+Supported management forms are exposed through `./local-ai restore ...`; the underlying DR scripts remain internal implementation details.
 
 The generic restore path has passed a real destructive clean-target qualification for stacks 0–6. Stack7 has separately passed a current isolated archive restore from a global recovery point without modifying the live runtime. Do not repeat destructive qualification merely to recreate evidence.
 
@@ -67,4 +78,4 @@ Raw PostgreSQL PGDATA, containers, images, logs, queues, caches, `.lock`, migrat
 
 ## Remaining hardening
 
-Encryption-at-rest, retention generations, off-host replication, external Stack6 SSH prerequisite packaging, overlap/type/schema validation hardening and resumable-recovery improvements remain active work. See [../pending.md](../pending.md).
+Encryption-at-rest, retention generations, off-host replication, external Stack6 SSH prerequisite packaging, overlap/type/schema validation hardening, resumable-recovery improvements and the final safe upgrade executor remain active work. See [../pending.md](../pending.md).
