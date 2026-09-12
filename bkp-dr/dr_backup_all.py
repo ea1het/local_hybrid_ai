@@ -15,6 +15,7 @@ import json
 import os
 import secrets
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -96,11 +97,80 @@ def _artifact_metadata(a,path):
             "size_bytes":path.stat().st_size}
 
 
-def _create_manifest_artifact(a,resource,values,base_path,destination):
+def _docker_output(command: list[str], label: str) -> str:
+    cp = dr.run_command(command)
+    if cp.returncode != 0:
+        detail = (cp.stderr or cp.stdout or "").strip()
+        raise BackupAllError(f"{label} failed: {detail or 'no diagnostic output'}")
+    return cp.stdout.strip()
+
+
+def _wait_container_ready(container: str, timeout: int = 120) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = _docker_output(
+            ["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", container],
+            f"container state for {container}",
+        )
+        try:
+            status, health = state.split("|", 1)
+        except ValueError as exc:
+            raise BackupAllError(f"invalid Docker state for {container}: {state}") from exc
+        if status == "running" and health in {"none", "healthy"}:
+            return
+        if status in {"exited", "dead", "removing"}:
+            raise BackupAllError(f"{container} entered terminal state {status} after backup")
+        time.sleep(2)
+    raise BackupAllError(f"timeout waiting for {container} after backup")
+
+
+def _create_archive_artifact(resource: dict, manifest: dict, base_path: Path, destination: Path) -> None:
+    config = resource["config"]
+    source = config["source"]
+    source_path = dr.expand_runtime_path(source["path"], base_path)
+    quiesce = config.get("quiesce_container")
+    if not quiesce:
+        dr_archive.create_tar_archive(source_path, destination)
+        return
+
+    owned = {value.split(":", 1)[1] for value in manifest.get("owns", []) if value.startswith("container:")}
+    if quiesce not in owned:
+        raise BackupAllError(f"archive quiesce container is not owned by stack{manifest['id']}: {quiesce}")
+
+    running = _docker_output(["docker", "inspect", "-f", "{{.State.Running}}", quiesce], f"inspect {quiesce}") == "true"
+    stopped_by_backup = False
+    archive_error: Exception | None = None
+    restart_error: Exception | None = None
+
+    if running:
+        _docker_output(["docker", "stop", "--time", "30", quiesce], f"quiesce {quiesce}")
+        stopped_by_backup = True
+
+    try:
+        dr_archive.create_tar_archive(source_path, destination)
+    except Exception as exc:  # preserve original archive failure while still restoring service availability
+        archive_error = exc
+
+    if stopped_by_backup:
+        try:
+            _docker_output(["docker", "start", quiesce], f"restart {quiesce}")
+            _wait_container_ready(quiesce)
+        except Exception as exc:
+            restart_error = exc
+
+    if archive_error is not None and restart_error is not None:
+        raise BackupAllError(f"archive failed and {quiesce} could not be restored: {restart_error}") from archive_error
+    if restart_error is not None:
+        raise restart_error
+    if archive_error is not None:
+        raise archive_error
+
+
+def _create_manifest_artifact(a,resource,manifest,values,base_path,destination):
     destination.parent.mkdir(mode=0o700,parents=True,exist_ok=True); os.chmod(destination.parent,0o700)
     source=resource["config"]["source"]
     if a.strategy=="archive":
-        dr_archive.create_tar_archive(dr.expand_runtime_path(source["path"],base_path),destination); return
+        _create_archive_artifact(resource,manifest,base_path,destination); return
     if a.strategy=="postgres-custom-dump":
         database=dr_postgres_verify.validate_identifier(dr.require_env_value(values,source["database_env"],label="database configuration"),"database")
         dr_stack3_backup.create_postgres_dump(database,destination); return
@@ -134,7 +204,7 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
         for artifact in artifacts:
             resource=resources.get((artifact.stack_id,artifact.resource_id))
             if resource is None: raise BackupAllError(f"manifest resource disappeared: stack{artifact.stack_id} {artifact.resource_id}")
-            path=temp/artifact.relative_path; _create_manifest_artifact(artifact,resource,values,base_path,path)
+            path=temp/artifact.relative_path; _create_manifest_artifact(artifact,resource,manifests[artifact.stack_id],values,base_path,path)
             if not path.is_file() or path.stat().st_size<=0: raise BackupAllError(f"backup adapter produced missing/empty artifact: {artifact.relative_path}")
             completed.append(_artifact_metadata(artifact,path))
         globals_=[{"resource_id":"operational-env","strategy":"file-copy","sensitive":True,"restore_phase":"pre-prepare",
