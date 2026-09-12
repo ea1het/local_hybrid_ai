@@ -80,7 +80,10 @@ def _require_ok(cp: subprocess.CompletedProcess[bytes], label: str) -> None:
 
 
 def _read_env_artifact(backup_set: Path, metadata: dict) -> tuple[Path, dict[str, str]]:
-    matches = [a for a in metadata.get("global_artifacts", []) if a.get("id") == "operational-env"]
+    matches = [
+        a for a in metadata.get("global_artifacts", [])
+        if a.get("resource_id", a.get("id")) == "operational-env"
+    ]
     if len(matches) != 1:
         raise RestoreLiveError("backup set must contain exactly one operational-env global artifact")
     env_path = backup_set / matches[0]["relative_path"]
@@ -232,6 +235,21 @@ def _restore_preprepare_archives(backup_set: Path, metadata: dict, base_path: Pa
     return count
 
 
+def _restore_managed_archive(backup_set: Path, artifact: dict, resource: dict, base_path: Path) -> None:
+    raw = resource["config"]["source"]["path"]
+    target = dr.expand_runtime_path(raw, base_path)
+    if target.is_symlink() or not target.is_dir():
+        raise RestoreLiveError(f"managed archive target must be a prepared real directory: {target}")
+    if next(target.iterdir(), None) is not None:
+        raise RestoreLiveError(f"managed archive target must be empty before restore: {target}")
+    parent = target.parent
+    target.rmdir()
+    archive = backup_set / artifact["relative_path"]
+    restored = dr_restore_stage._extract_tar_safely(archive, parent, expected_root=target.name)
+    if restored <= 0 or not target.is_dir() or target.is_symlink():
+        raise RestoreLiveError(f"managed archive restore produced no usable target: {target}")
+
+
 def _wait_postgres(service: str, timeout: int = 120) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -328,7 +346,9 @@ def _restore_managed(backup_set: Path, metadata: dict, stacks_root: Path, base_p
         if resource is None:
             raise RestoreLiveError(f"missing recovery resource for stack{sid}/{artifact['resource_id']}")
         strategy = artifact["strategy"]
-        if strategy == "postgres-custom-dump":
+        if strategy == "archive":
+            _restore_managed_archive(backup_set, artifact, resource, base_path)
+        elif strategy == "postgres-custom-dump":
             pg_tables += _restore_postgres(backup_set, artifact, resource, stacks_root, manifests[sid], values)
         elif strategy == "gitea-native-dump":
             tables, repos = _restore_gitea(backup_set, artifact, base_path, values)
