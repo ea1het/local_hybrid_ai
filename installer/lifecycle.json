@@ -60,10 +60,10 @@
     "7": {
       "directory": "stack7_-_open-webui",
       "required_containers": ["open-webui"],
-      "prepare": [["../stack0_-_platform/ensure-env-symlink.sh", "stack7_-_open-webui"], ["./01-prepare.sh"]],
-      "deploy": [["docker", "compose", "up", "-d"], ["./02-wait-ready.sh"]],
+      "prepare": [["bash", "../stack0_-_platform/ensure-env-symlink.sh", "stack7_-_open-webui"], ["bash", "./01-prepare.sh"]],
+      "deploy": [["docker", "compose", "up", "-d"], ["bash", "./02-wait-ready.sh"]],
       "reconcile": [],
-      "verify": [["docker", "compose", "config", "--quiet"], ["./02-wait-ready.sh"]]
+      "verify": [["docker", "compose", "config", "--quiet"], ["bash", "./02-wait-ready.sh"]]
     }
   }
 }
