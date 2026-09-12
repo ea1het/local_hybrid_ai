@@ -2,24 +2,31 @@
 
 DR is manifest-driven: persistence is backed up because a recovery resource declares it, not because a Docker mount happens to exist.
 
+This directory is an **internal implementation area**. Its Python entry points are not a supported external API. Operators, automation and wrappers use `./local-ai`; see [ADR-0002](../adr/0002-single-management-cli.md).
+
 ```mermaid
 flowchart LR
-    Git[Known Git commit] --> Restore
-    Env[Protected operational env] --> Restore
-    PKI[Stack0 PKI] --> Restore
-    DB[Stack3 logical DB dump] --> Restore
-    Gitea[Stack4 native dump] --> Restore
-    OWUI[Stack7 data archive] --> Restore
-    Memory[Stack6 external Git memory] -. prerequisite .-> Restore
+    CLI[./local-ai backup / restore] --> Engine[Internal DR engine]
+    Git[Known project source] --> Engine
+    Env[Protected operational env] --> Engine
+    PKI[Stack0 PKI] --> Engine
+    DB[Stack3 logical DB dump] --> Engine
+    Gitea[Stack4 native dump] --> Engine
+    OWUI[Stack7 data archive] --> Engine
+    Memory[Stack6 external Git memory] -. prerequisite .-> Engine
 ```
 
-## Main entry points
+## Supported management entry points
 
 ```bash
-python3 bkp-dr/dr.py plan all
-python3 bkp-dr/backup-all.py --json
-python3 bkp-dr/restore-all.py <backup-set> --json
+./local-ai backup
+./local-ai --json backup
+./local-ai restore plan <backup-set>
+./local-ai restore drill <backup-set>
+./local-ai restore apply <backup-set>
 ```
+
+The files in this directory may still be invoked directly by internal code and tests. Their paths and argument contracts are deliberately not stable for external consumers.
 
 Recovery schemas remain implementation-owned here: `recovery.schema.json` and `backup-set.schema.json`. Tests are centralized under [../tests/disaster_recovery/](../tests/disaster_recovery/).
 
