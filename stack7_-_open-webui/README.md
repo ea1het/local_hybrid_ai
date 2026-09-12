@@ -92,11 +92,22 @@ The current self-hosted Firecrawl deployment has authentication disabled, theref
 
 Stack2 remains optional to Stack7: chat/inference through LiteLLM continues to work if Stack2 is unavailable, while web search/extraction is degraded until those optional capabilities return.
 
+Host qualification on 2026-09-12 passed with a regular Open WebUI user: only `basic_autorouter` was exposed, it was selected by default, Arena was absent, Web Search was enabled by default, and real `search_web` plus `fetch_url` operations returned external source content. Provider request correlation was not observable in the current SearXNG/Firecrawl container logs, so that logging limitation is recorded rather than treated as evidence of a functional failure.
+
 ## Persistence and DR
 
 `/app/backend/data` is bind-mounted from `${BASE_PATH}/service_-_open-webui/data` and contains Open WebUI users, chats, settings and application data.
 
 The recovery contract treats this state as sensitive persistent data. `backup all` quiesces the `open-webui` container before archiving the data directory and restarts it afterwards so the SQLite-backed state is captured consistently. `OPENWEBUI_SECRET_KEY` is declared separately as persistent identity and is also present in the globally protected operational `.env` backup.
+
+The first Stack7-aware global recovery point was qualified on 2026-09-12:
+
+```text
+/opt/local-hybrid-ai-backups/backup-20260912T213405Z
+source_commit = c087f83c3a36304921a67d7cd888696d176868ab
+```
+
+The complete recovery point passed its checksum index, including `artifacts/stack7/open-webui-data.tar`. The Stack7 archive was then restored into an isolated temporary runtime using the same safe archive extractor used by the DR engine. Qualification restored 119 members and recovered `webui.db` with two users (one admin and one regular user), two chats, one active `basic_autorouter` row, one public-read grant, `ui.default_models="basic_autorouter"`, `evaluation.arena.enable=false`, and `ui.default_interface_settings={"webSearch":"always"}`. Temporary staging cleanup passed and the live `open-webui` container remained running/healthy throughout.
 
 ## Lifecycle
 
