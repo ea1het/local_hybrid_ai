@@ -13,11 +13,28 @@ services:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_open-webui/data:/app/backend/data
 
     environment:
+      # Model gateway: Stack3 / LiteLLM.
       OPENAI_API_BASE_URL: ${OPENWEBUI_LITELLM_BASE_URL:?Set OPENWEBUI_LITELLM_BASE_URL in .env}
       OPENAI_API_KEY: ${OPENWEBUI_LITELLM_API_KEY:?Set OPENWEBUI_LITELLM_API_KEY in .env}
       WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY:?Set OPENWEBUI_SECRET_KEY in .env}
       ENABLE_OPENAI_API: "true"
       ENABLE_OLLAMA_API: "false"
+
+      # Optional web-search capability: Stack2 / SearXNG.
+      # SearXNG already enables JSON output in its stack-owned settings.yml.
+      ENABLE_WEB_SEARCH: "true"
+      WEB_SEARCH_ENGINE: "searxng"
+      SEARXNG_QUERY_URL: "${SEARXNG_URL:-http://searxng:8080}/search?q=<query>"
+      WEB_SEARCH_RESULT_COUNT: "5"
+      WEB_SEARCH_CONCURRENT_REQUESTS: "10"
+
+      # Optional page extraction capability: Stack2 / Firecrawl.
+      # The current local Firecrawl deployment has authentication disabled, so
+      # FIRECRAWL_API_KEY is intentionally allowed to be empty.
+      WEB_LOADER_ENGINE: "firecrawl"
+      FIRECRAWL_API_BASE_URL: "${FIRECRAWL_API_URL:-http://firecrawl-api:3002}"
+      FIRECRAWL_API_KEY: "${FIRECRAWL_API_KEY:-}"
+      FIRECRAWL_TIMEOUT: "30000"
 
     logging:
       driver: "json-file"
