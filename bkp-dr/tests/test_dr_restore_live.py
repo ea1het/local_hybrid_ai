@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 import dr_archive
+import dr_restore_compat
 import dr_restore_live
 
 
@@ -47,7 +48,7 @@ class RestoreLiveTests(unittest.TestCase):
 
     def test_install_always_requires_yes(self) -> None:
         ok = mock.Mock(returncode=0, stdout=b"", stderr=b"")
-        with mock.patch.object(dr_restore_live, "_run", return_value=ok) as run:
+        with mock.patch.object(dr_restore_compat, "_run", return_value=ok) as run:
             dr_restore_live._install(Path("/tmp/target"), [0, 1, 2], reconcile=True, label="test")
         cmd = run.call_args.args[0]
         self.assertEqual(cmd[:5], ["python3", "install.py", "0", "1", "2"])
