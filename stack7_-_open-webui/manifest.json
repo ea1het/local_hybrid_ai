@@ -7,10 +7,10 @@
   "atomic": true,
   "requires": [0, 3],
   "target_requires": [0, 3],
-  "optional": [1],
+  "optional": [1, 2],
   "provides": ["ai.chat-ui"],
   "consumes": ["ai.gateway"],
-  "optional_consumes": [],
+  "optional_consumes": ["web.search", "web.extract"],
   "owns": [
     "container:open-webui",
     "runtime:service_-_open-webui"
