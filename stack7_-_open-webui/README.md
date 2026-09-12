@@ -13,6 +13,26 @@ Atomic Open WebUI chat frontend for the Local Hybrid AI platform.
 
 The image is pinned by `OPENWEBUI_IMAGE` + `OPENWEBUI_VERSION`. `main`, `dev` and `latest` are deliberately rejected by preparation.
 
+## Explicit bootstrap
+
+PREPARE never writes the protected central `.env`. On a host that does not yet have Stack7 values, run the explicit operator bootstrap once **after Stack3/LiteLLM is healthy**:
+
+```bash
+python3 stack7_-_open-webui/00-bootstrap-env.py
+```
+
+The utility:
+
+- preserves any already-valid Stack7 values;
+- adds only missing/placeholder Stack7 variables;
+- generates `OPENWEBUI_SECRET_KEY` locally with cryptographic randomness;
+- asks the running LiteLLM instance to issue a dedicated virtual key scoped to the model ids visible at bootstrap time;
+- verifies that the generated key can list models;
+- atomically rewrites the existing root `.env` as `root:root 0600`;
+- never prints the generated secrets.
+
+It is intentionally **not** part of `installer/lifecycle.json`: secret issuance and mutation of the global operational environment are explicit operator actions, not PREPARE side effects.
+
 ## Secrets
 
 Stack7 uses two independent persistent secrets from the protected central `.env`:
