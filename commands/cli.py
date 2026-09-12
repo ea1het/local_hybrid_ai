@@ -41,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("args", nargs=argparse.REMAINDER)
 
     up = sub.add_parser("upgrade", help="inspect and manage the local upgrade plan")
+    up.add_argument(
+        "--yes",
+        action="store_true",
+        dest="upgrade_yes",
+        help="apply exactly the upgrades already selected in the local plan",
+    )
     up.add_argument("args", nargs=argparse.REMAINDER)
 
     return parser
@@ -93,7 +99,10 @@ def main(argv: list[str] | None = None) -> int:
         return restore_command(ns.args, json_output)
 
     if ns.command == "upgrade":
-        return upgrade.main(ns.args, json_output=json_output)
+        args = list(ns.args)
+        if ns.upgrade_yes:
+            args.insert(0, "--yes")
+        return upgrade.main(args, json_output=json_output)
 
     parser.error("unsupported command")
     return 2
