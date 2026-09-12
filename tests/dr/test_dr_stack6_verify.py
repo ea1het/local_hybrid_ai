@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
 MODULE_PATH = ROOT / "dr_stack6_verify.py"
 SPEC = importlib.util.spec_from_file_location("dr_stack6_verify_tested", MODULE_PATH)
 mod = importlib.util.module_from_spec(SPEC)

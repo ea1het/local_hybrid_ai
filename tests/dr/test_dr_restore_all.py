@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -150,7 +150,6 @@ class RestoreAllPlannerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             metadata = self.metadata()
-            # Replace synthetic hashes/sizes with real files.
             declared = metadata["global_artifacts"] + metadata["artifacts"]
             lines = []
             for index, artifact in enumerate(declared):

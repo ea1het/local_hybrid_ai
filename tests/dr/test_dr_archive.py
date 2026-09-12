@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
 MODULE_PATH = ROOT / "dr_archive.py"
 SPEC = importlib.util.spec_from_file_location("dr_archive", MODULE_PATH)
 dr_archive = importlib.util.module_from_spec(SPEC)

@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
