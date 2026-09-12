@@ -55,6 +55,13 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertTrue((stack / "README.md").is_file(), stack.name)
             self.assertEqual(list(stack.glob("README.*.md")), [], stack.name)
 
+    def test_local_ai_is_the_supported_root_management_cli(self):
+        cli = ROOT / "local-ai"
+        self.assertTrue(cli.is_file())
+        self.assertTrue(cli.stat().st_mode & 0o111)
+        self.assertTrue((ROOT / "commands").is_dir())
+        self.assertTrue((ROOT / "internal").is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()
