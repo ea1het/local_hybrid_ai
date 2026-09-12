@@ -22,3 +22,7 @@ The table is deliberately small. The Gherkin tag is the stable contract identifi
 | `STACK6-MEMORY-001` | `tests/disaster_recovery/test_dr_stack6_verify.py` | host Git-memory qualification |
 | `STACK7-POLICY-001` | `tests/test_openspec_contracts.py::test_STACK7_POLICY_001_access_is_explicit_not_bypassed` | regular-user qualification |
 | `STACK7-WEB-001` | `tests/test_openspec_contracts.py::test_STACK7_WEB_001_web_search_is_default_interface_behaviour` | real `search_web` / `fetch_url` qualification |
+| `CLI-BOUNDARY-001` | `tests/test_management_cli.py::test_cli_boundary_exposes_versioned_json_upgrade_contract` | ADR-0002 |
+| `CLI-UPGRADE-001` | `tests/test_management_cli.py::test_upgrade_check_contains_all_declared_components_and_selected_column` | `internal/upgrade-components.json` |
+| `CLI-UPGRADE-002` | `tests/test_management_cli.py::test_stack7_shorthand_select_persists_plan_without_runtime_change` | installation-local `upgrade-plan.json` |
+| `CLI-UPGRADE-003` | `tests/test_management_cli.py::test_upgrade_yes_never_auto_selects_available_versions` | ADR-0002 |
