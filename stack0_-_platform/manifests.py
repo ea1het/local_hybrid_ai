@@ -104,30 +104,35 @@ def validate_recovery_resource(resource: object, recovery_schema: dict, where: s
             "source_type": "runtime-path",
             "source_required": {"type", "path"},
             "source_optional": set(),
+            "config_optional": {"quiesce_container"},
             "restore_required": True,
         },
         "postgres-custom-dump": {
             "source_type": "postgres",
             "source_required": {"type", "service", "database_env"},
             "source_optional": {"user_env"},
+            "config_optional": set(),
             "restore_required": True,
         },
         "gitea-native-dump": {
             "source_type": "application",
             "source_required": {"type", "service"},
             "source_optional": set(),
+            "config_optional": set(),
             "restore_required": True,
         },
         "external-config": {
             "source_type": "environment",
             "source_required": {"type", "key"},
             "source_optional": set(),
+            "config_optional": set(),
             "restore_required": False,
         },
         "git": {
             "source_type": "git",
             "source_required": {"type"},
             "source_optional": {"repository_env"},
+            "config_optional": set(),
             "restore_required": False,
         },
     }
@@ -137,7 +142,7 @@ def validate_recovery_resource(resource: object, recovery_schema: dict, where: s
         fail(f"{where}.strategy is declared by schema but unsupported by validator: {strategy}")
 
     required_config = {"source"}
-    optional_config: set[str] = set()
+    optional_config = contract["config_optional"]
     if contract["restore_required"]:
         required_config.add("restore")
     require_exact_keys(config, required_config, optional_config, f"{where}.config")
@@ -160,6 +165,9 @@ def validate_recovery_resource(resource: object, recovery_schema: dict, where: s
     for key, value in source.items():
         if key != "type":
             require_non_empty_string(value, f"{where}.config.source.{key}")
+
+    if "quiesce_container" in config:
+        require_non_empty_string(config["quiesce_container"], f"{where}.config.quiesce_container")
 
     if contract["restore_required"]:
         validate_restore(config["restore"], recovery_schema, f"{where}.config.restore")
