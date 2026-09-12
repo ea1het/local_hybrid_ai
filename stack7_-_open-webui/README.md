@@ -41,7 +41,10 @@ For a fresh Open WebUI database, Compose seeds these instance defaults:
 ```text
 DEFAULT_MODELS=basic_autorouter
 ENABLE_EVALUATION_ARENA_MODELS=false
+DEFAULT_INTERFACE_SETTINGS={"webSearch":"always"}
 ```
+
+`DEFAULT_INTERFACE_SETTINGS` is distinct from model metadata. In Open WebUI v0.11.3 the interface setting `webSearch="always"` makes Web Search active by default for new chats/users while still allowing users to turn it off. The model policy separately declares that `basic_autorouter` supports `web_search`.
 
 Persistent ConfigVar values remain enabled; Stack7 deliberately does **not** set `ENABLE_PERSISTENT_CONFIG=false`. Therefore later deliberate administrative changes remain persistent and, on an already initialized database, persisted values take precedence over newly-added environment defaults.
 
@@ -51,7 +54,7 @@ After the first Open WebUI administrator account exists, run:
 python3 stack7_-_open-webui/03-reconcile-model-policy.py
 ```
 
-The reconciler is idempotent and Stack7-owned. It executes inside the pinned Open WebUI container and uses Open WebUI's ORM/data layer rather than editing SQLite directly. It ensures `basic_autorouter` is active, preserves existing model metadata while enabling the declared capabilities, sets `web_search` as a default feature, and adds the Open WebUI public-read access grant (`user:*:read`). It does not touch LiteLLM and does not enable `BYPASS_MODEL_ACCESS_CONTROL`.
+The reconciler is idempotent and Stack7-owned. It executes inside the pinned Open WebUI container and uses Open WebUI's ORM/data layer rather than editing SQLite directly. It ensures `basic_autorouter` is active, preserves existing model metadata while enabling the declared capabilities, sets `web_search` as a model default feature, and adds the Open WebUI public-read access grant (`user:*:read`). It does not touch LiteLLM and does not enable `BYPASS_MODEL_ACCESS_CONTROL`.
 
 The first-admin dependency is intentional: Open WebUI model records have an owner. Stack7 does not manufacture an administrator identity or introduce a bootstrap admin password solely to satisfy this policy step.
 
@@ -82,6 +85,7 @@ WEB_SEARCH_CONCURRENT_REQUESTS=10
 WEB_LOADER_ENGINE=firecrawl
 FIRECRAWL_API_BASE_URL=http://firecrawl-api:3002
 FIRECRAWL_TIMEOUT=30000
+DEFAULT_INTERFACE_SETTINGS={"webSearch":"always"}
 ```
 
 The current self-hosted Firecrawl deployment has authentication disabled, therefore `FIRECRAWL_API_KEY` is intentionally empty. SearXNG JSON output is enabled by Stack2's managed `settings.yml`, which is required by Open WebUI's SearXNG integration.
