@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": 7,
+  "directory": "stack7_-_open-webui",
+  "name": "Open WebUI",
+  "kind": "application",
+  "atomic": true,
+  "requires": [0, 3],
+  "target_requires": [0, 3],
+  "optional": [1],
+  "provides": ["ai.chat-ui"],
+  "consumes": ["ai.gateway"],
+  "optional_consumes": [],
+  "owns": [
+    "container:open-webui",
+    "runtime:service_-_open-webui"
+  ],
+  "blockers": [],
+  "recovery": {
+    "contract": {
+      "schema_version": 1,
+      "mode": "mixed"
+    },
+    "resources": [
+      {
+        "id": "open-webui-data",
+        "class": "persistent-data",
+        "strategy": "archive",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "runtime-path",
+            "path": "${BASE_PATH}/service_-_open-webui/data"
+          },
+          "quiesce_container": "open-webui",
+          "restore": {
+            "phase": "post-prepare-pre-deploy"
+          }
+        }
+      },
+      {
+        "id": "open-webui-secret-key",
+        "class": "persistent-identity",
+        "strategy": "external-config",
+        "sensitive": true,
+        "config": {
+          "source": {
+            "type": "environment",
+            "key": "OPENWEBUI_SECRET_KEY"
+          }
+        }
+      }
+    ]
+  }
+}
