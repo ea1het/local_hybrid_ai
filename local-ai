@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """Sole supported management entry point for local_hybrid_ai."""
+import sys
+
+# The supported management CLI must not mutate the Git checkout merely by
+# importing its internal Python implementation.
+sys.dont_write_bytecode = True
+
 from commands.cli import main
 
 if __name__ == "__main__":
