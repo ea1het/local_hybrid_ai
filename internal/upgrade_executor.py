@@ -107,6 +107,21 @@ def _load_json(path: Path) -> dict:
         raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG", f"cannot read {path}: {exc}") from exc
 
 
+def _read_env_values(path: Path) -> dict[str, str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise UpgradeExecutionError("UPGRADE_ENV_READ_FAILED", f"cannot read operational .env: {exc}") from exc
+    values: dict[str, str] = {}
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
 def _atomic_update_env(path: Path, updates: dict[str, str]) -> None:
     try:
         original = path.read_text(encoding="utf-8")
@@ -142,6 +157,49 @@ def _atomic_update_env(path: Path, updates: dict[str, str]) -> None:
         except OSError:
             pass
         raise UpgradeExecutionError("UPGRADE_ENV_WRITE_FAILED", f"cannot update operational .env atomically: {exc}") from exc
+
+
+def _target_image_ref(component_key: str, component: dict, selection: dict, env: dict[str, str]) -> str:
+    apply = component.get("apply")
+    image_env_key = apply.get("image_env_key") if isinstance(apply, dict) else None
+    if not isinstance(image_env_key, str) or not image_env_key:
+        raise UpgradeExecutionError(
+            "UPGRADE_INTERNAL_CONFIG",
+            f"component has no image_env_key for target preflight: {component_key}",
+        )
+    repository = env.get(image_env_key)
+    if not repository:
+        raise UpgradeExecutionError(
+            "UPGRADE_ENV_KEY_MISSING",
+            f"target image repository key is missing from operational .env: {image_env_key}",
+        )
+    version = selection.get("version")
+    if not isinstance(version, str) or not version:
+        raise UpgradeExecutionError("UPGRADE_PLAN_INVALID", f"selected target version is invalid: {component_key}")
+    return f"{repository}:{version}"
+
+
+def _preflight_target_image(root: Path, image_ref: str) -> None:
+    try:
+        cp = subprocess.run(
+            ["docker", "manifest", "inspect", image_ref],
+            cwd=root,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        raise UpgradeExecutionError(
+            "UPGRADE_TARGET_PREFLIGHT_FAILED",
+            f"cannot inspect target image {image_ref}: {exc}",
+        ) from exc
+    if cp.returncode != 0:
+        detail = (cp.stderr or "").strip()
+        raise UpgradeExecutionError(
+            "UPGRADE_TARGET_UNAVAILABLE",
+            f"target image is not available: {image_ref}" + (f": {detail}" if detail else ""),
+        )
 
 
 def _recovery_point(root: Path) -> str:
@@ -200,9 +258,11 @@ def execute(
 
     lifecycle = _load_json(root / "installer" / "lifecycle.json")
     manifests = _load_manifests(root)
+    env_values = _read_env_values(env_path)
     env_updates: dict[str, str] = {}
     affected_stacks: set[int] = set()
     recovery_required = False
+    target_images: list[str] = []
 
     for selection in selections:
         component_key = f"{selection['stack']}/{selection['component']}"
@@ -218,6 +278,11 @@ def execute(
         env_updates[env_key] = selection["version"]
         affected_stacks.add(_stack_number(selection["stack"]))
         recovery_required = recovery_required or bool(component.get("recovery_required", False))
+        target_images.append(_target_image_ref(component_key, component, selection, env_values))
+
+    # PRE-FLIGHT: prove every exact selected image exists before backup or desired-state mutation.
+    for image_ref in target_images:
+        _preflight_target_image(root, image_ref)
 
     recovery_point: str | None = None
     if recovery_required:
@@ -282,6 +347,7 @@ def execute(
             "schema_version": 1,
             "success": True,
             "recovery_point": recovery_point,
+            "target_images": target_images,
             "upgraded": selections,
             "reverified_stacks": sorted(reverified),
         }
