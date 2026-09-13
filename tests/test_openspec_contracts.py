@@ -29,7 +29,7 @@ class OpenSpecContractTests(unittest.TestCase):
                 self.assertIn(dependency, manifests, f"stack{sid} requires unknown stack{dependency}")
 
     def test_INSTALL_LIFECYCLE_001_restart_reconcile_waits_ready(self):
-        lifecycle = json.loads((ROOT / "installer" / "lifecycle.json").read_text(encoding="utf-8"))
+        lifecycle = json.loads((ROOT / "commands" / "install-lifecycle.json").read_text(encoding="utf-8"))
         reconcile = lifecycle["stacks"]["6"]["reconcile"]
         self.assertEqual(reconcile[0], ["./06-reconcile-capabilities.sh", "--restart"])
         self.assertEqual(reconcile[1], ["./07-wait-ready.sh"])
