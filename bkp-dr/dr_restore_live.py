@@ -23,6 +23,7 @@ from pathlib import Path
 
 import dr
 import dr_restore_all
+import dr_restore_compat
 import dr_restore_managed
 import dr_restore_stage
 import dr_stack4_restore_verify
@@ -378,14 +379,15 @@ def _restore_external_git(metadata: dict, stacks_root: Path, manifests: dict[int
 
 
 def _install(stacks_root: Path, selectors: list[int], *, reconcile: bool = False, label: str) -> None:
-    if not selectors:
-        return
-    cmd = ["python3", "install.py", *[str(sid) for sid in selectors]]
-    if reconcile:
-        cmd.append("--reconcile")
-    cmd.append("--yes")
-    cp = _run(cmd, cwd=stacks_root)
-    _require_ok(cp, label)
+    try:
+        dr_restore_compat.install_with_readiness_compat(
+            stacks_root,
+            selectors,
+            reconcile=reconcile,
+            label=label,
+        )
+    except dr_restore_compat.RestoreCompatibilityError as exc:
+        raise RestoreLiveError(str(exc)) from exc
 
 
 def execute_restore_all(backup_set: Path, *, confirm_clean_target: bool = False) -> RestoreLiveResult:
