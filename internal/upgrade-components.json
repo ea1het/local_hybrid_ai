@@ -17,7 +17,7 @@
     ]},
     {"id":"stack3","components":[
       {"id":"postgresql","service":"litellm-postgres","container":"litellm-postgres","compose":"stack3_-_litellm/docker-compose.yml","upstream":"postgres/postgres","selectable":false},
-      {"id":"litellm","service":"litellm","container":"litellm","compose":"stack3_-_litellm/docker-compose.yml","upstream":"BerriAI/litellm","recovery_required":true,"apply":{"type":"env-version","env_key":"LITELLM_VERSION","deploy":["docker","compose","up","-d","litellm"]}}
+      {"id":"litellm","service":"litellm","container":"litellm","compose":"stack3_-_litellm/docker-compose.yml","upstream":"BerriAI/litellm","selectable":false,"recovery_required":true,"apply":{"type":"env-version","env_key":"LITELLM_VERSION","image_env_key":"LITELLM_IMAGE","deploy":["docker","compose","up","-d","litellm"]}}
     ]},
     {"id":"stack4","components":[
       {"id":"gitea","service":"gitea","container":"gitea","compose":"stack4_-_gitea/docker-compose.yml","upstream":"go-gitea/gitea","selectable":false}
@@ -26,11 +26,11 @@
       {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand","selectable":false}
     ]},
     {"id":"stack6","components":[
-      {"id":"hermes","service":"hermes","container":"hermes","compose":"stack6_-_hermes/docker-compose.yml","upstream":"NousResearch/hermes-agent","recovery_required":false,"apply":{"type":"env-version","env_key":"HERMES_VERSION","deploy":["docker","compose","up","-d","hermes"]}},
+      {"id":"hermes","service":"hermes","container":"hermes","compose":"stack6_-_hermes/docker-compose.yml","upstream":"NousResearch/hermes-agent","recovery_required":false,"apply":{"type":"env-version","env_key":"HERMES_VERSION","image_env_key":"HERMES_IMAGE","deploy":["docker","compose","up","-d","hermes"]}},
       {"id":"sandbox","service":"sandbox","container":"hermes-sandbox","compose":"stack6_-_hermes/docker-compose.yml","selectable":false}
     ]},
     {"id":"stack7","components":[
-      {"id":"open-webui","service":"open-webui","container":"open-webui","compose":"stack7_-_open-webui/docker-compose.yml","upstream":"open-webui/open-webui","recovery_required":true,"apply":{"type":"env-version","env_key":"OPENWEBUI_VERSION","deploy":["docker","compose","up","-d","open-webui"]}}
+      {"id":"open-webui","service":"open-webui","container":"open-webui","compose":"stack7_-_open-webui/docker-compose.yml","upstream":"open-webui/open-webui","recovery_required":true,"apply":{"type":"env-version","env_key":"OPENWEBUI_VERSION","image_env_key":"OPENWEBUI_IMAGE","deploy":["docker","compose","up","-d","open-webui"]}}
     ]}
   ]
 }
