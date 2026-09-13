@@ -50,12 +50,12 @@ class RestoreLiveTests(unittest.TestCase):
         ok = mock.Mock(returncode=0, stdout=b"", stderr=b"")
         with tempfile.TemporaryDirectory() as td:
             target = Path(td)
-            (target / "installer").mkdir()
-            (target / "installer" / "install.py").write_text("# internal installer\n", encoding="utf-8")
+            (target / "commands").mkdir()
+            (target / "commands" / "install.py").write_text("# internal installer\n", encoding="utf-8")
             with mock.patch.object(dr_restore_compat, "_run", return_value=ok) as run:
                 dr_restore_live._install(target, [0, 1, 2], reconcile=True, label="test")
         cmd = run.call_args.args[0]
-        self.assertEqual(cmd[:5], ["python3", "installer/install.py", "0", "1", "2"])
+        self.assertEqual(cmd[:5], ["python3", "commands/install.py", "0", "1", "2"])
         self.assertIn("--reconcile", cmd)
         self.assertEqual(cmd[-1], "--yes")
 
