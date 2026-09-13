@@ -1,0 +1,54 @@
+# ADR-0005 — Unified command implementation package
+
+- Status: Accepted
+- Date: 2026-09-13
+
+## Context
+
+`./local-ai` is already the sole supported management interface and anticorruption boundary. The implementation behind that boundary had nevertheless become split across four top-level areas: `commands/`, `internal/`, `installer/` and `bkp-dr/`. That split reflected implementation history rather than a useful external or domain boundary.
+
+All four areas exist to implement operations exposed through the same management CLI. Keeping separate top-level roots made ownership harder to infer, encouraged path coupling, and made documentation/tests describe implementation directories that external consumers must not depend on.
+
+Disaster recovery is larger than the other command domains: it owns several engines, adapters and schemas. Flattening every DR module directly into `commands/` would reduce rather than improve navigability.
+
+## Decision
+
+`./local-ai` remains the only supported management interface. All private management implementation is organized under one Python package, `commands/`.
+
+The package is intentionally allowed to contain both modules and cohesive subpackages:
+
+```text
+commands/
+├── cli.py
+├── install.py
+├── install-lifecycle.json
+├── status.py
+├── upgrade.py
+├── upgrade_entry.py
+├── upgrade_registry.py
+├── upgrade_executor.py
+├── upgrade_guard.py
+├── upgrade_policy.py
+├── upgrade-components.json
+└── recovery/
+    ├── backup-all.py
+    ├── restore-*.py
+    ├── dr*.py
+    └── *.schema.json
+```
+
+Installation, status and upgrade remain direct modules/configuration because each is a compact command domain. Disaster recovery is a `commands/recovery/` subpackage because its engines, restore adapters, verification helpers and schemas form one larger cohesive domain.
+
+There are no separate top-level `internal/`, `installer/` or `bkp-dr/` implementation roots. Stack-owned lifecycle scripts remain with their stacks because the stack owns that behavior; the command package orchestrates those lifecycle entry points rather than absorbing them.
+
+Tests may import private command modules directly when useful, but those imports are test coupling, not an external API stability promise. External automation must continue to use `./local-ai`, using `--json` where a stable machine contract exists.
+
+Historical disaster-recovery compatibility is an exception only for recovery of existing backup source commits. Restore code may recognize `commands/install.py`, the previous `installer/install.py`, and the older root `install.py` in recorded source trees. Recognition of a historical path does not restore that path as a supported operator interface.
+
+## Consequences
+
+Repository ownership is clearer: anything implementing the management CLI is found under `commands/`, except behavior explicitly owned by an atomic stack. The public boundary is unchanged, so the reorganization does not create a second management API.
+
+The recovery subpackage preserves internal cohesion without creating another top-level architectural boundary. Implementation paths remain refactorable, while the public CLI and versioned JSON contracts carry compatibility obligations.
+
+Repository-layout tests must enforce the absence of the historical top-level implementation roots, and OpenSpec traceability must treat the package shape as an architectural constraint of the single-CLI boundary rather than as a new public interface.
