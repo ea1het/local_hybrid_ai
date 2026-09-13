@@ -1,124 +1,144 @@
 # Local Hybrid AI
 
-Local-first AI platform built as independent Docker stacks. Git contains project source and declarative configuration; each installation owns its mutable runtime and local management state outside the checkout.
+A **local-first, hybrid AI platform** assembled from independent Docker stacks. Local services are the default execution path; cloud services can be used deliberately when a workload or policy requires them. The repository is designed so that infrastructure ownership, security boundaries, persistence, recovery and upgrades remain explicit rather than hidden inside one monolithic Compose project.
 
-```mermaid
-flowchart LR
-    S0["Stack0 Platform"] --> S1["Stack1 HAProxy"]
-    S0 --> S2["Stack2 Web"]
-    S0 --> S3["Stack3 LiteLLM"]
-    S0 --> S4["Stack4 Gitea"]
-    S0 --> S5["Stack5 Dockhand"]
-    S0 --> S6["Stack6 Hermes"]
-    S0 --> S7["Stack7 Open WebUI"]
-    S3 --> S6
-    S3 --> S7
-    S2 -. "optional web.search / web.extract" .-> S6
-    S2 -. "optional web.search / web.extract" .-> S7
-    S1 -. "ingress" .-> S7
-```
+> New to the project? Read this page first, then use the [documentation map](docs/TOC.md).
 
-## Repository contract
+## What problem this project solves
 
-```text
-/opt/docker/stacks    project source
-/opt/docker/runtime   persistent installation runtime and management state
-```
+Local AI systems tend to become tightly coupled: one Compose file owns everything, application state leaks into the source checkout, agents gain excessive privileges, and upgrades become “pull the newest image and hope”. Local Hybrid AI takes the opposite approach:
 
-`.lock` means **PREPARED only**. It never means deployed, ready or healthy. Stack preparation must not silently rewrite the protected root `.env`.
+- **local first** — inference, web tooling and agent execution can remain on the local platform;
+- **hybrid by policy** — remote model providers are reached through the AI gateway, not directly by every consumer;
+- **atomic stacks** — each stack declares what it requires, provides, consumes and owns;
+- **one management boundary** — operators and automation use `./local-ai`, not private scripts as public APIs;
+- **explicit mutable state** — Git source and installation runtime are separate;
+- **fail closed** — missing required dependencies, unsafe lifecycle operations and indeterminate registry state do not become implicit success;
+- **recoverable by design** — stateful resources declare recovery contracts; reconstructable resources are rebuilt from source;
+- **version-aware upgrades** — a human version and an immutable image digest are different pieces of evidence.
 
-```mermaid
-flowchart LR
-    P["PREPARE"] --> D["DEPLOY"]
-    D --> R["READY"]
-    R --> C["RECONCILE"]
-    C --> V["VERIFY"]
-    C -. "restart/recreate" .-> R
-```
-
-## Management boundary
-
-`./local-ai` is the **only supported management interface** for operators and external integrations. It is the project's anticorruption boundary: APIs, other CLIs, CI jobs, agents and UIs must not couple to implementation modules, stack scripts or Compose files.
-
-Human output is the default. Machine consumers use the same CLI with `--json` where a stable JSON contract is available.
+## How the platform fits together
 
 ```mermaid
 flowchart TB
-    H["Human operator"] --> CLI["./local-ai"]
-    A["Automation / API / CI / MCP"] -->|"--json"| CLI
-    CLI --> C["commands package"]
-    C --> I["install / status / upgrade"]
-    C --> DR["recovery subpackage"]
-    I --> S["stack lifecycle"]
-    DR --> S
+    U["Users / clients"] --> S1["Stack1 · HAProxy/Web"]
+    S1 --> S7["Stack7 · Open WebUI"]
+    S1 -.-> S6["Stack6 · Hermes"]
+    S1 -.-> S4["Stack4 · Gitea"]
+    S1 -.-> S5["Stack5 · Dockhand"]
+
+    S7 --> S3["Stack3 · LiteLLM"]
+    S6 --> S3
+    S3 --> M["Local models"]
+    S3 -.-> C["Cloud model APIs"]
+
+    S7 -.-> S2["Stack2 · Web tools"]
+    S6 -.-> S2
+
+    S0["Stack0 · Platform"] --> S1
+    S0 --> S2
+    S0 --> S3
+    S0 --> S4
+    S0 --> S5
+    S0 --> S6
+    S0 --> S7
 ```
 
-## Structure
+Stack0 is the shared foundation. Stack3 is a **required** AI dependency for Hermes and Open WebUI. Stack2 provides **optional** `web.search` and `web.extract` capabilities. Stack1 publishes services but does not own their application state. The detailed dependency/capability model is in the [stack architecture](docs/stacks/README.md).
+
+## The eight stacks
+
+| Stack | Purpose |
+|---|---|
+| **0 · Platform** | Shared Docker network, PKI and platform foundation |
+| **1 · HAProxy/Web** | HTTPS ingress and static landing page |
+| **2 · SearXNG/Firecrawl** | Local web search and extraction |
+| **3 · LiteLLM** | OpenAI-compatible model/MCP gateway and policy boundary |
+| **4 · Gitea** | Local Git service and Actions runner |
+| **5 · Dockhand** | Container-management UI |
+| **6 · Hermes** | Agent runtime, isolated sandbox and Git-backed durable memory |
+| **7 · Open WebUI** | Curated chat UI over LiteLLM with optional local web tools |
+
+## Source is not runtime
+
+The repository is declarative project source. Mutable installation state lives outside the checkout:
 
 ```text
-local-ai                       sole supported management CLI
-commands/                      private implementation package behind local-ai
-commands/install.py            manifest-driven install/reconcile engine
-commands/install-lifecycle.json lifecycle registry
-commands/status.py             installation state view
-commands/upgrade*.py           upgrade discovery, policy, guard and executor
-commands/upgrade-components.json component upgrade metadata
-commands/recovery/             backup/restore engines, adapters and schemas
-docs/                          operator and developer documentation
-docs/devel-docs/adr/           architecture decision records
-docs/devel-docs/sdr/           security decision records
-docs/devel-docs/openspec/      executable behavioural contracts
-tests/                         all automated tests
-stack0_-_* ... stack7_-_*      atomic stack implementations
+/opt/docker/stacks    Git checkout: source, manifests, Compose and documentation
+/opt/docker/runtime   installation-owned runtime, secrets and management state
 ```
 
-There are deliberately no separate `internal/`, `installer/` or `bkp-dr/` implementation roots. Those concerns are all behind the same CLI and are organized under `commands/`; recovery remains a subpackage because it has enough engines, adapters and schemas to warrant its own namespace.
+This separation is a core invariant. Stack preparation must not silently regenerate the protected root `.env`, and a stack `.lock` means **PREPARED only** — never “deployed”, “ready” or “healthy”. See [configuration](docs/configuration/README.md) and [ADR-0001](docs/devel-docs/adr/0001-backup-operational-env.md).
 
-## Operator entry points
+## Lifecycle
+
+Every managed stack follows the same conceptual lifecycle:
+
+```mermaid
+flowchart LR
+    P["PREPARE"] --> D["DEPLOY"] --> R["READY"] --> C["RECONCILE"] --> V["VERIFY"]
+    C -.->|runtime changed| R
+```
+
+Preparation establishes prerequisites and declarative/runtime structure. Deployment starts or updates runtime. READY proves required runtime health. Reconciliation applies capability-dependent policy. VERIFY checks the resulting contract. See [installation](docs/installation.md).
+
+## One supported management interface
+
+`./local-ai` is the project’s **sole supported management and automation boundary**. Python modules under `commands/`, stack shell scripts and Compose files are implementation details.
+
+```mermaid
+flowchart LR
+    H["Human operator"] --> CLI["./local-ai"]
+    A["Automation / CI / API"] -->|"--json"| CLI
+    CLI --> I["install / start / stop"]
+    CLI --> S["status / upgrade"]
+    CLI --> DR["backup / restore"]
+```
+
+Common entry points:
 
 ```bash
 ./local-ai install --plan all
 ./local-ai install 0 1 2 3 4 5 6 7 --yes
-./local-ai backup
-./local-ai restore plan <backup-set>
-./local-ai upgrade check
-./local-ai upgrade policy
-./local-ai --json upgrade check
 ./local-ai status
+./local-ai start 5
+./local-ai stop 5
+./local-ai upgrade check
+./local-ai backup
+./local-ai restore plan <backup-set> --dry-run
 ```
 
-`status` describes installation/runtime state as **Desired / Deployed / Actual / Drift**. `upgrade check` describes update decision state as **Actual / Available / Policy / Selectable / Selected / Valid**. `Actual` is the shared observation between both views; an upgrade selection never becomes desired state until it is explicitly applied.
+Selective lifecycle is conservative: `stop` refuses to stop a provider while required consumers are running, and `start` refuses to invent or auto-start missing required providers. See the complete [CLI reference](docs/user-docs/cli.md) and [ADR-0002](docs/devel-docs/adr/0002-single-management-cli.md).
 
-Registry availability and upgrade compatibility are separate. Each component has a project default policy and each installation may override it locally with one of exactly three modes: `minor-series`, `major-series` or `manual`.
+## Security boundaries
 
-```bash
-./local-ai upgrade policy stack7
-./local-ai upgrade policy stack7 set major-series
-./local-ai upgrade policy stack7 clear
+Security decisions are recorded explicitly rather than buried in Compose files. Important examples include: Hermes runs without the Docker socket; AI consumers use least-privilege LiteLLM credentials; service networking stays internal unless intentionally published; and Open WebUI model access is explicit. See the [SDR index](docs/devel-docs/sdr/README.md).
+
+## Upgrades and recovery
+
+Registry availability does not imply compatibility or consent. Upgrade discovery follows the registry/repository of the configured image, while policy determines whether a target is acceptable. Explicit selection records the target digest and guarded apply revalidates it before mutation. See [upgrade policy](docs/upgrade-policy.md) and [ADR-0003](docs/devel-docs/adr/0003-human-version-vs-image-digest.md).
+
+Disaster recovery is manifest-driven. Stateful resources are backed up according to their recovery strategy; reconstructable resources are rebuilt. Backup publication and restore validation fail closed. Start with the [DR guide](docs/dr/README.md).
+
+## Repository map
+
+```text
+local-ai                 supported operator/automation CLI
+commands/                private management implementation
+commands/recovery/       backup and restore engines
+stack0_-_* … stack7_-_*  atomic stack implementations
+docs/                    documentation and decision records
+tests/                   automated verification
 ```
 
-`clear` removes only the installation override and returns to the project default.
+For the complete documentation structure, use [`docs/TOC.md`](docs/TOC.md). For behavioural traceability from requirements to implementation and tests, use [OpenSpec traceability](docs/devel-docs/openspec/traceability.md).
 
-Upgrade selection is installation-local. The selected version must be a real target published by the configured container registry and must pass both the effective compatibility policy and the independent `selectable` gate. A successful selection records the exact registry digest as immutable target identity; apply rejects the plan if the selected tag later resolves to a different digest.
+## Development gate
 
-```bash
-./local-ai upgrade stack6 select <published-version>
-./local-ai upgrade stack7 select <published-version>
-./local-ai upgrade --yes
-```
-
-Availability does not imply compatibility or consent: `--yes` applies only explicitly selected upgrades and never means "upgrade everything".
-
-Implementation files under `commands/` remain private and may change without preserving direct invocation contracts. Historical DR compatibility may recognize older source layouts when restoring an existing recovery point; that compatibility does not make historical paths public APIs.
-
-## Development validation
-
-Tests may address private modules directly; operator-contract tests exercise `./local-ai`.
+The repository validation gate is:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-## Documentation
-
-Start with [docs/README.md](docs/README.md). Installation is documented in [docs/installation.md](docs/installation.md), upgrade compatibility policy in [docs/upgrade-policy.md](docs/upgrade-policy.md), DR in [docs/dr/howto.md](docs/dr/howto.md), architectural decisions in [docs/devel-docs/adr/](docs/devel-docs/adr/), security decisions in [docs/devel-docs/sdr/](docs/devel-docs/sdr/), behavioural specifications in [docs/devel-docs/openspec/](docs/devel-docs/openspec/) and active work in [docs/pending.md](docs/pending.md).
+Testing conventions and qualification evidence are documented in [docs/devel-docs/testing.md](docs/devel-docs/testing.md).
