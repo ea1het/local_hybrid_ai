@@ -20,7 +20,7 @@ The configured image reference already identifies the authoritative artifact sou
    The registry host and repository are derived from the actual image reference. `local-ai` does not consult a separate GitHub Release feed, source repository release page or unrelated registry to decide container versions.
 
 2. **Human display uses tags published for that exact registry package.**
-   When a digest can be associated with a human version tag in the package, that tag is the operator-facing current version. A digest-only deployment such as `ghcr.io/firecrawl/firecrawl@sha256:...` may therefore display a human tag such as `2.11.300` once the registry proves that mapping.
+   When a digest can be associated with a human version tag in the package, that tag is the operator-facing current version. A digest-only deployment such as `ghcr.io/firecrawl/firecrawl@sha256:...` may therefore display a human tag once the registry proves that mapping.
 
 3. **Digests remain authoritative machine identity.**
    The exact local and remote digests remain in structured JSON and continue to be used for immutable comparison, drift evidence and recovery/rollback decisions.
@@ -34,16 +34,22 @@ The configured image reference already identifies the authoritative artifact sou
 6. **Channels remain channels.**
    Tags such as `latest`, `alpine`, `3-alpine` or `3.0-alpine` may represent moving channels. When possible, `local-ai` resolves the digest behind the channel and maps it to a more specific human version tag in the same package.
 
-7. **Exact version tags can discover newer tags in the same package.**
-   For images already configured with a human version tag, the current version comes directly from that tag and newer published human version tags are discovered from the same registry package. Discovery does not imply compatibility or permission to upgrade.
+7. **Discovery stays in the configured version family.**
+   Human candidates preserve meaningful tag conventions from the configured image: `v` prefixes, image variants such as `alpine` or `rootless`, and the configured major series. Numeric channel tags such as `3-alpine` and `3.0-alpine` stay inside the corresponding numeric prefix. Build hashes are treated as build identities rather than reusable variants. This prevents unrelated tags such as hotfix branches, another major line, or another channel from being advertised as the next version.
 
-8. **No automatic major-version policy is introduced here.**
-   Registry discovery reports what the package publishes. A separate support/compatibility layer decides which discovered versions are valid upgrade targets. `upgrade --yes` still applies only explicitly selected and executable components.
+8. **Registry tag lists are paginated.**
+   Discovery follows Registry V2 pagination for the same package. It must not decide that an older-looking tag is latest merely because it appeared on the first registry page.
 
-9. **Registry failures preserve their reason.**
-   Rate limiting, authorization failures and similar lookup errors remain `available=unknown` with structured statuses such as `rate_limited`. A failure to inspect a registry must never be rendered as `current`.
+9. **Digest-only deployments may require tag-to-digest resolution.**
+   `local-ai` first uses trustworthy local image metadata when it names a tag published by the same package. Otherwise it compares candidate registry tags with the deployed digest. This lookup is bounded and fail-closed: failure to prove a mapping leaves the current human version unknown rather than inventing one.
 
-10. **Local-only images are exempt.**
+10. **Discovery is not upgrade authorization.**
+    A newer registry tag is only a discovered candidate. The separate support/compatibility layer decides which targets are valid to select or execute. `upgrade --yes` still applies only explicitly selected and executable components.
+
+11. **Registry failures preserve their reason.**
+    Rate limiting, authorization failures and similar lookup errors remain `available=unknown` with structured statuses such as `rate_limited`. A failure to inspect a registry must never be rendered as `current`.
+
+12. **Local-only images are exempt.**
     Images such as the Hermes sandbox that intentionally exist only in the local installation remain `local` and are never queried against an external registry.
 
 ## Consequences
@@ -53,5 +59,6 @@ The configured image reference already identifies the authoritative artifact sou
 - Operator output can use readable published versions while JSON preserves exact artifact identity.
 - GitHub Releases are no longer an operational version source for container inventory merely because the source project is hosted on GitHub.
 - GHCR packages are queried as GHCR packages, Docker Hub images as Docker Hub packages, and other registries through their own Registry V2 interface.
+- Registry pagination and tag-family filtering are part of correctness, not presentation polish.
 - A registry tag discovered as newer is not automatically supported, selected or applied.
 - Compatibility/version-policy work remains a separate layer above discovery.
