@@ -24,10 +24,18 @@ The table is deliberately small. The Gherkin tag is the stable contract identifi
 | `STACK7-WEB-001` | `tests/test_openspec_contracts.py::test_STACK7_WEB_001_web_search_is_default_interface_behaviour` | real `search_web` / `fetch_url` qualification |
 | `CLI-BOUNDARY-001` | `tests/test_management_cli.py::test_cli_boundary_exposes_versioned_json_upgrade_contract` | ADR-0002 |
 | `CLI-UPGRADE-001` | `tests/test_management_cli.py::test_upgrade_check_contains_all_declared_components_and_selected_column` | `internal/upgrade-components.json` |
-| `CLI-UPGRADE-002` | `tests/test_management_cli.py::test_stack7_shorthand_select_persists_plan_without_runtime_change` | installation-local `upgrade-plan.json` |
+| `CLI-UPGRADE-002` | selection plan tests and `commands/upgrade_entry.py` | installation-local `upgrade-plan.json` |
 | `CLI-UPGRADE-003` | `tests/test_management_cli.py::test_upgrade_yes_never_auto_selects_available_versions` | ADR-0002 |
 | `CLI-UPGRADE-004` | `tests/test_management_cli.py::test_stale_plan_fails_before_execution` | structured `UPGRADE_PLAN_STALE` error |
 | `CLI-UPGRADE-005` | `tests/test_upgrade_executor.py` | targeted deploy metadata in `internal/upgrade-components.json` and recovery-first executor |
 | `CLI-UPGRADE-006` | `tests/test_upgrade_executor.py::test_target_image_preflight_rejects_missing_image` | read-only `docker manifest inspect` before recovery or `.env` mutation |
+| `CLI-POLICY-001` | `tests/test_upgrade_policy.py::test_override_is_installation_local_and_clear_restores_default` | `internal/upgrade-components.json` defaults |
+| `CLI-POLICY-002` | `tests/test_upgrade_policy.py::test_minor_series_accepts_only_newer_same_major_minor` | ADR-0004 |
+| `CLI-POLICY-003` | `tests/test_upgrade_policy.py::test_major_series_accepts_newer_same_major` | ADR-0004 |
+| `CLI-POLICY-004` | `tests/test_upgrade_policy.py::test_manual_uses_explicit_target_without_series_inference` | exact registry-target validation in `commands/upgrade_entry.py` |
+| `CLI-POLICY-005` | `tests/test_upgrade_policy.py::test_override_is_installation_local_and_clear_restores_default` | `./local-ai upgrade policy ... clear` |
+| `CLI-POLICY-006` | `tests/test_upgrade_policy.py::test_policy_change_marks_existing_selection_invalid_without_clearing_it` | `UPGRADE_TARGET_UNSUPPORTED` revalidation |
+| `CLI-POLICY-007` | `tests/test_management_cli.py::test_nonselectable_component_is_rejected` | catalog `selectable` flag remains independent |
+| `CLI-POLICY-008` | `tests/test_upgrade_executor.py::test_executor_revalidates_policy_before_target_preflight_or_mutation` | executor policy preflight |
 | `CLI-STATUS-001` | `tests/test_status.py::test_inventory_keeps_desired_deployed_and_actual_separate` | `./local-ai status` runtime inventory |
 | `CLI-STATUS-002` | `tests/test_status.py::test_drift_compares_installation_desired_with_runtime_actual` | versioned `./local-ai --json status` contract |
