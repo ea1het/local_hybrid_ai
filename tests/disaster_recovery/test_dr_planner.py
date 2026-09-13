@@ -1,3 +1,11 @@
+"""Protect read-only disaster-recovery planning, classification and preflight behavior.
+
+The planner translates manifests into dependency closure, BACKUP/REQUIRE/EXTERNAL/
+RECONSTRUCT dispositions, restore phases and metadata-only backup plans. These tests
+also prove that destination/runtime preflight is non-mutating and does not expose
+secret values or invent workflow beyond manifest-declared recovery contracts.
+"""
+
 import importlib.util
 import subprocess
 import sys
