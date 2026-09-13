@@ -58,6 +58,15 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 - `CLI-BOUNDARY-001` — `tests/test_management_cli.py::test_cli_boundary_exposes_versioned_json_upgrade_contract`; [ADR-0002](../adr/0002-single-management-cli.md).
 - `CLI-LAYOUT-001` — `tests/test_repository_layout.py::test_local_ai_is_the_supported_root_management_cli`; [ADR-0005](../adr/0005-unified-command-implementation-package.md).
 
+### Selective runtime lifecycle
+
+- `CLI-RUNTIME-001` — `tests/test_runtime_lifecycle.py` and `tests/test_management_runtime_cli.py`; live m92p qualification stopped Stack5/Dockhand without removing its container and started it back to READY/healthy.
+- `CLI-RUNTIME-002` — `tests/test_runtime_lifecycle.py`; live m92p qualification rejected stopping Stack3 while required consumers Stack6 and Stack7 were active, with RC=1 and no provider mutation.
+
+### Registry failure semantics
+
+- `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 at the registry request boundary and proves `rate_limited`/`unauthorized`/`forbidden` propagate as `available=unknown`, never `current`. Positive registry discovery is separately live-qualified against Docker Hub, GHCR and `docker.gitea.com`.
+
 ### Upgrade execution
 
 - `CLI-UPGRADE-001` — management CLI inventory coverage plus `commands/upgrade-components.json`.
