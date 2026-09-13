@@ -28,6 +28,7 @@ Feature: Common installer lifecycle
       And required runtime becomes READY before dependent work continues
       And capability reconciliation runs only for consumers affected by this operation or explicitly requested
       And a restart-causing reconcile is followed by another READY convergence
+      And lifecycle scripts are executable when invoked directly or are invoked through an explicit interpreter
       And VERIFY is the final stack-owned proof
       And an already stable provider is not spuriously redeployed merely because it was requested
 
