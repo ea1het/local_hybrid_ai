@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from commands import status
+from commands import upgrade
 from commands import upgrade_registry
 
 
@@ -110,6 +111,94 @@ class StatusStateTests(unittest.TestCase):
         self.assertEqual(rows[0]["deployed"], "8.10.0-alpine3.23")
         self.assertEqual(rows[0]["actual"], "8.10.0-alpine3.23")
         self.assertEqual(rows[0]["drift"], "yes")
+
+    def test_floating_tag_same_digest_is_proven_no_drift(self):
+        component = SimpleNamespace(stack="stack2", name="redis", container="firecrawl-redis")
+        state = SimpleNamespace(
+            current_version="8.10.1-alpine3.23",
+            available_version="8.10.1-alpine3.23",
+            local_digest="sha256:same",
+            remote_digest="sha256:same",
+        )
+        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.compose_image", return_value="redis:alpine"), \
+             mock.patch("commands.status.upgrade.running_image", return_value="redis:alpine"), \
+             mock.patch("commands.status.upgrade_registry.inspect", return_value=state):
+            rows = status.inventory(deployed_versions={})
+        self.assertEqual(rows[0]["desired"], "8.10.1-alpine3.23")
+        self.assertEqual(rows[0]["actual"], "8.10.1-alpine3.23")
+        self.assertEqual(rows[0]["drift"], "no")
+
+    def test_fixed_semantic_tag_does_not_require_registry_resolution_for_drift(self):
+        component = SimpleNamespace(stack="stack7", name="open-webui", container="open-webui")
+        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.compose_image", return_value="ghcr.io/open-webui/open-webui:v0.11.3"), \
+             mock.patch("commands.status.upgrade.running_image", return_value="ghcr.io/open-webui/open-webui:v0.11.3"), \
+             mock.patch("commands.status.upgrade_registry.inspect") as inspect_mock:
+            rows = status.inventory(deployed_versions={})
+        inspect_mock.assert_not_called()
+        self.assertEqual(rows[0]["desired"], "v0.11.3")
+        self.assertEqual(rows[0]["actual"], "v0.11.3")
+        self.assertEqual(rows[0]["drift"], "no")
+
+    def test_digest_pins_compare_immutable_identity_without_registry_resolution(self):
+        component = SimpleNamespace(stack="stack2", name="firecrawl", container="firecrawl-api")
+        desired_image = "ghcr.io/firecrawl/firecrawl@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        actual_image = "ghcr.io/firecrawl/firecrawl@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.compose_image", return_value=desired_image), \
+             mock.patch("commands.status.upgrade.running_image", return_value=actual_image), \
+             mock.patch("commands.status.upgrade_registry.inspect") as inspect_mock:
+            rows = status.inventory(deployed_versions={})
+        inspect_mock.assert_not_called()
+        self.assertEqual(rows[0]["desired"], "sha256:aaaaaaaaaaaa")
+        self.assertEqual(rows[0]["actual"], "sha256:bbbbbbbbbbbb")
+        self.assertEqual(rows[0]["drift"], "yes")
+
+    def test_status_and_upgrade_check_share_concrete_actual_for_floating_tag(self):
+        component = SimpleNamespace(
+            stack="stack2",
+            name="redis",
+            container="firecrawl-redis",
+            compose="stack2_-_web/docker-compose.yml",
+            service="redis",
+            upstream=None,
+            selectable=False,
+        )
+        state = upgrade_registry.RegistryState(
+            image="redis:alpine",
+            tracking_image="redis:alpine",
+            registry="docker.io",
+            repository="library/redis",
+            local_digest="sha256:old",
+            remote_digest="sha256:new",
+            remote_status="ok",
+            tags_status="ok",
+            current_version="8.10.0-alpine3.23",
+            available_version="8.10.1-alpine3.23",
+        )
+        record = {"availability": "registry", "default_policy": "major-series"}
+        policy_state = {"effective_policy": "major-series", "selection_valid": None}
+        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.compose_image", return_value="redis:alpine"), \
+             mock.patch("commands.status.upgrade.running_image", return_value="redis:alpine"), \
+             mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.upgrade.read_env", return_value={}), \
+             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
+             mock.patch("commands.upgrade.component_records", return_value={"stack2/redis": record}), \
+             mock.patch("commands.upgrade.compose_image", return_value="redis:alpine"), \
+             mock.patch("commands.upgrade.running_image", return_value="redis:alpine"), \
+             mock.patch("commands.upgrade.upgrade_policy.selection_status", return_value=policy_state), \
+             mock.patch("commands.upgrade_registry.inspect", return_value=state):
+            status_row = status.inventory(deployed_versions={})[0]
+            upgrade_row = upgrade.inventory(query_upstream=True)[0]
+        self.assertEqual(status_row["actual"], "8.10.0-alpine3.23")
+        self.assertEqual(upgrade_row["actual_display"], "8.10.0-alpine3.23")
+        self.assertEqual(status_row["actual"], upgrade_row["actual_display"])
 
     def test_floating_tag_registry_failure_never_claims_no_drift(self):
         component = SimpleNamespace(stack="stack2", name="redis", container="firecrawl-redis")
