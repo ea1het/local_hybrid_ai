@@ -97,10 +97,12 @@ Resumes the narrowly defined historical recovery path after a known post-reconci
 
 | Field | Meaning |
 |---|---|
-| `DESIRED` | Version encoded by this installation's declarative Compose/environment configuration. |
+| `DESIRED` | Effective version represented by this installation's declarative Compose/environment configuration. Fixed tags/digests are shown directly. Broad mutable tags such as `alpine`, major-only or major.minor tracking lines are resolved through their owning registry when possible. |
 | `DEPLOYED` | Last version recorded by a successful guarded upgrade. If no guarded-upgrade history exists yet, the observed runtime version is used as the installation's adoption baseline. Components for which versioned deployment does not apply report `n/a`. `unknown` is reserved for a genuinely indeterminate deployed state. |
-| `ACTUAL` | Version observed from the running container image. |
-| `DRIFT` | Fast Desired-versus-Actual decision: `yes` means they differ, `no` means they match, and `n/a` means drift is not applicable because the component has no meaningful desired version. |
+| `ACTUAL` | Version observed from the running container image. For mutable tracking tags, registry-native digest/tag mapping is used to expose the concrete running version rather than repeating the mutable tag name. |
+| `DRIFT` | Fast Desired-versus-Actual decision: `yes` means they differ, `no` means they match, and `n/a` means drift cannot meaningfully be evaluated. |
+
+For fixed references, Drift compares the fixed desired identity with the observed runtime identity. For mutable tracking references, Drift is based on immutable local-versus-remote digest evidence whenever available. If registry resolution is unavailable, `status` does **not** claim `no` merely because both source and runtime strings contain the same mutable tag; it reports `n/a` instead.
 
 `DEPLOYED` remains historical evidence once guarded-upgrade history exists; the pre-history adoption fallback prevents an already-running installation from being mislabeled as unknown merely because it predates the executor. `ACTUAL` is never synthesized from desired state.
 
