@@ -32,6 +32,7 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 ## Development
 
 - [Developer documentation](devel-docs/README.md)
+- [Documentation maintenance standard](devel-docs/documentation.md)
 - [Testing and qualification](devel-docs/testing.md)
 - [ADR index](devel-docs/adr/README.md)
 - [SDR index](devel-docs/sdr/README.md)
@@ -50,3 +51,6 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 6. Wide tables are avoided. Prefer compact tables with short cells, followed by prose for detail.
 7. Mermaid diagrams use GitHub-supported syntax and model one concern per diagram. Cross-stack diagrams identify required dependencies separately from optional capability relationships.
 8. Historical documents are retained only when they contain knowledge not represented by current canonical documentation. Once migrated, obsolete legacy copies are deleted.
+9. Python modules and tests start with module-level documentation that explains responsibility, behavioural scope and important negative boundaries.
+
+The complete maintenance rules are defined in [the documentation standard](devel-docs/documentation.md).
