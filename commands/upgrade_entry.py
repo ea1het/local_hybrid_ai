@@ -1,3 +1,12 @@
+"""Operator-facing upgrade command orchestration behind ``./local-ai upgrade``.
+
+This module validates explicit selections, effective compatibility policy and
+immutable registry target identity before delegating mutation to the guarded
+executor. It also implements upgrade-policy inspection/mutation and stable
+human/JSON command responses. Registry discovery never implies consent and
+``--yes`` never broadens the set of already selected targets.
+"""
+
 from __future__ import annotations
 
 import json
