@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,6 +41,14 @@ class RuntimeResult:
 def _required_containers(sid: int, lifecycle: dict) -> tuple[str, ...]:
     entry = lifecycle["stacks"][str(sid)]
     return tuple(entry["required_containers"])
+
+
+def _owned_containers(manifest: dict) -> tuple[str, ...]:
+    return tuple(
+        value.split(":", 1)[1]
+        for value in manifest.get("owns", [])
+        if isinstance(value, str) and value.startswith("container:")
+    )
 
 
 def _runtime_running(sid: int, lifecycle: dict) -> bool:
@@ -112,6 +121,7 @@ def execute(action: str, selector: str) -> RuntimeResult:
     sid = _resolve_one(selector, manifests)
     manifest = manifests[sid]
     required = _required_containers(sid, lifecycle)
+    owned = _owned_containers(manifest)
     if not required:
         raise RuntimeLifecycleError(
             "STACK_RUNTIME_EMPTY",
@@ -154,7 +164,7 @@ def execute(action: str, selector: str) -> RuntimeResult:
         except install.InstallerError as exc:
             raise RuntimeLifecycleError("STACK_START_NOT_READY", str(exc)) from exc
 
-    return RuntimeResult(action, sid, directory, required)
+    return RuntimeResult(action, sid, directory, owned)
 
 
 def main(action: str, selector: str, *, json_output: bool = False) -> int:
@@ -171,7 +181,7 @@ def main(action: str, selector: str, *, json_output: bool = False) -> int:
                 "error": {"code": code, "message": message},
             }, indent=2))
         else:
-            print(f"ERROR [{code}]: {message}", file=__import__("sys").stderr)
+            print(f"ERROR [{code}]: {message}", file=sys.stderr)
         return 1
 
     if json_output:
