@@ -1,6 +1,6 @@
 # DR qualification status
 
-This file records evidence, not design intent. Read it with [howto.md](howto.md), [../../bkp-dr/README.md](../../bkp-dr/README.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../../adr/](../../adr/) and [../../sdr/](../../sdr/).
+This file records evidence, not design intent. Read it with [howto.md](howto.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../devel-docs/adr/](../devel-docs/adr/) and [../devel-docs/sdr/](../devel-docs/sdr/). The private DR implementation and schemas now live under [`../../commands/recovery/`](../../commands/recovery/).
 
 ## Core clean-target recovery — PASS
 
