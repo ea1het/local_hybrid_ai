@@ -19,12 +19,14 @@ class Stack7OpenWebUIContractTests(unittest.TestCase):
         self.assertIn("ai.chat-ui", data["provides"])
         self.assertIn("container:open-webui", data["owns"])
 
-    def test_lifecycle_has_stack_owned_readiness(self):
+    def test_lifecycle_has_stack_owned_readiness_and_policy(self):
         lifecycle = json.loads(LIFECYCLE.read_text(encoding="utf-8"))["stacks"]["7"]
         self.assertEqual(lifecycle["directory"], "stack7_-_open-webui")
         self.assertEqual(lifecycle["required_containers"], ["open-webui"])
         self.assertIn(["bash", "./02-wait-ready.sh"], lifecycle["deploy"])
+        self.assertIn(["python3", "./03-reconcile-model-policy.py"], lifecycle["reconcile"])
         self.assertIn(["bash", "./02-wait-ready.sh"], lifecycle["verify"])
+        self.assertIn(["python3", "./04-verify-model-policy.py"], lifecycle["verify"])
 
     def test_compose_has_no_host_ports_and_uses_litellm(self):
         compose = (STACK / "docker-compose.yml").read_text(encoding="utf-8")
@@ -44,15 +46,25 @@ class Stack7OpenWebUIContractTests(unittest.TestCase):
         self.assertNotIn("ENABLE_PERSISTENT_CONFIG", compose)
         self.assertNotIn("BYPASS_MODEL_ACCESS_CONTROL", compose)
 
-    def test_model_policy_reconciler_is_stack_owned(self):
+    def test_model_policy_reconciler_is_stack_owned_and_bootstrap_safe(self):
         reconcile = (STACK / "03-reconcile-model-policy.py").read_text(encoding="utf-8")
         self.assertIn('MODEL_ID = "basic_autorouter"', reconcile)
         self.assertIn('"web_search": True', reconcile)
         self.assertIn('"defaultFeatureIds": ["web_search"]', reconcile)
         self.assertIn('principal_id="*"', reconcile)
         self.assertIn('permission="read"', reconcile)
+        self.assertIn("DEFER basic_autorouter policy reconciliation", reconcile)
         self.assertNotIn("sqlite3", reconcile)
         self.assertNotIn("BYPASS_MODEL_ACCESS_CONTROL", reconcile)
+
+    def test_model_policy_verifier_is_read_only_and_bootstrap_safe(self):
+        verify = (STACK / "04-verify-model-policy.py").read_text(encoding="utf-8")
+        self.assertIn("get_grants_by_resource", verify)
+        self.assertIn('"web_search" not in feature_ids', verify)
+        self.assertIn("DEFER basic_autorouter policy verification", verify)
+        self.assertNotIn("grant_access(", verify)
+        self.assertNotIn("db.commit", verify)
+        self.assertNotIn("sqlite3", verify)
 
     def test_recovery_uses_quiesced_sensitive_archive(self):
         data = json.loads((STACK / "manifest.json").read_text(encoding="utf-8"))

@@ -19,8 +19,10 @@ flowchart LR
 
 `/app/backend/data` is persistent sensitive state and is archived by DR; `OPENWEBUI_SECRET_KEY` is persistent identity in protected configuration. The first Stack7-aware global backup and isolated restore are qualified in [../docs/dr/status.md](../docs/dr/status.md).
 
-After the first real administrator exists, run the idempotent policy reconciler:
+Stack7 policy reconciliation is part of the supported `local-ai` lifecycle. Before the first real administrator exists it is intentionally deferred without failing initial deployment. After the administrator account has been created, converge and verify the policy through the public management boundary:
 
 ```bash
-python3 stack7_-_open-webui/03-reconcile-model-policy.py
+./local-ai install 7 --reconcile --yes
 ```
+
+The lifecycle then ensures that `basic_autorouter` is active, enables `web_search` by default and grants explicit public read access. The stack-owned Python reconciliation and verification scripts are implementation details and should not be invoked directly by operators.

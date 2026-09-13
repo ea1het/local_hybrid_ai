@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Reconcile Stack7-owned Open WebUI policy for basic_autorouter.
 
-Run after the first Open WebUI administrator exists. The script is idempotent,
-uses Open WebUI's own ORM/data layer inside the pinned container, never touches
-LiteLLM, and never writes SQLite directly.
+The operation is intentionally safe before the first administrator exists: in
+that bootstrap state it reports DEFER and exits successfully. Once an
+administrator exists it is idempotent, uses Open WebUI's own ORM/data layer
+inside the pinned container, never touches LiteLLM, and never writes SQLite
+directly.
 """
 
 from __future__ import annotations
@@ -49,9 +51,8 @@ async def main():
         )
         admin = admin_result.scalars().first()
         if admin is None:
-            raise RuntimeError(
-                "No Open WebUI admin exists yet. Create the first admin account, then rerun this reconciler."
-            )
+            print("DEFER basic_autorouter policy reconciliation: no Open WebUI admin exists yet")
+            return
 
         model_result = await db.execute(select(Model).where(Model.id == MODEL_ID))
         model = model_result.scalars().first()

@@ -81,14 +81,22 @@ def main(argv: list[str] | None = None) -> int:
     json_output = "--json" in raw
     raw = [arg for arg in raw if arg != "--json"]
 
-    # argparse interprets unknown option-looking tokens before a REMAINDER
-    # positional. Install is a transparent facade over its private engine, so
-    # dispatch it before argparse while keeping ./local-ai as the public API.
+    # Option-bearing facade commands must be dispatched before argparse: an
+    # argparse subparser with REMAINDER still rejects unknown option-looking
+    # tokens such as backup --destination before they reach the private engine.
+    # Keep ./local-ai as the sole public API while forwarding those arguments
+    # unchanged to the implementation command.
     if raw and raw[0] == "install":
         if json_output:
             _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
             return 2
         return _run_internal(ROOT / "commands" / "install.py", raw[1:])
+
+    if raw and raw[0] == "backup":
+        args = list(raw[1:])
+        if json_output and "--json" not in args:
+            args.append("--json")
+        return _run_internal(RECOVERY / "backup-all.py", args)
 
     parser = build_parser()
     ns = parser.parse_args(raw)
