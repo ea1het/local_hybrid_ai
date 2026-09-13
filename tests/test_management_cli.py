@@ -21,6 +21,12 @@ class ManagementCliContractTests(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
         )
 
+    def test_install_plan_options_pass_through_public_cli(self):
+        cp = self.run_cli("install", "--plan", "7")
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertIn("Resolved dependency plan:", cp.stdout)
+        self.assertIn("No changes made.", cp.stdout)
+
     def test_cli_boundary_exposes_versioned_json_upgrade_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
