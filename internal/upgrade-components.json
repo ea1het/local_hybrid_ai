@@ -23,7 +23,7 @@
       {"id":"gitea","service":"gitea","container":"gitea","compose":"stack4_-_gitea/docker-compose.yml","upstream":"go-gitea/gitea","selectable":false,"default_policy":"minor-series"}
     ]},
     {"id":"stack5","components":[
-      {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand","selectable":false,"default_policy":"minor-series"}
+      {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand","selectable":false,"default_policy":"major-series"}
     ]},
     {"id":"stack6","components":[
       {"id":"hermes","service":"hermes","container":"hermes","compose":"stack6_-_hermes/docker-compose.yml","upstream":"NousResearch/hermes-agent","default_policy":"major-series","recovery_required":false,"apply":{"type":"env-version","env_key":"HERMES_VERSION","image_env_key":"HERMES_IMAGE","deploy":["docker","compose","up","-d","hermes"]}},
