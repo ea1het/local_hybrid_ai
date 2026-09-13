@@ -43,21 +43,17 @@ class StatusStateTests(unittest.TestCase):
 
     def test_inventory_keeps_desired_deployed_and_actual_separate(self):
         component = mock.Mock(stack="stack6", name="hermes")
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp)
-            with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
-                 mock.patch("commands.status.upgrade.read_env", return_value={}), \
-                 mock.patch("commands.status.upgrade.compose_image", return_value="repo:v2"), \
-                 mock.patch("commands.status.upgrade.running_image", return_value="repo:v1"), \
-                 mock.patch("commands.status.upgrade.runtime_root", return_value=runtime), \
-                 mock.patch("commands.status._deployed_versions", return_value={"stack6/hermes": "v1"}):
-                rows = status.inventory()
+        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.compose_image", return_value="repo:v2"), \
+             mock.patch("commands.status.upgrade.running_image", return_value="repo:v1"):
+            rows = status.inventory(deployed_versions={"stack6/hermes": "v1"})
         self.assertEqual(rows[0]["desired"], "v2")
         self.assertEqual(rows[0]["deployed"], "v1")
         self.assertEqual(rows[0]["actual"], "v1")
         self.assertEqual(rows[0]["drift"], "drift")
 
-    def test_inventory_uses_runtime_root_for_deployed_history(self):
+    def test_inventory_uses_explicit_runtime_root_for_deployed_history(self):
         component = mock.Mock(stack="stack6", name="hermes")
         with tempfile.TemporaryDirectory() as tmp:
             runtime = Path(tmp)
@@ -70,9 +66,8 @@ class StatusStateTests(unittest.TestCase):
             with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
                  mock.patch("commands.status.upgrade.read_env", return_value={}), \
                  mock.patch("commands.status.upgrade.compose_image", return_value="repo:v3"), \
-                 mock.patch("commands.status.upgrade.running_image", return_value="repo:v3"), \
-                 mock.patch("commands.status.upgrade.runtime_root", return_value=runtime):
-                rows = status.inventory()
+                 mock.patch("commands.status.upgrade.running_image", return_value="repo:v3"):
+                rows = status.inventory(runtime_root=runtime)
         self.assertEqual(rows[0]["deployed"], "v3")
         self.assertEqual(rows[0]["drift"], "ok")
 
