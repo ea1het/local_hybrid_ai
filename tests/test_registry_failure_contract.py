@@ -20,8 +20,8 @@ class RegistryFailureContractTests(unittest.TestCase):
                 return_value=(status, {}, b""),
             ):
                 probe = upgrade_registry.registry_tags("redis:alpine")
-            self.assertEqual(probe.tags, ())
-            self.assertEqual(probe.status, expected)
+                self.assertEqual(probe.tags, ())
+                self.assertEqual(probe.status, expected)
 
     def test_manifest_probe_preserves_rate_limit_and_auth_failures(self):
         for status, expected in ((429, "rate_limited"), (401, "unauthorized"), (403, "forbidden")):
@@ -30,8 +30,8 @@ class RegistryFailureContractTests(unittest.TestCase):
                 return_value=(status, {}, b""),
             ):
                 probe = upgrade_registry.manifest_probe("redis:alpine")
-            self.assertIsNone(probe.digest)
-            self.assertEqual(probe.status, expected)
+                self.assertIsNone(probe.digest)
+                self.assertEqual(probe.status, expected)
 
     def test_inventory_never_renders_registry_failure_as_current(self):
         component = upgrade.Component(
@@ -63,10 +63,10 @@ class RegistryFailureContractTests(unittest.TestCase):
                  mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
                  mock.patch("commands.upgrade.running_image", return_value="haproxy:3.0-alpine"), \
                  mock.patch("commands.upgrade.upgrade_registry.inspect", return_value=state):
-                rows, _ = upgrade.inventory(query_upstream=True)
-            self.assertEqual(rows[0]["available"], "unknown")
-            self.assertNotEqual(upgrade._human_available(rows[0]), "current")
-            self.assertEqual(rows[0]["registry"]["remote_status"], status)
+                rows = upgrade.inventory(query_upstream=True)
+                self.assertEqual(rows[0]["available"], "unknown")
+                self.assertNotEqual(upgrade._human_available(rows[0]), "current")
+                self.assertEqual(rows[0]["registry"]["remote_status"], status)
 
 
 if __name__ == "__main__":
