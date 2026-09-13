@@ -53,9 +53,12 @@ def _drift(desired: str, actual: str) -> str:
     return "ok" if desired == actual else "drift"
 
 
-def inventory() -> list[dict]:
+def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, str] | None = None) -> list[dict]:
+    """Build status without hiding state dependencies behind global runtime lookups."""
     env = upgrade.read_env()
-    deployed = _deployed_versions(upgrade.runtime_root())
+    if deployed_versions is None:
+        deployed_versions = _deployed_versions(runtime_root or upgrade.runtime_root())
+
     rows: list[dict] = []
     for component in upgrade.load_catalog():
         desired = upgrade.version_from_image(upgrade.compose_image(component, env))
@@ -64,7 +67,7 @@ def inventory() -> list[dict]:
             "stack": component.stack,
             "component": component.name,
             "desired": desired,
-            "deployed": deployed.get(upgrade.key(component), "unknown"),
+            "deployed": deployed_versions.get(upgrade.key(component), "unknown"),
             "actual": actual,
             "drift": _drift(desired, actual),
         })
