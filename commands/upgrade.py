@@ -209,7 +209,6 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
 
 
 def human_stack_id(stack: str) -> str:
-    """Compact presentation only; machine/API identity remains e.g. stack7."""
     match = re.fullmatch(r"stack(\d+)", stack)
     return match.group(1) if match else stack
 
@@ -320,6 +319,7 @@ def execute_selected(*, json_output: bool) -> int:
             selections=selections,
             components=component_records(),
             plan_path=plan_path(),
+            quiet=json_output,
         )
     except upgrade_executor.UpgradeExecutionError as exc:
         raise UpgradeError(str(exc), code=exc.code, recovery_point=exc.recovery_point) from exc
