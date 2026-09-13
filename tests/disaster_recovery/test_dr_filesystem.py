@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
+ROOT = Path(__file__).resolve().parents[2] / "commands" / "recovery"
 MODULE_PATH = ROOT / "dr_filesystem.py"
 SPEC = importlib.util.spec_from_file_location("dr_filesystem", MODULE_PATH)
 dr_filesystem = importlib.util.module_from_spec(SPEC)
