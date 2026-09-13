@@ -1,3 +1,11 @@
+"""Cross-stack contract tests for Stack7's optional Stack2 web capabilities.
+
+These tests prove Stack7 declares search/extraction as optional capabilities,
+points at Stack2-owned SearXNG/Firecrawl services without re-owning them, and that
+the SearXNG provider exposes the JSON response format required by the consumer.
+They protect capability wiring without turning Stack2 into a required dependency.
+"""
+
 import json
 import unittest
 from pathlib import Path
