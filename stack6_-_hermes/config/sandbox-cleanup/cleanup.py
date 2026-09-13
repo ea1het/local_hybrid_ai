@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Track, quarantine and remove stale Stack6 sandbox workspace objects safely.
+
+The cleanup sidecar maintains generation-bound SQLite state for top-level sandbox
+objects, observes filesystem activity with inotify, and performs scheduled
+two-phase cleanup: stale objects are quarantined first and deleted only after a
+separate retention window. Protected objects and generation mismatches fail
+closed. The process is scoped to the Stack6 workspace and does not provide
+platform- or Docker-management authority to Hermes.
+"""
+
 from __future__ import annotations
 
 import os
