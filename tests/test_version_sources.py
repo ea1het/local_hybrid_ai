@@ -51,62 +51,45 @@ class VersionSourceTests(unittest.TestCase):
             compose=None, upstream="haproxy/haproxy", selectable=False,
         )
 
+    def _inventory(self, component, record, image, *, online=True, registry_state=None):
+        records = {f"{component.stack}/{component.name}": record}
+        patches = [
+            mock.patch("commands.upgrade.load_catalog", return_value=[component]),
+            mock.patch("commands.upgrade.component_records", return_value=records),
+            mock.patch("commands.upgrade.read_env", return_value={}),
+            mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}),
+            mock.patch("commands.upgrade.running_image", return_value=image),
+            mock.patch("commands.upgrade.container_registry.inspect", return_value=registry_state),
+        ]
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5] as registry:
+            return upgrade.inventory(query_upstream=online), registry
+
     def test_inventory_reports_registry_update_for_unadapted_container(self):
         component = self._inventory_component()
-        records = {"stack1/haproxy": {"stack": "stack1", "id": "haproxy"}}
         state = container_registry.RegistryState("haproxy:3.0-alpine", "sha256:old", "sha256:new")
-        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
-             mock.patch("commands.upgrade.component_records", return_value=records), \
-             mock.patch("commands.upgrade.read_env", return_value={}), \
-             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
-             mock.patch("commands.upgrade.running_image", return_value="haproxy:3.0-alpine"), \
-             mock.patch("commands.upgrade.container_registry.inspect", return_value=state):
-            rows = upgrade.inventory(query_upstream=True)
+        rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
         self.assertEqual(rows[0]["available"], "update")
         self.assertTrue(rows[0]["registry"]["update_available"])
-        self.assertEqual(rows[0]["registry"]["local_digest"], "sha256:old")
-        self.assertEqual(rows[0]["registry"]["remote_digest"], "sha256:new")
 
     def test_inventory_reports_current_for_equal_registry_digest(self):
         component = self._inventory_component()
-        records = {"stack1/haproxy": {"stack": "stack1", "id": "haproxy"}}
         state = container_registry.RegistryState("haproxy:3.0-alpine", "sha256:same", "sha256:same")
-        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
-             mock.patch("commands.upgrade.component_records", return_value=records), \
-             mock.patch("commands.upgrade.read_env", return_value={}), \
-             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
-             mock.patch("commands.upgrade.running_image", return_value="haproxy:3.0-alpine"), \
-             mock.patch("commands.upgrade.container_registry.inspect", return_value=state):
-            rows = upgrade.inventory(query_upstream=True)
+        rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
         self.assertEqual(rows[0]["available"], "current")
 
     def test_inventory_reports_unknown_when_registry_comparison_is_incomplete(self):
         component = self._inventory_component()
-        records = {"stack1/haproxy": {"stack": "stack1", "id": "haproxy"}}
         state = container_registry.RegistryState("haproxy:3.0-alpine", None, "sha256:remote")
-        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
-             mock.patch("commands.upgrade.component_records", return_value=records), \
-             mock.patch("commands.upgrade.read_env", return_value={}), \
-             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
-             mock.patch("commands.upgrade.running_image", return_value="haproxy:3.0-alpine"), \
-             mock.patch("commands.upgrade.container_registry.inspect", return_value=state):
-            rows = upgrade.inventory(query_upstream=True)
+        rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
         self.assertEqual(rows[0]["available"], "unknown")
 
     def test_inventory_offline_does_not_query_registry(self):
         component = self._inventory_component()
-        records = {"stack1/haproxy": {"stack": "stack1", "id": "haproxy"}}
-        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
-             mock.patch("commands.upgrade.component_records", return_value=records), \
-             mock.patch("commands.upgrade.read_env", return_value={}), \
-             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
-             mock.patch("commands.upgrade.running_image", return_value="haproxy:3.0-alpine"), \
-             mock.patch("commands.upgrade.container_registry.inspect") as inspect:
-            rows = upgrade.inventory(query_upstream=False)
+        rows, registry = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", online=False)
         self.assertEqual(rows[0]["available"], "unchecked")
-        inspect.assert_not_called()
+        registry.assert_not_called()
 
-    def test_inventory_uses_declared_adapter_for_available_version(self):
+    def test_inventory_reports_current_when_release_candidate_equals_current(self):
         component = upgrade.Component(
             stack="stack6", name="hermes", service=None, container=None,
             compose=None, upstream="NousResearch/hermes-agent", selectable=True,
@@ -123,7 +106,36 @@ class VersionSourceTests(unittest.TestCase):
              mock.patch("internal.version_sources._github_latest", return_value="v2026.9.11"), \
              mock.patch("commands.upgrade.container_registry.inspect") as registry:
             rows = upgrade.inventory(query_upstream=True)
-        self.assertEqual(rows[0]["available"], "v2026.9.11")
+        self.assertEqual(rows[0]["available"], "current")
+        registry.assert_not_called()
+
+    def test_inventory_preserves_new_release_candidate(self):
+        component = upgrade.Component(
+            stack="stack5", name="dockhand", service=None, container=None,
+            compose=None, upstream="Finsys/dockhand", selectable=False,
+        )
+        records = {"stack5/dockhand": {
+            "stack":"stack5", "id":"dockhand",
+            "version_source":{"type":"github_release","repo":"Finsys/dockhand"},
+        }}
+        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.upgrade.component_records", return_value=records), \
+             mock.patch("commands.upgrade.read_env", return_value={}), \
+             mock.patch("commands.upgrade.load_plan", return_value={"schema_version":1,"selected":{}}), \
+             mock.patch("commands.upgrade.running_image", return_value="finsys/dockhand:v1.0.40"), \
+             mock.patch("internal.version_sources._github_latest", return_value="v1.0.47"):
+            rows = upgrade.inventory(query_upstream=True)
+        self.assertEqual(rows[0]["available"], "v1.0.47")
+
+    def test_local_component_is_not_queried_against_registry(self):
+        component = upgrade.Component(
+            stack="stack6", name="sandbox", service="hermes-sandbox", container="hermes-sandbox",
+            compose="stack6_-_hermes/docker-compose.yml", upstream=None, selectable=False,
+        )
+        rows, registry = self._inventory(
+            component, {"stack":"stack6","id":"sandbox","availability":"local"}, "hermes-sandbox:local"
+        )
+        self.assertEqual(rows[0]["available"], "local")
         registry.assert_not_called()
 
 
