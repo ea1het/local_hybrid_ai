@@ -1,3 +1,11 @@
+"""Compatibility-policy tests for project defaults and installation overrides.
+
+These tests define the three supported policy modes, monotonic version rules,
+installation-local override persistence/clear behaviour, and the requirement that
+policy changes invalidate incompatible selections without silently deleting them.
+They do not perform registry discovery or execute upgrades.
+"""
+
 from __future__ import annotations
 
 import json
