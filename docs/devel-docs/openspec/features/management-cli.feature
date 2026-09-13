@@ -95,14 +95,18 @@ Feature: Single management CLI anticorruption boundary
       When the operator runs "./local-ai status"
       Then every declared component reports Desired, Deployed and Actual independently
       And Desired comes from installation-owned configuration
+      And fixed desired image identities remain fixed version or digest identities
+      And mutable tracking tags are resolved through the same owning registry used by upgrade discovery when possible
       And Deployed is the latest successfully recorded guarded upgrade when known
-      And a component without guarded-upgrade history adopts its observed runtime as the pre-history deployment baseline
+      And a component without guarded-upgrade history adopts its observed concrete runtime version as the pre-history deployment baseline
       And versioned deployment that does not apply is represented as n/a rather than unknown
       And Actual comes from the observed runtime image
+      And a mutable runtime tag is displayed as its concrete registry-mapped running version when that mapping is available
       And Drift compares Desired with Actual
       And Drift is yes when Desired and Actual differ
       And Drift is no when Desired and Actual match
-      And Drift is n/a when Desired has no meaningful version
+      And Drift is n/a when drift is not meaningful or a mutable-tag comparison cannot be proven
+      And equal mutable tag strings alone never prove no drift
       And an upgrade selection is not treated as desired or deployed state
 
     @CLI-STATUS-002
