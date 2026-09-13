@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import sys
 
-from commands import upgrade
-from internal import container_registry, upgrade_executor, upgrade_policy
+from commands import upgrade, upgrade_executor, upgrade_policy, upgrade_registry
 
 
 def _component_record(component) -> dict:
@@ -29,18 +28,22 @@ def _target_reference(component, version: str, env: dict[str, str]) -> str:
             f"cannot determine image repository for {upgrade.key(component)}",
             code="UPGRADE_TARGET_NOT_AVAILABLE",
         )
-    return container_registry.parse_reference(image).with_tag(version)
+    return upgrade_registry.parse_reference(image).with_tag(version)
 
 
-def _validate_target(component, current: str, version: str, env: dict[str, str]) -> str:
+def _probe_target(component, version: str, env: dict[str, str]) -> tuple[str, str]:
     target_ref = _target_reference(component, version, env)
-    probe = container_registry.manifest_probe(target_ref)
+    probe = upgrade_registry.manifest_probe(target_ref)
     if probe.status != "ok" or not probe.digest:
         raise upgrade.UpgradeError(
             f"target image is not available for {upgrade.key(component)}: {target_ref} ({probe.status})",
             code="UPGRADE_TARGET_NOT_AVAILABLE",
         )
+    return target_ref, probe.digest
 
+
+def _validate_target(component, current: str, version: str, env: dict[str, str]) -> tuple[str, str, str]:
+    target_ref, target_digest = _probe_target(component, version, env)
     _, _, effective = _effective_policy(component)
     if not upgrade_policy.target_supported(effective, current, version):
         newer = upgrade_policy.target_is_newer(current, version)
@@ -53,7 +56,7 @@ def _validate_target(component, current: str, version: str, env: dict[str, str])
             f"target {version} is outside {effective} policy for {upgrade.key(component)}",
             code="UPGRADE_TARGET_UNSUPPORTED",
         )
-    return effective
+    return effective, target_ref, target_digest
 
 
 def select(stack: str, component_name: str | None, version: str) -> int:
@@ -65,7 +68,7 @@ def select(stack: str, component_name: str | None, version: str) -> int:
             f"{component.stack}/{component.name} is already at {version}",
             code="UPGRADE_ALREADY_CURRENT",
         )
-    effective = _validate_target(component, current, version, env)
+    effective, target_ref, target_digest = _validate_target(component, current, version, env)
     plan = upgrade.load_plan()
     plan["selected"][upgrade.key(component)] = {
         "stack": component.stack,
@@ -73,9 +76,14 @@ def select(stack: str, component_name: str | None, version: str) -> int:
         "current_at_selection": current,
         "version": version,
         "policy_at_selection": effective,
+        "target_image": target_ref,
+        "target_digest": target_digest,
     }
     upgrade.save_plan(plan)
-    print(f"Selected {component.stack}/{component.name}: {current} -> {version} ({effective})")
+    print(
+        f"Selected {component.stack}/{component.name}: {current} -> {version} "
+        f"({effective}, {target_digest})"
+    )
     return 0
 
 
@@ -91,6 +99,36 @@ def clear(stack: str, component_name: str | None) -> int:
 def selected_records() -> list[dict]:
     plan = upgrade.load_plan()
     return [dict(value) for _, value in sorted(plan["selected"].items())]
+
+
+def _validate_immutable_target(component, selection: dict, env: dict[str, str]) -> None:
+    target = selection.get("version")
+    stored_ref = selection.get("target_image")
+    stored_digest = selection.get("target_digest")
+    if not all(isinstance(value, str) and value for value in (target, stored_ref, stored_digest)):
+        raise upgrade.UpgradeError(
+            f"upgrade selection predates immutable target identity for {upgrade.key(component)}; reselect the target",
+            code="UPGRADE_PLAN_STALE",
+        )
+
+    target_ref = _target_reference(component, target, env)
+    if target_ref != stored_ref:
+        raise upgrade.UpgradeError(
+            f"target image reference changed for {upgrade.key(component)}: selected {stored_ref}, now {target_ref}",
+            code="UPGRADE_PLAN_STALE",
+        )
+
+    probe = upgrade_registry.manifest_probe(target_ref)
+    if probe.status != "ok" or not probe.digest:
+        raise upgrade.UpgradeError(
+            f"selected target is no longer available for {upgrade.key(component)}: {target_ref} ({probe.status})",
+            code="UPGRADE_TARGET_NOT_AVAILABLE",
+        )
+    if probe.digest != stored_digest:
+        raise upgrade.UpgradeError(
+            f"selected target tag moved for {upgrade.key(component)}: {stored_digest} -> {probe.digest}",
+            code="UPGRADE_TARGET_MOVED",
+        )
 
 
 def validate_selected_baselines(selections: list[dict]) -> None:
@@ -134,6 +172,7 @@ def validate_selected_baselines(selections: list[dict]) -> None:
                 f"selected target {target} is no longer permitted by {effective} policy for {component_key}",
                 code="UPGRADE_TARGET_UNSUPPORTED",
             )
+        _validate_immutable_target(component, selection, env)
 
 
 def execute_selected(*, json_output: bool) -> int:
@@ -292,9 +331,11 @@ def policy_command(args: list[str], *, json_output: bool) -> int:
         "command": "upgrade.policy",
         "success": True,
         "action": action or "show",
-        "previous_effective_policy": before["effective_policy"],
         **after,
     }
+    if action:
+        payload["previous_effective_policy"] = before["effective_policy"]
+
     if json_output:
         print(json.dumps(payload, indent=2, sort_keys=True))
     elif action:
