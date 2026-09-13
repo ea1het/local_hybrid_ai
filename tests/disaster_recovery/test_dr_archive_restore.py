@@ -1,3 +1,10 @@
+"""Protect safe verification and extraction semantics for DR archive artifacts.
+
+The suite checks checksum integrity, source equivalence, traversal/symlink defenses,
+temporary cleanup and truthful reporting that verification does not modify live
+runtime. It validates the archive-restore adapter independently from full restore.
+"""
+
 import datetime as dt
 import json
 import os
