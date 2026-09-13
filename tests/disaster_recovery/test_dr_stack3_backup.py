@@ -1,3 +1,10 @@
+"""Protect Stack3 recovery artifacts and restore-verification selection.
+
+Stack3 recovery depends on Stack0 identity plus a PostgreSQL custom dump and the
+externalized LiteLLM salt. These tests guard exact artifact paths, dependency-complete
+resource selection, checksum integrity and unambiguous database-artifact lookup.
+"""
+
 import hashlib
 import json
 import tempfile
