@@ -4,13 +4,14 @@ The repository keeps executable contracts close to the code and longer operation
 
 ```mermaid
 flowchart LR
-    Root[README.md] --> Stacks[stack*/README.md]
+    Root[README.md] --> Stacks[stack README files]
     Root --> Install[docs/installation.md]
     Root --> Upgrade[docs/upgrade-policy.md]
     Root --> DR[docs/dr/]
-    Root --> ADR[adr/]
-    Root --> SDR[sdr/]
-    Root --> Spec[openspec/]
+    Root --> Dev[docs/devel-docs/]
+    Dev --> ADR[adr/]
+    Dev --> SDR[sdr/]
+    Dev --> Spec[openspec/]
 ```
 
 ## What lives where
@@ -23,8 +24,9 @@ flowchart LR
 - `configuration/`: configuration and secret-handling documentation.
 - `a2aknowledge.md`: continuity/handoff context for AI-assisted work.
 - `pending.md`: active backlog and closed qualification evidence.
-- `adr/`: architectural decisions.
-- `sdr/`: security decisions and accepted risk.
-- `openspec/`: executable-oriented behaviour specification linked to tests.
+- `devel-docs/adr/`: architectural decisions.
+- `devel-docs/sdr/`: security decisions and accepted risk.
+- `devel-docs/openspec/`: executable-oriented behaviour specification linked to tests.
+- `devel-docs/testing.md`: repository validation and qualification guidance.
 
-Historical verbose per-stack Spanish documents are retained under `docs/stacks/legacy/`; the canonical stack documentation is each stack's `README.md`.
+Historical verbose per-stack Spanish documents are retained under `stacks/legacy/`; the canonical stack documentation is each stack's `README.md`.
