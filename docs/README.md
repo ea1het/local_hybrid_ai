@@ -6,6 +6,7 @@ The repository keeps executable contracts close to the code and longer operation
 flowchart LR
     Root[README.md] --> Stacks[stack*/README.md]
     Root --> Install[docs/installation.md]
+    Root --> Upgrade[docs/upgrade-policy.md]
     Root --> DR[docs/dr/]
     Root --> ADR[adr/]
     Root --> SDR[sdr/]
@@ -15,7 +16,8 @@ flowchart LR
 ## What lives where
 
 - `stack*/README.md`: short contract for one stack: purpose, dependencies, owned runtime, persistence and lifecycle.
-- `installation.md`: operator installation flow.
+- `installation.md`: operator installation and guarded-upgrade flow.
+- `upgrade-policy.md`: registry availability versus compatibility policy, installation overrides and policy CLI.
 - `dr/`: disaster-recovery design, evidence and operating procedures.
 - `architecture/`: architecture reference material.
 - `configuration/`: configuration and secret-handling documentation.
