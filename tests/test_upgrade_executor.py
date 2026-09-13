@@ -80,6 +80,46 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_NOTHING_SELECTED")
 
+    @mock.patch("internal.upgrade_executor.os.geteuid", return_value=0)
+    def test_executor_revalidates_policy_before_target_preflight_or_mutation(self, _geteuid):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            (root / "installer").mkdir()
+            (root / "installer" / "lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
+            (root / ".env").write_text(
+                "APP_IMAGE=example/app\nAPP_VERSION=1.27.1\n",
+                encoding="utf-8",
+            )
+            selection = {
+                "stack": "stack4",
+                "component": "app",
+                "current_at_selection": "1.27.1",
+                "version": "1.28.0",
+            }
+            component = {
+                "id": "app",
+                "stack": "stack4",
+                "selectable": True,
+                "default_policy": "minor-series",
+                "apply": {
+                    "type": "env-version",
+                    "env_key": "APP_VERSION",
+                    "image_env_key": "APP_IMAGE",
+                    "deploy": ["docker", "compose", "up", "-d", "app"],
+                },
+            }
+            with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
+                upgrade_executor.execute(
+                    root=root,
+                    runtime_root=runtime,
+                    selections=[selection],
+                    components={"stack4/app": component},
+                    plan_path=runtime / "platform" / "upgrade-plan.json",
+                )
+            self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_UNSUPPORTED")
+            self.assertIn("APP_VERSION=1.27.1", (root / ".env").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
