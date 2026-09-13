@@ -58,16 +58,32 @@ def read_env_artifact(backup_set: Path) -> tuple[Path, dict[str, str]]:
     return env_path, dr.read_dotenv_presence(env_path)
 
 
+def _recorded_installer_path(source_commit: str) -> str:
+    """Resolve installer path in the recorded source without breaking historical backups."""
+    for candidate in ("installer/install.py", "install.py"):
+        cp = subprocess.run(
+            ["git", "cat-file", "-e", f"{source_commit}:{candidate}"],
+            cwd=dr_restore_all.PROJECT_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if cp.returncode == 0:
+            return candidate
+    raise ResumeError("recorded source contains no supported installer engine")
+
+
 def verify_source(backup_set: Path, stacks_root: Path, source_commit: str) -> None:
-    target = stacks_root / "install.py"
+    relative = _recorded_installer_path(source_commit)
+    target = stacks_root / relative
     if not target.is_file() or target.is_symlink():
-        raise ResumeError("restored source is incomplete: install.py missing")
+        raise ResumeError(f"restored source is incomplete: {relative} missing")
 
     # Compare exact bytes. The generic text helper intentionally strips stdout,
     # which is correct for scalar command results but corrupts file-content
     # comparison by removing the trailing newline from `git show <ref>:path`.
     cp = subprocess.run(
-        ["git", "show", f"{source_commit}:install.py"],
+        ["git", "show", f"{source_commit}:{relative}"],
         cwd=dr_restore_all.PROJECT_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
