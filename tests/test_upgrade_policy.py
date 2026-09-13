@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from internal import upgrade_policy
+from commands import upgrade_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,7 @@ class UpgradePolicyTests(unittest.TestCase):
         self.assertFalse(upgrade_policy.target_supported("manual", "1.27.1", "1.27.1"))
 
     def test_dockhand_default_policy_is_major_series(self):
-        catalog = json.loads((ROOT / "internal" / "upgrade-components.json").read_text(encoding="utf-8"))
+        catalog = json.loads((ROOT / "commands" / "upgrade-components.json").read_text(encoding="utf-8"))
         stack5 = next(stack for stack in catalog["stacks"] if stack["id"] == "stack5")
         dockhand = next(component for component in stack5["components"] if component["id"] == "dockhand")
         self.assertEqual(dockhand["default_policy"], "major-series")
