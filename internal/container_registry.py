@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import email.utils
 import json
 import re
 import subprocess
@@ -7,6 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 
 class RegistryError(RuntimeError):
@@ -24,12 +26,20 @@ class ImageReference:
     def registry_host(self) -> str:
         return "registry-1.docker.io" if self.registry == "docker.io" else self.registry
 
-    def with_tag(self, tag: str) -> str:
+    def _prefix(self) -> tuple[str, str]:
         prefix = "" if self.registry == "docker.io" else f"{self.registry}/"
         repository = self.repository
         if self.registry == "docker.io" and repository.startswith("library/"):
             repository = repository[len("library/"):]
+        return prefix, repository
+
+    def with_tag(self, tag: str) -> str:
+        prefix, repository = self._prefix()
         return f"{prefix}{repository}:{tag}"
+
+    def with_digest(self, digest: str) -> str:
+        prefix, repository = self._prefix()
+        return f"{prefix}{repository}@{digest}"
 
 
 @dataclass(frozen=True)
@@ -45,6 +55,13 @@ class TagProbe:
 
 
 @dataclass(frozen=True)
+class PublicationProbe:
+    digest: str | None
+    status: str
+    published_at: str | None
+
+
+@dataclass(frozen=True)
 class RegistryState:
     image: str
     local_digest: str | None
@@ -56,9 +73,16 @@ class RegistryState:
     tags_status: str = "unchecked"
     registry: str | None = None
     repository: str | None = None
+    latest_only: bool = False
+    local_published_at: str | None = None
+    remote_published_at: str | None = None
+    freshness_checked: bool = False
+    freshness: bool | None = None
 
     @property
     def update_available(self) -> bool | None:
+        if self.freshness_checked:
+            return self.freshness
         if self.current_version and self.available_version:
             return self.current_version != self.available_version
         if not self.local_digest or not self.remote_digest:
@@ -314,12 +338,101 @@ def manifest_probe(image: str) -> RemoteProbe:
     return RemoteProbe(None, _classify_http_status(status) if status else "error")
 
 
+def _normalize_timestamp(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        parsed = None
+    if parsed is None:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _timestamp_from_payload(reference: ImageReference, payload: dict) -> str | None:
+    annotations = payload.get("annotations")
+    if isinstance(annotations, dict):
+        created = _normalize_timestamp(annotations.get("org.opencontainers.image.created"))
+        if created:
+            return created
+
+    manifests = payload.get("manifests")
+    if isinstance(manifests, list):
+        values: list[str] = []
+        for descriptor in manifests:
+            if not isinstance(descriptor, dict):
+                continue
+            descriptor_annotations = descriptor.get("annotations")
+            if not isinstance(descriptor_annotations, dict):
+                continue
+            created = _normalize_timestamp(descriptor_annotations.get("org.opencontainers.image.created"))
+            if created:
+                values.append(created)
+        if values:
+            return max(values)
+
+    config = payload.get("config")
+    if isinstance(config, dict):
+        config_digest = config.get("digest")
+        if isinstance(config_digest, str) and config_digest.startswith("sha256:"):
+            path = f"/v2/{reference.repository}/blobs/{urllib.parse.quote(config_digest, safe=':')}"
+            status, _, body = _registry_request(reference, path)
+            if status == 200:
+                try:
+                    config_payload = json.loads(body.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    config_payload = None
+                if isinstance(config_payload, dict):
+                    return _normalize_timestamp(config_payload.get("created"))
+    return None
+
+
+def manifest_publication(image: str) -> PublicationProbe:
+    """Return registry-native publication/build timing evidence for one manifest.
+
+    Registry V2 does not standardize a publication timestamp. Prefer the registry's
+    Last-Modified header when present, then OCI image-created metadata as a
+    conservative fallback. Both remain evidence from the image registry/artifact.
+    """
+    reference = parse_reference(image)
+    manifest_ref = reference.digest or reference.tag or "latest"
+    path = f"/v2/{reference.repository}/manifests/{urllib.parse.quote(manifest_ref, safe=':')}"
+    status, headers, body = _registry_request(reference, path, method="GET", accept=_MANIFEST_ACCEPT)
+    if not (200 <= status < 300):
+        return PublicationProbe(None, _classify_http_status(status) if status else "error", None)
+    digest = _header(headers, "Docker-Content-Digest")
+    if not digest or not digest.startswith("sha256:"):
+        digest = reference.digest
+    published_at = _normalize_timestamp(_header(headers, "Last-Modified"))
+    if published_at is None:
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            published_at = _timestamp_from_payload(reference, payload)
+    return PublicationProbe(digest, "ok", published_at)
+
+
 def remote_probe(image: str) -> RemoteProbe:
     return manifest_probe(image)
 
 
 def remote_digest(image: str) -> str | None:
     return remote_probe(image).digest
+
+
+def digest_label(digest: str | None, *, tag: str = "latest", length: int = 9) -> str | None:
+    if not digest:
+        return None
+    value = digest.split(":", 1)[-1]
+    return f"{tag}({value[:length]})"
 
 
 def _version_parts(tag: str) -> tuple[tuple[int, ...], str | None, bool] | None:
@@ -467,8 +580,15 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
     available_version: str | None = None
     remote = RemoteProbe(None, tags_probe.status if tags_probe.status != "ok" else "unknown")
     tracked = tracking_reference(image, tracking_image)
+    latest_only = False
+    local_published_at: str | None = None
+    remote_published_at: str | None = None
+    freshness_checked = False
+    freshness: bool | None = None
+
     if reference.tag and _version_parts(reference.tag) is not None:
         current_version = reference.tag
+
     if tags_probe.status == "ok":
         channel = _is_channel_tag(reference.tag, tags)
         if channel:
@@ -487,6 +607,7 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
                     available_version, mapped_status = _best_tag_for_digest(reference, tracked_probe.digest, candidates)
                     if available_version is None and mapped_status not in {"ok", "not_found"}:
                         remote = RemoteProbe(tracked_probe.digest, mapped_status)
+
         elif reference.tag is None:
             all_candidates = version_tags(tags)
             hint = local_version_hint(container, image, tags)
@@ -496,16 +617,33 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
                 current_version, current_status = _best_tag_for_digest(reference, local, all_candidates)
                 if current_version is None and current_status in {"rate_limited", "unauthorized", "forbidden"}:
                     remote = RemoteProbe(None, current_status)
+
             compatible = _release_candidates(tags, current_version) if current_version else all_candidates
             if compatible:
                 available_version = compatible[0]
                 remote = manifest_probe(reference.with_tag(available_version))
             elif "latest" in tags:
-                # Some packages intentionally publish only a moving latest tag plus
-                # architecture/build tags. The digest pin remains the human CURRENT
-                # label, but latest still gives registry-native freshness evidence.
+                latest_only = True
                 tracked = reference.with_tag("latest")
                 remote = manifest_probe(tracked)
+                current_version = digest_label(local)
+                if local and remote.digest:
+                    freshness_checked = True
+                    if local == remote.digest:
+                        freshness = False
+                        available_version = current_version
+                    else:
+                        local_publication = manifest_publication(reference.with_digest(local))
+                        remote_publication = manifest_publication(tracked)
+                        local_published_at = local_publication.published_at
+                        remote_published_at = remote_publication.published_at
+                        if local_published_at and remote_published_at:
+                            freshness = remote_published_at > local_published_at
+                            available_version = digest_label(remote.digest) if freshness else current_version
+                        else:
+                            freshness = None
+                            available_version = None
+
         else:
             candidates = _release_candidates(tags, reference.tag)
             if candidates:
@@ -513,8 +651,10 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
                 remote = manifest_probe(reference.with_tag(available_version))
             elif tracked:
                 remote = manifest_probe(tracked)
+
     elif tracked:
         remote = manifest_probe(tracked)
+
     return RegistryState(
         image=image,
         local_digest=local,
@@ -526,4 +666,9 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
         tags_status=tags_probe.status,
         registry=reference.registry,
         repository=reference.repository,
+        latest_only=latest_only,
+        local_published_at=local_published_at,
+        remote_published_at=remote_published_at,
+        freshness_checked=freshness_checked,
+        freshness=freshness,
     )
