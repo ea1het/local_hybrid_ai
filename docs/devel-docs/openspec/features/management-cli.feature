@@ -117,3 +117,14 @@ Feature: Single management CLI anticorruption boundary
       And drift uses only yes, no or n/a
       And stack identifiers use stable stackN machine identities
       And runtime state is not synthesized from desired configuration
+
+    @CLI-STATUS-003
+    Scenario: Registry-backed status cannot regress to tag-text equality
+      Given a component may use a mutable container tag such as alpine, latest, major-only or major.minor tracking
+      When status evaluates Desired and Actual
+      Then a moved mutable tag is reported as drift yes when local and remote identities differ
+      And an unchanged mutable tag is reported as drift no only when registry identity evidence proves equality
+      And a registry lookup failure never becomes a false drift no
+      And fixed semantic tags do not require remote registry resolution merely to compare equal fixed identities
+      And digest-pinned images compare their immutable digest identities directly
+      And the concrete Actual shown by status matches the concrete Actual shown by upgrade check for the same registry-backed runtime
