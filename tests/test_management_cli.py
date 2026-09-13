@@ -55,13 +55,15 @@ class ManagementCliContractTests(unittest.TestCase):
         open_webui = next(row for row in payload["components"] if row["component"] == "open-webui")
         self.assertEqual(open_webui["stack"], "stack7")
 
-    def test_stack7_shorthand_select_persists_plan_without_runtime_change(self):
+    def test_single_component_stack_policy_shorthand_persists_override(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("upgrade", "stack7", "select", "v0.12.0", runtime_root=tmp)
+            cp = self.run_cli(
+                "upgrade", "policy", "stack7", "set", "major-series",
+                runtime_root=tmp,
+            )
             self.assertEqual(cp.returncode, 0, cp.stderr)
-            plan = json.loads((Path(tmp) / "platform" / "upgrade-plan.json").read_text())
-        selected = plan["selected"]["stack7/open-webui"]
-        self.assertEqual(selected["version"], "v0.12.0")
+            policy = json.loads((Path(tmp) / "platform" / "upgrade-policy.json").read_text())
+        self.assertEqual(policy["overrides"]["stack7/open-webui"], "major-series")
 
     def test_multicomponent_stack_requires_component_name(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,12 +86,20 @@ class ManagementCliContractTests(unittest.TestCase):
 
     def test_stale_plan_fails_before_execution(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("upgrade", "stack7", "select", "v0.12.0", runtime_root=tmp)
-            self.assertEqual(cp.returncode, 0, cp.stderr)
             plan_path = Path(tmp) / "platform" / "upgrade-plan.json"
-            plan = json.loads(plan_path.read_text())
-            plan["selected"]["stack7/open-webui"]["current_at_selection"] = "definitely-not-current"
-            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.write_text(json.dumps({
+                "schema_version": 1,
+                "selected": {
+                    "stack7/open-webui": {
+                        "stack": "stack7",
+                        "component": "open-webui",
+                        "current_at_selection": "definitely-not-current",
+                        "version": "v0.11.4",
+                        "policy_at_selection": "minor-series",
+                    }
+                },
+            }), encoding="utf-8")
             cp = self.run_cli("upgrade", "--yes", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("UPGRADE_PLAN_STALE", cp.stderr)
