@@ -6,6 +6,7 @@ This area contains design decisions, executable-oriented specifications, securit
 
 ## Index
 
+- [Documentation maintenance standard](documentation.md)
 - [Architecture Decision Records](adr/README.md)
 - [Security Decision Records](sdr/README.md)
 - [OpenSpec / Gherkin behavioural contracts](openspec/README.md)
