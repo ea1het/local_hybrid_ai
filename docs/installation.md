@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-    CLI[./local-ai install] --> Plan --> Prepare --> Deploy --> Ready --> Reconcile --> Verify
+    CLI["./local-ai install"] --> Plan["Plan"] --> Prepare["Prepare"] --> Deploy["Deploy"] --> Ready["Ready"] --> Reconcile["Reconcile"] --> Verify["Verify"]
 ```
 
 ## 1. Prepare protected configuration
