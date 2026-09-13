@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import upgrade
+from commands import status, upgrade
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
@@ -39,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     restore = sub.add_parser("restore", help="disaster-recovery operations")
     restore.add_argument("args", nargs=argparse.REMAINDER)
+
+    sub.add_parser("status", help="show desired, deployed and actual component state")
 
     up = sub.add_parser("upgrade", help="inspect and manage the local upgrade plan")
     up.add_argument(
@@ -97,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.command == "restore":
         return restore_command(ns.args, json_output)
+
+    if ns.command == "status":
+        return status.main(json_output=json_output)
 
     if ns.command == "upgrade":
         args = list(ns.args)
