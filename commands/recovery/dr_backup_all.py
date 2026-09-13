@@ -27,8 +27,8 @@ import dr_stack3_backup
 import dr_stack4_backup
 
 ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = ROOT.parent
-LIFECYCLE_FILE = PROJECT_ROOT / "installer" / "lifecycle.json"
+PROJECT_ROOT = ROOT.parents[1]
+LIFECYCLE_FILE = PROJECT_ROOT / "commands" / "install-lifecycle.json"
 ENV_SOURCE = ROOT / ".env"
 ENV_RELATIVE_PATH = "artifacts/global/operational.env"
 
@@ -148,7 +148,7 @@ def _create_archive_artifact(resource: dict, manifest: dict, base_path: Path, de
 
     try:
         dr_archive.create_tar_archive(source_path, destination)
-    except Exception as exc:  # preserve original archive failure while still restoring service availability
+    except Exception as exc:
         archive_error = exc
 
     if stopped_by_backup:
@@ -185,7 +185,6 @@ def _create_manifest_artifact(a,resource,manifest,values,base_path,destination):
 def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
     manifests=dr.load_manifests()
     deployed=detect_deployed_stacks(manifests)
-    # Resolve required dependency closure only for what is actually deployed.
     selectors=[str(sid) for sid in deployed]
     plan=dr.resolve_plan(selectors)
     entries=dr.build_plan_entries(plan,manifests)
@@ -214,7 +213,6 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
               "requested":["all"],"resolved_stacks":plan,"artifacts":completed,"prerequisites":prereq}
         dr_archive.validate_completed_metadata(base)
         metadata=dict(base); metadata["global_artifacts"]=globals_; metadata["deployed_stacks"]=deployed
-        # deployed_stacks is execution evidence; keep it outside normative metadata until schema v2.
         metadata.pop("deployed_stacks")
         metadata_path=temp/"backup.json"; dr_archive.write_private(metadata_path,(json.dumps(metadata,indent=2,sort_keys=True)+"\n").encode())
         items=[(ENV_RELATIVE_PATH,dr_archive.sha256_file(env_path))]+[(str(a["relative_path"]),str(a["sha256"])) for a in completed]
