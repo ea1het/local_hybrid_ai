@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from commands import status
@@ -42,7 +43,7 @@ class StatusStateTests(unittest.TestCase):
         self.assertEqual(status._drift("n/a", "n/a"), "unknown")
 
     def test_inventory_keeps_desired_deployed_and_actual_separate(self):
-        component = mock.Mock(stack="stack6", name="hermes")
+        component = SimpleNamespace(stack="stack6", name="hermes")
         with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
              mock.patch("commands.status.upgrade.read_env", return_value={}), \
              mock.patch("commands.status.upgrade.compose_image", return_value="repo:v2"), \
@@ -54,7 +55,7 @@ class StatusStateTests(unittest.TestCase):
         self.assertEqual(rows[0]["drift"], "drift")
 
     def test_inventory_uses_explicit_runtime_root_for_deployed_history(self):
-        component = mock.Mock(stack="stack6", name="hermes")
+        component = SimpleNamespace(stack="stack6", name="hermes")
         with tempfile.TemporaryDirectory() as tmp:
             runtime = Path(tmp)
             platform = runtime / "platform"
