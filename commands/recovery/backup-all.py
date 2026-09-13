@@ -5,7 +5,7 @@ import argparse, json, sys
 from pathlib import Path
 import dr, dr_archive, dr_backup_all, dr_filesystem, dr_postgres_verify, dr_stack3_backup, dr_stack4_backup
 
-dr_backup_all.ENV_SOURCE = Path(__file__).resolve().parent.parent / ".env"
+dr_backup_all.ENV_SOURCE = Path(__file__).resolve().parents[2] / ".env"
 
 
 def main() -> int:
