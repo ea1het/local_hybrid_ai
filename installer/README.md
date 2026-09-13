@@ -2,11 +2,12 @@
 
 The common installer resolves dependency order from manifests and lifecycle commands from `installer/lifecycle.json`. It must remain generic: stack-specific behaviour belongs to the stack, not to the installer.
 
-`installer/`, `install.py` and stack lifecycle scripts are **internal implementation details**. Operators and external integrations use `./local-ai` only; see [ADR-0002](../adr/0002-single-management-cli.md).
+`installer/install.py`, the rest of `installer/`, and stack lifecycle scripts are **internal implementation details**. The repository root intentionally exposes `./local-ai` as the sole management command; operators and external integrations must not invoke the installer engine directly. See [ADR-0002](../adr/0002-single-management-cli.md).
 
 ```mermaid
 flowchart LR
-    CLI[./local-ai install] --> Request --> Resolve[Resolve dependencies]
+    CLI[./local-ai install] --> Engine[installer/install.py]
+    Engine --> Request --> Resolve[Resolve dependencies]
     Resolve --> Prepare --> Deploy --> Ready --> Reconcile --> Verify
     Reconcile -. restart/recreate .-> Ready
 ```
