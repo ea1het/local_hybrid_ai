@@ -2,30 +2,6 @@
 
 Only active or intentionally deferred work belongs here. Completed qualification details live in `docs/dr/status.md` or Git history, not as a second backlog.
 
-## Immediate handoff — status/registry identity regression coverage
-
-The current `main` runtime behavior is qualified on m92p after the status identity fix: the full suite passed **277 tests**, `./local-ai status` and `./local-ai upgrade check` both completed successfully, Python cache count was zero and the tracked worktree was clean.
-
-A real runtime gap was discovered even though the prior suite was green: `status` used to compare image tag text while `upgrade check` resolved registry-backed image identity. Mutable/partially floating tags could therefore report false `DRIFT=no`. Runtime evidence exposed this with:
-
-- HAProxy: configured tracking reference `3.0-alpine`; Actual `3.0.26-alpine3.24`; current registry Desired `3.0.27-alpine3.24`; `DRIFT=yes`.
-- Redis: configured tracking reference `redis:alpine`; Actual `8.10.0-alpine3.23`; current registry Desired `8.10.1-alpine3.23`; `DRIFT=yes`.
-- RabbitMQ: configured tracking reference `3-alpine`; Actual and resolved Desired both `3.13.7-alpine`; `DRIFT=no`.
-
-The implementation now resolves floating registry-backed identities for `status`, compares immutable digest evidence when available, keeps `status` and `upgrade check` aligned on runtime identity, and fails closed to `DRIFT=n/a` when registry evidence required for a floating reference cannot be established. This must now be protected with permanent regression tests rather than relying on ad-hoc live qualification.
-
-The next agent should add regression coverage for these invariants, without special-casing Redis, HAProxy or RabbitMQ in production code:
-
-1. A floating tag whose local digest maps to version A while the current registry tracking tag maps to version B must produce `Desired=B`, `Actual=A`, and `Drift=yes`.
-2. A floating tag whose local and remote identities are the same must produce `Drift=no`.
-3. A pinned semantic tag must retain deterministic status behavior without unnecessary reinterpretation.
-4. A digest-pinned image must compare immutable identity correctly.
-5. For every registry-backed component, `status.actual` and `upgrade check.actual` must be derived from the same runtime image/normalization semantics.
-6. If required registry resolution is unavailable for a floating reference, `status` must not synthesize `Drift=no`; the result must fail closed according to the current `yes` / `no` / `n/a` contract.
-7. Pre-history deployment adoption must remain separate from drift resolution: successful guarded-upgrade history remains authoritative for `DEPLOYED`; otherwise the observed runtime identity is the adoption baseline.
-
-Prefer focused tests in `tests/test_status.py` plus cross-boundary/registry fixtures where necessary. Reuse existing `commands.upgrade_registry` probe semantics instead of duplicating registry parsing logic in tests. After focused coverage passes, run the complete suite with `PYTHONDONTWRITEBYTECODE=1` and verify zero tracked changes and zero Python cache artifacts.
-
 ## P0 — DR operational hardening
 
 - Define backup encryption-at-rest, retention generations, off-host copy and verification policy.
@@ -73,6 +49,8 @@ Stack7/Open WebUI base, web capability, regular-user model policy and first glob
 The guarded upgrade executor is live-qualified on Stack6/Hermes: `v2026.8.31 -> v2026.9.11` was selected explicitly, the exact target image preflight passed, only Hermes was deployed, Stack6 returned READY, capability reconciliation completed, VERIFY passed, the running image was confirmed at the selected target, prepared consumer Stack1 was reverified, and the selection was cleared only after success. The qualification completed with all command return codes at zero. Stack6 remains reconstructable; only Git-backed `MEMORY.md` + `USER.md` is durable user memory, so Hermes sessions/SQLite/cache state are not upgrade recovery requirements.
 
 Upgrade application is serialized at the `local-ai` boundary with a non-blocking runtime lock and failed applications are appended to the upgrade history with stable error code, selection snapshot and recovery point when present. `local-ai status` exposes installation Desired, best-known Deployed and runtime Actual state separately. Successful guarded-upgrade history is authoritative for Deployed; installations predating that history use observed Actual as their adoption baseline. Drift is a quick Desired-versus-Actual decision with only `yes`, `no` and `n/a`. An upgrade selection remains a plan and is not silently promoted to desired or deployed state.
+
+The mutable-tag status regression is now closed and permanently covered. Runtime qualification on m92p proved that `status` and `upgrade check` agree on concrete runtime identity for registry-backed floating tags: HAProxy reports Actual `3.0.26-alpine3.24` versus Desired `3.0.27-alpine3.24` with `DRIFT=yes`; Redis reports Actual `8.10.0-alpine3.23` versus Desired `8.10.1-alpine3.23` with `DRIFT=yes`; RabbitMQ reports matching `3.13.7-alpine` with `DRIFT=no`. Permanent tests cover moved floating tags, unchanged floating tags, fixed semantic tags, digest-pinned images, cross-command Actual consistency and fail-closed behavior when registry resolution is unavailable. OpenSpec contract `CLI-STATUS-003` traces these invariants. Focused status tests, OpenSpec tests, the full repository suite, live `status` and live `upgrade check` all passed; the active checkout finished with zero Python cache artifacts and zero tracked worktree changes.
 
 The initial discovery layer proved same-tag digest comparison, Docker Hub repository normalization and explicit remote failure reporting. ADR-0003 now defines a stricter single-source rule: container inventory follows the image reference to its own registry package, uses human tags from that package for operator-facing versions, and preserves the digest as immutable artifact identity. The previous GitHub Release adapters and explicit cross-source registry hints have been removed from the component catalog. Runtime qualification of this registry-native tag-to-digest mapping is the next gate.
 
