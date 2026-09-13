@@ -2,9 +2,10 @@
 
 The contract is intentionally structural rather than stylistic: Python modules must
 have module docstrings, documentation directories must expose a local README,
-Gherkin feature files must explain their behavioural scope, and Markdown Mermaid
-blocks must use the supported fenced form. Content quality is still reviewed by
-humans; these tests prevent the most common forms of documentation regression.
+Gherkin feature files must explain their behavioural scope, Markdown navigation
+must resolve inside the repository, and Mermaid blocks must use supported fenced
+syntax. Content quality is still reviewed by humans; these tests prevent common
+forms of documentation regression.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import ast
 import re
 import unittest
+import urllib.parse
 from pathlib import Path
 
 
@@ -53,6 +55,33 @@ class DocumentationContractTests(unittest.TestCase):
             if "TOC.md" not in text:
                 missing.append(str(readme.relative_to(ROOT)))
         self.assertEqual(missing, [], f"Documentation README files without TOC link: {missing}")
+
+    def test_relative_markdown_links_resolve_inside_repository(self):
+        """Catch broken TOC/cross-links while ignoring anchors and external URLs."""
+        broken: list[str] = []
+        markdown_files = [ROOT / "README.md", *sorted(DOCS.rglob("*.md"))]
+        link_re = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
+        for markdown in markdown_files:
+            text = markdown.read_text(encoding="utf-8")
+            for raw_target in link_re.findall(text):
+                target = raw_target.strip().split(maxsplit=1)[0].strip("<>")
+                if not target or target.startswith("#"):
+                    continue
+                parsed = urllib.parse.urlsplit(target)
+                if parsed.scheme or parsed.netloc:
+                    continue
+                path_text = urllib.parse.unquote(parsed.path)
+                if not path_text:
+                    continue
+                candidate = (markdown.parent / path_text).resolve()
+                try:
+                    candidate.relative_to(ROOT.resolve())
+                except ValueError:
+                    broken.append(f"{markdown.relative_to(ROOT)} -> {raw_target} (outside repository)")
+                    continue
+                if not candidate.exists():
+                    broken.append(f"{markdown.relative_to(ROOT)} -> {raw_target}")
+        self.assertEqual(broken, [], f"Broken relative Markdown links: {broken}")
 
     def test_gherkin_features_have_scope_documentation(self):
         missing = []
