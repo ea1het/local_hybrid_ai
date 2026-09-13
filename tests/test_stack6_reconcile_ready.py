@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import unittest
 from pathlib import Path
 
@@ -17,7 +18,7 @@ class Stack6ReconcileReadyContractTests(unittest.TestCase):
             reconcile,
             [
                 ["./06-reconcile-capabilities.sh", "--restart"],
-                ["./07-wait-ready.sh"],
+                ["bash", "./07-wait-ready.sh"],
             ],
         )
 
@@ -29,6 +30,20 @@ class Stack6ReconcileReadyContractTests(unittest.TestCase):
         self.assertIn("healthy", text)
         self.assertIn("running", text)
         self.assertIn("TIMEOUT_SECONDS", text)
+
+    def test_lifecycle_direct_script_commands_are_executable(self):
+        data = json.loads(LIFECYCLE.read_text(encoding="utf-8"))
+        failures = []
+        for sid, entry in data["stacks"].items():
+            stack_dir = ROOT / entry["directory"]
+            for phase in ("prepare", "deploy", "reconcile", "verify"):
+                for command in entry[phase]:
+                    if not command or not command[0].startswith("./"):
+                        continue
+                    script = stack_dir / command[0][2:]
+                    if not script.is_file() or not os.access(script, os.X_OK):
+                        failures.append(f"stack{sid} {phase}: {command[0]}")
+        self.assertEqual(failures, [], f"direct lifecycle scripts must be executable: {failures}")
 
 
 if __name__ == "__main__":
