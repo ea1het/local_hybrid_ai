@@ -4,7 +4,56 @@ import json
 import sys
 
 from commands import upgrade
-from internal import upgrade_executor
+from internal import container_registry, upgrade_executor, upgrade_policy
+
+
+def _component_record(component) -> dict:
+    return upgrade.component_records()[upgrade.key(component)]
+
+
+def _effective_policy(component) -> tuple[str, str | None, str]:
+    try:
+        return upgrade_policy.effective_policy(
+            upgrade.runtime_root(),
+            upgrade.key(component),
+            _component_record(component),
+        )
+    except upgrade_policy.PolicyError as exc:
+        raise upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
+
+
+def _target_reference(component, version: str, env: dict[str, str]) -> str:
+    image = upgrade.running_image(component) or upgrade.compose_image(component, env)
+    if not image:
+        raise upgrade.UpgradeError(
+            f"cannot determine image repository for {upgrade.key(component)}",
+            code="UPGRADE_TARGET_NOT_AVAILABLE",
+        )
+    return container_registry.parse_reference(image).with_tag(version)
+
+
+def _validate_target(component, current: str, version: str, env: dict[str, str]) -> str:
+    target_ref = _target_reference(component, version, env)
+    probe = container_registry.manifest_probe(target_ref)
+    if probe.status != "ok" or not probe.digest:
+        raise upgrade.UpgradeError(
+            f"target image is not available for {upgrade.key(component)}: {target_ref} ({probe.status})",
+            code="UPGRADE_TARGET_NOT_AVAILABLE",
+        )
+
+    _, _, effective = _effective_policy(component)
+    if not upgrade_policy.target_supported(effective, current, version):
+        newer = upgrade_policy.target_is_newer(current, version)
+        if newer is False:
+            raise upgrade.UpgradeError(
+                f"upgrade target is not newer for {upgrade.key(component)}: {current} -> {version}",
+                code="UPGRADE_TARGET_NOT_NEWER",
+            )
+        raise upgrade.UpgradeError(
+            f"target {version} is outside {effective} policy for {upgrade.key(component)}",
+            code="UPGRADE_TARGET_UNSUPPORTED",
+        )
+    return effective
 
 
 def select(stack: str, component_name: str | None, version: str) -> int:
@@ -16,15 +65,17 @@ def select(stack: str, component_name: str | None, version: str) -> int:
             f"{component.stack}/{component.name} is already at {version}",
             code="UPGRADE_ALREADY_CURRENT",
         )
+    effective = _validate_target(component, current, version, env)
     plan = upgrade.load_plan()
     plan["selected"][upgrade.key(component)] = {
         "stack": component.stack,
         "component": component.name,
         "current_at_selection": current,
         "version": version,
+        "policy_at_selection": effective,
     }
     upgrade.save_plan(plan)
-    print(f"Selected {component.stack}/{component.name}: {current} -> {version}")
+    print(f"Selected {component.stack}/{component.name}: {current} -> {version} ({effective})")
     return 0
 
 
@@ -44,6 +95,7 @@ def selected_records() -> list[dict]:
 
 def validate_selected_baselines(selections: list[dict]) -> None:
     components = {upgrade.key(c): c for c in upgrade.load_catalog()}
+    records = upgrade.component_records()
     env = upgrade.read_env()
     for selection in selections:
         component_key = f"{selection.get('stack')}/{selection.get('component')}"
@@ -53,6 +105,11 @@ def validate_selected_baselines(selections: list[dict]) -> None:
                 f"selected component no longer exists: {component_key}",
                 code="UPGRADE_PLAN_STALE",
             )
+        if not component.selectable:
+            raise upgrade.UpgradeError(
+                f"selected component is no longer selectable: {component_key}",
+                code="UPGRADE_COMPONENT_NOT_SELECTABLE",
+            )
         current = upgrade.version_from_image(upgrade.running_image(component) or upgrade.compose_image(component, env))
         expected = selection.get("current_at_selection")
         if current != expected:
@@ -60,10 +117,22 @@ def validate_selected_baselines(selections: list[dict]) -> None:
                 f"upgrade plan is stale for {component_key}: selected from {expected}, current is {current}",
                 code="UPGRADE_PLAN_STALE",
             )
-        if selection.get("version") == current:
+        target = selection.get("version")
+        if target == current:
             raise upgrade.UpgradeError(
                 f"upgrade target is already current for {component_key}: {current}",
                 code="UPGRADE_PLAN_STALE",
+            )
+        try:
+            effective = upgrade_policy.effective_policy(
+                upgrade.runtime_root(), component_key, records[component_key]
+            )[2]
+        except upgrade_policy.PolicyError as exc:
+            raise upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
+        if not isinstance(target, str) or not upgrade_policy.target_supported(effective, current, target):
+            raise upgrade.UpgradeError(
+                f"selected target {target} is no longer permitted by {effective} policy for {component_key}",
+                code="UPGRADE_TARGET_UNSUPPORTED",
             )
 
 
@@ -114,9 +183,139 @@ def json_payload(rows: list[dict]) -> dict:
     }
 
 
+def _policy_record(stack: str, component_name: str | None) -> tuple[str, dict]:
+    records = upgrade.component_records()
+    matches = [(key, value) for key, value in records.items() if value.get("stack") == stack]
+    if not matches:
+        raise upgrade.UpgradeError(f"unknown stack: {stack}", code="UPGRADE_STACK_UNKNOWN")
+    if component_name is None:
+        if len(matches) != 1:
+            raise upgrade.UpgradeError(
+                f"{stack} has multiple components; specify one: " + ", ".join(v["id"] for _, v in matches),
+                code="UPGRADE_COMPONENT_REQUIRED",
+            )
+        return matches[0]
+    for component_key, record in matches:
+        if record.get("id") == component_name:
+            return component_key, record
+    raise upgrade.UpgradeError(
+        f"unknown component for {stack}: {component_name}",
+        code="UPGRADE_COMPONENT_UNKNOWN",
+    )
+
+
+def _policy_row(component_key: str, record: dict, plan: dict) -> dict:
+    try:
+        state = upgrade_policy.selection_status(
+            upgrade.runtime_root(), component_key, record, plan["selected"].get(component_key)
+        )
+    except upgrade_policy.PolicyError as exc:
+        raise upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
+    return {
+        "stack": record["stack"],
+        "component": record["id"],
+        **state,
+        "selectable": record.get("selectable", True),
+        "selected": plan["selected"].get(component_key, {}).get("version"),
+    }
+
+
+def _print_policy_rows(rows: list[dict]) -> None:
+    headers = ("STACK", "COMPONENT", "DEFAULT", "OVERRIDE", "EFFECTIVE", "SELECTABLE", "SELECTED", "VALID")
+    values = [headers]
+    for row in rows:
+        valid = row["selection_valid"]
+        values.append((
+            upgrade.human_stack_id(row["stack"]),
+            row["component"],
+            row["default_policy"],
+            row["override_policy"] or "-",
+            row["effective_policy"],
+            "yes" if row["selectable"] else "no",
+            row["selected"] or "-",
+            "-" if valid is None else ("yes" if valid else "no"),
+        ))
+    widths = [max(len(str(row[i])) for row in values) for i in range(len(headers))]
+    for index, row in enumerate(values):
+        print("  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row)))
+        if index == 0:
+            print("  ".join("-" * width for width in widths))
+
+
+def policy_command(args: list[str], *, json_output: bool) -> int:
+    records = upgrade.component_records()
+    plan = upgrade.load_plan()
+
+    if not args:
+        rows = [_policy_row(key, record, plan) for key, record in sorted(records.items())]
+        if json_output:
+            print(json.dumps({
+                "schema_version": upgrade.SCHEMA_VERSION,
+                "command": "upgrade.policy",
+                "success": True,
+                "components": rows,
+            }, indent=2, sort_keys=True))
+        else:
+            _print_policy_rows(rows)
+        return 0
+
+    action = None
+    policy = None
+    left = list(args)
+    if "set" in left:
+        pos = left.index("set")
+        target, right = left[:pos], left[pos + 1:]
+        if len(right) != 1:
+            raise upgrade.UpgradeError("invalid policy set syntax", code="UPGRADE_USAGE")
+        action, policy, left = "set", right[0], target
+    elif left[-1:] == ["clear"]:
+        action, left = "clear", left[:-1]
+
+    if len(left) not in (1, 2):
+        raise upgrade.UpgradeError("invalid policy syntax", code="UPGRADE_USAGE")
+    component_key, record = _policy_record(left[0], left[1] if len(left) == 2 else None)
+    before = _policy_row(component_key, record, plan)
+
+    if action == "set":
+        if policy not in upgrade_policy.POLICIES:
+            raise upgrade.UpgradeError(
+                f"unsupported upgrade policy: {policy}",
+                code="UPGRADE_POLICY_INVALID",
+            )
+        upgrade_policy.set_override(upgrade.runtime_root(), component_key, policy)
+    elif action == "clear":
+        upgrade_policy.clear_override(upgrade.runtime_root(), component_key)
+
+    after = _policy_row(component_key, record, plan)
+    payload = {
+        "schema_version": upgrade.SCHEMA_VERSION,
+        "command": "upgrade.policy",
+        "success": True,
+        "action": action or "show",
+        "previous_effective_policy": before["effective_policy"],
+        **after,
+    }
+    if json_output:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    elif action:
+        print(
+            f"Policy {component_key}: {before['effective_policy']} -> {after['effective_policy']} "
+            f"(default={after['default_policy']}, override={after['override_policy'] or '-'})"
+        )
+        if after["selection_valid"] is False:
+            print(f"Existing selection {after['selected']} is now invalid; it was not cleared.")
+    else:
+        _print_policy_rows([after])
+    return 0
+
+
 def usage() -> None:
     print("Usage:")
     print("  ./local-ai upgrade check [--offline]")
+    print("  ./local-ai upgrade policy")
+    print("  ./local-ai upgrade policy <stack> [component]")
+    print("  ./local-ai upgrade policy <stack> [component] set <minor-series|major-series|manual>")
+    print("  ./local-ai upgrade policy <stack> [component] clear")
     print("  ./local-ai upgrade <stack> [component] select <version>")
     print("  ./local-ai upgrade <stack> [component] clear")
     print("  ./local-ai upgrade --yes")
@@ -155,6 +354,8 @@ def main(args: list[str], *, json_output: bool = False) -> int:
             return 0
         if args == ["--yes"]:
             return execute_selected(json_output=json_output)
+        if args and args[0] == "policy":
+            return policy_command(args[1:], json_output=json_output)
 
         if "select" in args:
             pos = args.index("select")
@@ -169,8 +370,10 @@ def main(args: list[str], *, json_output: bool = False) -> int:
 
         usage()
         return 2
-    except (upgrade.UpgradeError, OSError, json.JSONDecodeError) as exc:
-        if not isinstance(exc, upgrade.UpgradeError):
+    except (upgrade.UpgradeError, upgrade_policy.PolicyError, OSError, json.JSONDecodeError) as exc:
+        if isinstance(exc, upgrade_policy.PolicyError):
+            exc = upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID")
+        elif not isinstance(exc, upgrade.UpgradeError):
             exc = upgrade.UpgradeError(str(exc))
         _print_error(exc, json_output=json_output)
         return 1
