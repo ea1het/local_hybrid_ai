@@ -1,3 +1,10 @@
+"""Protect isolated verification of restored Gitea database and repositories.
+
+The verification layer rejects unsafe ZIP entry types/paths, proves SQLite schema
+and data reconstruction, discovers bare repositories for fsck, and reports clearly
+that the isolated verification did not restart or mutate the live Gitea runtime.
+"""
+
 import sqlite3
 import tempfile
 import unittest
