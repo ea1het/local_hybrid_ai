@@ -78,6 +78,7 @@ _MANIFEST_ACCEPT = ", ".join((
     "application/vnd.docker.distribution.manifest.list.v2+json",
     "application/vnd.docker.distribution.manifest.v2+json",
 ))
+_TOKEN_CACHE: dict[tuple[str, str], str] = {}
 
 
 def parse_reference(reference: str) -> ImageReference:
@@ -117,10 +118,7 @@ def _repo_digest_for_image(image: str, repo_digests: list[str]) -> str | None:
         if "@sha256:" not in item:
             continue
         item_ref = parse_reference(item)
-        if item_ref.repository != wanted.repository:
-            continue
-        # Docker may render Docker Hub with or without an explicit host.
-        if item_ref.registry == wanted.registry or {item_ref.registry, wanted.registry} <= {"docker.io"}:
+        if item_ref.repository == wanted.repository and item_ref.registry == wanted.registry:
             return item_ref.digest
     return None
 
@@ -173,21 +171,6 @@ def _classify_http_status(status: int) -> str:
     return "error"
 
 
-def _classify_remote_failure(stderr: str) -> str:
-    text = stderr.lower()
-    if "429" in text or "too many requests" in text:
-        return "rate_limited"
-    if "401" in text or "unauthorized" in text or "authentication required" in text:
-        return "unauthorized"
-    if "403" in text or "forbidden" in text:
-        return "forbidden"
-    if "404" in text or "not found" in text or "manifest unknown" in text:
-        return "not_found"
-    if "timeout" in text or "timed out" in text:
-        return "timeout"
-    return "error"
-
-
 def _urlopen(request: urllib.request.Request) -> tuple[int, dict[str, str], bytes]:
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
@@ -198,6 +181,14 @@ def _urlopen(request: urllib.request.Request) -> tuple[int, dict[str, str], byte
         return 0, {}, b""
 
 
+def _header(headers: dict[str, str], name: str) -> str | None:
+    wanted = name.lower()
+    for key, value in headers.items():
+        if key.lower() == wanted:
+            return value
+    return None
+
+
 def _bearer_token(challenge: str) -> str | None:
     if not challenge.lower().startswith("bearer "):
         return None
@@ -205,7 +196,8 @@ def _bearer_token(challenge: str) -> str | None:
     realm = params.pop("realm", None)
     if not realm:
         return None
-    url = realm + "?" + urllib.parse.urlencode(params)
+    separator = "&" if "?" in realm else "?"
+    url = realm + separator + urllib.parse.urlencode(params)
     request = urllib.request.Request(url, headers={"User-Agent": "local-ai/registry-discovery"})
     status, _, body = _urlopen(request)
     if status != 200:
@@ -226,26 +218,43 @@ def _registry_request(
     accept: str | None = None,
 ) -> tuple[int, dict[str, str], bytes]:
     url = f"https://{reference.registry_host}{path}"
-    headers = {"User-Agent": "local-ai/registry-discovery"}
+    base_headers = {"User-Agent": "local-ai/registry-discovery"}
     if accept:
-        headers["Accept"] = accept
+        base_headers["Accept"] = accept
+
+    cache_key = (reference.registry_host, reference.repository)
+    token = _TOKEN_CACHE.get(cache_key)
+    headers = dict(base_headers)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     request = urllib.request.Request(url, headers=headers, method=method)
     status, response_headers, body = _urlopen(request)
     if status != 401:
         return status, response_headers, body
 
-    challenge = response_headers.get("WWW-Authenticate") or response_headers.get("Www-Authenticate")
-    token = _bearer_token(challenge or "")
-    if not token:
+    _TOKEN_CACHE.pop(cache_key, None)
+    challenge = _header(response_headers, "WWW-Authenticate")
+    if not challenge and token:
+        request = urllib.request.Request(url, headers=base_headers, method=method)
+        status, response_headers, body = _urlopen(request)
+        if status != 401:
+            return status, response_headers, body
+        challenge = _header(response_headers, "WWW-Authenticate")
+
+    new_token = _bearer_token(challenge or "")
+    if not new_token:
         return status, response_headers, body
 
-    headers["Authorization"] = f"Bearer {token}"
+    _TOKEN_CACHE[cache_key] = new_token
+    headers = dict(base_headers)
+    headers["Authorization"] = f"Bearer {new_token}"
     request = urllib.request.Request(url, headers=headers, method=method)
     return _urlopen(request)
 
 
 def registry_tags(image: str, *, limit: int = 1000) -> TagProbe:
-    """List tags from the registry that owns the image. No lateral release source is used."""
+    """List tags from the registry that owns the configured image package."""
     reference = parse_reference(image)
     path = f"/v2/{reference.repository}/tags/list?n={limit}"
     status, _, body = _registry_request(reference, path)
@@ -267,7 +276,7 @@ def manifest_probe(image: str) -> RemoteProbe:
     path = f"/v2/{reference.repository}/manifests/{urllib.parse.quote(manifest_ref, safe=':')}"
     status, headers, _ = _registry_request(reference, path, method="HEAD", accept=_MANIFEST_ACCEPT)
     if 200 <= status < 300:
-        digest = headers.get("Docker-Content-Digest") or headers.get("docker-content-digest")
+        digest = _header(headers, "Docker-Content-Digest")
         if digest and digest.startswith("sha256:"):
             return RemoteProbe(digest, "ok")
         return RemoteProbe(None, "invalid")
@@ -294,23 +303,34 @@ def _version_parts(tag: str) -> tuple[tuple[int, ...], str | None, bool] | None:
 def _version_sort_key(tag: str) -> tuple:
     parsed = _version_parts(tag)
     if parsed is None:
-        return ((-1,), -1, -1, "")
+        return ((-1,), -1, -1, -1, "")
     numbers, suffix, has_v = parsed
     padded = numbers + (0,) * (6 - len(numbers))
     # For identical numeric versions, prefer the plain release tag over a
-    # variant such as -production. Prefix v is only presentation and is neutral.
+    # variant such as -production. Prefix v is presentation only.
     return (padded, len(numbers), 1 if suffix is None else 0, 1 if has_v else 0, tag)
 
 
 def version_tags(tags: tuple[str, ...] | list[str]) -> list[str]:
-    return sorted((tag for tag in tags if _version_parts(tag) is not None), key=_version_sort_key, reverse=True)
+    return sorted(
+        (tag for tag in tags if _version_parts(tag) is not None),
+        key=_version_sort_key,
+        reverse=True,
+    )
 
 
 def _variant_suffix(tag: str | None) -> str | None:
     if not tag:
         return None
     parsed = _version_parts(tag)
-    return parsed[1] if parsed else None
+    if parsed is None:
+        return None
+    suffix = parsed[1]
+    # Build hashes such as SearXNG's 2026.9.5-c7f3080aa identify a build, not a
+    # reusable image variant. Do not freeze discovery to one hash suffix.
+    if suffix and re.fullmatch(r"[0-9a-fA-F]{7,40}", suffix):
+        return None
+    return suffix
 
 
 def _candidate_versions(tags: tuple[str, ...], source_tag: str | None) -> list[str]:
@@ -321,6 +341,31 @@ def _candidate_versions(tags: tuple[str, ...], source_tag: str | None) -> list[s
         if matching:
             candidates = matching
     return candidates
+
+
+def _numeric_channel_prefix(tag: str | None) -> tuple[int, ...] | None:
+    if not tag:
+        return None
+    match = re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:-[A-Za-z][0-9A-Za-z._-]*)?", tag)
+    if not match:
+        return None
+    return tuple(int(value) for value in match.group(1).split("."))
+
+
+def _channel_candidates(tags: tuple[str, ...], source_tag: str | None) -> list[str]:
+    candidates = _candidate_versions(tags, source_tag)
+    prefix = _numeric_channel_prefix(source_tag)
+    if not prefix:
+        return candidates
+    matching: list[str] = []
+    for candidate in candidates:
+        parsed = _version_parts(candidate)
+        if parsed is None:
+            continue
+        numbers = parsed[0]
+        if len(numbers) >= len(prefix) and numbers[:len(prefix)] == prefix:
+            matching.append(candidate)
+    return matching or candidates
 
 
 def _is_channel_tag(tag: str | None, tags: tuple[str, ...]) -> bool:
@@ -339,7 +384,9 @@ def _is_channel_tag(tag: str | None, tags: tuple[str, ...]) -> bool:
         if candidate_parsed is None:
             continue
         candidate_numbers, candidate_suffix, _ = candidate_parsed
-        if candidate_suffix != suffix or len(candidate_numbers) <= len(numbers):
+        if _variant_suffix(candidate) != _variant_suffix(tag):
+            continue
+        if len(candidate_numbers) <= len(numbers):
             continue
         if ".".join(str(value) for value in candidate_numbers).startswith(prefix):
             return True
@@ -370,8 +417,8 @@ def _best_tag_for_digest(
 
 
 def tracking_reference(image: str, explicit: str | None = None) -> str | None:
-    # explicit remains accepted for JSON/backward compatibility, but discovery
-    # must never use a different registry/repository than the configured image.
+    # explicit remains accepted for backward compatibility, but may only point
+    # at the same registry package as the configured image.
     reference = parse_reference(image)
     if explicit:
         explicit_ref = parse_reference(explicit)
@@ -383,7 +430,12 @@ def tracking_reference(image: str, explicit: str | None = None) -> str | None:
     return None
 
 
-def display_label(image: str, tracking_image: str | None = None, *, discovered_version: str | None = None) -> str:
+def display_label(
+    image: str,
+    tracking_image: str | None = None,
+    *,
+    discovered_version: str | None = None,
+) -> str:
     if discovered_version:
         return discovered_version
     reference = parse_reference(image)
@@ -394,7 +446,12 @@ def display_label(image: str, tracking_image: str | None = None, *, discovered_v
     return "latest"
 
 
-def inspect(container: str | None, image: str | None, *, tracking_image: str | None = None) -> RegistryState | None:
+def inspect(
+    container: str | None,
+    image: str | None,
+    *,
+    tracking_image: str | None = None,
+) -> RegistryState | None:
     if not container or not image or "${" in image:
         return None
 
@@ -402,33 +459,41 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
     local = local_digest(container, image)
     tags_probe = registry_tags(image)
     tags = tags_probe.tags
-    candidates = _candidate_versions(tags, reference.tag) if tags_probe.status == "ok" else []
 
     current_version: str | None = None
     available_version: str | None = None
     remote = RemoteProbe(None, tags_probe.status if tags_probe.status != "ok" else "unknown")
     tracked = tracking_reference(image, tracking_image)
 
+    # An explicit version-looking tag is already useful human information even
+    # if registry tag enumeration is temporarily unavailable.
+    if reference.tag and _version_parts(reference.tag) is not None:
+        current_version = reference.tag
+
     if tags_probe.status == "ok":
         channel = _is_channel_tag(reference.tag, tags)
+        candidates = (
+            _channel_candidates(tags, reference.tag)
+            if channel
+            else _candidate_versions(tags, reference.tag)
+        )
 
-        if reference.tag and not channel and _version_parts(reference.tag) is not None:
-            current_version = reference.tag
-        elif candidates:
-            current_version, current_status = _best_tag_for_digest(reference, local, candidates)
-            if current_version is None and current_status in {"rate_limited", "unauthorized", "forbidden"}:
-                return RegistryState(
-                    image=image,
-                    local_digest=local,
-                    remote_digest=None,
-                    tracking_image=tracked,
-                    remote_status=current_status,
-                    current_version=None,
-                    available_version=None,
-                    tags_status=tags_probe.status,
-                    registry=reference.registry,
-                    repository=reference.repository,
-                )
+        if channel or reference.tag is None:
+            if candidates:
+                current_version, current_status = _best_tag_for_digest(reference, local, candidates)
+                if current_version is None and current_status in {"rate_limited", "unauthorized", "forbidden"}:
+                    return RegistryState(
+                        image=image,
+                        local_digest=local,
+                        remote_digest=None,
+                        tracking_image=tracked,
+                        remote_status=current_status,
+                        current_version=None,
+                        available_version=None,
+                        tags_status=tags_probe.status,
+                        registry=reference.registry,
+                        repository=reference.repository,
+                    )
 
         if channel and tracked:
             remote = manifest_probe(tracked)
@@ -442,8 +507,8 @@ def inspect(container: str | None, image: str | None, *, tracking_image: str | N
         elif tracked:
             remote = manifest_probe(tracked)
     elif tracked:
-        # Preserve the familiar same-tag digest check even if tag enumeration is
-        # temporarily unavailable (for example Docker Hub 429 responses).
+        # Preserve same-tag digest evidence when version enumeration is
+        # temporarily unavailable, for example because Docker Hub is rate-limited.
         remote = manifest_probe(tracked)
 
     return RegistryState(
