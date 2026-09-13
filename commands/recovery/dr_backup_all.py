@@ -213,11 +213,11 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
     artifacts,prerequisites=dr.build_backup_plan(entries)
     resources=_resource_map(manifests,plan)
     dr.preflight_runtime_sources(manifests,plan)
-    dr_filesystem.validate_existing_root(backup_root)
     values=dr.read_dotenv_presence(ENV_SOURCE)
     base_path=dr.resolve_base_path(values)
     stacks_root=Path(dr.require_env_value(values,"STACKS_ROOT",label="STACKS_ROOT"))
     backup_root=validate_backup_destination(backup_root,stacks_root,base_path)
+    dr_filesystem.validate_existing_root(backup_root)
     created_at,final_name=dr_archive.timestamp_parts(dr_archive.utc_now()); final=backup_root/final_name
     if final.exists(): raise BackupAllError(f"final backup-set name already exists: {final}")
     temp=backup_root/f".{final_name}.tmp-{secrets.token_hex(8)}"; old_umask=os.umask(0o077)
