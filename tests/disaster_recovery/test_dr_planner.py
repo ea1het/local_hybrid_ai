@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2] / "bkp-dr"
+ROOT = Path(__file__).resolve().parents[2] / "commands" / "recovery"
 DR_PATH = ROOT / "dr.py"
 SPEC = importlib.util.spec_from_file_location("dr_planner", DR_PATH)
 dr_planner = importlib.util.module_from_spec(SPEC)
