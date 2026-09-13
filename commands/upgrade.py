@@ -137,6 +137,7 @@ def running_image(component: Component) -> str | None:
 
 
 def version_from_image(image: str | None) -> str:
+    """Machine-facing installed identity used for stale-plan protection."""
     if not image:
         return "n/a"
     if "@sha256:" in image:
@@ -172,22 +173,30 @@ def key(component: Component) -> str:
     return f"{component.stack}/{component.name}"
 
 
-def _registry_availability(component: Component, image: str | None, *, online: bool) -> tuple[str, dict | None]:
+def _registry_availability(component: Component, image: str | None, record: dict, *, online: bool) -> tuple[str, dict | None]:
     if not online:
         return "unchecked", None
-    state = container_registry.inspect(component.container, image)
+    state = container_registry.inspect(
+        component.container,
+        image,
+        tracking_image=record.get("registry_source"),
+    )
     if state is None:
         return "n/a", None
     details = {
         "image": state.image,
+        "tracking_image": state.tracking_image,
         "local_digest": state.local_digest,
         "remote_digest": state.remote_digest,
+        "remote_status": state.remote_status,
         "update_available": state.update_available,
     }
     if state.update_available is True:
         return "update", details
     if state.update_available is False:
         return "current", details
+    if state.remote_status == "not_tracked":
+        return "pinned", details
     return "unknown", details
 
 
@@ -204,14 +213,18 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
         record = records[key(component)]
         registry = None
         availability = record.get("availability")
+        current_display = current
         try:
             if availability in ("local", "n/a"):
                 available = availability
+                current_display = availability if availability == "local" else current
             elif record.get("version_source"):
                 candidate = version_sources.available_version(record, online=query_upstream)
                 available = "current" if query_upstream and candidate == current else candidate
             else:
-                available, registry = _registry_availability(component, actual_image, online=query_upstream)
+                if actual_image:
+                    current_display = container_registry.display_label(actual_image, record.get("registry_source"))
+                available, registry = _registry_availability(component, actual_image, record, online=query_upstream)
         except version_sources.VersionSourceError as exc:
             raise UpgradeError(
                 f"invalid version source for {key(component)}: {exc}",
@@ -221,6 +234,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
             "stack": component.stack,
             "component": component.name,
             "current": current,
+            "current_display": current_display,
             "available": available,
             "selected": selected.get(key(component), {}).get("version"),
             "selectable": component.selectable,
@@ -234,12 +248,28 @@ def human_stack_id(stack: str) -> str:
     return match.group(1) if match else stack
 
 
+def _human_available(row: dict) -> str:
+    available = row["available"]
+    registry = row.get("registry")
+    if available == "unknown" and registry:
+        status = registry.get("remote_status")
+        if status == "rate_limited":
+            return "unknown (rate limited)"
+        if status and status not in {"ok", "not_tracked"}:
+            return f"unknown ({status.replace('_', ' ')})"
+    return available
+
+
 def print_table(rows: list[dict]) -> None:
     headers = ("STACK", "COMPONENT", "CURRENT", "AVAILABLE", "SELECTED")
     values = [headers]
     for row in rows:
         values.append((
-            human_stack_id(row["stack"]), row["component"], row["current"], row["available"], row["selected"] or "-"
+            human_stack_id(row["stack"]),
+            row["component"],
+            row.get("current_display", row["current"]),
+            _human_available(row),
+            row["selected"] or "-",
         ))
     widths = [max(len(str(row[i])) for row in values) for i in range(5)]
     for index, row in enumerate(values):
