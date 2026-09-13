@@ -66,20 +66,41 @@ class VersionSourceTests(unittest.TestCase):
 
     def test_inventory_reports_registry_update_for_unadapted_container(self):
         component = self._inventory_component()
-        state = container_registry.RegistryState("haproxy:3.0-alpine", "sha256:old", "sha256:new")
+        state = container_registry.RegistryState(
+            "haproxy:3.0-alpine", "sha256:old", "sha256:new",
+            tracking_image="haproxy:3.0-alpine", remote_status="ok",
+        )
         rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
         self.assertEqual(rows[0]["available"], "update")
+        self.assertEqual(rows[0]["current_display"], "3.0-alpine")
         self.assertTrue(rows[0]["registry"]["update_available"])
 
     def test_inventory_reports_current_for_equal_registry_digest(self):
         component = self._inventory_component()
-        state = container_registry.RegistryState("haproxy:3.0-alpine", "sha256:same", "sha256:same")
+        state = container_registry.RegistryState(
+            "haproxy:3.0-alpine", "sha256:same", "sha256:same",
+            tracking_image="haproxy:3.0-alpine", remote_status="ok",
+        )
         rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
         self.assertEqual(rows[0]["available"], "current")
 
+    def test_inventory_reports_rate_limit_reason(self):
+        component = self._inventory_component()
+        state = container_registry.RegistryState(
+            "haproxy:3.0-alpine", "sha256:local", None,
+            tracking_image="haproxy:3.0-alpine", remote_status="rate_limited",
+        )
+        rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
+        self.assertEqual(rows[0]["available"], "unknown")
+        self.assertEqual(rows[0]["registry"]["remote_status"], "rate_limited")
+        self.assertEqual(upgrade._human_available(rows[0]), "unknown (rate limited)")
+
     def test_inventory_reports_unknown_when_registry_comparison_is_incomplete(self):
         component = self._inventory_component()
-        state = container_registry.RegistryState("haproxy:3.0-alpine", None, "sha256:remote")
+        state = container_registry.RegistryState(
+            "haproxy:3.0-alpine", None, "sha256:remote",
+            tracking_image="haproxy:3.0-alpine", remote_status="ok",
+        )
         rows, _ = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", registry_state=state)
         self.assertEqual(rows[0]["available"], "unknown")
 
@@ -88,6 +109,30 @@ class VersionSourceTests(unittest.TestCase):
         rows, registry = self._inventory(component, {"stack":"stack1","id":"haproxy"}, "haproxy:3.0-alpine", online=False)
         self.assertEqual(rows[0]["available"], "unchecked")
         registry.assert_not_called()
+
+    def test_digest_pin_uses_declared_tracking_channel_for_human_display(self):
+        component = upgrade.Component(
+            stack="stack2", name="firecrawl", service=None, container="firecrawl-api",
+            compose=None, upstream="firecrawl/firecrawl", selectable=False,
+        )
+        record = {
+            "stack":"stack2", "id":"firecrawl",
+            "registry_source":"ghcr.io/firecrawl/firecrawl:latest",
+        }
+        state = container_registry.RegistryState(
+            "ghcr.io/firecrawl/firecrawl@sha256:old", "sha256:old", "sha256:new",
+            tracking_image="ghcr.io/firecrawl/firecrawl:latest", remote_status="ok",
+        )
+        rows, registry = self._inventory(
+            component, record, "ghcr.io/firecrawl/firecrawl@sha256:old", registry_state=state,
+        )
+        self.assertEqual(rows[0]["current_display"], "latest (pinned)")
+        self.assertEqual(rows[0]["available"], "update")
+        registry.assert_called_once_with(
+            "firecrawl-api",
+            "ghcr.io/firecrawl/firecrawl@sha256:old",
+            tracking_image="ghcr.io/firecrawl/firecrawl:latest",
+        )
 
     def test_inventory_reports_current_when_release_candidate_equals_current(self):
         component = upgrade.Component(
