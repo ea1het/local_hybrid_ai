@@ -72,19 +72,34 @@ def effective_policy(runtime_root: Path, component_key: str, component: dict) ->
     return default, override, override or default
 
 
-def _version_tuple(value: str) -> tuple[int, int, int] | None:
+def version_tuple(value: str) -> tuple[int, int, int] | None:
     match = _VERSION_RE.fullmatch(value)
     if not match:
         return None
     return int(match.group(1)), int(match.group(2)), int(match.group(3) or 0)
 
 
+def target_is_newer(current: str, target: str) -> bool | None:
+    current_parts = version_tuple(current)
+    target_parts = version_tuple(target)
+    if current_parts is None or target_parts is None:
+        return None
+    return target_parts > current_parts
+
+
 def target_supported(policy: str, current: str, target: str) -> bool:
-    if policy == "manual":
+    if current == target:
         return False
-    current_parts = _version_tuple(current)
-    target_parts = _version_tuple(target)
-    if current_parts is None or target_parts is None or target_parts < current_parts:
+    current_parts = version_tuple(current)
+    target_parts = version_tuple(target)
+
+    if policy == "manual":
+        # Manual means the operator names the exact target and local-ai performs no
+        # automatic series inference. When both values are comparable, downgrades
+        # remain forbidden; non-semver identities are accepted only as explicit targets.
+        return target_parts > current_parts if current_parts is not None and target_parts is not None else True
+
+    if current_parts is None or target_parts is None or target_parts <= current_parts:
         return False
     if policy == "minor-series":
         return target_parts[:2] == current_parts[:2]
