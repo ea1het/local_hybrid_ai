@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from internal import upgrade_policy
+from commands import upgrade_policy, upgrade_registry
 
 
 class UpgradeExecutionError(RuntimeError):
@@ -88,7 +88,11 @@ def _wait_ready(root: Path, names: list[str], *, timeout_seconds: int = 180) -> 
         last = {name: _container_state(root, name) for name in names}
         if all(_healthy(state) for state in last.values()):
             return
-        terminal = {name: state for name, state in last.items() if state in {"absent", "dead", "exited"} or state.startswith("dead/") or state.startswith("exited/")}
+        terminal = {
+            name: state for name, state in last.items()
+            if state in {"absent", "dead", "exited"}
+            or state.startswith("dead/") or state.startswith("exited/")
+        }
         if terminal:
             raise UpgradeExecutionError(
                 "UPGRADE_READY_FAILED",
@@ -181,6 +185,38 @@ def _target_image_ref(component_key: str, component: dict, selection: dict, env:
     return f"{repository}:{version}"
 
 
+def _verify_selected_digest(component_key: str, image_ref: str, selection: dict) -> None:
+    selected_ref = selection.get("target_image")
+    selected_digest = selection.get("target_digest")
+    if not all(isinstance(value, str) and value for value in (selected_ref, selected_digest)):
+        raise UpgradeExecutionError(
+            "UPGRADE_PLAN_STALE",
+            f"selected target has no immutable identity for {component_key}; reselect the target",
+        )
+    if selected_ref != image_ref:
+        raise UpgradeExecutionError(
+            "UPGRADE_PLAN_STALE",
+            f"target image reference changed for {component_key}: selected {selected_ref}, now {image_ref}",
+        )
+    try:
+        probe = upgrade_registry.manifest_probe(image_ref)
+    except upgrade_registry.RegistryError as exc:
+        raise UpgradeExecutionError(
+            "UPGRADE_TARGET_NOT_AVAILABLE",
+            f"cannot resolve selected target {image_ref}: {exc}",
+        ) from exc
+    if probe.status != "ok" or not probe.digest:
+        raise UpgradeExecutionError(
+            "UPGRADE_TARGET_NOT_AVAILABLE",
+            f"selected target is not available: {image_ref} ({probe.status})",
+        )
+    if probe.digest != selected_digest:
+        raise UpgradeExecutionError(
+            "UPGRADE_TARGET_MOVED",
+            f"selected target tag moved for {component_key}: {selected_digest} -> {probe.digest}",
+        )
+
+
 def _preflight_target_image(root: Path, image_ref: str) -> None:
     try:
         cp = subprocess.run(
@@ -199,13 +235,14 @@ def _preflight_target_image(root: Path, image_ref: str) -> None:
     if cp.returncode != 0:
         detail = (cp.stderr or "").strip()
         raise UpgradeExecutionError(
-            "UPGRADE_TARGET_UNAVAILABLE",
+            "UPGRADE_TARGET_NOT_AVAILABLE",
             f"target image is not available: {image_ref}" + (f": {detail}" if detail else ""),
         )
 
 
 def _recovery_point(root: Path) -> str:
-    cp = _run([sys.executable, str(root / "bkp-dr" / "backup-all.py"), "--json"], cwd=root, capture=True)
+    script = root / "commands" / "recovery" / "backup-all.py"
+    cp = _run([sys.executable, str(script), "--json"], cwd=root, capture=True)
     try:
         payload = json.loads(cp.stdout)
         path = str(payload["path"])
@@ -258,13 +295,13 @@ def execute(
     if not env_path.is_file():
         raise UpgradeExecutionError("UPGRADE_ENV_MISSING", f"missing operational environment: {env_path}")
 
-    lifecycle = _load_json(root / "installer" / "lifecycle.json")
+    lifecycle = _load_json(root / "commands" / "install-lifecycle.json")
     manifests = _load_manifests(root)
     env_values = _read_env_values(env_path)
     env_updates: dict[str, str] = {}
     affected_stacks: set[int] = set()
     recovery_required = False
-    target_images: list[str] = []
+    targets: list[tuple[str, str, dict]] = []
 
     for selection in selections:
         component_key = f"{selection['stack']}/{selection['component']}"
@@ -298,10 +335,17 @@ def execute(
         env_updates[env_key] = selection["version"]
         affected_stacks.add(_stack_number(selection["stack"]))
         recovery_required = recovery_required or bool(component.get("recovery_required", False))
-        target_images.append(_target_image_ref(component_key, component, selection, env_values))
+        image_ref = _target_image_ref(component_key, component, selection, env_values)
+        targets.append((component_key, image_ref, selection))
 
-    # PRE-FLIGHT: prove every exact selected image exists before backup or desired-state mutation.
-    for image_ref in target_images:
+    # PRE-FLIGHT: the tag must still resolve to the immutable digest accepted at
+    # selection time. This is checked before recovery creation or .env mutation.
+    for component_key, image_ref, selection in targets:
+        _verify_selected_digest(component_key, image_ref, selection)
+
+    # Keep the Docker manifest check as an independent runtime/toolchain
+    # preflight after registry identity has been proven.
+    for _, image_ref, _ in targets:
         _preflight_target_image(root, image_ref)
 
     recovery_point: str | None = None
@@ -346,7 +390,9 @@ def execute(
                 if sid in affected_stacks or not _prepared(root, manifest):
                     continue
                 depends_by_id = provider_sid in set(manifest.get("requires", [])) | set(manifest.get("optional", []))
-                consumes_capability = bool(provider_caps & (set(manifest.get("consumes", [])) | set(manifest.get("optional_consumes", []))))
+                consumes_capability = bool(
+                    provider_caps & (set(manifest.get("consumes", [])) | set(manifest.get("optional_consumes", [])))
+                )
                 if not (depends_by_id or consumes_capability):
                     continue
                 entry = lifecycle["stacks"][str(sid)]
@@ -367,7 +413,7 @@ def execute(
             "schema_version": 1,
             "success": True,
             "recovery_point": recovery_point,
-            "target_images": target_images,
+            "target_images": [image_ref for _, image_ref, _ in targets],
             "upgraded": selections,
             "reverified_stacks": sorted(reverified),
         }
