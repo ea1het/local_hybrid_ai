@@ -1,3 +1,13 @@
+"""Installation-local upgrade compatibility policy evaluation and persistence.
+
+The module keeps project defaults separate from per-installation overrides and
+supports exactly ``minor-series``, ``major-series`` and ``manual`` policy modes.
+It determines whether an explicitly named target is compatible with the current
+identity; it never discovers targets, selects one automatically or executes an
+upgrade. Existing selections are revalidated rather than silently discarded when
+policy changes.
+"""
+
 from __future__ import annotations
 
 import json
