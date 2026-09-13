@@ -7,11 +7,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STACK6 = ROOT / "stack6_-_hermes"
+LIFECYCLE = ROOT / "commands" / "install-lifecycle.json"
 
 
 class Stack6BuzzContractTests(unittest.TestCase):
     def test_stack6_prepare_provisions_buzz_after_base_prepare(self) -> None:
-        lifecycle = json.loads((ROOT / "installer" / "lifecycle.json").read_text(encoding="utf-8"))
+        lifecycle = json.loads(LIFECYCLE.read_text(encoding="utf-8"))
         prepare = lifecycle["stacks"]["6"]["prepare"]
         self.assertEqual(prepare[:2], [["./01-prepare.sh"], ["./03-buzz.sh"]])
 
