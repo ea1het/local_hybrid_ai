@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from commands import upgrade
+from commands import upgrade, upgrade_registry
 
 SCHEMA_VERSION = "2"
 
@@ -71,6 +72,68 @@ def _drift(desired: str, actual: str) -> str:
     return "no" if desired == actual else "yes"
 
 
+def _is_floating_image_reference(image: str | None) -> bool:
+    """Return whether a configured image reference follows a mutable tag line.
+
+    Digest-pinned and three-or-more-part semantic/build tags are treated as fixed
+    identities. Broad tags such as alpine/latest, major-only and major.minor lines
+    are tracking references whose registry target can move without a source edit.
+    """
+    if not image or "${" in image or "@sha256:" in image:
+        return False
+    tag = upgrade_registry.parse_reference(image).tag
+    if not tag:
+        return True
+    match = re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:-[0-9A-Za-z][0-9A-Za-z._-]*)?", tag)
+    if match is None:
+        return True
+    return len(match.group(1).split(".")) < 3
+
+
+def _resolve_floating_state(component, desired_image: str | None, actual_image: str | None) -> tuple[str, str, str]:
+    """Resolve floating desired/runtime identities through the owning registry.
+
+    A mutable configured tag is not itself a meaningful deployed version. When the
+    registry can map local and remote digests to human versions, status exposes those
+    identities and computes drift from immutable digest evidence. If that proof is
+    unavailable, status fails open for display but marks drift n/a rather than claiming
+    a false no-drift result from two equal mutable tag strings.
+    """
+    desired = upgrade.version_from_image(desired_image)
+    actual = upgrade.version_from_image(actual_image)
+
+    if not _is_floating_image_reference(desired_image):
+        return desired, actual, _drift(desired, actual)
+    if actual_image is None:
+        return desired, actual, "yes"
+    if not getattr(component, "container", None):
+        return desired, actual, _drift(desired, actual)
+
+    try:
+        state = upgrade_registry.inspect(
+            component.container,
+            actual_image,
+            tracking_image=desired_image,
+        )
+    except upgrade_registry.RegistryError:
+        return desired, actual, "n/a"
+
+    if state is None:
+        return desired, actual, "n/a"
+
+    actual_display = state.current_version or actual
+    desired_display = state.available_version or desired
+
+    if state.local_digest and state.remote_digest:
+        drift = "no" if state.local_digest == state.remote_digest else "yes"
+    elif state.current_version and state.available_version:
+        drift = "no" if state.current_version == state.available_version else "yes"
+    else:
+        drift = "n/a"
+
+    return desired_display, actual_display, drift
+
+
 def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, str] | None = None) -> list[dict]:
     """Build status without hiding state dependencies behind global runtime lookups."""
     env = upgrade.read_env()
@@ -79,8 +142,9 @@ def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, 
 
     rows: list[dict] = []
     for component in upgrade.load_catalog():
-        desired = upgrade.version_from_image(upgrade.compose_image(component, env))
-        actual = upgrade.version_from_image(upgrade.running_image(component))
+        desired_image = upgrade.compose_image(component, env)
+        actual_image = upgrade.running_image(component)
+        desired, actual, drift = _resolve_floating_state(component, desired_image, actual_image)
         component_key = upgrade.key(component)
         rows.append({
             "stack": component.stack,
@@ -88,7 +152,7 @@ def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, 
             "desired": desired,
             "deployed": _deployed(component_key, desired, actual, deployed_versions),
             "actual": actual,
-            "drift": _drift(desired, actual),
+            "drift": drift,
         })
     return rows
 
