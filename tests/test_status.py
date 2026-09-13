@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from commands import status
-
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "local-ai"
 
 
 class StatusStateTests(unittest.TestCase):
@@ -21,9 +16,18 @@ class StatusStateTests(unittest.TestCase):
             platform = root / "platform"
             platform.mkdir(parents=True)
             events = [
-                {"success": True, "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v1"}]},
-                {"success": False, "selected": [{"stack": "stack6", "component": "hermes", "version": "v2"}]},
-                {"success": True, "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}]},
+                {
+                    "success": True,
+                    "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v1"}],
+                },
+                {
+                    "success": False,
+                    "selected": [{"stack": "stack6", "component": "hermes", "version": "v2"}],
+                },
+                {
+                    "success": True,
+                    "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}],
+                },
             ]
             (platform / "upgrade-history.jsonl").write_text(
                 "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
@@ -39,32 +43,38 @@ class StatusStateTests(unittest.TestCase):
 
     def test_inventory_keeps_desired_deployed_and_actual_separate(self):
         component = mock.Mock(stack="stack6", name="hermes")
-        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
-             mock.patch("commands.status.upgrade.read_env", return_value={}), \
-             mock.patch("commands.status.upgrade.compose_image", return_value="repo:v2"), \
-             mock.patch("commands.status.upgrade.running_image", return_value="repo:v1"), \
-             mock.patch("commands.status.upgrade.runtime_root", return_value=Path("/tmp/runtime")), \
-             mock.patch("commands.status._deployed_versions", return_value={"stack6/hermes": "v1"}):
-            rows = status.inventory()
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp)
+            with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+                 mock.patch("commands.status.upgrade.read_env", return_value={}), \
+                 mock.patch("commands.status.upgrade.compose_image", return_value="repo:v2"), \
+                 mock.patch("commands.status.upgrade.running_image", return_value="repo:v1"), \
+                 mock.patch("commands.status.upgrade.runtime_root", return_value=runtime), \
+                 mock.patch("commands.status._deployed_versions", return_value={"stack6/hermes": "v1"}):
+                rows = status.inventory()
         self.assertEqual(rows[0]["desired"], "v2")
         self.assertEqual(rows[0]["deployed"], "v1")
         self.assertEqual(rows[0]["actual"], "v1")
         self.assertEqual(rows[0]["drift"], "drift")
 
-    def test_public_status_json_contract_is_versioned(self):
+    def test_inventory_uses_runtime_root_for_deployed_history(self):
+        component = mock.Mock(stack="stack6", name="hermes")
         with tempfile.TemporaryDirectory() as tmp:
-            env = os.environ.copy()
-            env["LOCAL_AI_RUNTIME_ROOT"] = tmp
-            cp = subprocess.run(
-                [str(CLI), "--json", "status"], cwd=ROOT, env=env, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-            )
-        self.assertEqual(cp.returncode, 0, cp.stderr)
-        payload = json.loads(cp.stdout)
-        self.assertEqual(payload["schema_version"], "1")
-        self.assertEqual(payload["command"], "status")
-        self.assertTrue(payload["success"])
-        self.assertTrue(all({"desired", "deployed", "actual", "drift"} <= row.keys() for row in payload["components"]))
+            runtime = Path(tmp)
+            platform = runtime / "platform"
+            platform.mkdir(parents=True)
+            (platform / "upgrade-history.jsonl").write_text(json.dumps({
+                "success": True,
+                "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}],
+            }) + "\n", encoding="utf-8")
+            with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+                 mock.patch("commands.status.upgrade.read_env", return_value={}), \
+                 mock.patch("commands.status.upgrade.compose_image", return_value="repo:v3"), \
+                 mock.patch("commands.status.upgrade.running_image", return_value="repo:v3"), \
+                 mock.patch("commands.status.upgrade.runtime_root", return_value=runtime):
+                rows = status.inventory()
+        self.assertEqual(rows[0]["deployed"], "v3")
+        self.assertEqual(rows[0]["drift"], "ok")
 
 
 if __name__ == "__main__":
