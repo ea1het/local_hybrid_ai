@@ -42,3 +42,11 @@ Feature: Single management CLI anticorruption boundary
     And the selected component reaches READY and its stack VERIFY passes
     And prepared dependent consumers are reverified
     And the selection is cleared only after success
+
+  @CLI-UPGRADE-006
+  Scenario: Exact target images are proven before mutation
+    Given one or more container-image components are selected
+    When the operator runs "./local-ai upgrade --yes"
+    Then every exact selected image reference is checked with a read-only registry manifest inspection
+    And an unavailable target fails with UPGRADE_TARGET_UNAVAILABLE
+    And the operational environment is not changed before all target-image preflights pass
