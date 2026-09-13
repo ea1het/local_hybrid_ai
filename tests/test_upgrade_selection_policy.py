@@ -6,8 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from commands import upgrade, upgrade_entry
-from internal import container_registry, upgrade_policy
+from commands import upgrade, upgrade_entry, upgrade_policy, upgrade_registry as container_registry
 
 
 class UpgradeSelectionPolicyTests(unittest.TestCase):
@@ -22,13 +21,14 @@ class UpgradeSelectionPolicyTests(unittest.TestCase):
         )
 
     def test_select_persists_newer_target_inside_minor_series(self):
+        digest = "sha256:" + "a" * 64
         with tempfile.TemporaryDirectory() as tmp:
             runtime = Path(tmp)
             runtime_patch, image_patch = self._runtime_patches(runtime)
             with runtime_patch, image_patch, mock.patch.object(
                 container_registry,
                 "manifest_probe",
-                return_value=container_registry.RemoteProbe("sha256:" + "a" * 64, "ok"),
+                return_value=container_registry.RemoteProbe(digest, "ok"),
             ):
                 rc = upgrade_entry.select("stack7", None, "v0.11.4")
             self.assertEqual(rc, 0)
@@ -36,6 +36,8 @@ class UpgradeSelectionPolicyTests(unittest.TestCase):
             selected = plan["selected"]["stack7/open-webui"]
             self.assertEqual(selected["version"], "v0.11.4")
             self.assertEqual(selected["policy_at_selection"], "minor-series")
+            self.assertEqual(selected["target_image"], "ghcr.io/open-webui/open-webui:v0.11.4")
+            self.assertEqual(selected["target_digest"], digest)
 
     def test_select_rejects_target_outside_effective_policy(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,6 +80,28 @@ class UpgradeSelectionPolicyTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             plan = json.loads((runtime / "platform" / "upgrade-plan.json").read_text())
             self.assertEqual(plan["selected"]["stack7/open-webui"]["policy_at_selection"], "manual")
+
+    def test_apply_validation_rejects_a_tag_that_moved_after_selection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp)
+            selection = {
+                "stack": "stack7",
+                "component": "open-webui",
+                "current_at_selection": "v0.11.3",
+                "version": "v0.11.4",
+                "policy_at_selection": "minor-series",
+                "target_image": "ghcr.io/open-webui/open-webui:v0.11.4",
+                "target_digest": "sha256:" + "a" * 64,
+            }
+            runtime_patch, image_patch = self._runtime_patches(runtime)
+            with runtime_patch, image_patch, mock.patch.object(
+                container_registry,
+                "manifest_probe",
+                return_value=container_registry.RemoteProbe("sha256:" + "d" * 64, "ok"),
+            ):
+                with self.assertRaises(upgrade.UpgradeError) as ctx:
+                    upgrade_entry.validate_selected_baselines([selection])
+            self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_MOVED")
 
 
 if __name__ == "__main__":
