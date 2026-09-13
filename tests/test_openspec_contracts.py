@@ -31,7 +31,7 @@ class OpenSpecContractTests(unittest.TestCase):
     def test_INSTALL_LIFECYCLE_001_restart_reconcile_waits_ready(self):
         lifecycle = json.loads((ROOT / "commands" / "install-lifecycle.json").read_text(encoding="utf-8"))
         reconcile = lifecycle["stacks"]["6"]["reconcile"]
-        self.assertEqual(reconcile[0], ["./06-reconcile-capabilities.sh", "--restart"])
+        self.assertEqual(reconcile[0], ["bash", "./06-reconcile-capabilities.sh", "--restart"])
         self.assertEqual(reconcile[1], ["bash", "./07-wait-ready.sh"])
 
     def test_DR_BACKUP_001_stack7_artifact_is_declared(self):
