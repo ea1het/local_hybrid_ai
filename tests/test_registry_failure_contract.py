@@ -1,3 +1,11 @@
+"""Deterministic fail-closed tests for registry rate-limit and authorization errors.
+
+These tests inject HTTP 429, 401 and 403 responses at the registry boundary so
+no public registry is deliberately rate-limited or given invalid production
+credentials. They prove failure classification is preserved through tag/manifest
+probes and that upgrade inventory reports uncertainty rather than ``current``.
+"""
+
 from __future__ import annotations
 
 import unittest

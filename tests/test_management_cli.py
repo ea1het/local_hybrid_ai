@@ -1,3 +1,12 @@
+"""End-to-end contract tests for the sole supported ``./local-ai`` boundary.
+
+These tests invoke or dispatch through the public CLI to protect option
+passthrough, stable JSON schemas/error codes, numeric human stack display,
+stable machine stack identity, explicit upgrade selection, policy shorthand,
+selectability gates and recovery-subpackage routing. They intentionally avoid
+making private implementation paths part of the operator contract.
+"""
+
 from __future__ import annotations
 
 import json

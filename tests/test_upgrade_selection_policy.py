@@ -1,3 +1,11 @@
+"""Selection tests for compatibility policy and immutable registry target identity.
+
+These tests prove selection is explicit and installation-local, target tags must
+exist and satisfy the effective policy, manual policy does not imply automatic
+target discovery, and a tag that moves after selection is rejected by digest
+revalidation before apply.
+"""
+
 from __future__ import annotations
 
 import json

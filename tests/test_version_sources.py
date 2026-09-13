@@ -1,3 +1,11 @@
+"""Protect the single-source invariant for container version discovery.
+
+Upgrade inventory must derive version evidence from the registry/repository that
+owns the configured image rather than lateral APIs or hand-maintained metadata.
+These tests also cover offline behavior, local-only components and failure states
+so unavailable registry evidence never becomes a fabricated current version.
+"""
+
 from __future__ import annotations
 
 import json

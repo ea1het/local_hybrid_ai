@@ -1,3 +1,10 @@
+"""Protect orchestration of the isolated end-to-end disaster-recovery drill.
+
+The drill must stage source/configuration, restore managed state and verify external
+prerequisites without touching live runtime. These tests also ensure EXTERNAL
+resources are dispatched by declared strategy and unknown strategies fail closed.
+"""
+
 import sys
 import unittest
 from pathlib import Path

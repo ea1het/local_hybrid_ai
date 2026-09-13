@@ -1,3 +1,11 @@
+"""Public CLI dispatch tests for selective stack runtime start/stop.
+
+These tests ensure stack selectors and the global JSON flag reach the runtime
+lifecycle implementation through ``./local-ai`` semantics. They protect the
+management boundary itself; dependency and Compose behaviour are tested in the
+runtime-lifecycle test module.
+"""
+
 from __future__ import annotations
 
 import unittest

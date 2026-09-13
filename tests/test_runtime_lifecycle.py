@@ -1,3 +1,11 @@
+"""Behaviour tests for conservative selective stack runtime start/stop.
+
+These tests prove the runtime lifecycle uses non-destructive Compose start/stop,
+waits for required runtime after start, refuses implicit provider startup, blocks
+stopping providers with active required consumers, rejects stacks without a
+managed runtime, and preserves stable structured error codes.
+"""
+
 from __future__ import annotations
 
 import io

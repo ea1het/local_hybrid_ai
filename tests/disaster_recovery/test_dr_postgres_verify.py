@@ -1,3 +1,10 @@
+"""Protect the PostgreSQL restore-verification command construction and input boundaries.
+
+These tests ensure identifiers are validated before SQL quoting, privileged restore
+commands read administrator credentials from the container secret, and pg_restore
+receives dump content through stdin without unsafe filename or shell conventions.
+"""
+
 import unittest
 
 import dr_postgres_verify

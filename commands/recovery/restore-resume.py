@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Resume and re-verify a clean-target restore interrupted after reconstruction.
+
+This compatibility-oriented command validates restored source, protected
+operational configuration, prepared-stack markers and durable application state
+before resuming READY/VERIFY/reconcile. It also verifies operator-provided
+Stack6 memory-sync SSH bootstrap material and persists the Git-memory desired
+state before re-enabling that optional profile. It is not a general retry loop:
+it is deliberately scoped to a previously reconstructed clean target.
+"""
+
 from __future__ import annotations
 
 import argparse

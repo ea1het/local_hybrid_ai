@@ -1,3 +1,11 @@
+"""State-model tests for Desired / Deployed / Actual / Drift semantics.
+
+These tests keep guarded-upgrade history distinct from observed runtime and
+configuration intent. They exercise mutable-tag registry resolution, fixed tags,
+digest pins, pre-history deployment baselines, cross-command Actual consistency
+and fail-closed drift reporting when registry identity cannot be proven.
+"""
+
 from __future__ import annotations
 
 import json

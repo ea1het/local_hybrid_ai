@@ -1,3 +1,13 @@
+# Purpose: define externally observable behaviour of the sole supported management
+# boundary. Scenarios describe operator/automation contracts, not Python module or
+# Docker Compose implementation details.
+#
+# Architecture: ADR-0002 establishes the single CLI boundary and ADR-0005 places
+# its private implementation under commands/. Stack dependency/capability truth
+# remains in manifests and is summarized in docs/stacks/README.md.
+#
+# Evidence: stable tags are mapped to automated and runtime evidence in
+# docs/devel-docs/openspec/traceability.md.
 Feature: Single management CLI anticorruption boundary
   `./local-ai` is the only supported management surface. Human operators and
   machine consumers reach the same domain operations through that boundary;
@@ -21,7 +31,35 @@ Feature: Single management CLI anticorruption boundary
       And no top-level `internal/`, `installer/` or `bkp-dr/` implementation root is required
       And historical recovery paths may be recognized only for restoring recorded source revisions
 
+  Rule: Selective runtime lifecycle preserves dependency and state ownership
+
+    @CLI-RUNTIME-001
+    Scenario: A leaf stack can be stopped and started without destructive recreation
+      Given the stack is PREPARED and its required providers are running
+      When the operator stops and later starts that stack through `./local-ai`
+      Then stop uses non-destructive runtime stop semantics
+      And the stack-owned containers remain present while stopped
+      And start reuses the existing stack runtime rather than recreating it implicitly
+      And start waits for the stack's required runtime to become READY
+
+    @CLI-RUNTIME-002
+    Scenario: Runtime lifecycle fails closed across required dependencies
+      Given a provider has a running required consumer
+      When the operator attempts to stop the provider through `./local-ai`
+      Then the operation fails before Compose mutation
+      And the required consumer remains running
+      And when a consumer is started with a required provider not running
+      Then the operation fails rather than implicitly starting that provider
+
   Rule: Upgrade discovery is inventory, not consent
+
+    @CLI-REGISTRY-001
+    Scenario: Registry failures remain unknown rather than becoming current
+      Given registry discovery receives rate-limit, unauthorized or forbidden status
+      When upgrade inventory is rendered
+      Then the remote status remains rate_limited, unauthorized or forbidden respectively
+      And available is unknown
+      And the component is never described as current from failed remote evidence
 
     @CLI-UPGRADE-001
     Scenario: Upgrade check shows the complete component inventory

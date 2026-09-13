@@ -1,3 +1,10 @@
+"""Concurrency and failure-journal tests for destructive upgrade application.
+
+These tests prove read-only upgrade commands are not unnecessarily serialized,
+concurrent confirmed applies fail closed with ``UPGRADE_BUSY``, and failed apply
+attempts preserve selection/error evidence in installation-local history.
+"""
+
 from __future__ import annotations
 
 import fcntl

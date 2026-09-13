@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Validate stack manifests and resolve dependency/capability installation plans.
+
+This Stack0-owned utility defines the structural contract for manifest IDs,
+directories, dependencies, capabilities, resource ownership and DR declarations.
+It can validate both current and target dependency graphs and produce a stable
+install order, but it does not deploy stacks or mutate runtime state. The common
+installer consumes the validated manifest truth behind the public ``./local-ai``
+boundary.
+"""
+
 import argparse
 import json
 import re

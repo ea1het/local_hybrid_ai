@@ -1,3 +1,13 @@
+"""Registry-native container identity, version discovery and availability probes.
+
+The module parses Docker/OCI references, maps running immutable digests back to
+human release tags, follows registry pagination/authentication, and classifies
+remote failures without inventing state. Registry 429/401/403 responses remain
+explicit uncertainty: callers must never translate them into ``current``. This
+module discovers facts only; compatibility policy and operator consent live in
+separate upgrade modules.
+"""
+
 from __future__ import annotations
 
 import email.utils

@@ -28,7 +28,7 @@ flowchart LR
 - Applications use dedicated LiteLLM virtual credentials rather than the administrative master key.
 - Internal services normally communicate over Stack0-owned `redlocal`; host exposure must be explicit.
 - Open WebUI keeps model access control enabled and grants `basic_autorouter` explicit public read access instead of bypassing access control.
-- Security rationale is recorded in [../sdr/](../sdr/).
+- Security rationale is recorded in [devel-docs/sdr/](devel-docs/sdr/).
 
 ## Persistence / DR
 
@@ -40,4 +40,4 @@ Qualified evidence is summarized in [dr/status.md](dr/status.md). Do not repeat 
 
 Before changing a stack: identify the owner, inspect its manifest/Compose/lifecycle/scripts, make the smallest ownership-correct change, run repository tests, then qualify runtime behaviour only when necessary. Never claim deployment or runtime verification from source-only evidence.
 
-All automated tests live under [`../tests/`](../tests/). Behaviour contracts live in [`../openspec/`](../openspec/) and link to tests through [`traceability.md`](../openspec/traceability.md).
+All automated tests live under [`../tests/`](../tests/). Behaviour contracts live in [`devel-docs/openspec/`](devel-docs/openspec/) and link to tests through [`traceability.md`](devel-docs/openspec/traceability.md).

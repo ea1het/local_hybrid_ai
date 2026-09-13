@@ -1,3 +1,10 @@
+"""Protect atomic archive-artifact publication for disaster-recovery sets.
+
+These tests verify private permissions, bounded tar members, checksum/metadata
+consistency, no-overwrite publication and source immutability. They exercise the
+archive adapter contract independently from the higher-level global backup flow.
+"""
+
 import datetime as dt
 import hashlib
 import importlib.util

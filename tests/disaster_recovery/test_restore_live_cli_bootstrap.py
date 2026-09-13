@@ -1,3 +1,11 @@
+"""Protect operator-supplied SSH bootstrap handling during clean-target Stack6 recovery.
+
+The live-restore wrapper must locate the canonical operational-env artifact, validate
+an external bootstrap bundle, copy only the required SSH files with private modes
+into a clean runtime target, and explicitly re-enable/verify the Git-memory profile.
+The bootstrap material is external recovery input, never a backup-set secret payload.
+"""
+
 from __future__ import annotations
 
 import importlib.util

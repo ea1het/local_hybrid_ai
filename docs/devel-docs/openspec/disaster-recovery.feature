@@ -18,6 +18,16 @@ Feature: Disaster recovery
       And sensitive metadata contains no secret values
       And a partially produced staging set is never presented as a completed recovery point
 
+    @DR-BACKUP-002
+    Scenario: A backup destination cannot overlap installation source or runtime
+      Given STACKS_ROOT and BASE_PATH identify the live installation source and mutable runtime
+      When the operator chooses a backup destination
+      Then the resolved destination must be outside STACKS_ROOT
+      And the resolved destination must be outside BASE_PATH
+      And the destination must not be an ancestor of STACKS_ROOT or BASE_PATH
+      And equivalent paths expressed through dot-dot or symbolic-link resolution are rejected
+      And overlap rejection happens before backup staging or publication mutates the destination
+
   Rule: Restore follows resource strategy and dependency order
 
     @DR-RESTORE-001

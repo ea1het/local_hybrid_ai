@@ -1,3 +1,10 @@
+"""Protect destructive clean-target restore preconditions and bounded live mutation.
+
+Live restore is allowed only after explicit confirmation and proof that source/runtime
+roots and manifest-owned Docker objects are absent. These tests also guard supported
+installer invocation and safe replacement of prepared-but-empty managed archive targets.
+"""
+
 from __future__ import annotations
 
 import json

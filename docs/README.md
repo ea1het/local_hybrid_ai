@@ -1,32 +1,43 @@
-# Documentation
+# Local Hybrid AI documentation
 
-The repository keeps executable contracts close to the code and longer operational material here.
+[← Project README](../README.md) · [Full documentation map](TOC.md)
+
+This directory contains operator guidance, architecture and decision records, disaster-recovery material, behavioural contracts and development guidance. The canonical navigation entry is [`TOC.md`](TOC.md); every documentation folder links back to it.
+
+## Choose your path
+
+| If you want to… | Start here |
+|---|---|
+| Understand the system | [Architecture](architecture/README.md) and [stack map](stacks/README.md) |
+| Install or reconcile it | [Installation](installation.md) |
+| Operate it | [User documentation](user-docs/README.md) |
+| Configure secrets | [Configuration](configuration/README.md) |
+| Back up or recover it | [Disaster recovery](dr/README.md) |
+| Understand upgrade rules | [Upgrade policy](upgrade-policy.md) |
+| Change the architecture | [Developer docs](devel-docs/README.md) and [ADRs](devel-docs/adr/README.md) |
+| Review security choices | [SDRs](devel-docs/sdr/README.md) |
+| Review behavioural contracts | [OpenSpec](devel-docs/openspec/README.md) |
+| Run or extend tests | [Testing](devel-docs/testing.md) |
+| See unfinished work | [Pending work](pending.md) |
+
+## Documentation model
 
 ```mermaid
-flowchart LR
-    Root["README.md"] --> Stacks["stack README files"]
-    Root --> Install["docs/installation.md"]
-    Root --> Upgrade["docs/upgrade-policy.md"]
-    Root --> DR["docs/dr/"]
-    Root --> Dev["docs/devel-docs/"]
-    Dev --> ADR["adr/"]
-    Dev --> SDR["sdr/"]
-    Dev --> Spec["openspec/"]
+flowchart TD
+    Root["Project README"] --> TOC["docs/TOC.md"]
+    TOC --> Ops["Operator docs"]
+    TOC --> Arch["Architecture"]
+    TOC --> Dev["Developer docs"]
+    TOC --> DR["Disaster recovery"]
+    Arch --> Stacks["Cross-stack map"]
+    Dev --> ADR["Architecture decisions"]
+    Dev --> SDR["Security decisions"]
+    Dev --> Spec["Gherkin / OpenSpec"]
+    Spec --> Trace["Traceability to code + tests"]
 ```
 
-## What lives where
+Folder READMEs are indexes, not competing sources of truth. Machine-readable ownership and dependency facts remain authoritative in stack manifests. Architectural rationale belongs in ADRs, security rationale in SDRs, observable behaviour in OpenSpec/Gherkin, and implementation verification in tests.
 
-- `stack*/README.md`: short contract for one stack: purpose, dependencies, owned runtime, persistence and lifecycle.
-- `installation.md`: operator installation and guarded-upgrade flow.
-- `upgrade-policy.md`: registry availability versus compatibility policy, installation overrides and policy CLI.
-- `dr/`: disaster-recovery design, evidence and operating procedures.
-- `architecture/`: architecture reference material.
-- `configuration/`: configuration and secret-handling documentation.
-- `a2aknowledge.md`: continuity/handoff context for AI-assisted work.
-- `pending.md`: active backlog and closed qualification evidence.
-- `devel-docs/adr/`: architectural decisions.
-- `devel-docs/sdr/`: security decisions and accepted risk.
-- `devel-docs/openspec/`: executable-oriented behaviour specification linked to tests.
-- `devel-docs/testing.md`: repository validation and qualification guidance.
+## Language and legacy policy
 
-Historical verbose per-stack Spanish documents are retained under `stacks/legacy/`; the canonical stack documentation is each stack's `README.md`.
+Canonical project documentation is maintained in English so that code, contracts and documentation use one working language. Historical material is kept only while it contains unique knowledge. The old Spanish per-stack documents are being evaluated against current manifests and stack READMEs; useful invariants are migrated to canonical documentation and stale duplicates are deleted rather than maintained indefinitely.

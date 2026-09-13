@@ -1,3 +1,11 @@
+"""Static contract tests for Stack7 ownership, lifecycle, policy and recovery.
+
+These tests keep the manifest gateway dependency, internal-only networking,
+fresh-instance defaults, bootstrap-safe policy reconciliation/verification and
+quiesced sensitive DR archive aligned. They protect the declarative Stack7
+contract without requiring a live Open WebUI instance.
+"""
+
 import json
 import unittest
 from pathlib import Path

@@ -1,3 +1,11 @@
+"""Safety tests for recovery-first targeted upgrade execution.
+
+These tests protect atomic `.env` mutation, installation-owned target image
+construction, read-only target preflight, immutable digest revalidation,
+recovery-point JSON consumption, empty-selection rejection and policy
+revalidation before any mutation occurs.
+"""
+
 from __future__ import annotations
 
 import json

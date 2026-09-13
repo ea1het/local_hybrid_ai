@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""CLI entry point for an isolated end-to-end disaster-recovery drill.
+
+The command reconstructs a completed recovery point into an isolated destination
+and reports verification evidence without modifying the live runtime, publishing
+ports or attaching recovered services to the production platform network. The
+actual recovery logic remains in the DR engine modules; this file is only their
+operator-facing argument/output adapter behind ``./local-ai restore drill``.
+"""
+
 from __future__ import annotations
 
 import argparse

@@ -1,3 +1,11 @@
+"""Core upgrade inventory, plan persistence and component metadata helpers.
+
+This module keeps runtime observation, registry availability, compatibility
+policy, selectability and explicit operator selection as separate facts. It owns
+the installation-local upgrade plan format and component catalog interpretation,
+but it does not execute upgrades; guarded mutation belongs to the executor.
+"""
+
 from __future__ import annotations
 
 import json

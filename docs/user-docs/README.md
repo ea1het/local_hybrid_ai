@@ -1,16 +1,18 @@
 # User documentation
 
-This area contains the supported operator-facing contract for Local Hybrid AI. Operators and external automation use `./local-ai`; implementation modules under `commands/` and the stack directories are not public management APIs.
+[← Documentation map](../TOC.md)
 
-`commands/` is one private implementation package behind the CLI. Installation, status and upgrade logic live directly in that package; disaster-recovery engines, adapters and schemas live in the `commands/recovery/` subpackage. Historical restore compatibility may recognize older source layouts, but those historical paths are not supported operator interfaces.
+This area contains the supported operator-facing contract for Local Hybrid AI. Operators and external automation use `./local-ai`; implementation modules under `commands/`, stack scripts and Compose files are not public management APIs.
 
-Start with:
+## Start here
 
-- [CLI reference](cli.md) for the complete supported management surface.
-- [Installation](../installation.md) for planning, installation and lifecycle convergence.
-- [Upgrade policy](../upgrade-policy.md) for registry discovery, compatibility policy, explicit selection and guarded execution.
-- [Disaster recovery](../dr/howto.md) for backup, restore planning, isolated drills and clean-target recovery.
-- [Configuration and secrets](../configuration/env-secrets.md) for the protected root environment and secret ownership.
-- [LiteLLM MCP gateway](integrations/litellm-mcp.md) and [Hermes integrations](integrations/hermes.md) for operator-managed integrations.
+- [CLI reference](cli.md) — complete supported management surface, including human and JSON contracts.
+- [Installation](../installation.md) — planning, installation and lifecycle convergence.
+- [Upgrade policy](../upgrade-policy.md) — registry discovery, compatibility, explicit selection and guarded execution.
+- [Disaster recovery](../dr/README.md) — backup, restore planning, drills and clean-target recovery.
+- [Configuration and secrets](../configuration/README.md) — protected environment and secret ownership.
+- [Integrations](integrations/README.md) — Hermes and LiteLLM/MCP integration guidance.
 
-The documentation describes the behavior implemented by the current source tree. Where a command is intentionally not available as stable JSON, the CLI fails explicitly rather than pretending a machine contract exists.
+`commands/` is a private implementation package behind the CLI. Historical restore compatibility may recognize older source layouts, but those historical paths are not supported operator interfaces.
+
+The documentation describes behaviour implemented by the current source tree. Where a command intentionally lacks a stable JSON contract, the CLI fails explicitly rather than pretending one exists.

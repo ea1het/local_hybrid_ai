@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""Initialize or validate generation-bound state for the Stack6 sandbox.
+
+A sandbox generation couples a workspace marker with an integrity-checked SQLite
+state database. Existing generations are validated fail-closed; partially
+initialized, symlinked or mismatched state requires an explicit sandbox reset.
+Objects present at initialization are marked protected so the cleanup sidecar
+cannot later treat platform-created baseline content as disposable user state.
+"""
+
 from __future__ import annotations
 
 import os

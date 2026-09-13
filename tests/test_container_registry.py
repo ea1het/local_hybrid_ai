@@ -1,3 +1,11 @@
+"""Contract tests for registry identity, discovery, pagination and version mapping.
+
+These tests protect the registry-native upgrade/status boundary. They verify
+repository normalization, immutable digest handling, human-version discovery,
+tracking-channel rules and fail-closed interpretation of registry failures.
+No test in this module is intended to contact a public registry.
+"""
+
 from __future__ import annotations
 
 import json

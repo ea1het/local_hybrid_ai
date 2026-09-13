@@ -1,3 +1,10 @@
+"""Protect safe reconstruction primitives for a Gitea native dump.
+
+The restore adapter must reject unsafe ZIP paths, rebuild the SQLite database with
+real data and locate bare Git repositories before deeper repository verification.
+These tests cover extraction/database/repository primitives, not service startup.
+"""
+
 import tempfile
 import unittest
 import zipfile

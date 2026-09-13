@@ -1,3 +1,12 @@
+"""Structural tests for the normalized repository, documentation and CLI layout.
+
+These tests prevent historical top-level implementation/documentation roots from
+returning, keep tests under one package, preserve local canonical stack READMEs,
+protect recovery-schema ownership and verify ``local-ai`` remains the supported
+root management entry point. They encode repository architecture rather than
+runtime service behaviour.
+"""
+
 from __future__ import annotations
 
 import unittest

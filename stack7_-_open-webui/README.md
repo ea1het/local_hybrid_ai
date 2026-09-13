@@ -1,28 +1,57 @@
 # Stack7 — Open WebUI
 
-Curated chat UI over LiteLLM, with optional local web search/extraction from Stack2.
+[Documentation TOC](../docs/TOC.md) · [Stack map](../docs/stacks/README.md) · [OpenSpec contract](../docs/devel-docs/openspec/stacks/stack7.feature)
+
+Stack7 is the curated user chat surface. It consumes the Stack3 AI gateway, can consume Stack2 local web capabilities and may be published through Stack1 ingress. Model access is explicit rather than globally bypassed.
 
 ```mermaid
 flowchart LR
-    User --> OpenWebUI
-    OpenWebUI --> LiteLLM[Stack3 LiteLLM]
-    OpenWebUI -. web.search .-> SearXNG[Stack2 SearXNG]
-    OpenWebUI -. web.extract .-> Firecrawl[Stack2 Firecrawl]
-    HAProxy[Stack1 HAProxy] -. ingress .-> OpenWebUI
+    User[User] --> WebUI[Stack7 Open WebUI]
+    WebUI --> LiteLLM[Stack3 LiteLLM]
+    WebUI -. web.search .-> SearXNG[Stack2 SearXNG]
+    WebUI -. web.extract .-> Firecrawl[Stack2 Firecrawl]
+    HAProxy[Stack1 HAProxy] -. optional ingress .-> WebUI
+    Policy[Stack7 model policy] --> WebUI
 ```
 
-**Requires:** Stack0 + Stack3.  
-**Optional:** Stack1 ingress, Stack2 web capabilities.  
-**Default model:** `basic_autorouter`.  
-**User policy:** Arena disabled; `basic_autorouter` receives explicit public-read access; global bypass remains disabled.  
-**Web default:** new chats start with web search enabled, but users may turn it off.
+## Contract
 
-`/app/backend/data` is persistent sensitive state and is archived by DR; `OPENWEBUI_SECRET_KEY` is persistent identity in protected configuration. The first Stack7-aware global backup and isolated restore are qualified in [../docs/dr/status.md](../docs/dr/status.md).
+- **Requires:** Stack0 and Stack3.
+- **Optional:** Stack1 ingress and Stack2 web capabilities.
+- **Default model:** `basic_autorouter`.
+- **Access policy:** Arena disabled; `basic_autorouter` receives explicit public-read access; global access bypass remains disabled.
+- **Web behaviour:** new chats start with web search enabled when the capability exists, while users retain the ability to disable it.
+- **DR:** `/app/backend/data` is persistent sensitive state and is archived; `OPENWEBUI_SECRET_KEY` is persistent installation identity in protected configuration.
 
-Stack7 policy reconciliation is part of the supported `local-ai` lifecycle. Before the first real administrator exists it is intentionally deferred without failing initial deployment. After the administrator account has been created, converge and verify the policy through the public management boundary:
+## Policy lifecycle
+
+Stack7 model policy is reconciled through the supported `./local-ai` lifecycle. Before the first real administrator exists, reconciliation intentionally reports a deferred/bootstrap-safe state rather than failing initial deployment. After an administrator exists, reconciliation becomes idempotent and verification requires the declared access/default-feature policy.
+
+The stack-owned reconciliation and verification Python programs are implementation details. Operators use:
 
 ```bash
 ./local-ai install 7 --reconcile --yes
 ```
 
-The lifecycle then ensures that `basic_autorouter` is active, enables `web_search` by default and grants explicit public read access. The stack-owned Python reconciliation and verification scripts are implementation details and should not be invoked directly by operators.
+The reconciler ensures `basic_autorouter` is active, explicitly readable and configured with `web_search` in its default feature identifiers. Verification is read-only and checks the same contract.
+
+## Optional web capability
+
+Stack2 is not a required dependency. Without a READY Stack2 provider, Stack7 must not silently route web requests to an undeclared external provider. When Stack2 becomes READY, capability reconciliation enables the configured local web integration.
+
+## Security invariants
+
+- Model access is granted explicitly; global bypass stays disabled.
+- Persistent Open WebUI identity/state is included in its recovery contract.
+- AI provider credentials remain behind Stack3; Stack7 receives scoped gateway access.
+- Optional web capability is local and explicit rather than an implicit cloud fallback.
+- `./local-ai` remains the supported management boundary.
+
+## Related decisions
+
+- [SDR-0003 — least-privilege AI gateway credentials](../docs/devel-docs/sdr/0003-least-privilege-ai-gateway-credentials.md)
+- [SDR-0005 — explicit Open WebUI model access](../docs/devel-docs/sdr/0005-open-webui-explicit-model-access.md)
+- [Stack7 DR qualification](../docs/dr/status.md)
+- [CLI reference](../docs/user-docs/cli.md)
+
+Key implementation files: `docker-compose.yml`, `00-bootstrap-env.py`, model-policy reconcile/verify programs, `manifest.json`, and stack lifecycle scripts.

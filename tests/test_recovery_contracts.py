@@ -1,3 +1,12 @@
+"""Manifest-schema tests for declared disaster-recovery ownership and strategies.
+
+These tests validate each stack's recovery mode against the shared schema and
+exercise fail-closed validation for missing managed resources, illegal local
+state on reconstructable stacks, incorrect strategy source types, duplicate IDs,
+unknown fields and invalid quiesce declarations. They protect declarative DR
+truth before any backup or restore engine acts on it.
+"""
+
 import copy
 import importlib.util
 import unittest

@@ -1,3 +1,12 @@
+"""Selective non-destructive runtime start/stop for one prepared stack.
+
+The module interprets stack manifests and the lifecycle registry to preserve
+ownership and dependency rules around ``docker compose start``/``stop``. It
+never performs ``down``, removal, recreation or implicit dependency startup.
+Stopping a required provider fails closed while consumers are active; starting
+a consumer fails closed when required runtime providers are unavailable.
+"""
+
 from __future__ import annotations
 
 import json

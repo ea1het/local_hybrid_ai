@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Clean-target full-restore CLI with recovery compatibility and optional SSH bootstrap.
+
+This entry point performs the destructive live-restore boundary used by
+``./local-ai restore apply``. It first supports a read-only clean-target
+preflight, then requires explicit confirmation before reconstruction. Historical
+installer compatibility shims remain in recovery tooling rather than modifying
+backed-up source. Optional Stack6 memory-sync SSH material is operator-owned and
+reprovisioned only when explicitly supplied.
+"""
+
 from __future__ import annotations
 
 import argparse

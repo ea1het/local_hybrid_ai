@@ -1,3 +1,11 @@
+"""Contract tests for the isolated restore staging phase.
+
+These tests verify that staging materializes a private, empty restore target,
+restores protected pre-prepare artifacts without path traversal, validates
+required external configuration, and keeps staged state separate from any live
+runtime. They do not qualify a live restore.
+"""
+
 import os
 import sys
 import tarfile
@@ -27,7 +35,7 @@ class RestoreStageTests(unittest.TestCase):
             root = Path(tmp)
             source = root / "source"
             destination = root / "dest"
-            source.write_text("SECRET=value\n", encoding="utf-8")
+            source.write_text("EXAMPLE_KEY=example-value\n", encoding="utf-8")
             dr_restore_stage._copy_private(source, destination)
             self.assertEqual(destination.read_bytes(), source.read_bytes())
             self.assertEqual(oct(destination.stat().st_mode & 0o777), "0o600")
@@ -63,7 +71,7 @@ class RestoreStageTests(unittest.TestCase):
             (backup / "artifacts" / "global").mkdir(parents=True)
             (backup / "artifacts" / "stack0").mkdir(parents=True)
             (backup / "artifacts" / "global" / "operational.env").write_text(
-                "LITELLM_SALT_KEY=test-salt\n", encoding="utf-8"
+                "LITELLM_SALT_KEY=example-placeholder\n", encoding="utf-8"
             )
             pki_source = root / "pki-src"
             (pki_source / "pki").mkdir(parents=True)

@@ -1,3 +1,12 @@
+"""Executable evidence for cross-cutting OpenSpec behavioural contracts.
+
+This module ties stable Gherkin tags to concrete repository invariants: required
+dependencies, readiness after restart reconciliation, declared DR artifacts,
+Stack6 Docker isolation, Stack7 explicit access/default web behaviour, and global
+traceability completeness. It intentionally tests durable behaviour rather than
+mirroring every implementation detail.
+"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,10 @@
+"""Protect the filesystem contract used before any DR backup artifact is published.
+
+The tests cover destination precedence, absolute-path validation, private modes,
+atomic-rename capability, non-destructive handling of pre-existing roots and
+truthful dry-run reporting. They deliberately stop short of creating backup sets.
+"""
+
 import importlib.util
 import os
 import stat

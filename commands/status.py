@@ -1,3 +1,12 @@
+"""Build the operator-facing Desired / Deployed / Actual / Drift inventory.
+
+Status keeps configuration intent, recorded guarded-upgrade history and observed
+runtime identity separate. Mutable image tags are resolved through the same
+registry boundary used by upgrade discovery when possible; registry uncertainty
+must never be converted into a false no-drift result. The module renders both
+human output and the versioned machine contract exposed by ``./local-ai``.
+"""
+
 from __future__ import annotations
 
 import json
