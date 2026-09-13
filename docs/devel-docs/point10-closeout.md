@@ -1,15 +1,13 @@
-# Point 10 closeout plan — `local-ai` as the sole management interface
+# Point 10 closeout — `local-ai` as the sole management interface
 
-Point 10 is complete only when the public management boundary, state semantics, upgrade safety and disaster-recovery wrappers form one coherent operator contract. Work already qualified on m92p is distinguished from the remaining closeout work below.
+Point 10 is complete only when the public management boundary, state semantics, upgrade safety and disaster-recovery wrappers form one coherent operator contract. The source changes below are implemented on the command-unification branch; final closure still requires the complete m92p regression gate.
 
 ## Qualified foundations
 
-The following are already implemented and runtime-qualified:
+The following behavior was already runtime-qualified before the package refactor:
 
 - `./local-ai` is the sole supported root management entry point.
-- The common installer is private at `installer/install.py`; root `install.py` is absent.
 - Installer arguments such as `--plan` pass through the public CLI unchanged.
-- DR accepts both current `installer/install.py` source and historical backup source containing root `install.py`.
 - Human stack identifiers are numeric while JSON preserves stable `stackN` identities.
 - `status` exposes desired, deployed, actual and drift as distinct installation states.
 - Container version discovery uses the same registry/package as the configured image.
@@ -17,48 +15,74 @@ The following are already implemented and runtime-qualified:
 - Explicit upgrade selection is installation-local; `--yes` never auto-selects.
 - The guarded executor has a real successful Hermes upgrade qualification.
 - Upgrade locking, failure journaling, target-image preflight, READY/reconcile/verify and dependent re-verification are implemented.
-- Compatibility policies and installation overrides are qualified, including Dockhand's `major-series` project default.
+- Compatibility policies and installation overrides are qualified.
 
-## Remaining closeout work
+## Final source contract
 
-### 1. Reconcile installation state and upgrade state
+### One public boundary, one private implementation package
 
-`./local-ai status` remains the installation-state view:
+`./local-ai` remains the only supported management interface. Its implementation is now rationalized under `commands/` rather than split across historical top-level `commands/`, `internal/`, `installer/` and `bkp-dr/` roots.
+
+- install engine: `commands/install.py`
+- lifecycle registry: `commands/install-lifecycle.json`
+- status and upgrade implementation: `commands/*.py`
+- upgrade component catalog: `commands/upgrade-components.json`
+- backup/restore engines, adapters and schemas: `commands/recovery/`
+
+Recovery remains a subpackage because it is a cohesive subsystem with multiple adapters and schemas. Stack-owned lifecycle scripts remain in their stack directories. See ADR-0005.
+
+Historical recovery points are not invalidated by this reorganization: the DR compatibility layer may recognize recorded source containing current `commands/install.py`, previous `installer/install.py`, or the older root `install.py`. Those historical paths are restore compatibility only, not public interfaces.
+
+### Installation state and upgrade state are separate
+
+`./local-ai status` is the installation-state view:
 
 ```text
 STACK COMPONENT DESIRED DEPLOYED ACTUAL DRIFT
 ```
 
-`./local-ai upgrade check` should become the update-decision view:
+`./local-ai upgrade check` is the update-decision view:
 
 ```text
 STACK COMPONENT ACTUAL AVAILABLE POLICY SELECTABLE SELECTED VALID
 ```
 
-`ACTUAL` is the bridge between the two views. `CURRENT` is removed from human output because it currently overloads configured/running meaning. JSON schema v1 should add `actual` as the canonical field while temporarily retaining `current` as a compatibility alias; removing that alias requires a later schema revision.
+`ACTUAL` is the shared runtime observation between both views. An upgrade selection does not become desired or deployed state merely because it exists.
 
-### 2. Clean policy JSON semantics
+### Policy JSON semantics
 
-A policy `show` action has no previous state transition. `previous_effective_policy` should therefore be emitted only for `set`/`clear` mutations, or be explicitly null if the schema requires the field. The preferred contract is omission on read-only `show` and presence on mutation.
+A policy read has no previous transition. `previous_effective_policy` is therefore reserved for mutating `set`/`clear` responses and is omitted from a read-only policy show/list response.
 
-### 3. Bind selection to immutable artifact identity
+### Upgrade selection is bound to immutable artifact identity
 
-Selection currently verifies that an exact target tag exists and persists the target version, baseline and policy. The remaining supply-chain/race gap is tag movement between selection and apply. Selection should persist the registry digest observed for the chosen target. Apply must resolve the tag again and reject execution if the digest differs before backup, desired-state mutation or deploy.
+Selection records the human registry tag/version together with the exact target image and registry digest observed at selection time. Apply resolves the target again before backup or desired-state mutation and fails closed with `UPGRADE_TARGET_MOVED` if the selected tag now points at a different digest.
 
-The human target remains the registry tag/version; the digest is the immutable execution identity.
+The human version remains the operator-facing target; the digest is the immutable execution identity. Existing selections that predate immutable identity must be reselected rather than inferred.
 
-### 4. Qualify every public restore wrapper
+### Recovery wrappers stay behind the CLI
 
-Exercise the public mappings for `restore plan`, `restore drill`, `restore apply --check-clean-target` and the argument/validation path for `restore resume`. Qualification should use non-destructive/read-only or isolated operations wherever possible. We do not repeat a destructive full restore merely to prove CLI delegation when the underlying DR engine is already qualified.
+The supported recovery surface remains:
 
-### 5. Freeze documentation and OpenSpec traceability
+```text
+./local-ai backup
+./local-ai restore plan ...
+./local-ai restore drill ...
+./local-ai restore apply ...
+./local-ai restore resume ...
+```
 
-The public CLI reference, ADR/SDR, OpenSpec and traceability must match the final state model. Mermaid diagrams and internal links must pass repository documentation checks. No alternate public management path may be documented.
+Automated CLI tests assert that these public actions dispatch only into `commands/recovery/`. The underlying Python files are private implementation details.
 
-### 6. Final m92p gate
+### Documentation and behavioral specification
 
-The closeout gate should include repository-layout tests, OpenSpec/traceability tests, management CLI tests, status/upgrade tests, DR wrapper tests and the complete regression suite. Runtime checks should be read-only except where a deliberately selected operation is part of the qualification. There is no need to perform another real component upgrade simply to close the point.
+Canonical architecture/security decisions and OpenSpec live under `docs/devel-docs/`. The duplicate root `openspec/` tree is removed. Repository-layout tests enforce the normalized roots, and OpenSpec traceability includes the unified command-package constraint.
+
+## Final m92p gate still required
+
+Source completion is not runtime qualification. Before Point 10 is declared closed, m92p must run a non-destructive regression gate that includes repository-layout tests, OpenSpec/traceability tests, management CLI/install/upgrade/registry tests, disaster-recovery tests and the complete unittest suite. Read-only CLI checks should cover status, upgrade inventory/policy and installer planning.
+
+There is no reason to perform another real upgrade or destructive restore solely to validate this refactor; previously qualified executor and DR behaviors should be regression-tested without recreating their destructive evidence.
 
 ## Closure criterion
 
-Point 10 can be declared closed when the six items above are complete and the final m92p gate is green with a clean Git tree and no generated Python caches. At that point external consumers have one supported interface (`./local-ai`), one coherent state vocabulary, explicit and immutable upgrade intent, and documented recovery operations.
+Point 10 closes when the command-unification source is merged, the final m92p gate is green, the working tree is clean and no generated Python caches are present. At that point external consumers have one supported interface (`./local-ai`), one coherent state vocabulary, immutable explicit upgrade intent, documented recovery operations, and one rational private implementation package behind the CLI.
