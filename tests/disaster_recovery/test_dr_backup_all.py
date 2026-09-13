@@ -82,6 +82,29 @@ class BackupAllTests(unittest.TestCase):
             with self.assertRaises(dr_backup_all.BackupAllError):
                 dr_backup_all.validate_backup_destination(disguised,stacks,runtime)
 
+    def test_unsafe_destination_rejected_before_root_mode_validation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            stacks=root/"stacks"; runtime=root/"runtime"
+            stacks.mkdir(); runtime.mkdir()
+            values={"STACKS_ROOT":str(stacks),"BASE_PATH":str(runtime)}
+            with (
+                patch.object(dr_backup_all.dr,"load_manifests",return_value={}),
+                patch.object(dr_backup_all,"detect_deployed_stacks",return_value=[0]),
+                patch.object(dr_backup_all.dr,"resolve_plan",return_value=[0]),
+                patch.object(dr_backup_all.dr,"build_plan_entries",return_value=[]),
+                patch.object(dr_backup_all.dr,"build_backup_plan",return_value=([],[])),
+                patch.object(dr_backup_all,"_resource_map",return_value={}),
+                patch.object(dr_backup_all.dr,"preflight_runtime_sources"),
+                patch.object(dr_backup_all.dr,"read_dotenv_presence",return_value=values),
+                patch.object(dr_backup_all.dr,"resolve_base_path",return_value=runtime),
+                patch.object(dr_backup_all.dr,"require_env_value",return_value=str(stacks)),
+                patch.object(dr_backup_all.dr_filesystem,"validate_existing_root") as validate_root,
+            ):
+                with self.assertRaisesRegex(dr_backup_all.BackupAllError,"unsafe backup destination overlaps STACKS_ROOT"):
+                    dr_backup_all.execute_backup_all(stacks)
+                validate_root.assert_not_called()
+
     def test_operational_env_copy_is_exact_and_private(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td); source=root/"source.env"; dest=root/"copy.env"
