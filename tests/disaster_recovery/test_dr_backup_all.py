@@ -44,6 +44,44 @@ class BackupAllTests(unittest.TestCase):
             with self.assertRaises(dr_backup_all.BackupAllError):
                 dr_backup_all.detect_deployed_stacks(self.manifests(),lambda _:CP(1))
 
+    def test_backup_destination_outside_source_trees_is_allowed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            stacks=root/"stacks"; runtime=root/"runtime"; backup=root/"backup"
+            stacks.mkdir(); runtime.mkdir(); backup.mkdir()
+            self.assertEqual(
+                dr_backup_all.validate_backup_destination(backup,stacks,runtime),
+                backup.resolve(),
+            )
+
+    def test_backup_destination_equal_or_below_protected_root_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            stacks=root/"stacks"; runtime=root/"runtime"
+            stacks.mkdir(); runtime.mkdir(); (runtime/"backups").mkdir()
+            for destination in (stacks, stacks/"backup", runtime, runtime/"backups"):
+                with self.subTest(destination=destination):
+                    with self.assertRaises(dr_backup_all.BackupAllError):
+                        dr_backup_all.validate_backup_destination(destination,stacks,runtime)
+
+    def test_backup_destination_ancestor_of_protected_root_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            protected_parent=root/"docker"; protected_parent.mkdir()
+            stacks=protected_parent/"stacks"; runtime=protected_parent/"runtime"
+            stacks.mkdir(); runtime.mkdir()
+            with self.assertRaises(dr_backup_all.BackupAllError):
+                dr_backup_all.validate_backup_destination(protected_parent,stacks,runtime)
+
+    def test_backup_destination_resolves_dotdot_and_symlink_before_overlap_check(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            stacks=root/"stacks"; runtime=root/"runtime"; alias=root/"runtime-link"
+            stacks.mkdir(); runtime.mkdir(); alias.symlink_to(runtime,target_is_directory=True)
+            disguised=root/"stacks"/".."/"runtime-link"
+            with self.assertRaises(dr_backup_all.BackupAllError):
+                dr_backup_all.validate_backup_destination(disguised,stacks,runtime)
+
     def test_operational_env_copy_is_exact_and_private(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td); source=root/"source.env"; dest=root/"copy.env"
