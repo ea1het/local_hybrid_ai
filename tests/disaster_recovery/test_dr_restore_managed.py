@@ -1,3 +1,11 @@
+"""Protect isolated restoration of managed PostgreSQL and Gitea state.
+
+Managed-state drills use disposable DR-specific containers and staged source rather
+than live service names or images. These tests guard namespace isolation, rejection
+of stages overlapping live BASE_PATH, unambiguous artifact selection and bounded
+cleanup of only the disposable container named by the restore engine.
+"""
+
 import tempfile
 import unittest
 from pathlib import Path
