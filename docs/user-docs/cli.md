@@ -7,6 +7,8 @@
 ```text
 ./local-ai
 ├── install <installer arguments...>
+├── start <stack>
+├── stop <stack>
 ├── backup [--destination PATH]
 ├── restore plan BACKUP_SET --dry-run
 ├── restore drill BACKUP_SET --destination PATH
@@ -21,7 +23,7 @@
     └── --yes
 ```
 
-Global `--json` may be placed before the command. It is currently supported by `backup`, `restore`, `status` and `upgrade`; `install` deliberately returns `JSON_NOT_SUPPORTED` until an installer JSON schema is defined.
+Global `--json` may be placed before the command. It is currently supported by `start`, `stop`, `backup`, `restore`, `status` and `upgrade`; `install` deliberately returns `JSON_NOT_SUPPORTED` until an installer JSON schema is defined.
 
 ## `install`
 
@@ -35,6 +37,22 @@ Global `--json` may be placed before the command. It is currently supported by `
 ```
 
 The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests, and reconciliation is capability-driven rather than hard-coded by stack number.
+
+## `start` / `stop`
+
+```bash
+sudo ./local-ai stop 5
+sudo ./local-ai start 5
+sudo ./local-ai --json stop stack5
+```
+
+These commands expose selective runtime lifecycle through the supported management boundary. Stack selectors use the same manifest-driven forms accepted by the installer (`5`, `stack5`, or the manifest directory name). Exactly one stack must be selected.
+
+`stop` performs a controlled `docker compose stop` in the stack directory. It never performs `docker compose down`, never removes networks or volumes, and never recreates containers. Before stopping a provider, the CLI checks required dependency/capability consumers that are currently running. If a required consumer would be broken, the operation fails closed with `STACK_HAS_ACTIVE_CONSUMERS` and makes no runtime change.
+
+`start` performs a controlled `docker compose start`; it does not prepare, create or recreate a stack and it does not implicitly start required providers. The target must already be PREPARED and its required providers must already be running, otherwise the command fails closed. After start, generic READY is checked for the stack's `required_containers`; stack-specific application reconciliation remains part of the install/reconcile lifecycle rather than being silently run by `start`.
+
+Stacks without managed runtime containers, such as Stack0, reject start/stop with `STACK_RUNTIME_EMPTY`. Real start/stop execution requires root. Human output reports the stack directory and all manifest-owned containers affected by the Compose operation; JSON responses use schema version `1` and command identifiers `runtime.start` / `runtime.stop`.
 
 ## `backup`
 
