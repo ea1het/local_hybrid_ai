@@ -49,8 +49,8 @@ services:
       HOMELAB_HOSTNAME: ${HOMELAB_HOSTNAME:-homelab}
       HOMELAB_TARGET: ${HOMELAB_TARGET:-dockhand:3000}
 
-      AGENTIA_HOSTNAME: ${AGENTIA_HOSTNAME:-agentia}
-      AGENTIA_TARGET: ${AGENTIA_TARGET:-hermes:9119}
+      NORAI_HOSTNAME: ${NORAI_HOSTNAME:-norai}
+      NORAI_TARGET: ${NORAI_TARGET:-hermes:9119}
 
     logging:
       driver: "json-file"
