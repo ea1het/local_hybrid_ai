@@ -28,8 +28,8 @@
     "3": {
       "directory": "stack3_-_litellm",
       "required_containers": ["litellm-postgres", "litellm"],
-      "prepare": [["./01-prepare.sh"], ["./02-postgres.sh"]],
-      "deploy": [["docker", "compose", "up", "-d", "litellm"]],
+      "prepare": [["./01-prepare.sh"]],
+      "deploy": [["./02-postgres.sh"], ["docker", "compose", "up", "-d", "litellm"]],
       "reconcile": [],
       "verify": [["docker", "compose", "config", "--quiet"]]
     },
