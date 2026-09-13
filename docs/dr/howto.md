@@ -6,13 +6,13 @@ The DR rule is simple: preserve only state whose loss would prevent a correct re
 
 ```mermaid
 flowchart LR
-    Source[Known project source] --> Recovery
-    Env[Protected operational .env] --> Recovery
-    PKI[Stack0 PKI] --> Recovery
-    LiteLLM[Stack3 logical DB dump] --> Recovery
-    Gitea[Stack4 native dump] --> Recovery
-    WebUI[Stack7 data archive] --> Recovery
-    Memory[Stack6 Git memory] -. external prerequisite .-> Recovery
+    Source["Known project source"] --> Recovery["Recovery"]
+    Env["Protected operational .env"] --> Recovery
+    PKI["Stack0 PKI"] --> Recovery
+    LiteLLM["Stack3 logical DB dump"] --> Recovery
+    Gitea["Stack4 native dump"] --> Recovery
+    WebUI["Stack7 data archive"] --> Recovery
+    Memory["Stack6 Git memory"] -. "external prerequisite" .-> Recovery
 ```
 
 ## Recovery policy
@@ -50,15 +50,15 @@ A real backup validates source/runtime prerequisites, stages sensitive data priv
 
 ```mermaid
 flowchart LR
-    CLI[./local-ai restore] --> Validate[Validate backup + checksums]
-    Validate --> Source[Materialize recorded source]
-    Source --> Config[Restore protected config]
-    Config --> Pre[Pre-prepare archives]
-    Pre --> Prepare[PREPARE]
-    Prepare --> Managed[Managed state restore]
-    Managed --> Deploy[DEPLOY]
-    Deploy --> Ready[READY / VERIFY]
-    Ready --> External[External prerequisite convergence]
+    CLI["./local-ai restore"] --> Validate["Validate backup + checksums"]
+    Validate --> Source["Materialize recorded source"]
+    Source --> Config["Restore protected config"]
+    Config --> Pre["Pre-prepare archives"]
+    Pre --> Prepare["PREPARE"]
+    Prepare --> Managed["Managed state restore"]
+    Managed --> Deploy["DEPLOY"]
+    Deploy --> Ready["READY / VERIFY"]
+    Ready --> External["External prerequisite convergence"]
 ```
 
 Supported management forms are exposed through `./local-ai restore ...`; the underlying modules under `commands/recovery/` remain private implementation details.
