@@ -1,8 +1,8 @@
 # Security Decision Records
 
-SDRs capture security decisions whose rationale is not obvious from Compose, shell scripts or manifests.
+[Documentation TOC](../../TOC.md) · [Developer documentation](../README.md) · [Architecture decisions](../adr/README.md) · [OpenSpec](../openspec/README.md)
 
-An SDR answers: **what threat or risk exists, what security decision was made, what residual risk remains, and how is it verified?** Architectural shape belongs in an ADR; a decision can reference both an ADR and an SDR when architecture and security overlap.
+SDRs capture security decisions whose rationale is not obvious from Compose, shell scripts or manifests. An SDR answers: **what threat or risk exists, what security decision was made, what residual risk remains, and how is it verified?** Architectural shape belongs in an ADR; a decision can reference both an ADR and an SDR when architecture and security overlap.
 
 Status values: `proposed`, `accepted`, `superseded`, `retired`.
 
@@ -13,3 +13,5 @@ Status values: `proposed`, `accepted`, `superseded`, `retired`.
 | [0003](0003-least-privilege-ai-gateway-credentials.md) | accepted | Use dedicated least-privilege LiteLLM application credentials |
 | [0004](0004-internal-only-service-networking.md) | accepted | Keep internal services on `redlocal` without default host publication |
 | [0005](0005-open-webui-explicit-model-access.md) | accepted | Preserve explicit Open WebUI model authorization rather than bypassing access control |
+
+The current stack relationships that realize these decisions are summarized in the [stack map](../../stacks/README.md). Behavioural consequences and executable evidence are linked from [OpenSpec traceability](../openspec/traceability.md).
