@@ -39,7 +39,8 @@ Every tagged behavioral contract must have executable or qualified evidence. The
 | `CLI-POLICY-007` | `tests/test_management_cli.py::test_nonselectable_component_is_rejected` | catalog `selectable` flag remains independent |
 | `CLI-POLICY-008` | `tests/test_upgrade_executor.py::test_executor_revalidates_policy_before_target_preflight_or_mutation` | executor policy preflight |
 | `CLI-STATUS-001` | `tests/test_status.py::test_inventory_keeps_desired_deployed_and_actual_separate` | `./local-ai status` runtime inventory qualification |
-| `CLI-STATUS-002` | `tests/test_status.py::test_drift_compares_installation_desired_with_runtime_actual` | versioned `./local-ai --json status` contract |
+| `CLI-STATUS-002` | `tests/test_status.py::test_drift_is_quick_yes_no_or_na_decision` | versioned `./local-ai --json status` contract |
+| `CLI-STATUS-003` | `tests/test_status.py::test_inventory_resolves_floating_tag_to_registry_identities`, `test_floating_tag_same_digest_is_proven_no_drift`, `test_fixed_semantic_tag_does_not_require_registry_resolution_for_drift`, `test_digest_pins_compare_immutable_identity_without_registry_resolution`, `test_status_and_upgrade_check_share_concrete_actual_for_floating_tag`, `test_floating_tag_registry_failure_never_claims_no_drift` | m92p runtime evidence: HAProxy moved `3.0.26 -> 3.0.27`, Redis moved `8.10.0 -> 8.10.1`, RabbitMQ unchanged `3.13.7`; registry-backed status now exposes the real drift rather than tag-text equality |
 
 ## Traceability maintenance
 
