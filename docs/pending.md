@@ -10,6 +10,7 @@ Only active or intentionally deferred work belongs here. Completed qualification
 ## P1 — Management CLI and upgrades
 
 - `./local-ai` is the sole supported management boundary; keep internal Python, shell, Compose and DR paths outside the external contract.
+- Add selective stack runtime lifecycle operations through `./local-ai` so operators can stop and start an individual stack without calling Docker Compose directly. The CLI should act as the supported intermediary for semantics equivalent to a controlled `docker compose stop` / `docker compose start`, resolve the stack from project manifests, preserve dependency/state ownership rules, avoid implicit destructive actions, and expose coherent human/JSON results. This is not currently implemented.
 - Keep container version discovery bound to the registry/repository named by each configured image. Human versions come from tags published for that exact registry package; immutable digests remain machine identity. Do not reintroduce lateral GitHub Release lookups for container inventory.
 - Add an explicit project support/compatibility policy above registry discovery. A newer registry tag is only a discovered candidate; it must not become selectable or executable merely because it exists. Major-version movement requires explicit project policy.
 - Runtime-qualify registry tag/digest mapping across Docker Hub, GHCR and `docker.gitea.com`, including rate-limit/authentication failure states and digest-only pins such as Firecrawl.
