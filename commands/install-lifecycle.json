@@ -62,8 +62,8 @@
       "required_containers": ["open-webui"],
       "prepare": [["bash", "../stack0_-_platform/ensure-env-symlink.sh", "stack7_-_open-webui"], ["bash", "./01-prepare.sh"]],
       "deploy": [["docker", "compose", "up", "-d"], ["bash", "./02-wait-ready.sh"]],
-      "reconcile": [],
-      "verify": [["docker", "compose", "config", "--quiet"], ["bash", "./02-wait-ready.sh"]]
+      "reconcile": [["python3", "./03-reconcile-model-policy.py"]],
+      "verify": [["docker", "compose", "config", "--quiet"], ["bash", "./02-wait-ready.sh"], ["python3", "./04-verify-model-policy.py"]]
     }
   }
 }
