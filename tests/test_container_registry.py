@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest import mock
 
@@ -7,6 +8,23 @@ from internal import container_registry
 
 
 class ContainerRegistryTests(unittest.TestCase):
+    def test_parse_reference_uses_docker_hub_for_unqualified_images(self):
+        ref = container_registry.parse_reference("rabbitmq:3-alpine")
+        self.assertEqual(ref.registry, "docker.io")
+        self.assertEqual(ref.registry_host, "registry-1.docker.io")
+        self.assertEqual(ref.repository, "library/rabbitmq")
+        self.assertEqual(ref.tag, "3-alpine")
+        self.assertIsNone(ref.digest)
+
+    def test_parse_reference_preserves_ghcr_package_and_digest(self):
+        ref = container_registry.parse_reference(
+            "ghcr.io/firecrawl/firecrawl@sha256:1910ef"
+        )
+        self.assertEqual(ref.registry, "ghcr.io")
+        self.assertEqual(ref.repository, "firecrawl/firecrawl")
+        self.assertIsNone(ref.tag)
+        self.assertEqual(ref.digest, "sha256:1910ef")
+
     def test_repo_digest_matches_tagged_image_repository(self):
         digest = container_registry._repo_digest_for_image(
             "rabbitmq:3-alpine",
@@ -33,13 +51,25 @@ class ContainerRegistryTests(unittest.TestCase):
         self.assertEqual(container_registry._repository_name("docker.io/library/rabbitmq:3-alpine"), "library/rabbitmq")
         self.assertEqual(container_registry._repository_name("index.docker.io/searxng/searxng:tag"), "searxng/searxng")
 
-    def test_equal_digests_mean_current(self):
-        state = container_registry.RegistryState("rabbitmq:3-alpine", "sha256:a", "sha256:a")
-        self.assertFalse(state.update_available)
-
-    def test_different_digests_mean_update_available(self):
-        state = container_registry.RegistryState("rabbitmq:3-alpine", "sha256:a", "sha256:b")
+    def test_registry_state_prefers_human_versions_for_update_comparison(self):
+        state = container_registry.RegistryState(
+            image="ghcr.io/firecrawl/firecrawl@sha256:old",
+            local_digest="sha256:old",
+            remote_digest="sha256:new",
+            current_version="2.11.300",
+            available_version="2.11.331",
+        )
         self.assertTrue(state.update_available)
+
+    def test_registry_state_same_human_version_is_current(self):
+        state = container_registry.RegistryState(
+            image="ghcr.io/firecrawl/firecrawl@sha256:same",
+            local_digest="sha256:same",
+            remote_digest="sha256:same",
+            current_version="2.11.331",
+            available_version="2.11.331",
+        )
+        self.assertFalse(state.update_available)
 
     def test_missing_digest_is_unknown_not_update(self):
         state = container_registry.RegistryState("rabbitmq:3-alpine", None, "sha256:b")
@@ -62,38 +92,105 @@ class ContainerRegistryTests(unittest.TestCase):
                 "sha256:right",
             )
 
-    def test_remote_inspection_is_read_only(self):
-        cp = mock.Mock(returncode=0, stdout='"sha256:remote"\n', stderr="")
-        with mock.patch("internal.container_registry.subprocess.run", return_value=cp) as run:
-            self.assertEqual(container_registry.remote_digest("rabbitmq:3-alpine"), "sha256:remote")
-        self.assertEqual(
-            run.call_args.args[0],
-            ["docker", "buildx", "imagetools", "inspect", "rabbitmq:3-alpine", "--format", "{{json .Manifest.Digest}}"],
-        )
+    def test_registry_tags_reads_same_registry_package(self):
+        body = json.dumps({"name": "firecrawl/firecrawl", "tags": ["2.11.331", "latest"]}).encode()
+        with mock.patch("internal.container_registry._registry_request", return_value=(200, {}, body)) as request:
+            probe = container_registry.registry_tags("ghcr.io/firecrawl/firecrawl@sha256:abc")
+        self.assertEqual(probe.status, "ok")
+        self.assertEqual(probe.tags, ("2.11.331", "latest"))
+        ref = request.call_args.args[0]
+        self.assertEqual(ref.registry, "ghcr.io")
+        self.assertEqual(ref.repository, "firecrawl/firecrawl")
+        self.assertEqual(request.call_args.args[1], "/v2/firecrawl/firecrawl/tags/list?n=1000")
 
-    def test_remote_probe_classifies_rate_limit(self):
-        cp = mock.Mock(returncode=1, stdout="", stderr="429 Too Many Requests")
-        with mock.patch("internal.container_registry.subprocess.run", return_value=cp):
+    def test_registry_tags_preserves_rate_limit(self):
+        with mock.patch("internal.container_registry._registry_request", return_value=(429, {}, b"")):
+            probe = container_registry.registry_tags("redis:alpine")
+        self.assertEqual(probe.tags, ())
+        self.assertEqual(probe.status, "rate_limited")
+
+    def test_manifest_probe_uses_same_registry_and_returns_content_digest(self):
+        headers = {"Docker-Content-Digest": "sha256:remote"}
+        with mock.patch("internal.container_registry._registry_request", return_value=(200, headers, b"")) as request:
+            probe = container_registry.manifest_probe("ghcr.io/firecrawl/firecrawl:2.11.331")
+        self.assertEqual(probe, container_registry.RemoteProbe("sha256:remote", "ok"))
+        ref = request.call_args.args[0]
+        self.assertEqual(ref.registry, "ghcr.io")
+        self.assertEqual(ref.repository, "firecrawl/firecrawl")
+        self.assertIn("/manifests/2.11.331", request.call_args.args[1])
+
+    def test_manifest_probe_classifies_rate_limit(self):
+        with mock.patch("internal.container_registry._registry_request", return_value=(429, {}, b"")):
             probe = container_registry.remote_probe("redis:alpine")
         self.assertIsNone(probe.digest)
         self.assertEqual(probe.status, "rate_limited")
 
-    def test_tag_plus_digest_tracks_tag_without_digest(self):
-        image = "postgres:17.10-alpine@sha256:abc"
-        self.assertEqual(container_registry.tracking_reference(image), "postgres:17.10-alpine")
-        self.assertEqual(container_registry.display_label(image), "17.10-alpine (pinned)")
+    def test_version_tags_prefer_full_plain_human_version(self):
+        tags = [
+            "latest",
+            "2",
+            "2.11",
+            "2.11.331-production",
+            "2.11.331",
+            "sha-deadbeef-linux-amd64",
+            "buildcache-linux-amd64",
+        ]
+        self.assertEqual(container_registry.version_tags(tags)[0], "2.11.331")
 
-    def test_pure_digest_pin_requires_explicit_tracking_channel(self):
-        image = "ghcr.io/firecrawl/firecrawl@sha256:abc"
-        self.assertIsNone(container_registry.tracking_reference(image))
-        self.assertEqual(container_registry.display_label(image), "pinned")
+    def test_channel_detection_recognizes_major_minor_alpine_channel(self):
+        tags = ("3.0-alpine", "3.0.18-alpine", "3.1.2-alpine")
+        self.assertTrue(container_registry._is_channel_tag("3.0-alpine", tags))
+
+    def test_exact_postgres_version_is_not_channel_without_more_specific_tag(self):
+        tags = ("17.10-alpine", "17.9-alpine", "18.0-alpine")
+        self.assertFalse(container_registry._is_channel_tag("17.10-alpine", tags))
+
+    def test_digest_only_image_maps_digest_to_human_registry_tag(self):
+        image = "ghcr.io/firecrawl/firecrawl@sha256:old"
+        tags = container_registry.TagProbe(("2.11.331", "2.11.300", "latest"), "ok")
+
+        def manifest(ref: str):
+            if ref.endswith(":2.11.331"):
+                return container_registry.RemoteProbe("sha256:new", "ok")
+            if ref.endswith(":2.11.300"):
+                return container_registry.RemoteProbe("sha256:old", "ok")
+            return container_registry.RemoteProbe(None, "not_found")
+
+        with mock.patch("internal.container_registry.local_digest", return_value="sha256:old"), \
+             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
+             mock.patch("internal.container_registry.manifest_probe", side_effect=manifest):
+            state = container_registry.inspect("firecrawl-api", image)
+
+        self.assertEqual(state.current_version, "2.11.300")
+        self.assertEqual(state.available_version, "2.11.331")
+        self.assertTrue(state.update_available)
+        self.assertEqual(state.registry, "ghcr.io")
+        self.assertEqual(state.repository, "firecrawl/firecrawl")
+
+    def test_exact_registry_tag_uses_it_as_current_human_version(self):
+        image = "ghcr.io/open-webui/open-webui:v0.11.3"
+        tags = container_registry.TagProbe(("v0.11.3", "v0.11.4"), "ok")
+        with mock.patch("internal.container_registry.local_digest", return_value="sha256:old"), \
+             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
+             mock.patch("internal.container_registry.manifest_probe", return_value=container_registry.RemoteProbe("sha256:new", "ok")):
+            state = container_registry.inspect("open-webui", image)
+        self.assertEqual(state.current_version, "v0.11.3")
+        self.assertEqual(state.available_version, "v0.11.4")
+
+    def test_tracking_reference_rejects_lateral_registry_or_repository(self):
+        with self.assertRaises(container_registry.RegistryError):
+            container_registry.tracking_reference(
+                "ghcr.io/firecrawl/firecrawl@sha256:abc",
+                "docker.io/firecrawl/firecrawl:latest",
+            )
+
+    def test_display_label_prefers_discovered_human_version(self):
         self.assertEqual(
-            container_registry.tracking_reference(image, "ghcr.io/firecrawl/firecrawl:latest"),
-            "ghcr.io/firecrawl/firecrawl:latest",
-        )
-        self.assertEqual(
-            container_registry.display_label(image, "ghcr.io/firecrawl/firecrawl:latest"),
-            "latest (pinned)",
+            container_registry.display_label(
+                "ghcr.io/firecrawl/firecrawl@sha256:abc",
+                discovered_version="2.11.300",
+            ),
+            "2.11.300",
         )
 
 
