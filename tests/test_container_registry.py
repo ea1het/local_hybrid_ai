@@ -33,6 +33,23 @@ class ContainerRegistryTests(unittest.TestCase):
         state = container_registry.RegistryState("rabbitmq:3-alpine", None, "sha256:b")
         self.assertIsNone(state.update_available)
 
+    def test_local_digest_follows_container_image_id(self):
+        container = {"Image": "sha256:image-id"}
+        image = {"RepoDigests": ["docker.io/library/rabbitmq@sha256:local"]}
+        with mock.patch("internal.container_registry._inspect_json", side_effect=[container, image]) as inspect_json:
+            digest = container_registry.local_digest("firecrawl-rabbitmq", "rabbitmq:3-alpine")
+        self.assertEqual(digest, "sha256:local")
+        self.assertEqual(inspect_json.call_args_list, [mock.call("firecrawl-rabbitmq"), mock.call("sha256:image-id")])
+
+    def test_local_digest_does_not_use_container_repo_digests(self):
+        container = {"Image": "sha256:image-id", "RepoDigests": ["rabbitmq@sha256:wrong"]}
+        image = {"RepoDigests": ["rabbitmq@sha256:right"]}
+        with mock.patch("internal.container_registry._inspect_json", side_effect=[container, image]):
+            self.assertEqual(
+                container_registry.local_digest("firecrawl-rabbitmq", "rabbitmq:3-alpine"),
+                "sha256:right",
+            )
+
     def test_remote_inspection_is_read_only(self):
         cp = mock.Mock(returncode=0, stdout='"sha256:remote"\n')
         with mock.patch("internal.container_registry.subprocess.run", return_value=cp) as run:
