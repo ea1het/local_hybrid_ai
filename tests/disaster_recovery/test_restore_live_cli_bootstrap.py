@@ -9,7 +9,7 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CLI_PATH = ROOT / "bkp-dr" / "restore-live.py"
+CLI_PATH = ROOT / "commands" / "recovery" / "restore-live.py"
 SPEC = importlib.util.spec_from_file_location("restore_live_cli", CLI_PATH)
 assert SPEC is not None and SPEC.loader is not None
 restore_live_cli = importlib.util.module_from_spec(SPEC)
