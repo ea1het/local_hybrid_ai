@@ -1,3 +1,11 @@
+"""Configuration-contract tests for Stack1 published routes and landing links.
+
+The tests keep HAProxy, the static index and environment-template naming aligned
+for the Open WebUI and NorAI/Hermes routes. They specifically prevent the retired
+Agentia route vocabulary from reappearing in active sources and verify the public
+origin expected by Hermes CORS configuration.
+"""
+
 from __future__ import annotations
 
 import unittest
