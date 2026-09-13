@@ -1,4 +1,1 @@
-"""Implementation of the public local-ai CLI commands.
-
-This package is internal. External consumers must invoke ./local-ai.
-"""
+"""Implementation package behind the sole public ./local-ai entry point."""
