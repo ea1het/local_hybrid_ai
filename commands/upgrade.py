@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from internal import container_registry, upgrade_executor, version_sources
+from internal import container_registry, upgrade_executor
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "internal" / "upgrade-components.json"
@@ -93,9 +93,11 @@ def read_env() -> dict[str, str]:
 
 def substitute_env(value: str, env: dict[str, str]) -> str:
     pattern = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::[-?]([^}]*))?\}")
+
     def repl(match: re.Match[str]) -> str:
         key, default = match.group(1), match.group(2)
         return env.get(key) or (default or match.group(0))
+
     return pattern.sub(repl, value)
 
 
@@ -173,31 +175,52 @@ def key(component: Component) -> str:
     return f"{component.stack}/{component.name}"
 
 
-def _registry_availability(component: Component, image: str | None, record: dict, *, online: bool) -> tuple[str, dict | None]:
+def _registry_availability(
+    component: Component,
+    image: str | None,
+    *,
+    online: bool,
+) -> tuple[str, dict | None, str | None]:
     if not online:
-        return "unchecked", None
-    state = container_registry.inspect(
-        component.container,
-        image,
-        tracking_image=record.get("registry_source"),
-    )
+        return "unchecked", None, None
+
+    try:
+        state = container_registry.inspect(component.container, image)
+    except container_registry.RegistryError as exc:
+        raise UpgradeError(
+            f"registry discovery failed for {key(component)}: {exc}",
+            code="UPGRADE_REGISTRY_SOURCE_INVALID",
+        ) from exc
+
     if state is None:
-        return "n/a", None
+        return "n/a", None, None
+
     details = {
         "image": state.image,
+        "registry": state.registry,
+        "repository": state.repository,
         "tracking_image": state.tracking_image,
         "local_digest": state.local_digest,
         "remote_digest": state.remote_digest,
         "remote_status": state.remote_status,
+        "tags_status": state.tags_status,
+        "current_version": state.current_version,
+        "available_version": state.available_version,
         "update_available": state.update_available,
     }
+
+    if state.available_version:
+        if state.current_version == state.available_version:
+            return "current", details, state.current_version
+        return state.available_version, details, state.current_version
+
     if state.update_available is True:
-        return "update", details
+        return "update", details, state.current_version
     if state.update_available is False:
-        return "current", details
+        return "current", details, state.current_version
     if state.remote_status == "not_tracked":
-        return "pinned", details
-    return "unknown", details
+        return "pinned", details, state.current_version
+    return "unknown", details, state.current_version
 
 
 def inventory(*, query_upstream: bool = True) -> list[dict]:
@@ -206,6 +229,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
     selected = plan["selected"]
     records = component_records()
     rows: list[dict] = []
+
     for component in load_catalog():
         desired_image = compose_image(component, env)
         actual_image = running_image(component) or desired_image
@@ -214,22 +238,22 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
         registry = None
         availability = record.get("availability")
         current_display = current
-        try:
-            if availability in ("local", "n/a"):
-                available = availability
-                current_display = availability if availability == "local" else current
-            elif record.get("version_source"):
-                candidate = version_sources.available_version(record, online=query_upstream)
-                available = "current" if query_upstream and candidate == current else candidate
-            else:
-                if actual_image:
-                    current_display = container_registry.display_label(actual_image, record.get("registry_source"))
-                available, registry = _registry_availability(component, actual_image, record, online=query_upstream)
-        except version_sources.VersionSourceError as exc:
-            raise UpgradeError(
-                f"invalid version source for {key(component)}: {exc}",
-                code="UPGRADE_VERSION_SOURCE_INVALID",
-            ) from exc
+
+        if availability in ("local", "n/a"):
+            available = availability
+            current_display = availability if availability == "local" else current
+        else:
+            available, registry, discovered_current = _registry_availability(
+                component,
+                actual_image,
+                online=query_upstream,
+            )
+            if actual_image:
+                current_display = container_registry.display_label(
+                    actual_image,
+                    discovered_version=discovered_current,
+                )
+
         rows.append({
             "stack": component.stack,
             "component": component.name,
@@ -257,6 +281,11 @@ def _human_available(row: dict) -> str:
             return "unknown (rate limited)"
         if status and status not in {"ok", "not_tracked"}:
             return f"unknown ({status.replace('_', ' ')})"
+        tags_status = registry.get("tags_status")
+        if tags_status == "rate_limited":
+            return "unknown (rate limited)"
+        if tags_status and tags_status not in {"ok", "unchecked"}:
+            return f"unknown ({tags_status.replace('_', ' ')})"
     return available
 
 
@@ -300,7 +329,11 @@ def find_component(stack: str, name: str | None) -> Component:
 
 def select_component(stack: str, name: str | None, version: str) -> None:
     component = find_component(stack, name)
-    current = next(row["current"] for row in inventory(query_upstream=False) if row["stack"] == stack and row["component"] == component.name)
+    current = next(
+        row["current"]
+        for row in inventory(query_upstream=False)
+        if row["stack"] == stack and row["component"] == component.name
+    )
     if version == current:
         raise UpgradeError(f"{key(component)} is already at {version}", code="UPGRADE_ALREADY_CURRENT")
     plan = load_plan()
@@ -374,7 +407,12 @@ def run(args, *, json_output: bool) -> int:
         if args.upgrade_command == "check":
             rows = inventory(query_upstream=not args.offline)
             if json_output:
-                print(json.dumps({"schema_version": SCHEMA_VERSION, "command": "upgrade.check", "success": True, "components": rows}))
+                print(json.dumps({
+                    "schema_version": SCHEMA_VERSION,
+                    "command": "upgrade.check",
+                    "success": True,
+                    "components": rows,
+                }))
             else:
                 print_table(rows)
             return 0
@@ -395,7 +433,12 @@ def run(args, *, json_output: bool) -> int:
             error = {"code": exc.code, "message": str(exc)}
             if exc.recovery_point:
                 error["recovery_point"] = exc.recovery_point
-            print(json.dumps({"schema_version": SCHEMA_VERSION, "command": "upgrade", "success": False, "error": error}))
+            print(json.dumps({
+                "schema_version": SCHEMA_VERSION,
+                "command": "upgrade",
+                "success": False,
+                "error": error,
+            }))
         else:
             print(f"ERROR [{exc.code}]: {exc}", file=sys.stderr)
             if exc.recovery_point:
