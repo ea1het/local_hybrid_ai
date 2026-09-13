@@ -1,3 +1,10 @@
+"""Protect the Gitea-native Stack4 backup artifact contract.
+
+The tests validate ZIP member safety/integrity, expected Gitea recovery categories
+and dependency-complete selection of Stack0 identity plus Stack4 state. They keep
+the native Gitea dump adapter bounded before restore verification is attempted.
+"""
+
 import tempfile
 import unittest
 import zipfile
