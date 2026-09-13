@@ -88,11 +88,7 @@ def _wait_ready(root: Path, names: list[str], *, timeout_seconds: int = 180) -> 
         last = {name: _container_state(root, name) for name in names}
         if all(_healthy(state) for state in last.values()):
             return
-        terminal = {
-            name: state for name, state in last.items()
-            if state in {"absent", "dead", "exited"}
-            or state.startswith("dead/") or state.startswith("exited/")
-        }
+        terminal = {name: state for name, state in last.items() if state in {"absent", "dead", "exited"} or state.startswith("dead/") or state.startswith("exited/")}
         if terminal:
             raise UpgradeExecutionError(
                 "UPGRADE_READY_FAILED",
@@ -245,9 +241,11 @@ def _recovery_point(root: Path) -> str:
     cp = _run([sys.executable, str(script), "--json"], cwd=root, capture=True)
     try:
         payload = json.loads(cp.stdout)
-        path = str(payload["path"])
+        path = str(payload["backup_set"])
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise UpgradeExecutionError("UPGRADE_BACKUP_INVALID", "backup engine returned invalid JSON") from exc
+    if not path:
+        raise UpgradeExecutionError("UPGRADE_BACKUP_INVALID", "backup engine returned an empty recovery-point path")
     return path
 
 
@@ -301,7 +299,7 @@ def execute(
     env_updates: dict[str, str] = {}
     affected_stacks: set[int] = set()
     recovery_required = False
-    targets: list[tuple[str, str, dict]] = []
+    target_images: list[str] = []
 
     for selection in selections:
         component_key = f"{selection['stack']}/{selection['component']}"
@@ -336,16 +334,10 @@ def execute(
         affected_stacks.add(_stack_number(selection["stack"]))
         recovery_required = recovery_required or bool(component.get("recovery_required", False))
         image_ref = _target_image_ref(component_key, component, selection, env_values)
-        targets.append((component_key, image_ref, selection))
-
-    # PRE-FLIGHT: the tag must still resolve to the immutable digest accepted at
-    # selection time. This is checked before recovery creation or .env mutation.
-    for component_key, image_ref, selection in targets:
         _verify_selected_digest(component_key, image_ref, selection)
+        target_images.append(image_ref)
 
-    # Keep the Docker manifest check as an independent runtime/toolchain
-    # preflight after registry identity has been proven.
-    for _, image_ref, _ in targets:
+    for image_ref in target_images:
         _preflight_target_image(root, image_ref)
 
     recovery_point: str | None = None
@@ -390,9 +382,7 @@ def execute(
                 if sid in affected_stacks or not _prepared(root, manifest):
                     continue
                 depends_by_id = provider_sid in set(manifest.get("requires", [])) | set(manifest.get("optional", []))
-                consumes_capability = bool(
-                    provider_caps & (set(manifest.get("consumes", [])) | set(manifest.get("optional_consumes", [])))
-                )
+                consumes_capability = bool(provider_caps & (set(manifest.get("consumes", [])) | set(manifest.get("optional_consumes", []))))
                 if not (depends_by_id or consumes_capability):
                     continue
                 entry = lifecycle["stacks"][str(sid)]
@@ -413,7 +403,7 @@ def execute(
             "schema_version": 1,
             "success": True,
             "recovery_point": recovery_point,
-            "target_images": [image_ref for _, image_ref, _ in targets],
+            "target_images": target_images,
             "upgraded": selections,
             "reverified_stacks": sorted(reverified),
         }
