@@ -1,3 +1,12 @@
+"""Serialize destructive upgrade application and journal failed attempts.
+
+The guard exists at the sole public CLI boundary and applies only to confirmed
+``upgrade --yes`` execution. It prevents concurrent mutation with a non-blocking
+installation-local file lock, preserves normal output, and records failed apply
+attempts with the selected plan snapshot and recovery-point context when known.
+Read-only upgrade commands are intentionally not serialized by this module.
+"""
+
 from __future__ import annotations
 
 import contextlib
