@@ -10,8 +10,11 @@ Only active or intentionally deferred work belongs here. Completed qualification
 ## P1 — Management CLI and upgrades
 
 - `./local-ai` is the sole supported management boundary; keep internal Python, shell, Compose and DR paths outside the external contract.
-- Keep version discovery explicit per component. The first qualified adapters are Gitea, Dockhand, Hermes and Open WebUI; components without a validated mapping report `Available=n/a` rather than guessing from an unrelated upstream release. The next upgrade-policy step is to distinguish a correctly mapped upstream candidate from a project-supported target before selection. LiteLLM remains non-selectable until its release-tag/container-tag mapping and compatibility policy are explicit.
-- Extend safe execution metadata to components that are currently inventory-only/non-selectable because their version is pinned directly in tracked Compose or needs a component-specific migration contract.
+- Keep container version discovery bound to the registry/repository named by each configured image. Human versions come from tags published for that exact registry package; immutable digests remain machine identity. Do not reintroduce lateral GitHub Release lookups for container inventory.
+- Add an explicit project support/compatibility policy above registry discovery. A newer registry tag is only a discovered candidate; it must not become selectable or executable merely because it exists. Major-version movement requires explicit project policy.
+- Runtime-qualify registry tag/digest mapping across Docker Hub, GHCR and `docker.gitea.com`, including rate-limit/authentication failure states and digest-only pins such as Firecrawl.
+- Add bounded cache/TTL handling for remote registry discovery so repeated `upgrade check` calls do not waste rate-limit budget.
+- Extend safe execution metadata to components that are currently inventory-only/non-selectable because their version is pinned directly in tracked Compose or needs a component-specific migration contract. LiteLLM remains non-selectable until its compatibility and migration policy are explicit.
 - Complete stable JSON contracts for install/doctor/restore where not yet exposed.
 - Add doctor through `local-ai` rather than a new public script.
 
@@ -47,6 +50,6 @@ The guarded upgrade executor is live-qualified on Stack6/Hermes: `v2026.8.31 -> 
 
 Upgrade application is serialized at the `local-ai` boundary with a non-blocking runtime lock and failed applications are appended to the upgrade history with stable error code, selection snapshot and recovery point when present. `local-ai status` exposes installation Desired, last-known successfully Deployed and runtime Actual state separately, with Drift defined only as Desired versus Actual; an upgrade selection remains a plan and is not silently promoted to desired state.
 
-Online `local-ai upgrade check` is runtime-qualified with explicit version-source adapters. Gitea maps its upstream release tag to the `-rootless` image version, Dockhand/Hermes/Open WebUI use direct release-tag mappings, and every unadapted component now reports `Available=n/a`; the previous misleading cross-artifact GitHub-latest values are no longer exposed. Offline checks continue to report `unchecked` because no source was queried.
+The initial discovery layer proved same-tag digest comparison, Docker Hub repository normalization and explicit remote failure reporting. ADR-0003 now defines a stricter single-source rule: container inventory follows the image reference to its own registry package, uses human tags from that package for operator-facing versions, and preserves the digest as immutable artifact identity. The previous GitHub Release adapters and explicit cross-source registry hints have been removed from the component catalog. Runtime qualification of this registry-native tag-to-digest mapping is the next gate.
 
-`local-ai` is therefore operationally proven for the guarded single-component upgrade path used by Hermes. Broader upgrade coverage still depends on project-supported target policy and component-specific migration contracts where required.
+`local-ai` is operationally proven for the guarded single-component upgrade path used by Hermes. Broader upgrade coverage still depends on project-supported target policy and component-specific migration contracts where required.
