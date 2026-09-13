@@ -50,3 +50,18 @@ Feature: Single management CLI anticorruption boundary
     Then every exact selected image reference is checked with a read-only registry manifest inspection
     And an unavailable target fails with UPGRADE_TARGET_UNAVAILABLE
     And the operational environment is not changed before all target-image preflights pass
+
+  @CLI-STATUS-001
+  Scenario: Component intent and runtime reality remain distinct
+    When the operator runs "./local-ai status"
+    Then every declared component reports Desired, Deployed and Actual independently
+    And Desired comes from installation-owned configuration
+    And Deployed is the latest successfully recorded upgrade when known
+    And Actual comes from the observed runtime
+    And Drift compares Desired with Actual without treating an upgrade selection as desired state
+
+  @CLI-STATUS-002
+  Scenario: Automation consumes component state without internal coupling
+    When the consumer runs "./local-ai --json status"
+    Then it receives the versioned status contract
+    And every component contains desired, deployed, actual and drift fields
