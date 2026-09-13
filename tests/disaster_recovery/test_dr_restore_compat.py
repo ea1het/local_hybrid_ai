@@ -1,3 +1,11 @@
+"""Protect narrowly scoped compatibility required to restore historical recovery points.
+
+The compatibility layer may recognize older installer locations and one known
+transient post-reconcile readiness race, but it must reject unrelated failures.
+These tests keep backward recovery support explicit without reintroducing legacy
+paths as current operator interfaces.
+"""
+
 from __future__ import annotations
 
 import json
