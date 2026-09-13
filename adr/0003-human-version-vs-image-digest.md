@@ -55,13 +55,16 @@ The configured image reference already identifies the authoritative artifact sou
 13. **Equal latest-only digests are current without date lookup.**
     If the deployed digest and the digest currently behind `latest` are identical, the component is current regardless of timestamps. The table still renders the installed artifact as `latest(<sha9>)` so the operator can identify exactly which artifact is running.
 
-14. **Discovery is not upgrade authorization.**
+14. **Normal upgrade discovery remains credential-free.**
+    `upgrade check` must not require a GitHub token, registry-management token, or package-service credential merely to determine whether public container artifacts have changed. Where a registry exposes richer package metadata only through an authenticated management API, that API is not part of the normal discovery path. In particular, an authenticated package API may expose `created_at`/`updated_at`, but `local-ai` does not introduce a new secret dependency solely to obtain those timestamps. If public Registry V2 and OCI artifact metadata cannot establish ordering for two different latest-only digests, the result remains unknown/fail-closed.
+
+15. **Discovery is not upgrade authorization.**
     A newer registry tag or changed channel digest is only discovered state. The separate support/compatibility layer decides which targets are valid to select or execute. `upgrade --yes` still applies only explicitly selected and executable components.
 
-15. **Registry failures preserve their reason.**
+16. **Registry failures preserve their reason.**
     Rate limiting, authorization failures and similar lookup errors remain `available=unknown` with structured statuses such as `rate_limited`. A failure to inspect a registry must never be rendered as `current`.
 
-16. **Local-only images are exempt.**
+17. **Local-only images are exempt.**
     Images such as the Hermes sandbox that intentionally exist only in the local installation remain `local` and are never queried against an external registry.
 
 ## Consequences
@@ -73,5 +76,6 @@ The configured image reference already identifies the authoritative artifact sou
 - GHCR packages are queried as GHCR packages, Docker Hub images as Docker Hub packages, and other registries through their own Registry V2 interface.
 - Registry pagination, tag-family filtering, monotonic candidate selection and publication-order validation are part of correctness, not presentation polish.
 - A latest-only package does not become `update` solely because its moving tag points to another digest; the newer ordering must be established from registry/artifact timing evidence.
+- Normal `upgrade check` remains usable without adding service-specific package API credentials.
 - A registry tag discovered as newer is not automatically supported, selected or applied.
 - Compatibility/version-policy work remains a separate layer above discovery.
