@@ -20,8 +20,8 @@ from pathlib import Path
 import dr
 import dr_archive
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LIFECYCLE_FILE = PROJECT_ROOT / "installer" / "lifecycle.json"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LIFECYCLE_FILE = PROJECT_ROOT / "commands" / "install-lifecycle.json"
 PHASE_ORDER = (
     "global",
     "pre-prepare",
