@@ -44,15 +44,18 @@ The configured image reference already identifies the authoritative artifact sou
    Discovery follows Registry V2 pagination for the same package. It must not decide that an older-looking tag is latest merely because it appeared on the first registry page.
 
 10. **Digest-only deployments may require tag-to-digest resolution.**
-   `local-ai` first uses trustworthy local image metadata when it names a tag published by the same package. Otherwise it compares candidate registry tags with the deployed digest. This lookup is bounded and fail-closed: failure to prove a mapping leaves the current human version unknown rather than inventing one.
+    `local-ai` first uses trustworthy local image metadata when it names a tag published by the same package. Otherwise it compares candidate registry tags with the deployed digest. This lookup is bounded and fail-closed: failure to prove a mapping leaves the current human version unknown rather than inventing one.
 
-11. **Discovery is not upgrade authorization.**
-    A newer registry tag is only a discovered candidate. The separate support/compatibility layer decides which targets are valid to select or execute. `upgrade --yes` still applies only explicitly selected and executable components.
+11. **Latest-only packages remain `pinned` but can still have freshness state.**
+    Some registry packages publish no semantic/version tag at all and expose only `latest` plus architecture/build tags. For a digest-pinned deployment in such a package, `CURRENT` remains `pinned` because no human version exists. However, when the same package publishes `latest`, `local-ai` compares the deployed digest with the digest currently behind that `latest` tag. Equal digests report `AVAILABLE=current`; different digests report `AVAILABLE=update`. This does not invent a version number and does not use any source outside the image registry.
 
-12. **Registry failures preserve their reason.**
+12. **Discovery is not upgrade authorization.**
+    A newer registry tag or changed channel digest is only discovered state. The separate support/compatibility layer decides which targets are valid to select or execute. `upgrade --yes` still applies only explicitly selected and executable components.
+
+13. **Registry failures preserve their reason.**
     Rate limiting, authorization failures and similar lookup errors remain `available=unknown` with structured statuses such as `rate_limited`. A failure to inspect a registry must never be rendered as `current`.
 
-13. **Local-only images are exempt.**
+14. **Local-only images are exempt.**
     Images such as the Hermes sandbox that intentionally exist only in the local installation remain `local` and are never queried against an external registry.
 
 ## Consequences
@@ -63,5 +66,6 @@ The configured image reference already identifies the authoritative artifact sou
 - GitHub Releases are no longer an operational version source for container inventory merely because the source project is hosted on GitHub.
 - GHCR packages are queried as GHCR packages, Docker Hub images as Docker Hub packages, and other registries through their own Registry V2 interface.
 - Registry pagination, tag-family filtering and monotonic candidate selection are part of correctness, not presentation polish.
+- A latest-only package may remain human-labeled `pinned` while still reporting whether its pinned digest matches the package's current `latest` digest.
 - A registry tag discovered as newer is not automatically supported, selected or applied.
 - Compatibility/version-policy work remains a separate layer above discovery.
