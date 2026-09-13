@@ -29,3 +29,5 @@ The table is deliberately small. The Gherkin tag is the stable contract identifi
 | `CLI-UPGRADE-004` | `tests/test_management_cli.py::test_stale_plan_fails_before_execution` | structured `UPGRADE_PLAN_STALE` error |
 | `CLI-UPGRADE-005` | `tests/test_upgrade_executor.py` | targeted deploy metadata in `internal/upgrade-components.json` and recovery-first executor |
 | `CLI-UPGRADE-006` | `tests/test_upgrade_executor.py::test_target_image_preflight_rejects_missing_image` | read-only `docker manifest inspect` before recovery or `.env` mutation |
+| `CLI-STATUS-001` | `tests/test_status.py::test_inventory_keeps_desired_deployed_and_actual_separate` | `./local-ai status` runtime inventory |
+| `CLI-STATUS-002` | `tests/test_status.py::test_drift_compares_installation_desired_with_runtime_actual` | versioned `./local-ai --json status` contract |
