@@ -57,6 +57,22 @@ An earlier ad-hoc `tarfile.extractall(filter="data")` check rejected a Hugging F
 
 A clean Stack7 deployment proved `basic_autorouter` selected by default, Arena disabled, explicit public-read model policy, regular-user access limited to the curated model, Web Search enabled by default, and real `search_web`/`fetch_url` results. SearXNG/Firecrawl per-request correlation is not observable in current container logs; that is an observability limitation, not claimed provider-log evidence.
 
+## Backup destination overlap guard — PASS
+
+The guard was qualified live on m92p through the supported management boundary after fixing a CLI passthrough defect for `backup --destination`. The repository gate passed all 294 tests.
+
+The following dangerous destinations were rejected before backup-set creation:
+
+```text
+/opt/docker/stacks  -> overlaps STACKS_ROOT -> RC=1
+/opt/docker/runtime -> overlaps BASE_PATH   -> RC=1
+/opt/docker         -> contains STACKS_ROOT -> RC=1
+```
+
+The common-ancestor case proves the guard rejects overlap in both directions, not only destinations nested inside a protected root. Validation resolves paths before comparison, so the permanent unit coverage also includes `..` and symlink-based disguises.
+
+Post-test inspection found no `.backup-*.tmp-*` directories under `/opt/docker`, confirming these rejections occurred before temporary backup publication.
+
 ## Preserve as evidence
 
 Verified backup sets under `/opt/local-hybrid-ai-backups` are recovery evidence, not generic cleanup. Do not repeat the destructive wipe or Stack7 isolated restore only to reproduce an already-qualified result.
