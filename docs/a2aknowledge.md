@@ -6,11 +6,11 @@ Continuity contract for AI-assisted maintenance. Start with the root [README.md]
 
 ```mermaid
 flowchart LR
-    Git[/opt/docker/stacks] --> Code[Declarative source]
-    Runtime[/opt/docker/runtime] --> State[Mutable state]
-    S0[Stack0] --> Apps[Stacks 1-7]
-    S3[Stack3 LiteLLM] --> S6[Stack6 Hermes]
-    S3 --> S7[Stack7 Open WebUI]
+    Git["/opt/docker/stacks"] --> Code["Declarative source"]
+    Runtime["/opt/docker/runtime"] --> State["Mutable state"]
+    S0["Stack0"] --> Apps["Stacks 1-7"]
+    S3["Stack3 LiteLLM"] --> S6["Stack6 Hermes"]
+    S3 --> S7["Stack7 Open WebUI"]
 ```
 
 - The platform is a set of atomic stacks, not one monolithic Compose project.
