@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STACK = ROOT / "stack7_-_open-webui"
+LIFECYCLE = ROOT / "commands" / "install-lifecycle.json"
 
 
 class Stack7OpenWebUIContractTests(unittest.TestCase):
@@ -19,7 +20,7 @@ class Stack7OpenWebUIContractTests(unittest.TestCase):
         self.assertIn("container:open-webui", data["owns"])
 
     def test_lifecycle_has_stack_owned_readiness(self):
-        lifecycle = json.loads((ROOT / "installer" / "lifecycle.json").read_text(encoding="utf-8"))["stacks"]["7"]
+        lifecycle = json.loads(LIFECYCLE.read_text(encoding="utf-8"))["stacks"]["7"]
         self.assertEqual(lifecycle["directory"], "stack7_-_open-webui")
         self.assertEqual(lifecycle["required_containers"], ["open-webui"])
         self.assertIn(["bash", "./02-wait-ready.sh"], lifecycle["deploy"])
