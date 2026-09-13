@@ -1,3 +1,13 @@
+"""Guarded executor for explicitly selected component upgrades.
+
+Execution is intentionally recovery-first and fail-closed. Before mutating the
+protected operational environment, the executor revalidates policy, immutable
+registry identity and target availability for every selection, then creates a
+recovery point when required. Deployment is targeted to selected components,
+followed by READY, RECONCILE, VERIFY and dependent-consumer re-verification.
+Successful selections are cleared only after the runtime proves the target.
+"""
+
 from __future__ import annotations
 
 import json
