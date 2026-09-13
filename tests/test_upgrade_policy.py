@@ -7,6 +7,8 @@ from pathlib import Path
 
 from internal import upgrade_policy
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 class UpgradePolicyTests(unittest.TestCase):
     def test_minor_series_accepts_only_newer_same_major_minor(self):
@@ -24,6 +26,12 @@ class UpgradePolicyTests(unittest.TestCase):
         self.assertTrue(upgrade_policy.target_supported("manual", "latest(aaaaaaaaa)", "latest(bbbbbbbbb)"))
         self.assertFalse(upgrade_policy.target_supported("manual", "1.28.0", "1.27.9"))
         self.assertFalse(upgrade_policy.target_supported("manual", "1.27.1", "1.27.1"))
+
+    def test_dockhand_default_policy_is_major_series(self):
+        catalog = json.loads((ROOT / "internal" / "upgrade-components.json").read_text(encoding="utf-8"))
+        stack5 = next(stack for stack in catalog["stacks"] if stack["id"] == "stack5")
+        dockhand = next(component for component in stack5["components"] if component["id"] == "dockhand")
+        self.assertEqual(dockhand["default_policy"], "major-series")
 
     def test_override_is_installation_local_and_clear_restores_default(self):
         component = {"stack": "stack4", "id": "gitea", "default_policy": "minor-series"}
