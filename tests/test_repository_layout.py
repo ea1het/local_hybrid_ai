@@ -18,7 +18,7 @@ class RepositoryLayoutTests(unittest.TestCase):
     def test_dr_tests_do_not_shadow_production_dr_module(self):
         self.assertFalse((ROOT / "tests" / "dr").exists())
         self.assertTrue((ROOT / "tests" / "disaster_recovery").is_dir())
-        self.assertTrue((ROOT / "bkp-dr" / "dr.py").is_file())
+        self.assertTrue((ROOT / "commands" / "recovery" / "dr.py").is_file())
 
     def test_documentation_and_decision_roots_are_normalized(self):
         docs = ROOT / "docs"
@@ -42,17 +42,14 @@ class RepositoryLayoutTests(unittest.TestCase):
             rel = path.relative_to(ROOT)
             if rel.parts[0] == "docs":
                 continue
-            # Repository and implementation-local README files are navigation
-            # entry points kept next to the source they describe. Every other
-            # Markdown document belongs under docs/.
             if path.name == "README.md":
                 continue
             offenders.append(str(rel))
         self.assertEqual(offenders, [])
 
-    def test_recovery_schema_is_owned_by_dr_not_repo_root(self):
+    def test_recovery_schema_is_owned_by_recovery_commands(self):
         self.assertFalse((ROOT / "recovery.schema.json").exists())
-        self.assertTrue((ROOT / "bkp-dr" / "recovery.schema.json").is_file())
+        self.assertTrue((ROOT / "commands" / "recovery" / "recovery.schema.json").is_file())
 
     def test_historical_uppercase_document_names_do_not_return(self):
         forbidden = {"INSTALLATION.md", "STATUS.md", "MCP.md", "INTEGRATIONS.md"}
@@ -79,10 +76,16 @@ class RepositoryLayoutTests(unittest.TestCase):
         cli = ROOT / "local-ai"
         self.assertTrue(cli.is_file())
         self.assertTrue(cli.stat().st_mode & 0o111)
-        self.assertTrue((ROOT / "commands").is_dir())
-        self.assertTrue((ROOT / "internal").is_dir())
+        commands = ROOT / "commands"
+        self.assertTrue(commands.is_dir())
+        self.assertTrue((commands / "install.py").is_file())
+        self.assertTrue((commands / "install-lifecycle.json").is_file())
+        self.assertTrue((commands / "upgrade-components.json").is_file())
+        self.assertTrue((commands / "recovery" / "dr.py").is_file())
+        self.assertFalse((ROOT / "internal").exists())
+        self.assertFalse((ROOT / "installer").exists())
+        self.assertFalse((ROOT / "bkp-dr").exists())
         self.assertFalse((ROOT / "install.py").exists())
-        self.assertTrue((ROOT / "installer" / "install.py").is_file())
 
 
 if __name__ == "__main__":
