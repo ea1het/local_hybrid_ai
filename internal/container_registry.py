@@ -72,6 +72,7 @@ _VERSION_RE = re.compile(
     r"^(?P<prefix>v?)(?P<numbers>\d+(?:\.\d+)+)(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$"
 )
 _AUTH_PARAM_RE = re.compile(r'(\w+)="([^"]*)"')
+_LINK_RE = re.compile(r'<([^>]+)>\s*;\s*rel="?next"?', re.IGNORECASE)
 _MANIFEST_ACCEPT = ", ".join((
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.oci.image.manifest.v1+json",
@@ -141,22 +142,60 @@ def _inspect_json(target: str) -> dict | None:
     return values[0]
 
 
-def local_digest(container: str, image: str) -> str | None:
-    """Resolve the immutable repo digest of the exact image used by a container."""
+def _local_image_data(container: str) -> dict | None:
     container_data = _inspect_json(container)
     if not container_data:
         return None
     image_id = container_data.get("Image")
     if not isinstance(image_id, str) or not image_id:
         return None
+    return _inspect_json(image_id)
 
-    image_data = _inspect_json(image_id)
+
+def local_digest(container: str, image: str) -> str | None:
+    """Resolve the immutable repo digest of the exact image used by a container."""
+    image_data = _local_image_data(container)
     if not image_data:
         return None
     repo_digests = image_data.get("RepoDigests")
     if not isinstance(repo_digests, list):
         return None
     return _repo_digest_for_image(image, [str(value) for value in repo_digests])
+
+
+def local_version_hint(container: str, image: str, registry_tags_value: tuple[str, ...]) -> str | None:
+    """Use metadata carried by the local image before probing many remote tags."""
+    image_data = _local_image_data(container)
+    if not image_data:
+        return None
+    wanted = parse_reference(image)
+
+    repo_tags = image_data.get("RepoTags")
+    if isinstance(repo_tags, list):
+        candidates: list[str] = []
+        for value in repo_tags:
+            if not isinstance(value, str):
+                continue
+            ref = parse_reference(value)
+            if (ref.registry, ref.repository) != (wanted.registry, wanted.repository):
+                continue
+            if ref.tag and ref.tag in registry_tags_value and _version_parts(ref.tag) is not None:
+                candidates.append(ref.tag)
+        if candidates:
+            return version_tags(candidates)[0]
+
+    config = image_data.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    if isinstance(labels, dict):
+        for key in (
+            "org.opencontainers.image.version",
+            "org.label-schema.version",
+            "version",
+        ):
+            value = labels.get(key)
+            if isinstance(value, str) and value in registry_tags_value and _version_parts(value) is not None:
+                return value
+    return None
 
 
 def _classify_http_status(status: int) -> str:
@@ -253,21 +292,52 @@ def _registry_request(
     return _urlopen(request)
 
 
-def registry_tags(image: str, *, limit: int = 1000) -> TagProbe:
-    """List tags from the registry that owns the configured image package."""
+def _next_tags_path(reference: ImageReference, headers: dict[str, str]) -> str | None:
+    link = _header(headers, "Link")
+    if not link:
+        return None
+    match = _LINK_RE.search(link)
+    if not match:
+        return None
+    parsed = urllib.parse.urlparse(match.group(1))
+    if parsed.netloc and parsed.netloc != reference.registry_host:
+        return None
+    path = parsed.path
+    if parsed.query:
+        path += "?" + parsed.query
+    expected_prefix = f"/v2/{reference.repository}/tags/list"
+    return path if path.startswith(expected_prefix) else None
+
+
+def registry_tags(image: str, *, limit: int = 5000, page_size: int = 1000) -> TagProbe:
+    """List tags from the same registry package, following OCI pagination."""
     reference = parse_reference(image)
-    path = f"/v2/{reference.repository}/tags/list?n={limit}"
-    status, _, body = _registry_request(reference, path)
-    if status != 200:
-        return TagProbe((), _classify_http_status(status) if status else "error")
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return TagProbe((), "invalid")
-    tags = payload.get("tags")
-    if not isinstance(tags, list):
-        return TagProbe((), "invalid")
-    return TagProbe(tuple(str(tag) for tag in tags if isinstance(tag, str)), "ok")
+    path = f"/v2/{reference.repository}/tags/list?n={min(limit, page_size)}"
+    collected: list[str] = []
+    seen_tags: set[str] = set()
+    seen_paths: set[str] = set()
+
+    while path and path not in seen_paths and len(collected) < limit:
+        seen_paths.add(path)
+        status, headers, body = _registry_request(reference, path)
+        if status != 200:
+            return TagProbe(tuple(collected), _classify_http_status(status) if status else "error")
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return TagProbe(tuple(collected), "invalid")
+        tags = payload.get("tags")
+        if not isinstance(tags, list):
+            return TagProbe(tuple(collected), "invalid")
+        for tag in tags:
+            if isinstance(tag, str) and tag not in seen_tags:
+                seen_tags.add(tag)
+                collected.append(tag)
+                if len(collected) >= limit:
+                    break
+        path = _next_tags_path(reference, headers)
+
+    return TagProbe(tuple(collected), "ok")
 
 
 def manifest_probe(image: str) -> RemoteProbe:
@@ -306,8 +376,6 @@ def _version_sort_key(tag: str) -> tuple:
         return ((-1,), -1, -1, -1, "")
     numbers, suffix, has_v = parsed
     padded = numbers + (0,) * (6 - len(numbers))
-    # For identical numeric versions, prefer the plain release tag over a
-    # variant such as -production. Prefix v is presentation only.
     return (padded, len(numbers), 1 if suffix is None else 0, 1 if has_v else 0, tag)
 
 
@@ -319,27 +387,43 @@ def version_tags(tags: tuple[str, ...] | list[str]) -> list[str]:
     )
 
 
-def _variant_suffix(tag: str | None) -> str | None:
+def _variant_family(tag: str | None) -> str | None:
     if not tag:
         return None
     parsed = _version_parts(tag)
     if parsed is None:
         return None
     suffix = parsed[1]
-    # Build hashes such as SearXNG's 2026.9.5-c7f3080aa identify a build, not a
-    # reusable image variant. Do not freeze discovery to one hash suffix.
-    if suffix and re.fullmatch(r"[0-9a-fA-F]{7,40}", suffix):
+    if not suffix or re.fullmatch(r"[0-9a-fA-F]{7,40}", suffix):
         return None
+    for family in ("alpine", "rootless", "slim", "bookworm", "bullseye", "debian", "ubuntu"):
+        if suffix == family or suffix.startswith(family):
+            return family
     return suffix
 
 
-def _candidate_versions(tags: tuple[str, ...], source_tag: str | None) -> list[str]:
-    candidates = version_tags(tags)
-    suffix = _variant_suffix(source_tag)
-    if suffix:
-        matching = [tag for tag in candidates if _variant_suffix(tag) == suffix]
-        if matching:
-            candidates = matching
+def _same_tag_family(candidate: str, source_tag: str | None) -> bool:
+    if not source_tag:
+        return True
+    source = _version_parts(source_tag)
+    candidate_parts = _version_parts(candidate)
+    if source is None or candidate_parts is None:
+        return True
+    _, _, source_has_v = source
+    _, _, candidate_has_v = candidate_parts
+    if source_has_v != candidate_has_v:
+        return False
+    return _variant_family(candidate) == _variant_family(source_tag)
+
+
+def _release_candidates(tags: tuple[str, ...], source_tag: str | None) -> list[str]:
+    candidates = [tag for tag in version_tags(tags) if _same_tag_family(tag, source_tag)]
+    source = _version_parts(source_tag) if source_tag else None
+    if source:
+        major = source[0][0]
+        same_major = [tag for tag in candidates if (_version_parts(tag) or ((-1,), None, False))[0][0] == major]
+        if same_major:
+            candidates = same_major
     return candidates
 
 
@@ -353,7 +437,7 @@ def _numeric_channel_prefix(tag: str | None) -> tuple[int, ...] | None:
 
 
 def _channel_candidates(tags: tuple[str, ...], source_tag: str | None) -> list[str]:
-    candidates = _candidate_versions(tags, source_tag)
+    candidates = _release_candidates(tags, source_tag)
     prefix = _numeric_channel_prefix(source_tag)
     if not prefix:
         return candidates
@@ -363,7 +447,7 @@ def _channel_candidates(tags: tuple[str, ...], source_tag: str | None) -> list[s
         if parsed is None:
             continue
         numbers = parsed[0]
-        if len(numbers) >= len(prefix) and numbers[:len(prefix)] == prefix:
+        if len(numbers) > len(prefix) and numbers[:len(prefix)] == prefix:
             matching.append(candidate)
     return matching or candidates
 
@@ -375,20 +459,14 @@ def _is_channel_tag(tag: str | None, tags: tuple[str, ...]) -> bool:
         return True
     parsed = _version_parts(tag)
     if parsed is None:
-        # Numeric channel forms such as 3-alpine.
         return bool(re.fullmatch(r"\d+(?:\.\d+)?-[A-Za-z][0-9A-Za-z._-]*", tag))
-    numbers, suffix, _ = parsed
-    prefix = ".".join(str(value) for value in numbers) + "."
-    for candidate in _candidate_versions(tags, tag):
+    numbers = parsed[0]
+    for candidate in _release_candidates(tags, tag):
         candidate_parsed = _version_parts(candidate)
         if candidate_parsed is None:
             continue
-        candidate_numbers, candidate_suffix, _ = candidate_parsed
-        if _variant_suffix(candidate) != _variant_suffix(tag):
-            continue
-        if len(candidate_numbers) <= len(numbers):
-            continue
-        if ".".join(str(value) for value in candidate_numbers).startswith(prefix):
+        candidate_numbers = candidate_parsed[0]
+        if len(candidate_numbers) > len(numbers) and candidate_numbers[:len(numbers)] == numbers:
             return True
     return False
 
@@ -398,7 +476,7 @@ def _best_tag_for_digest(
     digest: str | None,
     candidates: list[str],
     *,
-    max_probes: int = 80,
+    max_probes: int = 500,
 ) -> tuple[str | None, str]:
     if not digest:
         return None, "local_unknown"
@@ -417,8 +495,6 @@ def _best_tag_for_digest(
 
 
 def tracking_reference(image: str, explicit: str | None = None) -> str | None:
-    # explicit remains accepted for backward compatibility, but may only point
-    # at the same registry package as the configured image.
     reference = parse_reference(image)
     if explicit:
         explicit_ref = parse_reference(explicit)
@@ -465,50 +541,54 @@ def inspect(
     remote = RemoteProbe(None, tags_probe.status if tags_probe.status != "ok" else "unknown")
     tracked = tracking_reference(image, tracking_image)
 
-    # An explicit version-looking tag is already useful human information even
-    # if registry tag enumeration is temporarily unavailable.
     if reference.tag and _version_parts(reference.tag) is not None:
         current_version = reference.tag
 
     if tags_probe.status == "ok":
         channel = _is_channel_tag(reference.tag, tags)
-        candidates = (
-            _channel_candidates(tags, reference.tag)
-            if channel
-            else _candidate_versions(tags, reference.tag)
-        )
 
-        if channel or reference.tag is None:
-            if candidates:
+        if channel:
+            candidates = _channel_candidates(tags, reference.tag)
+            hint = local_version_hint(container, image, tags)
+            if hint and hint in candidates:
+                current_version = hint
+            elif candidates:
                 current_version, current_status = _best_tag_for_digest(reference, local, candidates)
                 if current_version is None and current_status in {"rate_limited", "unauthorized", "forbidden"}:
-                    return RegistryState(
-                        image=image,
-                        local_digest=local,
-                        remote_digest=None,
-                        tracking_image=tracked,
-                        remote_status=current_status,
-                        current_version=None,
-                        available_version=None,
-                        tags_status=tags_probe.status,
-                        registry=reference.registry,
-                        repository=reference.repository,
-                    )
+                    remote = RemoteProbe(None, current_status)
 
-        if channel and tracked:
-            remote = manifest_probe(tracked)
-            if remote.status == "ok" and candidates:
-                available_version, mapped_status = _best_tag_for_digest(reference, remote.digest, candidates)
-                if available_version is None and mapped_status != "ok":
-                    remote = RemoteProbe(remote.digest, mapped_status)
-        elif candidates:
-            available_version = candidates[0]
-            remote = manifest_probe(reference.with_tag(available_version))
-        elif tracked:
-            remote = manifest_probe(tracked)
+            if tracked:
+                tracked_probe = manifest_probe(tracked)
+                remote = tracked_probe
+                if tracked_probe.status == "ok" and candidates:
+                    available_version, mapped_status = _best_tag_for_digest(reference, tracked_probe.digest, candidates)
+                    if available_version is None and mapped_status not in {"ok", "not_found"}:
+                        remote = RemoteProbe(tracked_probe.digest, mapped_status)
+
+        elif reference.tag is None:
+            all_candidates = version_tags(tags)
+            hint = local_version_hint(container, image, tags)
+            if hint:
+                current_version = hint
+            elif all_candidates:
+                current_version, current_status = _best_tag_for_digest(reference, local, all_candidates)
+                if current_version is None and current_status in {"rate_limited", "unauthorized", "forbidden"}:
+                    remote = RemoteProbe(None, current_status)
+
+            compatible = _release_candidates(tags, current_version) if current_version else all_candidates
+            if compatible:
+                available_version = compatible[0]
+                remote = manifest_probe(reference.with_tag(available_version))
+
+        else:
+            candidates = _release_candidates(tags, reference.tag)
+            if candidates:
+                available_version = candidates[0]
+                remote = manifest_probe(reference.with_tag(available_version))
+            elif tracked:
+                remote = manifest_probe(tracked)
+
     elif tracked:
-        # Preserve same-tag digest evidence when version enumeration is
-        # temporarily unavailable, for example because Docker Hub is rate-limited.
         remote = manifest_probe(tracked)
 
     return RegistryState(
