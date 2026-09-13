@@ -9,11 +9,11 @@
     ]},
     {"id":"stack2","components":[
       {"id":"searxng","service":"searxng","container":"searxng","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"searxng/searxng","selectable":false},
-      {"id":"firecrawl","service":"firecrawl-api","container":"firecrawl-api","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl","selectable":false},
-      {"id":"firecrawl-playwright","service":"firecrawl-playwright","container":"firecrawl-playwright","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl","selectable":false},
+      {"id":"firecrawl","service":"firecrawl-api","container":"firecrawl-api","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl","selectable":false,"registry_source":"ghcr.io/firecrawl/firecrawl:latest"},
+      {"id":"firecrawl-playwright","service":"firecrawl-playwright","container":"firecrawl-playwright","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl","selectable":false,"registry_source":"ghcr.io/firecrawl/playwright-service:latest"},
       {"id":"redis","service":"firecrawl-redis","container":"firecrawl-redis","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"redis/redis","selectable":false},
       {"id":"rabbitmq","service":"firecrawl-rabbitmq","container":"firecrawl-rabbitmq","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"rabbitmq/rabbitmq-server","selectable":false},
-      {"id":"nuq-postgres","service":"firecrawl-postgres","container":"firecrawl-postgres","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl","selectable":false}
+      {"id":"nuq-postgres","service":"firecrawl-postgres","container":"firecrawl-postgres","compose":"stack2_-_searxng_firecrawl/docker-compose.yml","upstream":"firecrawl/firecrawl","selectable":false,"registry_source":"ghcr.io/firecrawl/nuq-postgres:latest"}
     ]},
     {"id":"stack3","components":[
       {"id":"postgresql","service":"litellm-postgres","container":"litellm-postgres","compose":"stack3_-_litellm/docker-compose.yml","upstream":"postgres/postgres","selectable":false},
