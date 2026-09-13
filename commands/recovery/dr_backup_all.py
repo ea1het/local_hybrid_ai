@@ -79,6 +79,28 @@ def _resource_map(manifests, plan):
     return {(sid,r["id"]):r for sid in plan for r in manifests[sid]["recovery"].get("resources",[])}
 
 
+def _paths_overlap(first: Path, second: Path) -> bool:
+    """Return True when resolved paths are equal or one contains the other."""
+    first = first.resolve()
+    second = second.resolve()
+    return first == second or first in second.parents or second in first.parents
+
+
+def validate_backup_destination(backup_root: Path, stacks_root: Path, base_path: Path) -> Path:
+    """Reject destinations that overlap project source or mutable runtime trees."""
+    destination = backup_root.resolve()
+    protected = (
+        ("STACKS_ROOT", stacks_root.resolve()),
+        ("BASE_PATH", base_path.resolve()),
+    )
+    for label, root in protected:
+        if _paths_overlap(destination, root):
+            raise BackupAllError(
+                f"unsafe backup destination overlaps {label}: destination={destination} protected={root}"
+            )
+    return destination
+
+
 def _copy_private(source: Path, destination: Path):
     if not source.is_file() or source.is_symlink(): raise BackupAllError("operational .env must resolve to a regular file")
     if source.stat().st_size <= 0: raise BackupAllError("operational .env is empty")
@@ -192,7 +214,10 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
     resources=_resource_map(manifests,plan)
     dr.preflight_runtime_sources(manifests,plan)
     dr_filesystem.validate_existing_root(backup_root)
-    values=dr.read_dotenv_presence(ENV_SOURCE); base_path=dr.resolve_base_path(values)
+    values=dr.read_dotenv_presence(ENV_SOURCE)
+    base_path=dr.resolve_base_path(values)
+    stacks_root=Path(dr.require_env_value(values,"STACKS_ROOT",label="STACKS_ROOT"))
+    backup_root=validate_backup_destination(backup_root,stacks_root,base_path)
     created_at,final_name=dr_archive.timestamp_parts(dr_archive.utc_now()); final=backup_root/final_name
     if final.exists(): raise BackupAllError(f"final backup-set name already exists: {final}")
     temp=backup_root/f".{final_name}.tmp-{secrets.token_hex(8)}"; old_umask=os.umask(0o077)
