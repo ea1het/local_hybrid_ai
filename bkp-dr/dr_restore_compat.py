@@ -49,6 +49,17 @@ def _load_lifecycle(stacks_root: Path) -> dict:
     return data
 
 
+def _installer_path(stacks_root: Path) -> Path:
+    """Resolve current internal installer path while preserving historical DR compatibility."""
+    current = stacks_root / "installer" / "install.py"
+    if current.is_file() and not current.is_symlink():
+        return current
+    legacy = stacks_root / "install.py"
+    if legacy.is_file() and not legacy.is_symlink():
+        return legacy
+    raise RestoreCompatibilityError("target source has no supported installer engine")
+
+
 def _container_state(name: str) -> tuple[str, str]:
     cp = _run([
         "docker", "inspect", "-f",
@@ -110,7 +121,8 @@ def install_with_readiness_compat(
 ) -> None:
     if not selectors:
         return
-    cmd = ["python3", "install.py", *[str(sid) for sid in selectors]]
+    installer = _installer_path(stacks_root)
+    cmd = ["python3", str(installer.relative_to(stacks_root)), *[str(sid) for sid in selectors]]
     if reconcile:
         cmd.append("--reconcile")
     cmd.append("--yes")
