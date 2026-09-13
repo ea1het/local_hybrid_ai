@@ -164,13 +164,13 @@ def execute(
     components: dict[str, dict],
     plan_path: Path,
 ) -> dict:
+    if not selections:
+        raise UpgradeExecutionError("UPGRADE_NOTHING_SELECTED", "no upgrades are selected")
     if os.geteuid() != 0:
         raise UpgradeExecutionError("UPGRADE_ROOT_REQUIRED", "upgrade execution requires root")
     env_path = root / ".env"
     if not env_path.is_file():
         raise UpgradeExecutionError("UPGRADE_ENV_MISSING", f"missing operational environment: {env_path}")
-    if not selections:
-        raise UpgradeExecutionError("UPGRADE_NOTHING_SELECTED", "no upgrades are selected")
 
     lifecycle = _load_json(root / "installer" / "lifecycle.json")
     manifests = _load_manifests(root)
