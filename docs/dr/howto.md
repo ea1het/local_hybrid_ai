@@ -2,7 +2,7 @@
 
 The DR rule is simple: preserve only state whose loss would prevent a correct rebuild. A Docker volume or bind mount is not a backup target unless a manifest declares it.
 
-`./local-ai` is the supported operator and integration boundary. Files under `bkp-dr/` remain the internal DR engine and schema ownership area; external automation must not couple to their direct invocation contracts.
+`./local-ai` is the supported operator and integration boundary. DR implementation lives under `commands/recovery/`; external automation must not couple to its direct Python/script contracts.
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,7 @@ flowchart LR
 | 6 Hermes | reconstruct + external | Git-backed `MEMORY.md` + `USER.md` |
 | 7 Open WebUI | mixed | `/app/backend/data` archive + secret key |
 
-Schemas are implementation-owned by [`../../bkp-dr/`](../../bkp-dr/): [`recovery.schema.json`](../../bkp-dr/recovery.schema.json) and [`backup-set.schema.json`](../../bkp-dr/backup-set.schema.json).
+Schemas are implementation-owned by [`../../commands/recovery/`](../../commands/recovery/): [`recovery.schema.json`](../../commands/recovery/recovery.schema.json) and [`backup-set.schema.json`](../../commands/recovery/backup-set.schema.json).
 
 ## Backup
 
@@ -44,7 +44,7 @@ For machine consumers, use the JSON contract where supported:
 ./local-ai --json backup
 ```
 
-A real backup validates source/runtime prerequisites, stages sensitive data privately, performs integrity checks, writes `backup.json` and `checksums.sha256`, then atomically publishes one immutable `backup-*` directory. The operational `.env` is a sensitive global artifact; its contents never belong in logs or metadata. See [ADR-0001](../../adr/0001-backup-operational-env.md) and [SDR-0001](../../sdr/0001-protected-operational-config-in-backups.md).
+A real backup validates source/runtime prerequisites, stages sensitive data privately, performs integrity checks, writes `backup.json` and `checksums.sha256`, then atomically publishes one immutable `backup-*` directory. The operational `.env` is a sensitive global artifact; its contents never belong in logs or metadata. See [ADR-0001](../devel-docs/adr/0001-backup-operational-env.md) and [SDR-0001](../devel-docs/sdr/0001-protected-operational-config-in-backups.md).
 
 ## Restore
 
@@ -61,7 +61,9 @@ flowchart LR
     Ready --> External[External prerequisite convergence]
 ```
 
-Supported management forms are exposed through `./local-ai restore ...`; the underlying DR scripts remain internal implementation details.
+Supported management forms are exposed through `./local-ai restore ...`; the underlying modules under `commands/recovery/` remain private implementation details.
+
+Historical recovery compatibility may recognize source commits that still contain `installer/install.py` or the older root `install.py`. That is a restore-compatibility rule only; it does not make those historical paths supported management interfaces.
 
 The generic restore path has passed a real destructive clean-target qualification for stacks 0–6. Stack7 has separately passed a current isolated archive restore from a global recovery point without modifying the live runtime. Do not repeat destructive qualification merely to recreate evidence.
 
@@ -78,4 +80,4 @@ Raw PostgreSQL PGDATA, containers, images, logs, queues, caches, `.lock`, migrat
 
 ## Remaining hardening
 
-Encryption-at-rest, retention generations, off-host replication, external Stack6 SSH prerequisite packaging, overlap/type/schema validation hardening, resumable-recovery improvements and the final safe upgrade executor remain active work. See [../pending.md](../pending.md).
+Encryption-at-rest, retention generations, off-host replication, external Stack6 SSH prerequisite packaging, overlap/type/schema validation hardening and resumable-recovery improvements remain active work. See [../pending.md](../pending.md).
