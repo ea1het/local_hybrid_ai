@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import status, upgrade
+from commands import status, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         args = list(ns.args)
         if ns.upgrade_yes:
             args.insert(0, "--yes")
-        return upgrade.main(args, json_output=json_output)
+        return upgrade_entry.main(args, json_output=json_output)
 
     parser.error("unsupported command")
     return 2
