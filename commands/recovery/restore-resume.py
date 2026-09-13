@@ -43,7 +43,6 @@ def require_ok(cp: subprocess.CompletedProcess[str], label: str) -> str:
 
 
 def read_env_artifact(backup_set: Path) -> tuple[Path, dict[str, str]]:
-    """Read the canonical global operational-env artifact from a backup set."""
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
     matches = [
         artifact
@@ -59,8 +58,8 @@ def read_env_artifact(backup_set: Path) -> tuple[Path, dict[str, str]]:
 
 
 def _recorded_installer_path(source_commit: str) -> str:
-    """Resolve installer path in the recorded source without breaking historical backups."""
-    for candidate in ("installer/install.py", "install.py"):
+    """Resolve current and historical installer paths recorded by recovery points."""
+    for candidate in ("commands/install.py", "installer/install.py", "install.py"):
         cp = subprocess.run(
             ["git", "cat-file", "-e", f"{source_commit}:{candidate}"],
             cwd=dr_restore_all.PROJECT_ROOT,
@@ -79,9 +78,6 @@ def verify_source(backup_set: Path, stacks_root: Path, source_commit: str) -> No
     if not target.is_file() or target.is_symlink():
         raise ResumeError(f"restored source is incomplete: {relative} missing")
 
-    # Compare exact bytes. The generic text helper intentionally strips stdout,
-    # which is correct for scalar command results but corrupts file-content
-    # comparison by removing the trailing newline from `git show <ref>:path`.
     cp = subprocess.run(
         ["git", "show", f"{source_commit}:{relative}"],
         cwd=dr_restore_all.PROJECT_ROOT,
@@ -182,12 +178,7 @@ def verify_bootstrap(source: Path, base_path: Path, values: dict[str, str]) -> N
 
 
 def persist_git_memory_intent(base_path: Path, values: dict[str, str]) -> None:
-    """Persist Stack6 operator intent independently of the Git provider implementation.
-
-    The memory-sync sidecar may target local Gitea or any other configured Git
-    service. Recovery therefore must not infer a Stack4 dependency merely to set
-    the durable Stack6 desired-state marker.
-    """
+    """Persist Stack6 operator intent independently of the Git provider implementation."""
     service = dr.require_env_value(values, "MEMORY_SYNC_SERVICE", label="MEMORY_SYNC_SERVICE")
     uid_text = dr.require_env_value(values, "HERMES_UID", label="HERMES_UID")
     gid_text = dr.require_env_value(values, "HERMES_GID", label="HERMES_GID")
@@ -257,10 +248,6 @@ def resume(backup_set: Path, bootstrap: Path) -> dict[str, object]:
     memory_head = verify_memory(base_path, values)
     verify_bootstrap(bootstrap, base_path, values)
 
-    # The failed clean restore stopped at the historical installer's transient
-    # post-reconcile readiness race. First prove the already-created runtime can
-    # converge, then perform the final generic reconcile/verify with a narrow
-    # compatibility adapter that accepts only that exact historical failure.
     dr_restore_compat.wait_required_runtime(stacks_root, resolved, timeout=240)
     dr_restore_compat.install_with_readiness_compat(
         stacks_root, resolved, reconcile=True, label="final restore READY/VERIFY/reconcile"
