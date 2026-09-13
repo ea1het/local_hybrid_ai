@@ -9,10 +9,11 @@ Only active or intentionally deferred work belongs here. Completed qualification
 
 ## P1 — Management CLI and upgrades
 
-- `./local-ai` is now the sole supported management boundary; keep internal Python, shell, Compose and DR paths outside the external contract.
-- Finish the safe upgrade executor behind the installation-local selection plan. `upgrade check` and `select` exist first; execution must not be enabled until backup, rollback/recovery and dependency reverification rules are wired in.
-- Define validated version-source adapters per component. `Available` must distinguish a usable upgrade candidate from an unreachable/unknown upstream source.
-- Add deployed-state/history records without changing `.lock` semantics.
+- `./local-ai` is the sole supported management boundary; keep internal Python, shell, Compose and DR paths outside the external contract.
+- Qualify the guarded upgrade executor on a real non-critical selected component before treating live upgrade execution as operationally proven. The code now rejects stale plans, creates a recovery point for components that require one, updates only selected version keys, performs targeted deploy -> READY -> RECONCILE -> VERIFY, checks the running target version, reverifies prepared consumers and clears selections only after success.
+- Define validated version-source adapters per component. `Available` must distinguish a usable/tested upgrade candidate from merely the latest reachable upstream release.
+- Extend safe execution metadata to components that are currently inventory-only/non-selectable because their version is pinned directly in tracked Compose or needs a component-specific migration contract.
+- Add stronger upgrade concurrency locking and failure journaling; do not change `.lock` semantics.
 - Add explicit source/runtime drift detection and make drift distinct from selected upgrade intent.
 - Complete stable JSON contracts for install/status/doctor/restore where not yet exposed.
 - Add status and doctor operator commands through `local-ai` rather than new public scripts.
@@ -45,4 +46,4 @@ Only active or intentionally deferred work belongs here. Completed qualification
 
 Stack7/Open WebUI base, web capability, regular-user model policy and first global DR point are qualified. Core `backup all` plus clean-target `restore all` for the pre-Stack7 platform is qualified. Stack6 Buzz is reconstructable from pinned source. Repository tests/documentation/specification are normalized under `tests/`, `docs/`, `adr/`, `sdr/` and `openspec/`.
 
-The operator UX design has moved into implementation: `local-ai` is the anticorruption boundary and the installation-local upgrade plan exposes a complete component inventory with Current, Available and Selected state. The destructive upgrade executor remains intentionally disabled until its recovery semantics are implemented and qualified.
+The operator UX has moved into guarded execution: `local-ai` is the anticorruption boundary, the installation-local upgrade plan exposes Current/Available/Selected state, stale selections fail closed, and the executor is recovery-first for stateful components. Real live upgrade qualification is still pending and must be performed deliberately; implementation alone is not evidence of a successful production upgrade.
