@@ -28,6 +28,9 @@ Automated: `tests/test_installer.py`. Additional: stack PREPARE contracts.
 ### `DR-BACKUP-001`
 Automated: `tests/test_openspec_contracts.py::test_DR_BACKUP_001_stack7_artifact_is_declared` and `tests/disaster_recovery/test_dr_backup_all.py`. Additional: qualified global backup.
 
+### `DR-BACKUP-002`
+Automated: `tests/disaster_recovery/test_dr_backup_all.py` covers equal, descendant and ancestor overlap after resolved-path normalization, including symlink/`..` cases. Additional: m92p CLI qualification rejected `/opt/docker/stacks`, `/opt/docker/runtime` and `/opt/docker` with RC=1 and no temporary backup-set residue.
+
 ### `DR-RESTORE-001`
 Automated: `tests/disaster_recovery/test_dr_restore_all.py` plus restore-live/compat tests. Additional: qualified clean-target recovery and historical installer compatibility.
 
