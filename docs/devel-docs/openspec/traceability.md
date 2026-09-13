@@ -7,7 +7,7 @@ Every tagged behavioral contract must have executable or qualified evidence. The
 | `PLATFORM-DEP-001` | `tests/test_openspec_contracts.py::test_PLATFORM_DEP_001_required_dependencies_are_declared` | manifest planner tests |
 | `PLATFORM-RUNTIME-001` | installer/manifest and repository-layout tests | `/opt/docker/stacks` vs `/opt/docker/runtime` ownership contract |
 | `INSTALL-PLAN-001` | `tests/test_installer.py`, `tests/test_management_cli.py` install passthrough | `./local-ai install --plan ...` qualification |
-| `INSTALL-LIFECYCLE-001` | `tests/test_openspec_contracts.py::test_INSTALL_LIFECYCLE_001_restart_reconcile_waits_ready` | `tests/test_stack6_reconcile_ready.py` and m92p installer gates |
+| `INSTALL-LIFECYCLE-001` | `tests/test_openspec_contracts.py::test_INSTALL_LIFECYCLE_001_restart_reconcile_waits_ready` | `tests/test_stack6_reconcile_ready.py`, including direct-script executable checks, plus m92p installer/runtime gates |
 | `INSTALL-LOCK-001` | `tests/test_installer.py` | stack PREPARE contracts |
 | `DR-BACKUP-001` | `tests/test_openspec_contracts.py::test_DR_BACKUP_001_stack7_artifact_is_declared` | `tests/disaster_recovery/test_dr_backup_all.py` and qualified global backup |
 | `DR-RESTORE-001` | `tests/disaster_recovery/test_dr_restore_all.py`, restore-live/compat tests | qualified clean-target recovery and historical installer compatibility |
