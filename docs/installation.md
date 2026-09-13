@@ -59,4 +59,23 @@ Upgrade selections are recorded under the installation runtime area and are visi
 ./local-ai upgrade check
 ```
 
+The human table shows numeric stack ids, while the JSON contract preserves stable ids such as `stack7`.
+
+A version is selected explicitly before execution:
+
+```bash
+./local-ai upgrade stack7 select v0.12.0
+./local-ai upgrade stack3 litellm select 1.100.0
+```
+
+`--yes` means only "apply the versions already selected". It never selects all available upgrades.
+
+```bash
+./local-ai upgrade --yes
+```
+
+Before mutation, the executor compares each component's actual runtime version with `current_at_selection`. A mismatch fails closed with `UPGRADE_PLAN_STALE`. Components that require durable recovery create a global recovery point before the operational version key is changed. Only catalog-declared targeted deploy commands are executable. After deployment the selected stack must become READY, reconciliation runs where declared, stack verification must pass, the actual running image must match the selected target, and prepared dependent consumers are reverified. The selection is removed only after all of those gates pass.
+
+The explicit upgrade operation may atomically change only the version keys corresponding to selected executable components in the protected operational `.env`; PREPARE remains forbidden from silently rewriting that file. On a late failure the executor does not attempt a destructive automatic rollback. It preserves the selection and reports the recovery point when one exists so recovery remains an explicit operator decision.
+
 Backup and recovery are documented in [dr/howto.md](dr/howto.md).
