@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 
@@ -10,10 +11,18 @@ class RegistryError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class RemoteProbe:
+    digest: str | None
+    status: str
+
+
+@dataclass(frozen=True)
 class RegistryState:
     image: str
     local_digest: str | None
     remote_digest: str | None
+    tracking_image: str | None = None
+    remote_status: str = "ok"
 
     @property
     def update_available(self) -> bool | None:
@@ -23,13 +32,6 @@ class RegistryState:
 
 
 def _repository_name(reference: str) -> str:
-    """Return a registry-independent repository name for comparison.
-
-    Docker may preserve an explicit registry in Config.Image while RepoDigests
-    omits Docker Hub's registry prefix.  Normalizing both sides prevents a
-    false unknown for equivalent references such as
-    docker.io/searxng/searxng and searxng/searxng.
-    """
     repository = reference.split("@", 1)[0]
     tail = repository.rsplit("/", 1)[-1]
     if ":" in tail:
@@ -90,8 +92,23 @@ def local_digest(container: str, image: str) -> str | None:
     return _repo_digest_for_image(image, [str(value) for value in repo_digests])
 
 
-def remote_digest(image: str) -> str | None:
-    """Inspect the configured image reference without pulling or mutating runtime state."""
+def _classify_remote_failure(stderr: str) -> str:
+    text = stderr.lower()
+    if "429" in text or "too many requests" in text:
+        return "rate_limited"
+    if "401" in text or "unauthorized" in text or "authentication required" in text:
+        return "unauthorized"
+    if "403" in text or "forbidden" in text:
+        return "forbidden"
+    if "404" in text or "not found" in text or "manifest unknown" in text:
+        return "not_found"
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    return "error"
+
+
+def remote_probe(image: str) -> RemoteProbe:
+    """Inspect a tracked tag/channel without pulling or mutating runtime state."""
     cp = subprocess.run(
         ["docker", "buildx", "imagetools", "inspect", image, "--format", "{{json .Manifest.Digest}}"],
         text=True,
@@ -99,22 +116,73 @@ def remote_digest(image: str) -> str | None:
         check=False,
     )
     if cp.returncode != 0:
-        return None
+        return RemoteProbe(None, _classify_remote_failure(cp.stderr))
     raw = cp.stdout.strip()
     if not raw:
-        return None
+        return RemoteProbe(None, "empty")
     try:
         value = json.loads(raw)
     except json.JSONDecodeError:
         value = raw.strip('"')
-    return str(value) if str(value).startswith("sha256:") else None
+    digest = str(value) if str(value).startswith("sha256:") else None
+    return RemoteProbe(digest, "ok" if digest else "invalid")
 
 
-def inspect(container: str | None, image: str | None) -> RegistryState | None:
+def remote_digest(image: str) -> str | None:
+    """Compatibility wrapper returning only the remote digest."""
+    return remote_probe(image).digest
+
+
+def tracking_reference(image: str, explicit: str | None = None) -> str | None:
+    """Return the mutable tag/channel used to discover changes for an image.
+
+    A ref of the form repo:tag@sha256:... naturally tracks repo:tag.  A pure
+    digest pin has no discoverable channel unless the catalog explicitly
+    declares one.
+    """
+    if explicit:
+        return explicit
+    if "@sha256:" not in image:
+        return image
+    before_digest = image.split("@", 1)[0]
+    tail = before_digest.rsplit("/", 1)[-1]
+    if ":" in tail:
+        return before_digest
+    return None
+
+
+def display_label(image: str, tracking_image: str | None = None) -> str:
+    """Human label: prefer a published tag/channel, never the digest as version."""
+    tracked = tracking_reference(image, tracking_image)
+    if tracked:
+        tail = tracked.rsplit("/", 1)[-1]
+        if ":" in tail:
+            tag = tail.rsplit(":", 1)[1]
+        else:
+            tag = "latest"
+        return f"{tag} (pinned)" if "@sha256:" in image else tag
+    if "@sha256:" in image:
+        return "pinned"
+    return image.rsplit("/", 1)[-1]
+
+
+def inspect(container: str | None, image: str | None, *, tracking_image: str | None = None) -> RegistryState | None:
     if not container or not image or "${" in image:
         return None
+    tracked = tracking_reference(image, tracking_image)
+    if tracked is None:
+        return RegistryState(
+            image=image,
+            local_digest=local_digest(container, image),
+            remote_digest=None,
+            tracking_image=None,
+            remote_status="not_tracked",
+        )
+    remote = remote_probe(tracked)
     return RegistryState(
         image=image,
         local_digest=local_digest(container, image),
-        remote_digest=remote_digest(image),
+        remote_digest=remote.digest,
+        tracking_image=tracked,
+        remote_status=remote.status,
     )
