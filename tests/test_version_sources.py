@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from commands import upgrade
 from internal import version_sources
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +44,38 @@ class VersionSourceTests(unittest.TestCase):
         self.assertEqual(adapted, {
             "stack4/gitea", "stack5/dockhand", "stack6/hermes", "stack7/open-webui"
         })
+
+    def test_inventory_does_not_guess_unadapted_component_availability(self):
+        component = upgrade.Component(
+            stack="stack1", name="haproxy", service=None, container=None,
+            compose=None, upstream="haproxy/haproxy", selectable=False,
+        )
+        records = {"stack1/haproxy": {"stack": "stack1", "id": "haproxy", "upstream": "haproxy/haproxy"}}
+        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.upgrade.component_records", return_value=records), \
+             mock.patch("commands.upgrade.read_env", return_value={}), \
+             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
+             mock.patch("commands.upgrade.running_image", return_value="haproxy:3.0-alpine"):
+            rows = upgrade.inventory(query_upstream=True)
+        self.assertEqual(rows[0]["available"], "n/a")
+
+    def test_inventory_uses_declared_adapter_for_available_version(self):
+        component = upgrade.Component(
+            stack="stack6", name="hermes", service=None, container=None,
+            compose=None, upstream="NousResearch/hermes-agent", selectable=True,
+        )
+        records = {"stack6/hermes": {
+            "stack": "stack6", "id": "hermes",
+            "version_source": {"type": "github_release", "repo": "NousResearch/hermes-agent"},
+        }}
+        with mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.upgrade.component_records", return_value=records), \
+             mock.patch("commands.upgrade.read_env", return_value={}), \
+             mock.patch("commands.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
+             mock.patch("commands.upgrade.running_image", return_value="nousresearch/hermes-agent:v2026.9.11"), \
+             mock.patch("internal.version_sources._github_latest", return_value="v2026.9.11"):
+            rows = upgrade.inventory(query_upstream=True)
+        self.assertEqual(rows[0]["available"], "v2026.9.11")
 
 
 if __name__ == "__main__":
