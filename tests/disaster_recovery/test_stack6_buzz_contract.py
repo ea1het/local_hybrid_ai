@@ -1,3 +1,11 @@
+"""Protect reproducible Stack6 Buzz CLI provisioning and runtime compatibility.
+
+The contract pins Buzz source to an immutable upstream commit, builds the upstream
+CLI package, stores the binary in installation-owned Hermes data and validates it
+inside the exact Hermes image with a constrained disposable container. These tests
+ensure provisioning remains reproducible rather than drifting with upstream main.
+"""
+
 from __future__ import annotations
 
 import json
