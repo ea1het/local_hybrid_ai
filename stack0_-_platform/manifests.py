@@ -14,7 +14,7 @@ def fail(message: str) -> None:
 
 
 def load_recovery_schema(root: Path) -> dict:
-    schema_path = root / "bkp-dr" / "recovery.schema.json"
+    schema_path = root / "commands" / "recovery" / "recovery.schema.json"
     try:
         schema = json.loads(schema_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
