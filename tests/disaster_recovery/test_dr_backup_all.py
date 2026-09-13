@@ -1,3 +1,11 @@
+"""Protect global disaster-recovery backup publication and destination safety.
+
+The suite verifies deployed-stack discovery, ownership checks, exact/private
+operational-environment capture, quiesced archive handling and the fail-closed
+rule that backup destinations cannot overlap or contain STACKS_ROOT/BASE_PATH.
+These are orchestration-contract tests; they do not perform a real production backup.
+"""
+
 import tempfile
 import unittest
 from pathlib import Path
