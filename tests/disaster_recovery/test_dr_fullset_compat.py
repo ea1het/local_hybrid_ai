@@ -1,3 +1,10 @@
+"""Protect compatibility of individual DR adapters with a complete multi-stack backup set.
+
+The tests ensure shared backup metadata remains strict while Stack3 and Stack4
+adapters can locate only their own artifacts inside a global recovery point. This
+prevents adapter-specific tooling from assuming a single-stack backup layout.
+"""
+
 import datetime as dt
 import json
 import os
