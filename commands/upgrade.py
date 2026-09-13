@@ -200,11 +200,16 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
     for component in load_catalog():
         desired_image = compose_image(component, env)
         actual_image = running_image(component) or desired_image
+        current = version_from_image(actual_image)
         record = records[key(component)]
         registry = None
+        availability = record.get("availability")
         try:
-            if record.get("version_source"):
-                available = version_sources.available_version(record, online=query_upstream)
+            if availability in ("local", "n/a"):
+                available = availability
+            elif record.get("version_source"):
+                candidate = version_sources.available_version(record, online=query_upstream)
+                available = "current" if query_upstream and candidate == current else candidate
             else:
                 available, registry = _registry_availability(component, actual_image, online=query_upstream)
         except version_sources.VersionSourceError as exc:
@@ -215,7 +220,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
         rows.append({
             "stack": component.stack,
             "component": component.name,
-            "current": version_from_image(actual_image),
+            "current": current,
             "available": available,
             "selected": selected.get(key(component), {}).get("version"),
             "selectable": component.selectable,
