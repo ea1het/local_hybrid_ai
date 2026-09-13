@@ -72,22 +72,28 @@ stack0_-_* ... stack7_-_*  atomic stack implementations; internal
 ./local-ai install 0 1 2 3 4 5 6 7 --yes
 ./local-ai backup
 ./local-ai upgrade check
+./local-ai upgrade policy
 ./local-ai --json upgrade check
 ```
 
-Upgrade selection is installation-local. For a stack with one selectable component:
+Registry availability and upgrade compatibility are separate. Each component has a project default policy and each installation may override it locally with one of exactly three modes: `minor-series`, `major-series` or `manual`.
 
 ```bash
-./local-ai upgrade stack7 select v0.12.0
+./local-ai upgrade policy stack7
+./local-ai upgrade policy stack7 set major-series
+./local-ai upgrade policy stack7 clear
 ```
 
-For a stack with several components:
+`clear` removes only the installation override and returns to the project default.
+
+Upgrade selection is also installation-local. The selected version must be a real target published by the configured container registry and must pass both the effective compatibility policy and the independent `selectable` gate.
 
 ```bash
-./local-ai upgrade stack3 litellm select 1.100.0
+./local-ai upgrade stack6 select <published-version>
+./local-ai upgrade stack7 select <published-version>
 ```
 
-`Selected` is persisted under the installation runtime area. Availability does not imply consent: `--yes` must never auto-select unselected upgrades.
+`Selected` is persisted under the installation runtime area. Availability does not imply compatibility or consent: `--yes` must never auto-select unselected upgrades. The executor revalidates the effective policy before desired-state mutation.
 
 Internal scripts remain implementation details and may change without preserving their direct invocation contracts.
 
@@ -101,4 +107,4 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 ## Documentation
 
-Start with [docs/README.md](docs/README.md). Installation is documented in [docs/installation.md](docs/installation.md), DR in [docs/dr/howto.md](docs/dr/howto.md), architectural decisions in [adr/](adr/), security decisions in [sdr/](sdr/), behavioural specifications in [openspec/](openspec/) and active work in [docs/pending.md](docs/pending.md).
+Start with [docs/README.md](docs/README.md). Installation is documented in [docs/installation.md](docs/installation.md), upgrade compatibility policy in [docs/upgrade-policy.md](docs/upgrade-policy.md), DR in [docs/dr/howto.md](docs/dr/howto.md), architectural decisions in [adr/](adr/), security decisions in [sdr/](sdr/), behavioural specifications in [openspec/](openspec/) and active work in [docs/pending.md](docs/pending.md).
