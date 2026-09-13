@@ -51,7 +51,7 @@ Tests are a development interface, not an operator management interface.
 
 ## Runtime ownership
 
-Project source normally lives at `/opt/docker/stacks`; persistent mutable state lives at `/opt/docker/runtime`. Each installation owns its management state. GitHub publishes the project; it does not silently dictate an installation's selected upgrade target.
+Project source normally lives at `/opt/docker/stacks`; persistent mutable state lives at `/opt/docker/runtime`. Each installation owns its management state. GitHub publishes the project; it does not silently dictate an installation's selected upgrade target or local compatibility policy.
 
 Upgrade selections are recorded under the installation runtime area and are visible through:
 
@@ -61,21 +61,32 @@ Upgrade selections are recorded under the installation runtime area and are visi
 
 The human table shows numeric stack ids, while the JSON contract preserves stable ids such as `stack7`.
 
-A version is selected explicitly before execution:
+Registry discovery and upgrade authorization are separate. Inspect or change the installation's effective compatibility policy with:
 
 ```bash
-./local-ai upgrade stack7 select v0.12.0
-./local-ai upgrade stack3 litellm select 1.100.0
+./local-ai upgrade policy
+./local-ai upgrade policy stack7
+./local-ai upgrade policy stack7 set major-series
+./local-ai upgrade policy stack7 clear
 ```
 
-`--yes` means only "apply the versions already selected". It never selects all available upgrades.
+The only compatibility modes are `minor-series`, `major-series` and `manual`. The project catalog supplies a default; an installation-local override, when present, wins. `clear` removes only that override and returns to the project default. Policy does not override the independent `selectable` gate.
+
+A version is selected explicitly before execution. Use a real target version published by the component's configured container registry, for example:
+
+```bash
+./local-ai upgrade stack6 select <published-version>
+./local-ai upgrade stack7 select <published-version>
+```
+
+Selection proves that the exact target exists, that the component is selectable, and that the effective compatibility policy permits the target. `--yes` means only "apply the versions already selected". It never selects all available upgrades.
 
 ```bash
 ./local-ai upgrade --yes
 ```
 
-Before mutation, the executor compares each component's actual runtime version with `current_at_selection`. A mismatch fails closed with `UPGRADE_PLAN_STALE`. Components that require durable recovery create a global recovery point before the operational version key is changed. Only catalog-declared targeted deploy commands are executable. After deployment the selected stack must become READY, reconciliation runs where declared, stack verification must pass, the actual running image must match the selected target, and prepared dependent consumers are reverified. The selection is removed only after all of those gates pass.
+Before mutation, the executor compares each component's actual runtime version with `current_at_selection` and revalidates the current effective compatibility policy. A runtime mismatch fails closed with `UPGRADE_PLAN_STALE`; a selection invalidated by a later policy change fails with `UPGRADE_TARGET_UNSUPPORTED`. Components that require durable recovery create a global recovery point before the operational version key is changed. Only catalog-declared targeted deploy commands are executable. After deployment the selected stack must become READY, reconciliation runs where declared, stack verification must pass, the actual running image must match the selected target, and prepared dependent consumers are reverified. The selection is removed only after all of those gates pass.
 
 The explicit upgrade operation may atomically change only the version keys corresponding to selected executable components in the protected operational `.env`; PREPARE remains forbidden from silently rewriting that file. On a late failure the executor does not attempt a destructive automatic rollback. It preserves the selection and reports the recovery point when one exists so recovery remains an explicit operator decision.
 
-Backup and recovery are documented in [dr/howto.md](dr/howto.md).
+Compatibility-policy details and CLI examples are documented in [upgrade-policy.md](upgrade-policy.md). Backup and recovery are documented in [dr/howto.md](dr/howto.md).
