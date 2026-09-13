@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Planner tests for manifest-driven install, readiness and reconciliation semantics.
+
+These tests protect the PREPARE → DEPLOY → READY → RECONCILE → VERIFY model.
+They prove healthy stacks are not recreated, changed providers become READY before
+prepared consumers are reconciled, explicit reconcile remains an override, and
+runtime readiness fails fast on terminal container states.
+"""
+
 import unittest
 from unittest.mock import patch
 
