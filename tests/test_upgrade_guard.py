@@ -10,7 +10,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-from internal import upgrade_guard
+from commands import upgrade_guard
 
 
 class UpgradeGuardTests(unittest.TestCase):
@@ -54,7 +54,7 @@ class UpgradeGuardTests(unittest.TestCase):
                 print(json.dumps({
                     "schema_version": "1",
                     "success": False,
-                    "error": {"code": "UPGRADE_TARGET_UNAVAILABLE", "message": "missing"},
+                    "error": {"code": "UPGRADE_TARGET_NOT_AVAILABLE", "message": "missing"},
                 }))
                 return 1
 
@@ -65,7 +65,7 @@ class UpgradeGuardTests(unittest.TestCase):
             event = json.loads((platform / "upgrade-history.jsonl").read_text(encoding="utf-8").splitlines()[-1])
             self.assertEqual(rc, 1)
             self.assertFalse(event["success"])
-            self.assertEqual(event["error_code"], "UPGRADE_TARGET_UNAVAILABLE")
+            self.assertEqual(event["error_code"], "UPGRADE_TARGET_NOT_AVAILABLE")
             self.assertEqual(event["selected"][0]["component"], "hermes")
             self.assertEqual(event["stage"], "apply")
 
