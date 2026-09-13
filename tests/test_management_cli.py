@@ -148,6 +148,22 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
         self.assertEqual(args, [])
 
+    def test_backup_destination_option_passes_through_public_cli(self):
+        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.main(["backup", "--destination", "/mnt/backup/local-ai"])
+        self.assertEqual(rc, 0)
+        path, args = run.call_args.args
+        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
+        self.assertEqual(args, ["--destination", "/mnt/backup/local-ai"])
+
+    def test_json_backup_preserves_destination_and_adds_json_flag(self):
+        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.main(["--json", "backup", "--destination", "/mnt/backup/local-ai"])
+        self.assertEqual(rc, 0)
+        path, args = run.call_args.args
+        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
+        self.assertEqual(args, ["--destination", "/mnt/backup/local-ai", "--json"])
+
 
 if __name__ == "__main__":
     unittest.main()
