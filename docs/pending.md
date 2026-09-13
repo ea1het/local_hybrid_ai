@@ -2,6 +2,30 @@
 
 Only active or intentionally deferred work belongs here. Completed qualification details live in `docs/dr/status.md` or Git history, not as a second backlog.
 
+## Immediate handoff — status/registry identity regression coverage
+
+The current `main` runtime behavior is qualified on m92p after the status identity fix: the full suite passed **277 tests**, `./local-ai status` and `./local-ai upgrade check` both completed successfully, Python cache count was zero and the tracked worktree was clean.
+
+A real runtime gap was discovered even though the prior suite was green: `status` used to compare image tag text while `upgrade check` resolved registry-backed image identity. Mutable/partially floating tags could therefore report false `DRIFT=no`. Runtime evidence exposed this with:
+
+- HAProxy: configured tracking reference `3.0-alpine`; Actual `3.0.26-alpine3.24`; current registry Desired `3.0.27-alpine3.24`; `DRIFT=yes`.
+- Redis: configured tracking reference `redis:alpine`; Actual `8.10.0-alpine3.23`; current registry Desired `8.10.1-alpine3.23`; `DRIFT=yes`.
+- RabbitMQ: configured tracking reference `3-alpine`; Actual and resolved Desired both `3.13.7-alpine`; `DRIFT=no`.
+
+The implementation now resolves floating registry-backed identities for `status`, compares immutable digest evidence when available, keeps `status` and `upgrade check` aligned on runtime identity, and fails closed to `DRIFT=n/a` when registry evidence required for a floating reference cannot be established. This must now be protected with permanent regression tests rather than relying on ad-hoc live qualification.
+
+The next agent should add regression coverage for these invariants, without special-casing Redis, HAProxy or RabbitMQ in production code:
+
+1. A floating tag whose local digest maps to version A while the current registry tracking tag maps to version B must produce `Desired=B`, `Actual=A`, and `Drift=yes`.
+2. A floating tag whose local and remote identities are the same must produce `Drift=no`.
+3. A pinned semantic tag must retain deterministic status behavior without unnecessary reinterpretation.
+4. A digest-pinned image must compare immutable identity correctly.
+5. For every registry-backed component, `status.actual` and `upgrade check.actual` must be derived from the same runtime image/normalization semantics.
+6. If required registry resolution is unavailable for a floating reference, `status` must not synthesize `Drift=no`; the result must fail closed according to the current `yes` / `no` / `n/a` contract.
+7. Pre-history deployment adoption must remain separate from drift resolution: successful guarded-upgrade history remains authoritative for `DEPLOYED`; otherwise the observed runtime identity is the adoption baseline.
+
+Prefer focused tests in `tests/test_status.py` plus cross-boundary/registry fixtures where necessary. Reuse existing `commands.upgrade_registry` probe semantics instead of duplicating registry parsing logic in tests. After focused coverage passes, run the complete suite with `PYTHONDONTWRITEBYTECODE=1` and verify zero tracked changes and zero Python cache artifacts.
+
 ## P0 — DR operational hardening
 
 - Define backup encryption-at-rest, retention generations, off-host copy and verification policy.
