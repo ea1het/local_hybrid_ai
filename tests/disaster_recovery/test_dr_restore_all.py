@@ -1,3 +1,10 @@
+"""Protect full-restore planning and correspondence checks before any live mutation.
+
+The suite verifies phase ordering, exact checksum coverage, manifest/backup strategy
+correspondence, required operational-environment presence and the read-only plan
+payload. It covers restore planning only; destructive execution is tested separately.
+"""
+
 import json
 import sys
 import tempfile
