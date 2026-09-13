@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from internal import container_registry
+from commands import upgrade_registry as container_registry
 
 
 class RegistryVersionOrderTests(unittest.TestCase):
