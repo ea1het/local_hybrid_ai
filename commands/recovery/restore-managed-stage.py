@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""CLI adapter for isolated restoration of managed DR artifacts.
+
+This command consumes an existing filesystem restore stage and exercises managed
+state such as LiteLLM PostgreSQL and Gitea in disposable isolated containers. It
+must not publish ports, attach to the production platform network or modify the
+live runtime. Recovery mechanics remain in ``dr_restore_managed``; this file
+only exposes arguments and qualification results.
+"""
+
 from __future__ import annotations
 
 import argparse
