@@ -98,11 +98,13 @@ Resumes the narrowly defined historical recovery path after a known post-reconci
 | Field | Meaning |
 |---|---|
 | `DESIRED` | Version encoded by this installation's declarative Compose/environment configuration. |
-| `DEPLOYED` | Last version successfully applied by the guarded upgrade executor, or `unknown` when no executor history exists. |
+| `DEPLOYED` | Last version recorded by a successful guarded upgrade. If no guarded-upgrade history exists yet, the observed runtime version is used as the installation's adoption baseline. Components for which versioned deployment does not apply report `n/a`. `unknown` is reserved for a genuinely indeterminate deployed state. |
 | `ACTUAL` | Version observed from the running container image. |
-| `DRIFT` | Comparison of desired versus actual; `unknown` when desired has no meaningful version. |
+| `DRIFT` | Fast Desired-versus-Actual decision: `yes` means they differ, `no` means they match, and `n/a` means drift is not applicable because the component has no meaningful desired version. |
 
-`DEPLOYED` is historical evidence, not a substitute for runtime observation. `ACTUAL` is never silently inferred from desired state.
+`DEPLOYED` remains historical evidence once guarded-upgrade history exists; the pre-history adoption fallback prevents an already-running installation from being mislabeled as unknown merely because it predates the executor. `ACTUAL` is never synthesized from desired state.
+
+The status JSON contract is schema version `2`; the drift value vocabulary is `yes`, `no`, `n/a`.
 
 ## `upgrade check`
 
