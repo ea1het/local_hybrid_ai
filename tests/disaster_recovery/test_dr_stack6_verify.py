@@ -1,3 +1,11 @@
+"""Protect the Stack6 externalized Git-memory recovery prerequisite.
+
+Durable Hermes memory is proven by a clean Git working tree containing the required
+tracked MEMORY.md and USER.md files and an origin tracking ref aligned with HEAD.
+These tests intentionally do not require SOUL.md and reject dirty, untracked or
+unpublished state that would make recovery completeness ambiguous.
+"""
+
 import importlib.util
 import sys
 import tempfile
