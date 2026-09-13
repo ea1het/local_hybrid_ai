@@ -5,7 +5,7 @@ from pathlib import Path
 
 from commands import upgrade
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 
 class StatusError(RuntimeError):
@@ -47,10 +47,28 @@ def _deployed_versions(runtime_root: Path) -> dict[str, str]:
     return deployed
 
 
+def _deployed(component_key: str, desired: str, actual: str, deployed_versions: dict[str, str]) -> str:
+    """Resolve the best known deployed state without confusing missing history with uncertainty.
+
+    Guarded-upgrade history is authoritative when it exists. Installations that predate
+    that history use the observed runtime as their adoption baseline. Components for
+    which versioned deployment does not apply remain n/a.
+    """
+    recorded = deployed_versions.get(component_key)
+    if recorded is not None:
+        return recorded
+    if desired == "n/a" and actual == "n/a":
+        return "n/a"
+    if actual != "n/a":
+        return actual
+    return "unknown"
+
+
 def _drift(desired: str, actual: str) -> str:
+    """Return the operator-facing Desired-versus-Actual drift decision."""
     if desired == "n/a":
-        return "unknown"
-    return "ok" if desired == actual else "drift"
+        return "n/a"
+    return "no" if desired == actual else "yes"
 
 
 def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, str] | None = None) -> list[dict]:
@@ -63,11 +81,12 @@ def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, 
     for component in upgrade.load_catalog():
         desired = upgrade.version_from_image(upgrade.compose_image(component, env))
         actual = upgrade.version_from_image(upgrade.running_image(component))
+        component_key = upgrade.key(component)
         rows.append({
             "stack": component.stack,
             "component": component.name,
             "desired": desired,
-            "deployed": deployed_versions.get(upgrade.key(component), "unknown"),
+            "deployed": _deployed(component_key, desired, actual, deployed_versions),
             "actual": actual,
             "drift": _drift(desired, actual),
         })
