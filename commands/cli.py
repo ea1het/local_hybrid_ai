@@ -9,6 +9,7 @@ from pathlib import Path
 from commands import status, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
+RECOVERY = ROOT / "commands" / "recovery"
 SCHEMA_VERSION = "1"
 
 
@@ -61,10 +62,10 @@ def restore_command(args: list[str], json_output: bool) -> int:
         return 2
     action, *rest = args
     mapping = {
-        "plan": ROOT / "bkp-dr" / "restore-all.py",
-        "drill": ROOT / "bkp-dr" / "restore-drill.py",
-        "apply": ROOT / "bkp-dr" / "restore-live.py",
-        "resume": ROOT / "bkp-dr" / "restore-resume.py",
+        "plan": RECOVERY / "restore-all.py",
+        "drill": RECOVERY / "restore-drill.py",
+        "apply": RECOVERY / "restore-live.py",
+        "resume": RECOVERY / "restore-resume.py",
     }
     script = mapping.get(action)
     if script is None:
@@ -81,14 +82,13 @@ def main(argv: list[str] | None = None) -> int:
     raw = [arg for arg in raw if arg != "--json"]
 
     # argparse interprets unknown option-looking tokens before a REMAINDER
-    # positional, which previously made `local-ai install --plan ...` fail at
-    # the public boundary. Install is intentionally a transparent public facade
-    # over the private installer engine, so dispatch it before argparse.
+    # positional. Install is a transparent facade over its private engine, so
+    # dispatch it before argparse while keeping ./local-ai as the public API.
     if raw and raw[0] == "install":
         if json_output:
             _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
             return 2
-        return _run_internal(ROOT / "installer" / "install.py", raw[1:])
+        return _run_internal(ROOT / "commands" / "install.py", raw[1:])
 
     parser = build_parser()
     ns = parser.parse_args(raw)
@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         args = list(ns.args)
         if json_output and "--json" not in args:
             args.append("--json")
-        return _run_internal(ROOT / "bkp-dr" / "backup-all.py", args)
+        return _run_internal(RECOVERY / "backup-all.py", args)
 
     if ns.command == "restore":
         return restore_command(ns.args, json_output)
