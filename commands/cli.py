@@ -1,3 +1,12 @@
+"""Public command dispatcher behind the root ``./local-ai`` entry point.
+
+This module is the Python side of the project's management anticorruption
+boundary. It parses stable operator commands, preserves argument passthrough for
+private engines where required, and routes human/JSON output to the appropriate
+implementation module. It must not duplicate stack lifecycle or recovery logic;
+those behaviours remain owned by their domain modules behind this dispatcher.
+"""
+
 from __future__ import annotations
 
 import argparse
