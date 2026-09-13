@@ -26,3 +26,5 @@ The table is deliberately small. The Gherkin tag is the stable contract identifi
 | `CLI-UPGRADE-001` | `tests/test_management_cli.py::test_upgrade_check_contains_all_declared_components_and_selected_column` | `internal/upgrade-components.json` |
 | `CLI-UPGRADE-002` | `tests/test_management_cli.py::test_stack7_shorthand_select_persists_plan_without_runtime_change` | installation-local `upgrade-plan.json` |
 | `CLI-UPGRADE-003` | `tests/test_management_cli.py::test_upgrade_yes_never_auto_selects_available_versions` | ADR-0002 |
+| `CLI-UPGRADE-004` | `tests/test_management_cli.py::test_stale_plan_fails_before_execution` | structured `UPGRADE_PLAN_STALE` error |
+| `CLI-UPGRADE-005` | `tests/test_upgrade_executor.py` | targeted deploy metadata in `internal/upgrade-components.json` and recovery-first executor |
