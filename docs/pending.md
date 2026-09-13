@@ -20,7 +20,6 @@ Only active or intentionally deferred work belongs here. Completed qualification
 
 ## P1 — DR engine hardening
 
-- Reject backup destinations equal to/below `STACKS_ROOT` or `BASE_PATH`, and reject source/destination overlap before execution. Implementation and unit coverage are present; live m92p rejection qualification remains.
 - Harden recovery validation for malformed non-string `mode`, `class` and `strategy` values.
 - Reject boolean `schema_version` explicitly.
 - Ensure every adapter completes fallible integrity checks before terminal atomic publication.
@@ -45,6 +44,8 @@ Only active or intentionally deferred work belongs here. Completed qualification
 ## Recently closed
 
 Stack7/Open WebUI base, web capability, regular-user model policy and first global DR point are qualified. The Stack7 model-policy lifecycle is now also runtime-qualified through the supported management boundary: the m92p branch gate passed all 291 repository tests; `./local-ai install 7 --reconcile --yes` reconciled `basic_autorouter`, verified Stack0 and Stack3, confirmed Open WebUI READY, and the read-only Stack7 verifier passed active model, default `web_search` and explicit public-read policy. Core `backup all` plus clean-target `restore all` for the pre-Stack7 platform is qualified. Stack6 Buzz is reconstructable from pinned source. Repository tests/documentation/specification are normalized under `tests/` and `docs/`, with ADR, SDR and OpenSpec material under the developer documentation tree.
+
+The DR backup destination overlap guard is implemented and live-qualified on m92p through the supported `./local-ai backup --destination ...` boundary. During qualification, the CLI passthrough bug for `--destination` was found and fixed, with permanent management-CLI tests added. The final repository gate passed all 294 tests. Live backup attempts targeting `/opt/docker/stacks`, `/opt/docker/runtime`, and their common ancestor `/opt/docker` all failed closed with `RC=1` due to `STACKS_ROOT` / `BASE_PATH` overlap before any backup publication, and no `.backup-*.tmp-*` directories were left behind.
 
 The guarded upgrade executor is live-qualified on Stack6/Hermes: `v2026.8.31 -> v2026.9.11` was selected explicitly, the exact target image preflight passed, only Hermes was deployed, Stack6 returned READY, capability reconciliation completed, VERIFY passed, the running image was confirmed at the selected target, prepared consumer Stack1 was reverified, and the selection was cleared only after success. The qualification completed with all command return codes at zero. Stack6 remains reconstructable; only Git-backed `MEMORY.md` + `USER.md` is durable user memory, so Hermes sessions/SQLite/cache state are not upgrade recovery requirements.
 
