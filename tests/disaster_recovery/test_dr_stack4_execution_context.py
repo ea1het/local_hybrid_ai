@@ -1,3 +1,11 @@
+"""Protect runtime-derived Gitea execution context used by the Stack4 backup adapter.
+
+The adapter must discover rootless/rootful user, working path and custom config
+locations from the running container instead of hard-coding one Gitea layout.
+These tests also ensure helper commands preserve an explicit runtime user and fail
+closed when a usable configuration path cannot be proven.
+"""
+
 import json
 import unittest
 from unittest import mock
