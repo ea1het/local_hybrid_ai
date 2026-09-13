@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Lifecycle-contract tests for Stack6 restart reconciliation and readiness.
+
+These tests ensure capability reconciliation that restarts Hermes is followed by
+an explicit READY wait before verification, that the wait script covers all
+required Stack6 runtime containers, and that lifecycle commands invoked directly
+by the registry are actually executable.
+"""
+
 import json
 import os
 import unittest
