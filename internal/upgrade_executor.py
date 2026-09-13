@@ -48,6 +48,31 @@ def _container_state(root: Path, name: str) -> str:
     return f"{status}/{health}" if health else (status or "unknown")
 
 
+def _running_image(root: Path, container: str) -> str | None:
+    cp = subprocess.run(
+        ["docker", "inspect", "-f", "{{.Config.Image}}", container],
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if cp.returncode != 0:
+        return None
+    return cp.stdout.strip() or None
+
+
+def _version_from_image(image: str | None) -> str:
+    if not image:
+        return "n/a"
+    if "@sha256:" in image:
+        base, digest = image.split("@sha256:", 1)
+        tag = base.rsplit(":", 1)[1] if ":" in base.rsplit("/", 1)[-1] else None
+        return f"{tag}@{digest[:12]}" if tag else f"sha256:{digest[:12]}"
+    tail = image.rsplit("/", 1)[-1]
+    return tail.rsplit(":", 1)[1] if ":" in tail else "latest"
+
+
 def _healthy(state: str) -> bool:
     return state in {"running", "running/healthy"}
 
@@ -129,13 +154,13 @@ def _recovery_point(root: Path) -> str:
     return path
 
 
-def _run_commands(root: Path, directory: str, commands: list[list[str]]) -> None:
+def _run_commands(root: Path, directory: str, commands: list[list[str]], *, quiet: bool) -> None:
     cwd = root / directory
     for command in commands:
         cmd = list(command)
         if cmd[0].startswith("./"):
             cmd = ["bash", cmd[0], *cmd[1:]]
-        _run(cmd, cwd=cwd)
+        _run(cmd, cwd=cwd, capture=quiet)
 
 
 def _load_manifests(root: Path) -> dict[int, dict]:
@@ -163,6 +188,7 @@ def execute(
     selections: list[dict],
     components: dict[str, dict],
     plan_path: Path,
+    quiet: bool = False,
 ) -> dict:
     if not selections:
         raise UpgradeExecutionError("UPGRADE_NOTHING_SELECTED", "no upgrades are selected")
@@ -211,12 +237,21 @@ def execute(
                         "UPGRADE_INTERNAL_CONFIG",
                         f"component has no targeted deploy command: {selection['stack']}/{selection['component']}",
                     )
-                _run_commands(root, entry["directory"], [deploy])
+                _run_commands(root, entry["directory"], [deploy], quiet=quiet)
 
             _wait_ready(root, entry["required_containers"])
-            _run_commands(root, entry["directory"], entry.get("reconcile", []))
+            _run_commands(root, entry["directory"], entry.get("reconcile", []), quiet=quiet)
             _wait_ready(root, entry["required_containers"])
-            _run_commands(root, entry["directory"], entry.get("verify", []))
+            _run_commands(root, entry["directory"], entry.get("verify", []), quiet=quiet)
+
+            for selection in selected_for_stack:
+                component = components[f"{selection['stack']}/{selection['component']}"]
+                actual = _version_from_image(_running_image(root, component["container"]))
+                if actual != selection["version"]:
+                    raise UpgradeExecutionError(
+                        "UPGRADE_TARGET_NOT_RUNNING",
+                        f"{selection['stack']}/{selection['component']} expected {selection['version']} but runtime reports {actual}",
+                    )
 
         reverified: list[int] = []
         for provider_sid in sorted(affected_stacks):
@@ -230,7 +265,7 @@ def execute(
                 if not (depends_by_id or consumes_capability):
                     continue
                 entry = lifecycle["stacks"][str(sid)]
-                _run_commands(root, entry["directory"], entry.get("verify", []))
+                _run_commands(root, entry["directory"], entry.get("verify", []), quiet=quiet)
                 if sid not in reverified:
                     reverified.append(sid)
 
