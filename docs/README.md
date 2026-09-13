@@ -4,14 +4,14 @@ The repository keeps executable contracts close to the code and longer operation
 
 ```mermaid
 flowchart LR
-    Root[README.md] --> Stacks[stack README files]
-    Root --> Install[docs/installation.md]
-    Root --> Upgrade[docs/upgrade-policy.md]
-    Root --> DR[docs/dr/]
-    Root --> Dev[docs/devel-docs/]
-    Dev --> ADR[adr/]
-    Dev --> SDR[sdr/]
-    Dev --> Spec[openspec/]
+    Root["README.md"] --> Stacks["stack README files"]
+    Root --> Install["docs/installation.md"]
+    Root --> Upgrade["docs/upgrade-policy.md"]
+    Root --> DR["docs/dr/"]
+    Root --> Dev["docs/devel-docs/"]
+    Dev --> ADR["adr/"]
+    Dev --> SDR["sdr/"]
+    Dev --> Spec["openspec/"]
 ```
 
 ## What lives where
