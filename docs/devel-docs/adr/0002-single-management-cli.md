@@ -12,11 +12,11 @@ The project contains Python modules, shell scripts, Compose files and DR tools. 
 
 Human consumers use normal CLI output. Machine consumers use the same commands with `--json` where the command exposes a stable machine contract. JSON contracts carry an independent `schema_version` and structured error codes.
 
-Files under `commands/`, `internal/`, stack directories, `installer/` and `bkp-dr/` are implementation details. They may be invoked internally and by tests, but external automation must not depend on their paths, language, filenames or argument contracts.
+Private management implementation lives under `commands/`; stack-owned lifecycle scripts remain in stack directories. Those implementation paths may be invoked internally and by tests, but external automation must not depend on their paths, language, filenames or argument contracts. The internal package organization is defined more specifically by ADR-0005.
 
 ## Consequences
 
 - Documentation must show `./local-ai`, not direct Python or shell entry points, for supported operator workflows.
-- An API, another CLI, MCP server, CI job or UI should wrap `local-ai --json` rather than import internal Python modules.
-- Internal implementations may change without constituting a public API break as long as the `local-ai` contract remains compatible.
-- Contract tests exercise `local-ai`; lower-level tests may still exercise internal modules.
+- An API, another CLI, MCP server, CI job or UI should wrap `local-ai --json` rather than import private Python modules.
+- Private implementations may change without constituting a public API break as long as the `local-ai` contract remains compatible.
+- Contract tests exercise `local-ai`; lower-level tests may still exercise private modules.
