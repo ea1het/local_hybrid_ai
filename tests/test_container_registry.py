@@ -21,6 +21,18 @@ class ContainerRegistryTests(unittest.TestCase):
         )
         self.assertEqual(digest, "sha256:abc")
 
+    def test_repo_digest_matches_explicit_docker_io_namespace(self):
+        digest = container_registry._repo_digest_for_image(
+            "docker.io/searxng/searxng:2026.9.5-c7f3080aa",
+            ["searxng/searxng@sha256:55e1fa15"],
+        )
+        self.assertEqual(digest, "sha256:55e1fa15")
+
+    def test_repository_name_normalizes_docker_hub_aliases(self):
+        self.assertEqual(container_registry._repository_name("rabbitmq:3-alpine"), "library/rabbitmq")
+        self.assertEqual(container_registry._repository_name("docker.io/library/rabbitmq:3-alpine"), "library/rabbitmq")
+        self.assertEqual(container_registry._repository_name("index.docker.io/searxng/searxng:tag"), "searxng/searxng")
+
     def test_equal_digests_mean_current(self):
         state = container_registry.RegistryState("rabbitmq:3-alpine", "sha256:a", "sha256:a")
         self.assertFalse(state.update_available)
