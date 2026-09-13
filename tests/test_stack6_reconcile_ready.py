@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LIFECYCLE = ROOT / "installer" / "lifecycle.json"
+LIFECYCLE = ROOT / "commands" / "install-lifecycle.json"
 WAIT_SCRIPT = ROOT / "stack6_-_hermes" / "07-wait-ready.sh"
 
 
