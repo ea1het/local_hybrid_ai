@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import patch
 
-from installer import install
+from commands import install
 
 
 MANIFESTS = {
@@ -76,8 +76,8 @@ def state(prepared: bool, **containers: str) -> dict:
 
 class InstallerPlannerTests(unittest.TestCase):
     def build(self, requested, plan, states, force_reconcile=False):
-        with patch("installer.install.stack_state", side_effect=lambda manifest: states[manifest["id"]]), \
-             patch("installer.install.stack_prepared", side_effect=lambda directory: next(
+        with patch("commands.install.stack_state", side_effect=lambda manifest: states[manifest["id"]]), \
+             patch("commands.install.stack_prepared", side_effect=lambda directory: next(
                  states[sid]["prepared"] for sid, manifest in MANIFESTS.items()
                  if manifest["directory"] == directory
              )):
@@ -182,8 +182,8 @@ class InstallerPlannerTests(unittest.TestCase):
             "running/healthy",
             "running/healthy",
         ])
-        with patch("installer.install.container_state", side_effect=lambda name: next(states)), \
-             patch("installer.install.time.sleep"):
+        with patch("commands.install.container_state", side_effect=lambda name: next(states)), \
+             patch("commands.install.time.sleep"):
             install.wait_required_runtime(
                 3,
                 {"required_containers": ["litellm-postgres", "litellm"]},
@@ -191,7 +191,7 @@ class InstallerPlannerTests(unittest.TestCase):
             )
 
     def test_wait_required_runtime_fails_fast_on_exited_container(self):
-        with patch("installer.install.container_state", return_value="exited"):
+        with patch("commands.install.container_state", return_value="exited"):
             with self.assertRaises(install.InstallerError):
                 install.wait_required_runtime(
                     2,
