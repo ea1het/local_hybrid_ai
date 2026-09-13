@@ -1,6 +1,6 @@
 # `local-ai` command-line interface
 
-`./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Internal Python modules, shell scripts, Compose files and direct stack lifecycle commands are implementation details and may change without preserving their invocation syntax.
+`./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Python modules under `commands/`, shell scripts, Compose files and direct stack lifecycle commands are implementation details and may change without preserving their invocation syntax.
 
 ## Command map
 
@@ -25,7 +25,7 @@ Global `--json` may be placed before the command. It is currently supported by `
 
 ## `install`
 
-`install` is a transparent public facade over the internal manifest-driven installer. The CLI does not reinterpret installer options; arguments such as `--plan`, `--dry-run`, `--target`, `--reconcile` and `--yes` pass through unchanged.
+`install` is a transparent public facade over the private manifest-driven engine in `commands/install.py`. The CLI does not reinterpret installer options; arguments such as `--plan`, `--dry-run`, `--target`, `--reconcile` and `--yes` pass through unchanged.
 
 ```bash
 ./local-ai install --plan all
@@ -48,7 +48,7 @@ Creates one atomic manifest-driven full recovery point. The protected operationa
 
 ## `restore`
 
-`restore` exposes four public operations while keeping the DR implementation private.
+`restore` exposes four public operations while keeping the implementation in `commands/recovery/` private.
 
 ### `restore plan`
 
@@ -73,7 +73,7 @@ Runs an isolated end-to-end recovery drill. Drill containers do not publish port
 ./local-ai restore apply /path/to/backup-set --check-clean-target
 ```
 
-The clean-target preflight proves that target paths and owned Docker objects are absent before a destructive recovery is allowed. Real execution additionally requires the internal restore command's explicit execution and clean-target confirmation flags; the CLI does not manufacture consent.
+The clean-target preflight proves that target paths and owned Docker objects are absent before a destructive recovery is allowed. Real execution additionally requires the underlying restore engine's explicit execution and clean-target confirmation flags; the CLI does not manufacture consent.
 
 Stack6 Git-memory SSH material remains an external operator prerequisite and may be supplied through the supported bootstrap option during a real clean rebuild.
 
@@ -84,7 +84,7 @@ Stack6 Git-memory SSH material remains an external operator prerequisite and may
   --memory-sync-ssh-bootstrap /secure/bootstrap
 ```
 
-Resumes the narrowly defined historical recovery path after a known post-reconcile readiness interruption. It validates restored source, `.env`, prepared state and durable data before continuing. New source uses `installer/install.py`; historical recovery points containing root `install.py` remain supported by the DR compatibility adapter.
+Resumes the narrowly defined historical recovery path after a known post-reconcile readiness interruption. It validates restored source, `.env`, prepared state and durable data before continuing. Current source uses `commands/install.py`; historical recovery points containing `installer/install.py` or the older root `install.py` remain supported by the DR compatibility adapter. Those historical paths are not supported management APIs.
 
 ## `status`
 
@@ -114,9 +114,13 @@ Resumes the narrowly defined historical recovery path after a known post-reconci
 
 Online check discovers published versions from the **same container registry/package used by the configured/running image**. GitHub Releases are not mixed into operational container-version discovery. Offline check skips remote registry discovery.
 
-At the time of this document, the human table still uses `CURRENT / AVAILABLE / SELECTED`. Point 10 closeout will remove the overloaded `CURRENT` presentation and align the view with `ACTUAL / AVAILABLE / POLICY / SELECTABLE / SELECTED / VALID`, while preserving the JSON v1 compatibility field during the transition. See the developer closeout plan.
+The human update-decision table is:
 
-Registry availability does not authorize execution. Compatibility policy and `selectable` are independent gates.
+```text
+STACK COMPONENT ACTUAL AVAILABLE POLICY SELECTABLE SELECTED VALID
+```
+
+`ACTUAL` is the runtime observation shared with `status`. `AVAILABLE` describes registry discovery, `POLICY` is the effective installation compatibility policy, `SELECTABLE` is executor capability/authorization, `SELECTED` is explicit operator intent, and `VALID` reports whether an existing selection remains valid. Registry availability never creates consent.
 
 ## `upgrade policy`
 
@@ -136,7 +140,7 @@ Three policies exist:
 | `major-series` | Target must be strictly newer and remain in the same `major` series. |
 | `manual` | No series inference; the operator explicitly names the exact target. Comparable semantic downgrades remain rejected. |
 
-The project catalog supplies a default. An installation may override it in `/opt/docker/runtime/platform/upgrade-policy.json`. `clear` removes only the local override and returns to the project default. Policy changes never silently delete an existing selection; an incompatible selection is retained and reported invalid.
+The project catalog supplies a default. An installation may override it in `/opt/docker/runtime/platform/upgrade-policy.json`. `clear` removes only the local override and returns to the project default. Policy changes never silently delete an existing selection; an incompatible selection is retained and reported invalid. A read-only policy response has no previous transition; `previous_effective_policy` is emitted only for mutating `set`/`clear` responses.
 
 ## Upgrade selection
 
@@ -146,9 +150,19 @@ The project catalog supplies a default. An installation may override it in `/opt
 ./local-ai upgrade stack7 clear
 ```
 
-Selection requires a component with executor support, a real target tag in the configured registry/package, a non-current target and an effective policy that permits the target. Multi-component stacks require the component name. The selection stores a baseline version so runtime changes after selection make the plan stale rather than silently changing the operation.
+Selection requires a component with executor support, a real target tag in the configured registry/package, a non-current target and an effective policy that permits the target. Multi-component stacks require the component name.
 
-Stable rejection codes include `UPGRADE_COMPONENT_NOT_SELECTABLE`, `UPGRADE_TARGET_NOT_AVAILABLE`, `UPGRADE_TARGET_NOT_NEWER`, `UPGRADE_TARGET_UNSUPPORTED`, `UPGRADE_PLAN_STALE` and `UPGRADE_NOTHING_SELECTED`.
+The installation-local selection records:
+
+- the runtime baseline (`current_at_selection`),
+- the chosen human version/tag,
+- the effective policy at selection,
+- the exact target image reference, and
+- the immutable registry digest observed for that target.
+
+A runtime baseline change makes the plan stale. A selected registry tag that later points to a different digest is rejected rather than silently following the moved tag.
+
+Stable rejection codes include `UPGRADE_COMPONENT_NOT_SELECTABLE`, `UPGRADE_TARGET_NOT_AVAILABLE`, `UPGRADE_TARGET_NOT_NEWER`, `UPGRADE_TARGET_UNSUPPORTED`, `UPGRADE_TARGET_MOVED`, `UPGRADE_PLAN_STALE` and `UPGRADE_NOTHING_SELECTED`.
 
 ## `upgrade --yes`
 
@@ -158,7 +172,7 @@ Stable rejection codes include `UPGRADE_COMPONENT_NOT_SELECTABLE`, `UPGRADE_TARG
 
 `--yes` confirms **exactly the targets already selected**. It never means "upgrade everything" and never auto-selects versions discovered by `upgrade check`.
 
-Before mutation, the executor revalidates selection baselines, component selectability, effective compatibility policy and target-image existence. Components marked `recovery_required` receive a recovery point before desired-state mutation. The executor updates only the selected version keys, performs targeted deployment, waits READY, reconciles, waits READY again, verifies the target version and re-verifies prepared consumers affected through dependency/capability relationships. Successful selections are cleared and history is appended. Failures are journaled; destructive automatic rollback is not attempted.
+Before mutation, the executor revalidates selection baselines, component selectability, effective compatibility policy, target-image existence and immutable digest identity. Components marked `recovery_required` receive a recovery point only after those preflights pass. The executor updates only the selected version keys, performs targeted deployment, waits READY, reconciles, waits READY again, verifies the target version and re-verifies prepared consumers affected through dependency/capability relationships. Successful selections are cleared and history is appended. Failures are journaled; destructive automatic rollback is not attempted.
 
 Upgrade application is protected by a non-blocking installation-local lock. A concurrent apply fails with `UPGRADE_BUSY`.
 
@@ -166,4 +180,4 @@ Upgrade application is protected by a non-blocking installation-local lock. A co
 
 Human stack identifiers are numeric (`0` through `7`). JSON keeps stable identities such as `stack7`. JSON responses include a `schema_version`, a command identifier where applicable, `success`, structured data on success and a stable error object on failure. CLI implementation versioning and JSON contract versioning are independent.
 
-The public contract is tested through `./local-ai`; unit tests may additionally exercise internals directly.
+The public contract is tested through `./local-ai`; unit tests may additionally exercise private `commands/` modules directly.
