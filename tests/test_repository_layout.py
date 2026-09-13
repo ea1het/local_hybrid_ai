@@ -21,14 +21,34 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertTrue((ROOT / "bkp-dr" / "dr.py").is_file())
 
     def test_documentation_and_decision_roots_are_normalized(self):
-        self.assertTrue((ROOT / "docs").is_dir())
-        self.assertTrue((ROOT / "adr").is_dir())
-        self.assertTrue((ROOT / "sdr").is_dir())
-        self.assertTrue((ROOT / "openspec").is_dir())
+        docs = ROOT / "docs"
+        self.assertTrue(docs.is_dir())
+        self.assertTrue((docs / "user-docs").is_dir())
+        self.assertTrue((docs / "devel-docs").is_dir())
+        self.assertTrue((docs / "devel-docs" / "adr").is_dir())
+        self.assertTrue((docs / "devel-docs" / "sdr").is_dir())
+        self.assertTrue((docs / "devel-docs" / "openspec").is_dir())
+        self.assertFalse((ROOT / "adr").exists())
+        self.assertFalse((ROOT / "sdr").exists())
+        self.assertFalse((ROOT / "openspec").exists())
         self.assertFalse((ROOT / "ADRs").exists())
         self.assertFalse((ROOT / "INSTALLATION.md").exists())
         self.assertFalse((ROOT / "a2aknowledge.md").exists())
         self.assertFalse((ROOT / "pending.md").exists())
+
+    def test_long_form_markdown_lives_under_docs(self):
+        offenders = []
+        for path in ROOT.rglob("*.md"):
+            rel = path.relative_to(ROOT)
+            if rel.parts[0] == "docs":
+                continue
+            # Repository and implementation-local README files are navigation
+            # entry points kept next to the source they describe. Every other
+            # Markdown document belongs under docs/.
+            if path.name == "README.md":
+                continue
+            offenders.append(str(rel))
+        self.assertEqual(offenders, [])
 
     def test_recovery_schema_is_owned_by_dr_not_repo_root(self):
         self.assertFalse((ROOT / "recovery.schema.json").exists())
