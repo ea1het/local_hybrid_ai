@@ -8,5 +8,6 @@ ADRs preserve architectural choices that are expensive to rediscover from implem
 | [0002](0002-single-management-cli.md) | Accepted | `local-ai` is the sole supported management interface and anticorruption boundary |
 | [0003](0003-human-version-vs-image-digest.md) | Accepted | Discover container versions from the configured image registry while retaining immutable digest identity |
 | [0004](0004-upgrade-compatibility-policy.md) | Accepted | Separate registry availability from installation-owned upgrade compatibility policy |
+| [0005](0005-unified-command-implementation-package.md) | Accepted | Organize all private management implementation under `commands/`, with recovery as a cohesive subpackage |
 
 Security rationale belongs in the sibling [`sdr/`](../sdr/) directory. A decision may reference both an ADR and an SDR when architecture and threat treatment overlap.
