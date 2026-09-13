@@ -3,7 +3,7 @@
 
 The installer orchestrates stack-owned lifecycle operations. Dependency and
 capability truth stays in manifest.json; stack lifecycle entry points stay in
-installer/lifecycle.json.
+commands/install-lifecycle.json.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
-LIFECYCLE_FILE = ROOT / "installer" / "lifecycle.json"
+LIFECYCLE_FILE = ROOT / "commands" / "install-lifecycle.json"
 RUNTIME_READY_TIMEOUT_SECONDS = 180
 RUNTIME_READY_POLL_SECONDS = 2
 INTERNAL_WAIT_COMMAND = "__installer_wait_required_runtime__"
@@ -79,7 +79,7 @@ def load_lifecycle() -> dict:
     except (OSError, json.JSONDecodeError) as exc:
         raise InstallerError(f"cannot read lifecycle registry: {exc}") from exc
     if data.get("schema_version") != 1 or not isinstance(data.get("stacks"), dict):
-        raise InstallerError("unsupported installer/lifecycle.json schema")
+        raise InstallerError("unsupported commands/install-lifecycle.json schema")
     return data
 
 
@@ -483,10 +483,7 @@ def print_plan(
         print(f"  {index:02d}. {action.display()}  # {action.reason}")
 
 
-def execute(
-    actions: list[Action],
-    lifecycle: dict,
-) -> None:
+def execute(actions: list[Action], lifecycle: dict) -> None:
     for index, action in enumerate(actions, 1):
         print(f"\n== [{index}/{len(actions)}] {action.display()}", flush=True)
 
