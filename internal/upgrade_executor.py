@@ -7,6 +7,8 @@ import sys
 import time
 from pathlib import Path
 
+from internal import upgrade_policy
+
 
 class UpgradeExecutionError(RuntimeError):
     def __init__(self, code: str, message: str, *, recovery_point: str | None = None):
@@ -269,6 +271,24 @@ def execute(
         component = components.get(component_key)
         if component is None:
             raise UpgradeExecutionError("UPGRADE_COMPONENT_UNKNOWN", f"selected component is not in catalog: {component_key}")
+        if not component.get("selectable", True):
+            raise UpgradeExecutionError(
+                "UPGRADE_COMPONENT_NOT_SELECTABLE",
+                f"selected component is not executable by policy: {component_key}",
+            )
+        try:
+            effective = upgrade_policy.effective_policy(runtime_root, component_key, component)[2]
+        except upgrade_policy.PolicyError as exc:
+            raise UpgradeExecutionError("UPGRADE_POLICY_INVALID", str(exc)) from exc
+        current = selection.get("current_at_selection")
+        target = selection.get("version")
+        if not isinstance(current, str) or not isinstance(target, str):
+            raise UpgradeExecutionError("UPGRADE_PLAN_INVALID", f"selected versions are invalid: {component_key}")
+        if not upgrade_policy.target_supported(effective, current, target):
+            raise UpgradeExecutionError(
+                "UPGRADE_TARGET_UNSUPPORTED",
+                f"selected target {target} is not permitted by {effective} policy for {component_key}",
+            )
         apply = component.get("apply")
         if not isinstance(apply, dict) or apply.get("type") != "env-version":
             raise UpgradeExecutionError("UPGRADE_COMPONENT_NOT_EXECUTABLE", f"component has no safe executor: {component_key}")
