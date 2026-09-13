@@ -13,13 +13,22 @@ Feature: Single management CLI anticorruption boundary
       And stack identity remains stable for machine consumption
       And the consumer does not need the path of any Python, shell, Compose or stack implementation
 
+    @CLI-LAYOUT-001
+    Scenario: Private management implementation has one coherent package root
+      Given `./local-ai` is the sole supported management boundary
+      Then installation, status and upgrade implementation live under `commands/`
+      And disaster-recovery implementation lives under `commands/recovery/`
+      And no top-level `internal/`, `installer/` or `bkp-dr/` implementation root is required
+      And historical recovery paths may be recognized only for restoring recorded source revisions
+
   Rule: Upgrade discovery is inventory, not consent
 
     @CLI-UPGRADE-001
     Scenario: Upgrade check shows the complete component inventory
       When the operator runs "./local-ai upgrade check"
       Then every declared component of every stack is represented
-      And the current human contract contains Current, Available and Selected columns
+      And the current human contract contains Actual, Available, Policy, Selectable, Selected and Valid columns
+      And Actual is the runtime observation shared with status
       And registry discovery alone does not create a selection
       And an unavailable or failed registry lookup is not silently reported as current
 
@@ -32,6 +41,7 @@ Feature: Single management CLI anticorruption boundary
       Then the selection is persisted in the installation runtime area
       And the current runtime version is recorded as the selection baseline
       And the policy used for selection is recorded for traceability
+      And the exact target image and immutable registry digest are recorded
       And no container or desired version key is changed
 
     @CLI-UPGRADE-003
@@ -72,7 +82,9 @@ Feature: Single management CLI anticorruption boundary
       Given one or more container-image components are selected
       When the operator runs "./local-ai upgrade --yes"
       Then every exact selected image reference is checked with a read-only registry manifest inspection
-      And an unavailable target fails with UPGRADE_TARGET_NOT_AVAILABLE
+      And an unavailable target fails before recovery or desired-state mutation
+      And the observed digest must equal the immutable digest recorded at selection
+      And a moved tag fails with UPGRADE_TARGET_MOVED
       And all target-image preflights complete before a recovery point is created
       And the operational environment is not changed before all target-image preflights pass
 
