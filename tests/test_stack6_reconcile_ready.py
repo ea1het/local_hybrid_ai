@@ -17,7 +17,7 @@ class Stack6ReconcileReadyContractTests(unittest.TestCase):
         self.assertEqual(
             reconcile,
             [
-                ["./06-reconcile-capabilities.sh", "--restart"],
+                ["bash", "./06-reconcile-capabilities.sh", "--restart"],
                 ["bash", "./07-wait-ready.sh"],
             ],
         )
