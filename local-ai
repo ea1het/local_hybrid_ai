@@ -7,6 +7,7 @@ import sys
 sys.dont_write_bytecode = True
 
 from commands.cli import main
+from internal.upgrade_guard import run_guarded
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guarded(sys.argv[1:], main))
