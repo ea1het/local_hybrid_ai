@@ -2,7 +2,7 @@
   "schema_version": 1,
   "stacks": [
     {"id":"stack0","components":[
-      {"id":"platform-foundation","selectable":false}
+      {"id":"platform-foundation","selectable":false,"availability":"n/a"}
     ]},
     {"id":"stack1","components":[
       {"id":"haproxy","service":"haproxy","container":"haproxy","compose":"stack1_-_haproxy_web/docker-compose.yml","upstream":"haproxy/haproxy","selectable":false}
@@ -27,7 +27,7 @@
     ]},
     {"id":"stack6","components":[
       {"id":"hermes","service":"hermes","container":"hermes","compose":"stack6_-_hermes/docker-compose.yml","upstream":"NousResearch/hermes-agent","version_source":{"type":"github_release","repo":"NousResearch/hermes-agent"},"recovery_required":false,"apply":{"type":"env-version","env_key":"HERMES_VERSION","image_env_key":"HERMES_IMAGE","deploy":["docker","compose","up","-d","hermes"]}},
-      {"id":"sandbox","service":"sandbox","container":"hermes-sandbox","compose":"stack6_-_hermes/docker-compose.yml","selectable":false}
+      {"id":"sandbox","service":"hermes-sandbox","container":"hermes-sandbox","compose":"stack6_-_hermes/docker-compose.yml","selectable":false,"availability":"local"}
     ]},
     {"id":"stack7","components":[
       {"id":"open-webui","service":"open-webui","container":"open-webui","compose":"stack7_-_open-webui/docker-compose.yml","upstream":"open-webui/open-webui","version_source":{"type":"github_release","repo":"open-webui/open-webui"},"recovery_required":true,"apply":{"type":"env-version","env_key":"OPENWEBUI_VERSION","image_env_key":"OPENWEBUI_IMAGE","deploy":["docker","compose","up","-d","open-webui"]}}
