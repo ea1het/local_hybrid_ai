@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from commands import status
+
+ROOT = Path(__file__).resolve().parents[1]
+CLI = ROOT / "local-ai"
 
 
 class StatusStateTests(unittest.TestCase):
@@ -16,18 +21,9 @@ class StatusStateTests(unittest.TestCase):
             platform = root / "platform"
             platform.mkdir(parents=True)
             events = [
-                {
-                    "success": True,
-                    "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v1"}],
-                },
-                {
-                    "success": False,
-                    "selected": [{"stack": "stack6", "component": "hermes", "version": "v2"}],
-                },
-                {
-                    "success": True,
-                    "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}],
-                },
+                {"success": True, "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v1"}]},
+                {"success": False, "selected": [{"stack": "stack6", "component": "hermes", "version": "v2"}]},
+                {"success": True, "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}]},
             ]
             (platform / "upgrade-history.jsonl").write_text(
                 "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
@@ -54,6 +50,21 @@ class StatusStateTests(unittest.TestCase):
         self.assertEqual(rows[0]["deployed"], "v1")
         self.assertEqual(rows[0]["actual"], "v1")
         self.assertEqual(rows[0]["drift"], "drift")
+
+    def test_public_status_json_contract_is_versioned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["LOCAL_AI_RUNTIME_ROOT"] = tmp
+            cp = subprocess.run(
+                [str(CLI), "--json", "status"], cwd=ROOT, env=env, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        payload = json.loads(cp.stdout)
+        self.assertEqual(payload["schema_version"], "1")
+        self.assertEqual(payload["command"], "status")
+        self.assertTrue(payload["success"])
+        self.assertTrue(all({"desired", "deployed", "actual", "drift"} <= row.keys() for row in payload["components"]))
 
 
 if __name__ == "__main__":
