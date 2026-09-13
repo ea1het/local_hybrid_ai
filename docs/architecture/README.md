@@ -12,8 +12,8 @@ The live architecture is defined by executable manifests and current repository 
 - [OpenSpec](../devel-docs/openspec/README.md) — observable behaviour and traceability to tests.
 - Stack `manifest.json` files — authoritative machine-readable ownership, dependency, capability and recovery declarations.
 
-## Historical reference
+## Research reference
 
-[`arquitectura_hibrida_de_ia.pdf`](arquitectura_hibrida_de_ia.pdf) is retained as historical/reference material. It is **not** the source of truth. If it disagrees with manifests, ADRs/SDRs or current documentation, the current executable contracts win.
+[`arquitectura_hibrida_de_ia.pdf`](arquitectura_hibrida_de_ia.pdf) is retained as a research/reference document. It provides background and exploratory context, but it is **not** the source of truth for the deployed platform. If it disagrees with manifests, ADRs/SDRs or current documentation, the current executable contracts win.
 
 Architecture documentation should not become a second configuration system: concrete container ownership and dependency facts belong in manifests and are summarized here only to make the system understandable.
