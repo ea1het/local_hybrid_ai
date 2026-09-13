@@ -38,7 +38,7 @@ for key in STACKS_ROOT BASE_PATH NETWORK_NAME HAPROXY_HTTP_PORT HAPROXY_HTTPS_PO
            GIT_HOSTNAME GIT_TARGET \
            GWIA_HOSTNAME GWIA_TARGET \
            HOMELAB_HOSTNAME HOMELAB_TARGET \
-           AGENTIA_HOSTNAME AGENTIA_TARGET; do
+           NORAI_HOSTNAME NORAI_TARGET; do
   require_env "${key}"
 done
 
@@ -130,8 +130,8 @@ docker run --rm \
   -e GWIA_TARGET="${GWIA_TARGET}" \
   -e HOMELAB_HOSTNAME="${HOMELAB_HOSTNAME}" \
   -e HOMELAB_TARGET="${HOMELAB_TARGET}" \
-  -e AGENTIA_HOSTNAME="${AGENTIA_HOSTNAME}" \
-  -e AGENTIA_TARGET="${AGENTIA_TARGET}" \
+  -e NORAI_HOSTNAME="${NORAI_HOSTNAME}" \
+  -e NORAI_TARGET="${NORAI_TARGET}" \
   haproxy:3.0-alpine haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg >/dev/null
 log "haproxy.cfg valida con PKI central"
 
