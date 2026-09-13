@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         if json_output:
             _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
             return 2
-        return _run_internal(ROOT / "install.py", ns.args)
+        return _run_internal(ROOT / "installer" / "install.py", ns.args)
 
     if ns.command == "backup":
         args = list(ns.args)
