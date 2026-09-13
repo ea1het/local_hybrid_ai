@@ -2,12 +2,12 @@
 """Compatibility helpers for recovering historical platform commits.
 
 Some already-backed-up source revisions can return a non-zero installer result
-immediately after a reconcile command restarts a health-checked service.  The
+immediately after a reconcile command restarts a health-checked service. The
 installer message is specifically `required runtime validation failed`, while
 the service is merely in Docker health `starting` and becomes healthy moments
 later.
 
-Recovery must not rewrite the historical source tree.  This helper therefore
+Recovery must not rewrite the historical source tree. This helper therefore
 accepts only that exact transient failure class, waits for the target lifecycle's
 required containers, and fails closed for every other installer error.
 """
@@ -38,8 +38,18 @@ def _detail(cp: subprocess.CompletedProcess[bytes]) -> str:
     return text.decode("utf-8", errors="replace").strip()
 
 
+def _lifecycle_path(stacks_root: Path) -> Path:
+    for candidate in (
+        stacks_root / "commands" / "install-lifecycle.json",
+        stacks_root / "installer" / "lifecycle.json",
+    ):
+        if candidate.is_file() and not candidate.is_symlink():
+            return candidate
+    raise RestoreCompatibilityError("target source has no supported lifecycle registry")
+
+
 def _load_lifecycle(stacks_root: Path) -> dict:
-    path = stacks_root / "installer" / "lifecycle.json"
+    path = _lifecycle_path(stacks_root)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -50,13 +60,14 @@ def _load_lifecycle(stacks_root: Path) -> dict:
 
 
 def _installer_path(stacks_root: Path) -> Path:
-    """Resolve current internal installer path while preserving historical DR compatibility."""
-    current = stacks_root / "installer" / "install.py"
-    if current.is_file() and not current.is_symlink():
-        return current
-    legacy = stacks_root / "install.py"
-    if legacy.is_file() and not legacy.is_symlink():
-        return legacy
+    """Resolve current engine path while preserving historical recovery points."""
+    for candidate in (
+        stacks_root / "commands" / "install.py",
+        stacks_root / "installer" / "install.py",
+        stacks_root / "install.py",
+    ):
+        if candidate.is_file() and not candidate.is_symlink():
+            return candidate
     raise RestoreCompatibilityError("target source has no supported installer engine")
 
 
@@ -136,7 +147,4 @@ def install_with_readiness_compat(
             detail = "..." + detail[-2000:]
         raise RestoreCompatibilityError(f"{label} failed: {detail or 'no diagnostic output'}")
 
-    # Historical installer compatibility: only this exact failure class may be
-    # converted into success, and only after every required target container is
-    # independently observed running/healthy.
     wait_required_runtime(stacks_root, selectors)
