@@ -92,6 +92,19 @@ class ContainerRegistryTests(unittest.TestCase):
                 "sha256:right",
             )
 
+    def test_local_version_hint_accepts_oci_version_label_from_same_package(self):
+        image_data = {
+            "RepoTags": [],
+            "Config": {"Labels": {"org.opencontainers.image.version": "2.11.300"}},
+        }
+        with mock.patch("internal.container_registry._local_image_data", return_value=image_data):
+            hint = container_registry.local_version_hint(
+                "firecrawl-api",
+                "ghcr.io/firecrawl/firecrawl@sha256:old",
+                ("2.11.300", "2.11.331"),
+            )
+        self.assertEqual(hint, "2.11.300")
+
     def test_registry_tags_reads_same_registry_package(self):
         body = json.dumps({"name": "firecrawl/firecrawl", "tags": ["2.11.331", "latest"]}).encode()
         with mock.patch("internal.container_registry._registry_request", return_value=(200, {}, body)) as request:
@@ -102,6 +115,19 @@ class ContainerRegistryTests(unittest.TestCase):
         self.assertEqual(ref.registry, "ghcr.io")
         self.assertEqual(ref.repository, "firecrawl/firecrawl")
         self.assertEqual(request.call_args.args[1], "/v2/firecrawl/firecrawl/tags/list?n=1000")
+
+    def test_registry_tags_follows_registry_v2_pagination(self):
+        page1 = json.dumps({"tags": ["v0.1.121"]}).encode()
+        page2 = json.dumps({"tags": ["v0.11.3", "v0.11.4"]}).encode()
+        responses = [
+            (200, {"Link": '</v2/open-webui/open-webui/tags/list?n=1000&last=v0.1.121>; rel="next"'}, page1),
+            (200, {}, page2),
+        ]
+        with mock.patch("internal.container_registry._registry_request", side_effect=responses) as request:
+            probe = container_registry.registry_tags("ghcr.io/open-webui/open-webui:v0.11.3")
+        self.assertEqual(probe.status, "ok")
+        self.assertEqual(probe.tags, ("v0.1.121", "v0.11.3", "v0.11.4"))
+        self.assertEqual(request.call_count, 2)
 
     def test_registry_tags_preserves_rate_limit(self):
         with mock.patch("internal.container_registry._registry_request", return_value=(429, {}, b"")):
@@ -137,13 +163,50 @@ class ContainerRegistryTests(unittest.TestCase):
         ]
         self.assertEqual(container_registry.version_tags(tags)[0], "2.11.331")
 
+    def test_release_candidates_preserve_v_prefix_and_exclude_hotfix_variant(self):
+        tags = ("1.0.40-ldap-hotfix", "v1.0.40", "v1.0.47", "v2.0.0")
+        self.assertEqual(
+            container_registry._release_candidates(tags, "v1.0.40"),
+            ["v1.0.47", "v1.0.40"],
+        )
+
+    def test_release_candidates_do_not_cross_major_version(self):
+        tags = ("v0.1.121", "v0.11.3", "v0.11.4", "v1.0.0")
+        self.assertEqual(
+            container_registry._release_candidates(tags, "v0.11.3"),
+            ["v0.11.4", "v0.11.3", "v0.1.121"],
+        )
+
     def test_channel_detection_recognizes_major_minor_alpine_channel(self):
         tags = ("3.0-alpine", "3.0.18-alpine", "3.1.2-alpine")
         self.assertTrue(container_registry._is_channel_tag("3.0-alpine", tags))
 
+    def test_major_minor_channel_does_not_fall_into_other_series(self):
+        tags = ("2.6.10-alpine", "3.0-alpine", "3.0.18-alpine", "3.1.2-alpine")
+        self.assertEqual(
+            container_registry._channel_candidates(tags, "3.0-alpine"),
+            ["3.0.18-alpine"],
+        )
+
     def test_exact_postgres_version_is_not_channel_without_more_specific_tag(self):
         tags = ("17.10-alpine", "17.9-alpine", "18.0-alpine")
         self.assertFalse(container_registry._is_channel_tag("17.10-alpine", tags))
+
+    def test_digest_match_can_search_beyond_old_eighty_probe_limit(self):
+        candidates = [f"2.11.{value}" for value in range(600, 499, -1)]
+        target = candidates[95]
+        reference = container_registry.parse_reference("ghcr.io/firecrawl/firecrawl@sha256:old")
+
+        def manifest(ref: str):
+            return container_registry.RemoteProbe(
+                "sha256:old" if ref.endswith(":" + target) else "sha256:other",
+                "ok",
+            )
+
+        with mock.patch("internal.container_registry.manifest_probe", side_effect=manifest):
+            tag, status = container_registry._best_tag_for_digest(reference, "sha256:old", candidates)
+        self.assertEqual(status, "ok")
+        self.assertEqual(tag, target)
 
     def test_digest_only_image_maps_digest_to_human_registry_tag(self):
         image = "ghcr.io/firecrawl/firecrawl@sha256:old"
@@ -157,6 +220,7 @@ class ContainerRegistryTests(unittest.TestCase):
             return container_registry.RemoteProbe(None, "not_found")
 
         with mock.patch("internal.container_registry.local_digest", return_value="sha256:old"), \
+             mock.patch("internal.container_registry.local_version_hint", return_value=None), \
              mock.patch("internal.container_registry.registry_tags", return_value=tags), \
              mock.patch("internal.container_registry.manifest_probe", side_effect=manifest):
             state = container_registry.inspect("firecrawl-api", image)
@@ -167,9 +231,9 @@ class ContainerRegistryTests(unittest.TestCase):
         self.assertEqual(state.registry, "ghcr.io")
         self.assertEqual(state.repository, "firecrawl/firecrawl")
 
-    def test_exact_registry_tag_uses_it_as_current_human_version(self):
+    def test_exact_registry_tag_uses_same_family_and_major_for_available_version(self):
         image = "ghcr.io/open-webui/open-webui:v0.11.3"
-        tags = container_registry.TagProbe(("v0.11.3", "v0.11.4"), "ok")
+        tags = container_registry.TagProbe(("v0.1.121", "v0.11.3", "v0.11.4", "v1.0.0"), "ok")
         with mock.patch("internal.container_registry.local_digest", return_value="sha256:old"), \
              mock.patch("internal.container_registry.registry_tags", return_value=tags), \
              mock.patch("internal.container_registry.manifest_probe", return_value=container_registry.RemoteProbe("sha256:new", "ok")):
