@@ -1,4 +1,4 @@
-# ADR-0003: Human versions and immutable image identity are separate concerns
+# ADR-0003: Human container versions come from the image registry; digests remain immutable identity
 
 Status: Accepted
 
@@ -8,43 +8,50 @@ Date: 2026-09-13
 
 The project originally used container digests as version-like identifiers because they are immutable and make deployments reproducible. That remains correct for machine identity, rollback evidence and drift detection, but a SHA-256 digest is a poor operator-facing version.
 
-Registries expose several different concepts that must not be conflated:
+The earlier discovery prototype also mixed sources: some components used GitHub Releases while others used their container registry. That creates avoidable ambiguity because a source-code release and a published container artifact are not necessarily the same release object and their naming/version cadence can differ.
 
-- a product/release version, for example `v0.11.3`;
-- a registry tag or tracking channel, for example `3-alpine`, `17.10-alpine` or `latest`;
-- an immutable content digest, for example `sha256:...`.
-
-Tags are mutable. A digest is immutable. Some projects publish semantic container tags, while others publish only a moving channel such as `latest`. Therefore there is no reliable generic conversion from digest to human version.
+The configured image reference already identifies the authoritative artifact source. Examples include Docker Hub, GHCR and `docker.gitea.com`. Those registries expose immutable digests and published tags for the same package.
 
 ## Decision
 
-`local-ai` separates human-facing version information from immutable runtime identity.
+`local-ai` uses the registry that owns the configured container image as the sole operational source for container version discovery.
 
-1. **Human display prefers a published release/tag/channel.**
-   `upgrade check` must not present a bare digest as though it were a product version when a meaningful release/tag/channel is known.
+1. **Follow the configured image to its registry.**
+   The registry host and repository are derived from the actual image reference. `local-ai` does not consult a separate GitHub Release feed, source repository release page or unrelated registry to decide container versions.
 
-2. **Digests remain authoritative machine identity.**
-   The exact local and remote digests remain in structured JSON and are used for immutable comparison, drift evidence and future recovery/rollback decisions.
+2. **Human display uses tags published for that exact registry package.**
+   When a digest can be associated with a human version tag in the package, that tag is the operator-facing current version. A digest-only deployment such as `ghcr.io/firecrawl/firecrawl@sha256:...` may therefore display a human tag such as `2.11.300` once the registry proves that mapping.
 
-3. **A tag plus digest keeps both meanings.**
-   For `repo:tag@sha256:...`, `tag` is the human tracking label and the digest is the immutable deployed artifact.
+3. **Digests remain authoritative machine identity.**
+   The exact local and remote digests remain in structured JSON and continue to be used for immutable comparison, drift evidence and recovery/rollback decisions.
 
-4. **A pure digest pin needs explicit tracking metadata.**
-   `repo@sha256:...` has no discoverable update channel by itself. If the project intentionally tracks a mutable channel such as `repo:latest`, that channel is declared explicitly in the component catalog. The CLI may then display `latest (pinned)` while comparing the deployed digest with the digest currently behind `latest`.
+4. **Tag and digest are different facts.**
+   Tags are mutable names. Digests identify immutable artifacts. `local-ai` preserves both rather than treating a digest as a human version.
 
-5. **Do not invent semantic versions.**
-   If upstream publishes only `latest`, the project must not infer that a digest corresponds to a particular GitHub release unless that mapping is explicitly known and recorded.
+5. **A published human version must be registry-evidenced.**
+   `local-ai` never infers that a digest corresponds to a source-code release merely because the numbers look related. A human version is shown only when the image registry exposes that tag for the same package/artifact.
 
-6. **Availability and identity remain separate.**
-   `current` means the deployed immutable digest equals the digest currently behind the declared tracking tag/channel. `update` means the same declared tag/channel now resolves to a different digest. `unknown` means the comparison could not be completed. `pinned` means an immutable image is installed but no tracking channel is declared.
+6. **Channels remain channels.**
+   Tags such as `latest`, `alpine`, `3-alpine` or `3.0-alpine` may represent moving channels. When possible, `local-ai` resolves the digest behind the channel and maps it to a more specific human version tag in the same package.
 
-7. **Registry failures preserve their reason.**
-   Rate limiting, authorization failures and similar lookup errors remain `available=unknown` in the stable JSON contract, with a structured registry status such as `rate_limited`. Human output may render this as `unknown (rate limited)`.
+7. **Exact version tags can discover newer tags in the same package.**
+   For images already configured with a human version tag, the current version comes directly from that tag and newer published human version tags are discovered from the same registry package. Discovery does not imply compatibility or permission to upgrade.
+
+8. **No automatic major-version policy is introduced here.**
+   Registry discovery reports what the package publishes. A separate support/compatibility layer decides which discovered versions are valid upgrade targets. `upgrade --yes` still applies only explicitly selected and executable components.
+
+9. **Registry failures preserve their reason.**
+   Rate limiting, authorization failures and similar lookup errors remain `available=unknown` with structured statuses such as `rate_limited`. A failure to inspect a registry must never be rendered as `current`.
+
+10. **Local-only images are exempt.**
+    Images such as the Hermes sandbox that intentionally exist only in the local installation remain `local` and are never queried against an external registry.
 
 ## Consequences
 
+- Container discovery has one source of truth per component: the registry named by its image.
 - Existing digest pins remain valid and desirable for reproducibility.
-- Operator output becomes readable without sacrificing exact artifact identity.
-- Components that publish semantic releases can continue to use release adapters.
-- Components that publish only moving container tags are represented as channels, not falsely as semantic versions.
-- A future compatibility/support layer can decide whether a discovered release or tag is supported before it becomes selectable or executable.
+- Operator output can use readable published versions while JSON preserves exact artifact identity.
+- GitHub Releases are no longer an operational version source for container inventory merely because the source project is hosted on GitHub.
+- GHCR packages are queried as GHCR packages, Docker Hub images as Docker Hub packages, and other registries through their own Registry V2 interface.
+- A registry tag discovered as newer is not automatically supported, selected or applied.
+- Compatibility/version-policy work remains a separate layer above discovery.
