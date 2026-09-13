@@ -67,13 +67,39 @@ class ManagementCliContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("upgrade", "stack3", "select", "1.100.0", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
-        self.assertIn("multiple selectable components", cp.stderr)
+        self.assertIn("multiple components", cp.stderr)
+
+    def test_nonselectable_component_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("upgrade", "stack1", "select", "3.1-alpine", runtime_root=tmp)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("UPGRADE_COMPONENT_NOT_SELECTABLE", cp.stderr)
 
     def test_upgrade_yes_never_auto_selects_available_versions(self):
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("upgrade", "--yes", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("no upgrades are selected", cp.stderr)
+        self.assertIn("UPGRADE_NOTHING_SELECTED", cp.stderr)
+
+    def test_stale_plan_fails_before_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("upgrade", "stack7", "select", "v0.12.0", runtime_root=tmp)
+            self.assertEqual(cp.returncode, 0, cp.stderr)
+            plan_path = Path(tmp) / "platform" / "upgrade-plan.json"
+            plan = json.loads(plan_path.read_text())
+            plan["selected"]["stack7/open-webui"]["current_at_selection"] = "definitely-not-current"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+            cp = self.run_cli("upgrade", "--yes", runtime_root=tmp)
+        self.assertNotEqual(cp.returncode, 0)
+        self.assertIn("UPGRADE_PLAN_STALE", cp.stderr)
+
+    def test_json_errors_have_stable_error_codes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("--json", "upgrade", "--yes", runtime_root=tmp)
+        self.assertNotEqual(cp.returncode, 0)
+        payload = json.loads(cp.stdout)
+        self.assertEqual(payload["error"]["code"], "UPGRADE_NOTHING_SELECTED")
 
 
 if __name__ == "__main__":
