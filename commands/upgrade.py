@@ -5,12 +5,10 @@ import os
 import re
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from internal import upgrade_executor
+from internal import upgrade_executor, version_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "internal" / "upgrade-components.json"
@@ -149,21 +147,6 @@ def version_from_image(image: str | None) -> str:
     return tail.rsplit(":", 1)[1] if ":" in tail else "latest"
 
 
-def latest_release(repo: str | None) -> str:
-    if not repo:
-        return "unknown"
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/releases/latest",
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "local-ai-upgrade-check/1"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=4) as response:
-            data = json.load(response)
-        return str(data.get("tag_name") or "unknown")
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
-        return "unknown"
-
-
 def load_plan() -> dict:
     path = plan_path()
     if not path.is_file():
@@ -193,15 +176,23 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
     env = read_env()
     plan = load_plan()
     selected = plan["selected"]
+    records = component_records()
     rows: list[dict] = []
     for component in load_catalog():
         desired_image = compose_image(component, env)
         actual_image = running_image(component) or desired_image
+        try:
+            available = version_sources.available_version(records[key(component)], online=query_upstream)
+        except version_sources.VersionSourceError as exc:
+            raise UpgradeError(
+                f"invalid version source for {key(component)}: {exc}",
+                code="UPGRADE_VERSION_SOURCE_INVALID",
+            ) from exc
         rows.append({
             "stack": component.stack,
             "component": component.name,
             "current": version_from_image(actual_image),
-            "available": latest_release(component.upstream) if query_upstream else "unchecked",
+            "available": available,
             "selected": selected.get(key(component), {}).get("version"),
             "selectable": component.selectable,
         })
