@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -78,6 +79,18 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 },
             )
         self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_MOVED")
+
+    @mock.patch("commands.upgrade_executor._run")
+    def test_recovery_point_consumes_backup_set_json_field(self, run):
+        run.return_value = subprocess.CompletedProcess(
+            [], 0, json.dumps({"backup_set": "/opt/local-hybrid-ai-backups/backup-test"}), ""
+        )
+        root = Path("/opt/docker/stacks")
+        result = upgrade_executor._recovery_point(root)
+        self.assertEqual(result, "/opt/local-hybrid-ai-backups/backup-test")
+        command = run.call_args.args[0]
+        self.assertEqual(command[1], str(root / "commands" / "recovery" / "backup-all.py"))
+        self.assertEqual(command[2], "--json")
 
     def test_execution_rejects_empty_selection_before_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
