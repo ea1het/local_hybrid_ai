@@ -31,8 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
-    install = sub.add_parser("install", help="install or reconcile stacks")
-    install.add_argument("args", nargs=argparse.REMAINDER)
+    # install is dispatched before argparse so every installer option is passed
+    # through unchanged while ./local-ai remains the sole public entry point.
+    sub.add_parser("install", help="install or reconcile stacks")
 
     backup = sub.add_parser("backup", help="create a recovery point")
     backup.add_argument("args", nargs=argparse.REMAINDER)
@@ -79,17 +80,21 @@ def main(argv: list[str] | None = None) -> int:
     json_output = "--json" in raw
     raw = [arg for arg in raw if arg != "--json"]
 
+    # argparse interprets unknown option-looking tokens before a REMAINDER
+    # positional, which previously made `local-ai install --plan ...` fail at
+    # the public boundary. Install is intentionally a transparent public facade
+    # over the private installer engine, so dispatch it before argparse.
+    if raw and raw[0] == "install":
+        if json_output:
+            _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
+            return 2
+        return _run_internal(ROOT / "installer" / "install.py", raw[1:])
+
     parser = build_parser()
     ns = parser.parse_args(raw)
     if ns.command is None:
         parser.print_help()
         return 0
-
-    if ns.command == "install":
-        if json_output:
-            _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
-            return 2
-        return _run_internal(ROOT / "installer" / "install.py", ns.args)
 
     if ns.command == "backup":
         args = list(ns.args)
