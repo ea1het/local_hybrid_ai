@@ -13,7 +13,7 @@ Every tagged behavioral contract must have executable or qualified evidence. The
 | `DR-RESTORE-001` | `tests/disaster_recovery/test_dr_restore_all.py`, restore-live/compat tests | qualified clean-target recovery and historical installer compatibility |
 | `DR-STACK7-001` | `tests/test_openspec_contracts.py::test_DR_STACK7_001_restore_contract_preserves_data_and_identity` | [`docs/dr/status.md`](../../dr/status.md) isolated restore qualification |
 | `STACK0-FOUNDATION-001` | recovery/manifest tests | Stack0 verify script |
-| `STACK1-INGRESS-001` | stack/installer contracts | deployed HAProxy qualification |
+| `STACK1-INGRESS-001` | stack/install contracts | deployed HAProxy qualification |
 | `STACK2-WEB-001` | `tests/test_stack7_web_capabilities.py` | real Stack2-backed web search/extraction qualification |
 | `STACK3-GATEWAY-001` | DR and recovery-contract tests | deployed LiteLLM qualification and SDR-0003 |
 | `STACK4-GIT-001` | `tests/disaster_recovery/test_dr_stack4_restore_verify.py` | Gitea native backup/restore qualification |
@@ -23,12 +23,13 @@ Every tagged behavioral contract must have executable or qualified evidence. The
 | `STACK7-POLICY-001` | `tests/test_openspec_contracts.py::test_STACK7_POLICY_001_access_is_explicit_not_bypassed` | regular-user qualification and SDR-0005 |
 | `STACK7-WEB-001` | `tests/test_openspec_contracts.py::test_STACK7_WEB_001_web_search_is_default_interface_behaviour` | real `search_web` / `fetch_url` qualification |
 | `CLI-BOUNDARY-001` | `tests/test_management_cli.py::test_cli_boundary_exposes_versioned_json_upgrade_contract` | [`ADR-0002`](../adr/0002-single-management-cli.md) and root-boundary m92p gate |
-| `CLI-UPGRADE-001` | `tests/test_management_cli.py::test_upgrade_check_contains_all_declared_components_and_selected_column` | `internal/upgrade-components.json`, registry discovery qualification |
-| `CLI-UPGRADE-002` | selection plan tests and `commands/upgrade_entry.py` | installation-local `upgrade-plan.json` |
+| `CLI-LAYOUT-001` | `tests/test_repository_layout.py::test_local_ai_is_the_supported_root_management_cli` | [`ADR-0005`](../adr/0005-unified-command-implementation-package.md) |
+| `CLI-UPGRADE-001` | `tests/test_management_cli.py::test_upgrade_check_contains_all_declared_components_and_selected_column` | `commands/upgrade-components.json`, registry discovery qualification |
+| `CLI-UPGRADE-002` | `tests/test_upgrade_selection_policy.py` | installation-local `upgrade-plan.json` including immutable target digest |
 | `CLI-UPGRADE-003` | `tests/test_management_cli.py::test_upgrade_yes_never_auto_selects_available_versions` | ADR-0002 |
 | `CLI-UPGRADE-004` | `tests/test_management_cli.py::test_stale_plan_fails_before_execution` | structured `UPGRADE_PLAN_STALE` error |
 | `CLI-UPGRADE-005` | `tests/test_upgrade_executor.py` | targeted deploy metadata, recovery-first executor and successful Hermes live upgrade |
-| `CLI-UPGRADE-006` | `tests/test_upgrade_executor.py::test_target_image_preflight_rejects_missing_image` | read-only target manifest preflight before recovery or `.env` mutation |
+| `CLI-UPGRADE-006` | `tests/test_upgrade_executor.py`, `tests/test_upgrade_selection_policy.py` | registry digest captured at selection and tag-movement rejection before recovery or `.env` mutation |
 | `CLI-POLICY-001` | `tests/test_upgrade_policy.py::test_override_is_installation_local_and_clear_restores_default` | catalog defaults and installation-local policy file |
 | `CLI-POLICY-002` | `tests/test_upgrade_policy.py::test_minor_series_accepts_only_newer_same_major_minor` | [`ADR-0004`](../adr/0004-upgrade-compatibility-policy.md) |
 | `CLI-POLICY-003` | `tests/test_upgrade_policy.py::test_major_series_accepts_newer_same_major` | ADR-0004 and Hermes date-like version qualification |
