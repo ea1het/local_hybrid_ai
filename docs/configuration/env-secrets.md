@@ -4,7 +4,7 @@ This is the canonical provenance and lifecycle guide for secrets used by `local_
 
 > Never put real secrets in Git, issues, pull requests, documentation, screenshots or chat transcripts. Persistent secrets are identities, not disposable configuration.
 
-Normal runtime persistence and disaster-recovery value are separate concepts. See [`dr-howto.md`](dr-howto.md) and [`recovery.schema.json`](recovery.schema.json) for the DR contract. A secret may be preserved during routine operation yet still be reconstructable during a full disaster rebuild.
+Normal runtime persistence and disaster-recovery value are separate concepts. See [the DR how-to](../dr/howto.md) and the implementation-owned [`recovery.schema.json`](../../commands/recovery/recovery.schema.json) for the recovery contract. A secret may be preserved during routine operation yet still be reconstructable during a full disaster rebuild.
 
 ## Secret classes
 
@@ -49,274 +49,78 @@ printf 'sk-%s\n' "$(openssl rand -hex 32)"
 
 ### `RABBITMQ_PASSWORD`
 
-- Type: internal broker password.
+- Type: internal RabbitMQ password.
 - Origin: operator-generated.
 - Storage: operational `.env`.
-- Consumers: Firecrawl/NuQ and RabbitMQ.
-- Related non-secret: `RABBITMQ_USER`.
-- Rotation: coordinated broker/client change.
+- Consumers: Firecrawl and `firecrawl-rabbitmq`.
+- Rotation: coordinated server/client change.
 - DR: Stack2 is reconstructable.
 
 ### `FIRECRAWL_DB_PASSWORD`
 
-- Type: dedicated Firecrawl PostgreSQL application-role password.
+- Type: Firecrawl application database password.
 - Origin: operator-generated.
 - Storage: operational `.env`.
-- Consumer: `firecrawl-api`; provisioning also consumes it during fresh database initialization.
-- Related identities: `FIRECRAWL_DB_USER=firecrawl`, `FIRECRAWL_DB_NAME=postgres`.
-- Privilege model: LOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS; only required NuQ object privileges.
-- Rotation: change the live PostgreSQL role password and application consumer together. Editing `.env` alone is not rotation.
-- DR: Firecrawl database state is intentionally disposable/reconstructable.
+- Consumers: Firecrawl and its PostgreSQL role bootstrap.
+- Rotation: coordinated application/database change.
+- DR: Stack2 is reconstructable.
 
-Firecrawl must not connect as PostgreSQL role `postgres` during normal operation.
-
-### Stack2 PostgreSQL administrative password
-
-```text
-${BASE_PATH}/service_-_firecrawl-postgres/secret/postgres_admin_password
-```
-
-- Type: cluster administrative/bootstrap password for role `postgres`.
-- Origin: Stack2 `01-prepare.sh` on a fresh runtime.
-- Generator: `openssl rand -hex 32`.
-- Storage: runtime file, `root:root 0600`, outside `.env` and Git.
-- Consumer: PostgreSQL bootstrap via `POSTGRES_PASSWORD_FILE`; explicit administration when required.
-- Role purpose: cluster bootstrap, ownership, extensions and `pg_cron` administration.
-- Lifecycle: generated once and preserved during normal operation.
-- Rotation: explicit database-administration procedure only.
-- DR: reconstructable with a fresh Stack2 PostgreSQL cluster; not a core recovery artifact.
-
-The tracked repository contains only the converged clean-install model. Historical one-time migration credentials/scripts are not part of normal installation or routine convergence.
-
-## Stack3 — LiteLLM + PostgreSQL
+## Stack3 — LiteLLM
 
 ### `LITELLM_MASTER_KEY`
 
-- Type: LiteLLM administrative/master API credential.
+- Type: LiteLLM administrator/master API key.
 - Origin: operator-generated.
-- Suggested format: `sk-` + high-entropy random material.
+- Suggested form: `sk-` plus cryptographically random bytes.
 - Storage: operational `.env`.
-- Rotation: high impact; deliberate only.
+- Lifecycle: persistent identity; preserve during normal operation and recovery.
+- Rotation: intentional and coordinated with every administrator/integration that uses it.
 
 ### `LITELLM_SALT_KEY`
 
-- Type: persistent encryption key/salt material used by LiteLLM encrypted DB-backed state.
+- Type: persistent LiteLLM cryptographic salt/identity material.
 - Origin: operator-generated.
 - Storage: operational `.env`.
-- Lifecycle: persistent cryptographic identity.
-- Rotation: do not rotate casually; restored DB state requires the matching key.
-- DR: **required persistent identity**. A restored LiteLLM database must be paired with the original matching value from the protected operational `.env` backup.
+- Lifecycle: persistent identity. Do not regenerate while restoring an existing LiteLLM database.
+- DR: treated as a required external-config recovery prerequisite and preserved through the protected operational-environment artifact.
 
-### `UI_PASSWORD`
+### PostgreSQL administrator password
 
-- Type: human LiteLLM UI administrator password.
-- Origin: operator/password manager.
-- Storage: operational `.env`.
-- Rotation: normal intentional administrative rotation.
-- DR: may be changed after rebuild; it is not the cryptographic identity needed to interpret restored LiteLLM DB state.
+- Type: database administrative credential.
+- Origin: runtime-generated by the stack lifecycle.
+- Storage: protected runtime, not source-controlled `.env`.
+- Lifecycle: owned by the deployed Stack3 runtime; the logical database dump is the managed DR artifact rather than raw PGDATA.
 
-### `LITELLM_DB_PASSWORD`
+## Stack4 — Gitea
 
-- Type: LiteLLM application database-role password.
-- Origin: operator-generated.
-- Storage: operational `.env`.
-- Consumers: LiteLLM and Stack3 PostgreSQL role provisioning.
-- Related identities: `LITELLM_DB_USER`, `LITELLM_DB_NAME`.
-- Rotation: coordinated live DB role + client change.
-
-### Stack3 PostgreSQL administrative password
-
-```text
-${BASE_PATH}/service_-_litellm-postgres/secret/postgres_admin_password
-```
-
-- Type: cluster administrative/bootstrap password for `postgres`.
-- Origin: our Stack3 `01-prepare.sh`; this is not generated by LiteLLM.
-- Generator: `openssl rand -hex 32`.
-- Storage: runtime file, `root:root 0600`.
-- Lifecycle: generated once and preserved during normal operation.
-- Rotation: explicit PostgreSQL administration only.
-- DR: may be freshly generated when a new PostgreSQL cluster is prepared. Stack3 recovery targets the logical LiteLLM DB, not preservation of the old PostgreSQL admin password.
-
-## LiteLLM credentials consumed by Hermes
-
-### `LITELLM_API_KEY`
-
-- Type: dedicated LiteLLM client/virtual key for Hermes inference.
-- Origin: issued/registered by LiteLLM.
-- Do not replace with an arbitrary `openssl` value: an unregistered random string is not a working LiteLLM credential.
-- Storage: operational `.env`.
-- Rotation: issue replacement in LiteLLM, update Hermes, validate, then revoke old key.
-
-### `LITELLM_MCP_API_KEY`
-
-- Type: dedicated LiteLLM client/virtual key for Hermes MCP access.
-- Origin: issued/registered by LiteLLM.
-- Storage: operational `.env`.
-- Keep separate from inference key to scope compromise/revocation.
-
-## Stack4 — Gitea + Actions runner
-
-### `GITEA_INTERNAL_TOKEN`
-
-- Type: Gitea internal secret.
-- Origin: Gitea native generator.
-- Preferred generation: pinned Gitea image + `gitea generate secret INTERNAL_TOKEN`.
-- Storage: operational `.env`, rendered into managed Gitea config.
-- Lifecycle: persistent; never rotate implicitly.
-
-### `GITEA_JWT_SECRET`
-
-- Type: Gitea JWT signing secret.
-- Origin: Gitea native generator: `gitea generate secret JWT_SECRET`.
-- Storage: operational `.env`.
-- Rotation: invalidates signed state/tokens; deliberate only.
-
-### `GITEA_ADMIN_PASSWORD`
-
-- Type: human bootstrap administrator password.
-- Origin: operator/password manager.
-- Storage: operational `.env` for bootstrap/configuration.
-- Changing `.env` does not imply an already-created Gitea user's password changes automatically.
-
-### Runner registration secret
-
-```text
-${BASE_PATH}/service_-_gitea-runner/secret/registration-token
-```
-
-- Type: runner registration/bootstrap secret.
-- Origin: Stack4 lifecycle.
-- Generator on fresh runtime: `openssl rand -hex 24`.
-- Storage: restricted runtime secret file.
-- Lifecycle: preserved during normal operation to avoid unnecessary re-registration.
-- DR: reconstructable; the runner may be re-registered after Gitea recovery and this secret is not a core DR artifact.
+Gitea internal secrets and JWT material are application identities generated/managed by Gitea. They live with Gitea's managed application state and are carried by the native Gitea recovery strategy rather than copied individually into source configuration.
 
 ## Stack6 — Hermes
 
-### `TELEGRAM_BOT_TOKEN`
+### Dashboard password material
 
-- Type: external-provider bot credential.
-- Origin: Telegram BotFather.
-- Storage: operational `.env` when enabled; empty means disabled.
-- Rotation/revocation: through BotFather, then update local configuration.
+Human password input is not stored in Git. The runtime consumes the derived password hash required by Hermes rather than documenting or exposing the source secret.
 
-### `BUZZ_PRIVATE_KEY` / `BUZZ_AUTH_TAG`
+### Memory-sync SSH identity
 
-- Type: optional Buzz authentication/identity material.
-- Origin: Buzz provisioning workflow, not this repository.
-- Storage: operational `.env` only when enabled.
-- Do not invent arbitrary compatible-looking values without the provider protocol.
+- Type: operator-provisioned runtime identity.
+- Storage: outside the Git checkout and outside the ordinary application memory repository.
+- Purpose: authorize the memory-sync sidecar to the configured Git remote.
+- DR: external operator prerequisite. The recovery tooling verifies/copies supplied bootstrap material but does not invent a replacement identity.
 
-### `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH`
+### `GITMEM_REPOSITORY` / `GITMEM_BRANCH`
 
-- Type: derived scrypt password hash, not plaintext.
-- Origin: operator password processed with Hermes' own hashing helper/runtime.
-- Storage: operational `.env`.
-- Rotation: generate a new compatible hash for the new password and deliberately recreate/restart Hermes.
-
-### `HERMES_DASHBOARD_BASIC_AUTH_SECRET`
-
-- Type: dashboard HMAC/session signing secret.
-- Origin: operator-generated, 32+ random bytes.
-- Storage: operational `.env`.
-- Rotation: invalidates existing dashboard sessions/tokens.
-
-### `API_SERVER_KEY`
-
-- Type: Hermes API credential.
-- Origin: operator-generated high-entropy token.
-- Storage: operational `.env`.
-- Lifecycle: persistent until deliberate API-key rotation.
-
-### `FIRECRAWL_API_KEY`
-
-- Current local deployment: empty because Firecrawl authentication is disabled.
-- If authentication is introduced later, define provider-side issuance/validation first and document the new lifecycle here.
-
-## Stack6 SSH identities outside `.env`
-
-### Hermes executor keypair
-
-```text
-${BASE_PATH}/service_-_hermes/config/ssh/hermes_executor_ed25519
-${BASE_PATH}/service_-_hermes/config/ssh/hermes_executor_ed25519.pub
-```
-
-Generated once by Stack6 `01-prepare.sh`, preserved and validated during normal operation. The private key is runtime identity, never an `.env` value. Stack6 is reconstructable for full DR, so this keypair may be regenerated together with the rebuilt sandbox trust relationship.
-
-### Sandbox SSH host key
-
-```text
-${BASE_PATH}/service_-_hermes-sandbox/config/ssh-host/ssh_host_ed25519_key
-```
-
-Generated once by Stack6; rotation changes host trust/fingerprint and is not routine cleanup. In a full Stack6 rebuild it may be regenerated and trust re-established deliberately.
-
-### Hermes memory-sync SSH identity
-
-```text
-${BASE_PATH}/service_-_hermes-memory-sync/ssh/
-```
-
-Operator-provisioned. Stack6 maintenance validates it but does not invent or replace it. It must be authorized in the intended Gitea account/repository context. For full DR, it may be reprovisioned/re-authorized rather than backed up as a core Stack6 artifact.
+These define the externalized durable memory source. The durable Stack6 application contract is Git-backed `MEMORY.md` and `USER.md`; Hermes sessions, SQLite state, caches, packages, logs, `SOUL.md` and sandbox runtime are reconstructable/disposable.
 
 ## Stack7 — Open WebUI
 
-### `OPENWEBUI_SECRET_KEY`
+### Open WebUI secret key
 
-- Type: persistent Open WebUI signing/session cryptographic identity.
-- Origin: operator-generated.
-- Suggested bootstrap: `openssl rand -hex 32`.
-- Storage: protected operational root `.env`.
-- Consumer: Stack7/Open WebUI as `WEBUI_SECRET_KEY`.
-- Lifecycle: generate once and preserve; never rotate implicitly when persistent Open WebUI state exists.
-- Rotation: deliberate maintenance only; expect existing sessions and cryptographic application state to be affected.
-- DR: declared as Stack7 persistent identity and preserved through the global protected operational `.env` artifact.
-
-### `OPENWEBUI_LITELLM_API_KEY`
-
-- Type: dedicated LiteLLM client/virtual key for Open WebUI inference.
-- Origin: issued/registered by LiteLLM; **not** an arbitrary locally generated token.
-- Storage: protected operational root `.env`.
-- Consumer: Stack7/Open WebUI as the OpenAI-compatible provider credential.
-- Isolation: do not reuse `LITELLM_MASTER_KEY`, Hermes `LITELLM_API_KEY` or Hermes MCP credentials.
-- Rotation: issue a replacement in LiteLLM, update Open WebUI/provider configuration and validate it before revoking the old key. Open WebUI may persist connection settings in its own database after bootstrap, so changing `.env` alone is not assumed to rotate a live configured connection.
-- DR: the operational `.env` backup preserves the bootstrap value while the Stack7 data archive preserves Open WebUI's application-side state.
-
-## Stack0 PKI
-
-Stack0's TLS private key is persistent runtime identity outside `.env`. Stack0 PKI lifecycle owns creation/renewal. Never place TLS private key material in Git or the central environment file.
-
-For DR, the platform PKI is a **managed persistent-identity resource** and must be preserved so a rebuilt platform can retain the existing trust chain. See `dr-howto.md`.
-
-## Bootstrap rules
-
-For a clean host:
-
-1. copy `.env.template` to protected `.env`;
-2. set `root:root 0600`;
-3. replace operator-generated placeholders with high-entropy values;
-4. use native application generators where documented;
-5. deploy/initialize issuer services before populating service-issued credentials;
-6. allow stack PREPARE to create runtime identities it owns;
-7. provision operator-owned runtime identities separately;
-8. preserve every existing persistent secret during routine reinstall/upgrade unless the relevant DR contract explicitly defines it as reconstructable for full disaster rebuild.
+- Type: persistent application identity/cryptographic secret.
+- Origin: operator/application bootstrap according to the stack contract.
+- Storage: protected operational configuration.
+- DR: required alongside the managed Open WebUI data archive so restored application state retains its identity.
 
 ## Rotation rule
 
-Secret rotation is not text editing. Before rotating, identify issuer/authority, live validator, all consumers, overlap capability, effect on encrypted state/sessions/tokens/trust, and rollback material. If a secret is persistent identity, preservation during normal maintenance is the default.
-
-## Disaster recovery rule
-
-The operational `.env` is a protected global recovery prerequisite and must have a secure backup outside Git. It must never be printed or included in an unprotected general-purpose artifact.
-
-The stack recovery contract determines which runtime identities must be separately preserved. Current critical identities are intentionally few: Stack0 platform PKI and the LiteLLM salt coupled to the logical Stack3 database. Gitea's durable application state is recovered with the application-aware Gitea dump strategy. Stack7 adds a quiesced sensitive archive of its persistent data plus the matching `OPENWEBUI_SECRET_KEY` preserved by the protected operational `.env`.
-
-## Future stacks
-
-Every new secret must be classified and documented here at the same time it is added to `.env.template` or runtime lifecycle. Record its owner, generator/issuer, exact storage, consumers, entropy/format, bootstrap, restore behavior, rotation impact and whether an empty value means disabled.
-
-Every new stack must also declare its recovery semantics under the normalized contract described by `recovery.schema.json` and `dr-howto.md` before its backup/restore behavior is implemented.
-
-Do not add a secret to shared `.env` merely because environment variables are convenient. Stack-owned secrets that do not need cross-stack sharing should prefer restricted runtime secret files.
+Do not rotate persistent secrets merely because a stack is reinstalled, upgraded or restored. Rotation is a separate operator decision and must include every dependent consumer. Reconstructable credentials may be regenerated only when the corresponding state is intentionally being rebuilt rather than recovered.
