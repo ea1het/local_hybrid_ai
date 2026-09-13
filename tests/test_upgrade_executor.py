@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from internal import upgrade_executor
+from commands import upgrade_executor, upgrade_registry
 
 
 class UpgradeExecutorSafetyTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             "nousresearch/hermes-agent:v2026.9.11",
         )
 
-    @mock.patch("internal.upgrade_executor.subprocess.run")
+    @mock.patch("commands.upgrade_executor.subprocess.run")
     def test_target_image_preflight_is_read_only_manifest_inspection(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
         with tempfile.TemporaryDirectory() as tmp:
@@ -54,7 +54,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
         )
         self.assertFalse(kwargs["check"])
 
-    @mock.patch("internal.upgrade_executor.subprocess.run")
+    @mock.patch("commands.upgrade_executor.subprocess.run")
     def test_target_image_preflight_rejects_missing_image(self, run):
         run.return_value = subprocess.CompletedProcess([], 1, "", "manifest unknown")
         with tempfile.TemporaryDirectory() as tmp:
@@ -63,7 +63,21 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                     Path(tmp),
                     "nousresearch/hermes-agent:not-a-real-version",
                 )
-        self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_UNAVAILABLE")
+        self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_NOT_AVAILABLE")
+
+    @mock.patch("commands.upgrade_executor.upgrade_registry.manifest_probe")
+    def test_immutable_target_rejects_moved_tag(self, probe):
+        probe.return_value = upgrade_registry.RemoteProbe("sha256:bbbb", "ok")
+        with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
+            upgrade_executor._verify_selected_digest(
+                "stack6/hermes",
+                "nousresearch/hermes-agent:v2026.9.11",
+                {
+                    "target_image": "nousresearch/hermes-agent:v2026.9.11",
+                    "target_digest": "sha256:aaaa",
+                },
+            )
+        self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_MOVED")
 
     def test_execution_rejects_empty_selection_before_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -80,13 +94,13 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_NOTHING_SELECTED")
 
-    @mock.patch("internal.upgrade_executor.os.geteuid", return_value=0)
+    @mock.patch("commands.upgrade_executor.os.geteuid", return_value=0)
     def test_executor_revalidates_policy_before_target_preflight_or_mutation(self, _geteuid):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             runtime = root / "runtime"
-            (root / "installer").mkdir()
-            (root / "installer" / "lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
+            (root / "commands").mkdir()
+            (root / "commands" / "install-lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
             (root / ".env").write_text(
                 "APP_IMAGE=example/app\nAPP_VERSION=1.27.1\n",
                 encoding="utf-8",
