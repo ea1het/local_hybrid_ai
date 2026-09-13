@@ -63,12 +63,37 @@ class ContainerRegistryTests(unittest.TestCase):
             )
 
     def test_remote_inspection_is_read_only(self):
-        cp = mock.Mock(returncode=0, stdout='"sha256:remote"\n')
+        cp = mock.Mock(returncode=0, stdout='"sha256:remote"\n', stderr="")
         with mock.patch("internal.container_registry.subprocess.run", return_value=cp) as run:
             self.assertEqual(container_registry.remote_digest("rabbitmq:3-alpine"), "sha256:remote")
         self.assertEqual(
             run.call_args.args[0],
             ["docker", "buildx", "imagetools", "inspect", "rabbitmq:3-alpine", "--format", "{{json .Manifest.Digest}}"],
+        )
+
+    def test_remote_probe_classifies_rate_limit(self):
+        cp = mock.Mock(returncode=1, stdout="", stderr="429 Too Many Requests")
+        with mock.patch("internal.container_registry.subprocess.run", return_value=cp):
+            probe = container_registry.remote_probe("redis:alpine")
+        self.assertIsNone(probe.digest)
+        self.assertEqual(probe.status, "rate_limited")
+
+    def test_tag_plus_digest_tracks_tag_without_digest(self):
+        image = "postgres:17.10-alpine@sha256:abc"
+        self.assertEqual(container_registry.tracking_reference(image), "postgres:17.10-alpine")
+        self.assertEqual(container_registry.display_label(image), "17.10-alpine (pinned)")
+
+    def test_pure_digest_pin_requires_explicit_tracking_channel(self):
+        image = "ghcr.io/firecrawl/firecrawl@sha256:abc"
+        self.assertIsNone(container_registry.tracking_reference(image))
+        self.assertEqual(container_registry.display_label(image), "pinned")
+        self.assertEqual(
+            container_registry.tracking_reference(image, "ghcr.io/firecrawl/firecrawl:latest"),
+            "ghcr.io/firecrawl/firecrawl:latest",
+        )
+        self.assertEqual(
+            container_registry.display_label(image, "ghcr.io/firecrawl/firecrawl:latest"),
+            "latest (pinned)",
         )
 
 
