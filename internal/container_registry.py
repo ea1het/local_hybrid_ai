@@ -420,10 +420,29 @@ def _release_candidates(tags: tuple[str, ...], source_tag: str | None) -> list[s
     candidates = [tag for tag in version_tags(tags) if _same_tag_family(tag, source_tag)]
     source = _version_parts(source_tag) if source_tag else None
     if source:
-        major = source[0][0]
-        same_major = [tag for tag in candidates if (_version_parts(tag) or ((-1,), None, False))[0][0] == major]
+        source_numbers = source[0]
+        major = source_numbers[0]
+        same_major = [
+            tag
+            for tag in candidates
+            if (_version_parts(tag) or ((-1,), None, False))[0][0] == major
+        ]
         if same_major:
             candidates = same_major
+
+        # Discovery must never advertise a numerically older release as an
+        # update. This matters for repositories with long histories where tag
+        # enumeration may return an incomplete older window (for example
+        # v0.11.3 must never become "available v0.3.8").
+        not_older = [
+            tag
+            for tag in candidates
+            if (_version_parts(tag) or ((-1,), None, False))[0] >= source_numbers
+        ]
+        if not_older:
+            candidates = not_older
+        elif source_tag and _same_tag_family(source_tag, source_tag):
+            candidates = [source_tag]
     return candidates
 
 
