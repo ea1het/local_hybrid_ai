@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from internal import container_registry
+from commands import upgrade_registry as container_registry
 
 
 class RegistryPinnedLatestTests(unittest.TestCase):
@@ -22,10 +22,10 @@ class RegistryPinnedLatestTests(unittest.TestCase):
                 return container_registry.RemoteProbe("sha256:same111111", "ok")
             return container_registry.RemoteProbe(None, "not_found")
 
-        with mock.patch("internal.container_registry.local_digest", return_value="sha256:same111111"), \
-             mock.patch("internal.container_registry.local_version_hint", return_value=None), \
-             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
-             mock.patch("internal.container_registry.manifest_probe", side_effect=manifest):
+        with mock.patch("commands.upgrade_registry.local_digest", return_value="sha256:same111111"), \
+             mock.patch("commands.upgrade_registry.local_version_hint", return_value=None), \
+             mock.patch("commands.upgrade_registry.registry_tags", return_value=tags), \
+             mock.patch("commands.upgrade_registry.manifest_probe", side_effect=manifest):
             state = container_registry.inspect("firecrawl-playwright", image)
 
         self.assertEqual(state.current_version, "latest(same11111)")
@@ -48,15 +48,15 @@ class RegistryPinnedLatestTests(unittest.TestCase):
             ),
         }
 
-        with mock.patch("internal.container_registry.local_digest", return_value="sha256:old111111111"), \
-             mock.patch("internal.container_registry.local_version_hint", return_value=None), \
-             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
+        with mock.patch("commands.upgrade_registry.local_digest", return_value="sha256:old111111111"), \
+             mock.patch("commands.upgrade_registry.local_version_hint", return_value=None), \
+             mock.patch("commands.upgrade_registry.registry_tags", return_value=tags), \
              mock.patch(
-                 "internal.container_registry.manifest_probe",
+                 "commands.upgrade_registry.manifest_probe",
                  return_value=container_registry.RemoteProbe("sha256:new222222222", "ok"),
              ), \
              mock.patch(
-                 "internal.container_registry.manifest_publication",
+                 "commands.upgrade_registry.manifest_publication",
                  side_effect=lambda ref: publications[ref],
              ):
             state = container_registry.inspect("firecrawl-postgres", image)
@@ -80,15 +80,15 @@ class RegistryPinnedLatestTests(unittest.TestCase):
             ),
         }
 
-        with mock.patch("internal.container_registry.local_digest", return_value="sha256:new222222222"), \
-             mock.patch("internal.container_registry.local_version_hint", return_value=None), \
-             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
+        with mock.patch("commands.upgrade_registry.local_digest", return_value="sha256:new222222222"), \
+             mock.patch("commands.upgrade_registry.local_version_hint", return_value=None), \
+             mock.patch("commands.upgrade_registry.registry_tags", return_value=tags), \
              mock.patch(
-                 "internal.container_registry.manifest_probe",
+                 "commands.upgrade_registry.manifest_probe",
                  return_value=container_registry.RemoteProbe("sha256:old111111111", "ok"),
              ), \
              mock.patch(
-                 "internal.container_registry.manifest_publication",
+                 "commands.upgrade_registry.manifest_publication",
                  side_effect=lambda ref: publications[ref],
              ):
             state = container_registry.inspect("firecrawl-postgres", image)
@@ -100,15 +100,15 @@ class RegistryPinnedLatestTests(unittest.TestCase):
         image = "ghcr.io/firecrawl/nuq-postgres@sha256:old111111111"
         tags = container_registry.TagProbe(("latest", "linux-amd64"), "ok")
 
-        with mock.patch("internal.container_registry.local_digest", return_value="sha256:old111111111"), \
-             mock.patch("internal.container_registry.local_version_hint", return_value=None), \
-             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
+        with mock.patch("commands.upgrade_registry.local_digest", return_value="sha256:old111111111"), \
+             mock.patch("commands.upgrade_registry.local_version_hint", return_value=None), \
+             mock.patch("commands.upgrade_registry.registry_tags", return_value=tags), \
              mock.patch(
-                 "internal.container_registry.manifest_probe",
+                 "commands.upgrade_registry.manifest_probe",
                  return_value=container_registry.RemoteProbe("sha256:new222222222", "ok"),
              ), \
              mock.patch(
-                 "internal.container_registry.manifest_publication",
+                 "commands.upgrade_registry.manifest_publication",
                  return_value=container_registry.PublicationProbe(None, "ok", None),
              ):
             state = container_registry.inspect("firecrawl-postgres", image)
@@ -123,7 +123,7 @@ class RegistryPinnedLatestTests(unittest.TestCase):
             "Last-Modified": "Sat, 12 Sep 2026 10:00:00 GMT",
         }
         with mock.patch(
-            "internal.container_registry._registry_request",
+            "commands.upgrade_registry._registry_request",
             return_value=(200, headers, b"{}"),
         ):
             probe = container_registry.manifest_publication(
@@ -144,10 +144,10 @@ class RegistryPinnedLatestTests(unittest.TestCase):
                 return container_registry.RemoteProbe("sha256:old", "ok")
             return container_registry.RemoteProbe("sha256:new", "ok")
 
-        with mock.patch("internal.container_registry.local_digest", return_value="sha256:old"), \
-             mock.patch("internal.container_registry.local_version_hint", return_value=None), \
-             mock.patch("internal.container_registry.registry_tags", return_value=tags), \
-             mock.patch("internal.container_registry.manifest_probe", side_effect=manifest):
+        with mock.patch("commands.upgrade_registry.local_digest", return_value="sha256:old"), \
+             mock.patch("commands.upgrade_registry.local_version_hint", return_value=None), \
+             mock.patch("commands.upgrade_registry.registry_tags", return_value=tags), \
+             mock.patch("commands.upgrade_registry.manifest_probe", side_effect=manifest):
             state = container_registry.inspect("firecrawl-api", image)
 
         self.assertEqual(state.current_version, "2.11.310")
