@@ -1,3 +1,11 @@
+"""Protect registry discovery for digest-pinned images whose package exposes only a mutable latest channel.
+
+These tests cover the conservative mapping between immutable local digests, the
+registry's latest manifest and publication-time evidence. They specifically guard
+against falsely advertising an older digest as an upgrade and against turning
+missing publication metadata into a confident current/update decision.
+"""
+
 from __future__ import annotations
 
 import unittest
