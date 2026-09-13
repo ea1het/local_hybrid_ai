@@ -4,18 +4,18 @@ Local-first AI platform built as independent Docker stacks. Git contains project
 
 ```mermaid
 flowchart LR
-    S0[Stack0 Platform] --> S1[Stack1 HAProxy]
-    S0 --> S2[Stack2 Web]
-    S0 --> S3[Stack3 LiteLLM]
-    S0 --> S4[Stack4 Gitea]
-    S0 --> S5[Stack5 Dockhand]
-    S0 --> S6[Stack6 Hermes]
-    S0 --> S7[Stack7 Open WebUI]
+    S0["Stack0 Platform"] --> S1["Stack1 HAProxy"]
+    S0 --> S2["Stack2 Web"]
+    S0 --> S3["Stack3 LiteLLM"]
+    S0 --> S4["Stack4 Gitea"]
+    S0 --> S5["Stack5 Dockhand"]
+    S0 --> S6["Stack6 Hermes"]
+    S0 --> S7["Stack7 Open WebUI"]
     S3 --> S6
     S3 --> S7
-    S2 -. optional web.search / web.extract .-> S6
-    S2 -. optional web.search / web.extract .-> S7
-    S1 -. ingress .-> S7
+    S2 -. "optional web.search / web.extract" .-> S6
+    S2 -. "optional web.search / web.extract" .-> S7
+    S1 -. "ingress" .-> S7
 ```
 
 ## Repository contract
@@ -29,11 +29,11 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    P[PREPARE] --> D[DEPLOY]
-    D --> R[READY]
-    R --> C[RECONCILE]
-    C --> V[VERIFY]
-    C -. restart/recreate .-> R
+    P["PREPARE"] --> D["DEPLOY"]
+    D --> R["READY"]
+    R --> C["RECONCILE"]
+    C --> V["VERIFY"]
+    C -. "restart/recreate" .-> R
 ```
 
 ## Management boundary
@@ -44,12 +44,12 @@ Human output is the default. Machine consumers use the same CLI with `--json` wh
 
 ```mermaid
 flowchart TB
-    H[Human operator] --> CLI[./local-ai]
-    A[Automation / API / CI / MCP] -->|--json| CLI
-    CLI --> C[commands package]
-    C --> I[install / status / upgrade]
-    C --> DR[recovery subpackage]
-    I --> S[stack lifecycle]
+    H["Human operator"] --> CLI["./local-ai"]
+    A["Automation / API / CI / MCP"] -->|"--json"| CLI
+    CLI --> C["commands package"]
+    C --> I["install / status / upgrade"]
+    C --> DR["recovery subpackage"]
+    I --> S["stack lifecycle"]
     DR --> S
 ```
 
