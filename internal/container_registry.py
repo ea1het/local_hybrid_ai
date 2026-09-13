@@ -22,16 +22,34 @@ class RegistryState:
         return self.local_digest != self.remote_digest
 
 
-def _repo_digest_for_image(image: str, repo_digests: list[str]) -> str | None:
-    repository = image.split("@", 1)[0]
+def _repository_name(reference: str) -> str:
+    """Return a registry-independent repository name for comparison.
+
+    Docker may preserve an explicit registry in Config.Image while RepoDigests
+    omits Docker Hub's registry prefix.  Normalizing both sides prevents a
+    false unknown for equivalent references such as
+    docker.io/searxng/searxng and searxng/searxng.
+    """
+    repository = reference.split("@", 1)[0]
     tail = repository.rsplit("/", 1)[-1]
     if ":" in tail:
         repository = repository.rsplit(":", 1)[0]
+
+    parts = repository.split("/")
+    if parts and parts[0] in {"docker.io", "index.docker.io"}:
+        parts = parts[1:]
+    if len(parts) == 1:
+        parts.insert(0, "library")
+    return "/".join(parts)
+
+
+def _repo_digest_for_image(image: str, repo_digests: list[str]) -> str | None:
+    repository = _repository_name(image)
     for item in repo_digests:
         if "@sha256:" not in item:
             continue
         item_repo, digest = item.split("@", 1)
-        if item_repo == repository or item_repo.endswith("/" + repository):
+        if _repository_name(item_repo) == repository:
             return digest
     return None
 
