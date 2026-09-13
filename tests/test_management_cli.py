@@ -6,6 +6,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from commands import cli
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "local-ai"
@@ -37,18 +40,23 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertTrue(payload["success"])
 
     def test_upgrade_check_contains_all_declared_components_and_selected_column(self):
-        catalog = json.loads((ROOT / "internal" / "upgrade-components.json").read_text())
+        catalog = json.loads((ROOT / "commands" / "upgrade-components.json").read_text())
         expected = sum(len(stack["components"]) for stack in catalog["stacks"])
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
         payload = json.loads(cp.stdout)
         self.assertEqual(len(payload["components"]), expected)
         self.assertTrue(all("selected" in row for row in payload["components"]))
+        self.assertTrue(all("actual" in row for row in payload["components"]))
+        self.assertTrue(all("policy" in row for row in payload["components"]))
+        self.assertTrue(all("selectable" in row for row in payload["components"]))
 
     def test_human_upgrade_table_uses_numeric_stack_column_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("upgrade", "check", "--offline", runtime_root=tmp)
         self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertIn("ACTUAL", cp.stdout.splitlines()[0])
+        self.assertNotIn("CURRENT", cp.stdout.splitlines()[0])
         data_lines = [line for line in cp.stdout.splitlines() if line and not line.startswith("STACK") and not line.startswith("-")]
         self.assertTrue(any(line.startswith("7 ") and "open-webui" in line for line in data_lines))
         self.assertFalse(any(line.startswith("stack") for line in data_lines))
@@ -116,6 +124,29 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertNotEqual(cp.returncode, 0)
         payload = json.loads(cp.stdout)
         self.assertEqual(payload["error"]["code"], "UPGRADE_NOTHING_SELECTED")
+
+    def test_restore_actions_dispatch_only_to_recovery_subpackage(self):
+        expected = {
+            "plan": "restore-all.py",
+            "drill": "restore-drill.py",
+            "apply": "restore-live.py",
+            "resume": "restore-resume.py",
+        }
+        for action, filename in expected.items():
+            with self.subTest(action=action), mock.patch.object(cli, "_run_internal", return_value=0) as run:
+                rc = cli.restore_command([action, "arg"], json_output=False)
+                self.assertEqual(rc, 0)
+                path, args = run.call_args.args
+                self.assertEqual(path, ROOT / "commands" / "recovery" / filename)
+                self.assertEqual(args, ["arg"])
+
+    def test_backup_dispatch_uses_recovery_subpackage(self):
+        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.main(["backup"])
+        self.assertEqual(rc, 0)
+        path, args = run.call_args.args
+        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
+        self.assertEqual(args, [])
 
 
 if __name__ == "__main__":
