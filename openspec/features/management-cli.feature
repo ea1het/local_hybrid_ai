@@ -24,3 +24,21 @@ Feature: Single management CLI anticorruption boundary
     When the operator runs "./local-ai upgrade --yes"
     Then only selected components may be considered by the executor
     And unselected available versions are never implicitly selected
+
+  @CLI-UPGRADE-004
+  Scenario: A stale selection is rejected before mutation
+    Given a component was selected from a recorded current version
+    And the actual runtime version changed afterwards
+    When the operator runs "./local-ai upgrade --yes"
+    Then execution fails with UPGRADE_PLAN_STALE
+    And no recovery point or deployment is started
+
+  @CLI-UPGRADE-005
+  Scenario: A selected stateful component upgrades through the guarded lifecycle
+    Given a selected component declares a safe targeted deploy method
+    When the operator confirms with "./local-ai upgrade --yes"
+    Then a recovery point is created first when the component requires one
+    And only explicitly selected version keys are changed
+    And the selected component reaches READY and its stack VERIFY passes
+    And prepared dependent consumers are reverified
+    And the selection is cleared only after success
