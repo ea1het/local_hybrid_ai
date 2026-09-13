@@ -1,3 +1,10 @@
+"""Ordering tests for registry release and tracking-channel candidates.
+
+These tests prevent discovery from advertising an older exact release as an
+upgrade and ensure mutable numeric channels remain inside their declared series.
+They protect candidate ordering only; compatibility policy is tested separately.
+"""
+
 from __future__ import annotations
 
 import unittest
