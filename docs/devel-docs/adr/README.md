@@ -1,6 +1,8 @@
 # Architecture Decision Records
 
-ADRs preserve architectural choices that are expensive to rediscover from implementation alone.
+[Documentation TOC](../../TOC.md) · [Developer documentation](../README.md) · [Security decisions](../sdr/README.md) · [OpenSpec](../openspec/README.md)
+
+ADRs preserve architectural choices that are expensive to rediscover from implementation alone. They explain *why* the platform has a particular shape; manifests, stack README files and OpenSpec show how that decision appears in the current implementation and observable behaviour.
 
 | ADR | Status | Decision |
 |---|---|---|
@@ -10,4 +12,4 @@ ADRs preserve architectural choices that are expensive to rediscover from implem
 | [0004](0004-upgrade-compatibility-policy.md) | Accepted | Separate registry availability from installation-owned upgrade compatibility policy |
 | [0005](0005-unified-command-implementation-package.md) | Accepted | Organize all private management implementation under `commands/`, with recovery as a cohesive subpackage |
 
-Security rationale belongs in the sibling [`sdr/`](../sdr/) directory. A decision may reference both an ADR and an SDR when architecture and threat treatment overlap.
+Security rationale belongs in the sibling [SDR index](../sdr/README.md). A decision may reference both an ADR and an SDR when architecture and threat treatment overlap. Cross-stack impact should also be visible from the [stack map](../../stacks/README.md) and, where observable behaviour changes, from [OpenSpec traceability](../openspec/traceability.md).
