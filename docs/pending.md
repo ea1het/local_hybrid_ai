@@ -12,9 +12,8 @@ Only active or intentionally deferred work belongs here. Completed qualification
 - `./local-ai` is the sole supported management boundary; keep internal Python, shell, Compose and DR paths outside the external contract.
 - Define validated version-source adapters per component. `Available` must distinguish a usable/tested upgrade candidate from merely the latest reachable upstream release. LiteLLM remains non-selectable until its release-tag/container-tag mapping and compatibility policy are explicit.
 - Extend safe execution metadata to components that are currently inventory-only/non-selectable because their version is pinned directly in tracked Compose or needs a component-specific migration contract.
-- Add explicit source/runtime drift detection and make drift distinct from selected upgrade intent.
-- Complete stable JSON contracts for install/status/doctor/restore where not yet exposed.
-- Add status and doctor operator commands through `local-ai` rather than new public scripts.
+- Complete stable JSON contracts for install/doctor/restore where not yet exposed.
+- Add doctor through `local-ai` rather than a new public script.
 
 ## P1 — DR engine hardening
 
@@ -44,6 +43,8 @@ Only active or intentionally deferred work belongs here. Completed qualification
 
 Stack7/Open WebUI base, web capability, regular-user model policy and first global DR point are qualified. Core `backup all` plus clean-target `restore all` for the pre-Stack7 platform is qualified. Stack6 Buzz is reconstructable from pinned source. Repository tests/documentation/specification are normalized under `tests/`, `docs/`, `adr/`, `sdr/` and `openspec/`.
 
-The guarded upgrade executor is live-qualified on Stack6/Hermes: `v2026.8.31 -> v2026.9.11` was selected explicitly, the exact target image preflight passed, only Hermes was deployed, Stack6 returned READY, capability reconciliation completed, VERIFY passed, the running image was confirmed at the selected target, prepared consumer Stack1 was reverified, and the selection was cleared only after success. Stack6 remains reconstructable; only Git-backed `MEMORY.md` + `USER.md` is durable user memory.
+The guarded upgrade executor is live-qualified on Stack6/Hermes: `v2026.8.31 -> v2026.9.11` was selected explicitly, the exact target image preflight passed, only Hermes was deployed, Stack6 returned READY, capability reconciliation completed, VERIFY passed, the running image was confirmed at the selected target, prepared consumer Stack1 was reverified, and the selection was cleared only after success. The qualification completed with all command return codes at zero. Stack6 remains reconstructable; only Git-backed `MEMORY.md` + `USER.md` is durable user memory, so Hermes sessions/SQLite/cache state are not upgrade recovery requirements.
 
-Upgrade application is now serialized at the sole public `local-ai` boundary with a non-blocking process lock. A concurrent `upgrade --yes` fails closed as `UPGRADE_BUSY`; failed apply attempts are appended to the same installation-local JSONL history with the selected plan snapshot and stable error code. This does not alter stack `.lock` semantics. Broader upgrade coverage still depends on validated per-component version adapters, component-specific migration contracts where required, and explicit desired/deployed/actual drift handling.
+Upgrade application is serialized at the `local-ai` boundary with a non-blocking runtime lock and failed applications are appended to the upgrade history with stable error code, selection snapshot and recovery point when present. `local-ai status` now exposes installation Desired, last-known successfully Deployed and runtime Actual state separately, with Drift defined only as Desired versus Actual; an upgrade selection remains a plan and is not silently promoted to desired state.
+
+`local-ai` is therefore operationally proven for the guarded single-component upgrade path used by Hermes. Broader upgrade coverage still depends on validated per-component version adapters and component-specific migration contracts where required.
