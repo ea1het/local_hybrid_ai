@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import status, upgrade_entry
+from commands import runtime_lifecycle, status, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 RECOVERY = ROOT / "commands" / "recovery"
@@ -43,6 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("args", nargs=argparse.REMAINDER)
 
     sub.add_parser("status", help="show desired, deployed and actual component state")
+
+    for action in ("start", "stop"):
+        runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
+        runtime.add_argument("stack", help="stack id, stackN name, or manifest directory")
 
     up = sub.add_parser("upgrade", help="inspect and manage the local upgrade plan")
     up.add_argument(
@@ -115,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.command == "status":
         return status.main(json_output=json_output)
+
+    if ns.command in {"start", "stop"}:
+        return runtime_lifecycle.main(ns.command, ns.stack, json_output=json_output)
 
     if ns.command == "upgrade":
         args = list(ns.args)
