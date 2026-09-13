@@ -170,11 +170,11 @@ class ContainerRegistryTests(unittest.TestCase):
             ["v1.0.47", "v1.0.40"],
         )
 
-    def test_release_candidates_do_not_cross_major_version(self):
+    def test_release_candidates_exclude_older_versions_and_other_major_lines(self):
         tags = ("v0.1.121", "v0.11.3", "v0.11.4", "v1.0.0")
         self.assertEqual(
             container_registry._release_candidates(tags, "v0.11.3"),
-            ["v0.11.4", "v0.11.3", "v0.1.121"],
+            ["v0.11.4", "v0.11.3"],
         )
 
     def test_channel_detection_recognizes_major_minor_alpine_channel(self):
