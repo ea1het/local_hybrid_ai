@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+OPENSPEC = ROOT / "docs" / "devel-docs" / "openspec"
 
 
 def load_manifests() -> dict[int, dict]:
@@ -66,12 +67,16 @@ class OpenSpecContractTests(unittest.TestCase):
         self.assertIn('DEFAULT_INTERFACE_SETTINGS: \'{"webSearch":"always"}\'', compose)
 
     def test_all_gherkin_tags_have_traceability_entries(self):
-        trace = (ROOT / "openspec" / "traceability.md").read_text(encoding="utf-8")
+        trace = (OPENSPEC / "traceability.md").read_text(encoding="utf-8")
         tags = set()
-        for feature in (ROOT / "openspec").rglob("*.feature"):
+        for feature in OPENSPEC.rglob("*.feature"):
             tags.update(re.findall(r"@([A-Z0-9-]+)", feature.read_text(encoding="utf-8")))
         missing = sorted(tag for tag in tags if f"`{tag}`" not in trace)
         self.assertEqual(missing, [], f"OpenSpec tags without traceability: {missing}")
+
+    def test_openspec_is_centralized_under_docs(self):
+        self.assertTrue(OPENSPEC.is_dir())
+        self.assertFalse((ROOT / "openspec").exists())
 
 
 if __name__ == "__main__":
