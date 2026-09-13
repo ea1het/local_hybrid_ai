@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2] / "commands" / "recovery"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 MODULE_PATH = ROOT / "dr_archive.py"
 SPEC = importlib.util.spec_from_file_location("dr_archive", MODULE_PATH)
 dr_archive = importlib.util.module_from_spec(SPEC)
