@@ -96,15 +96,20 @@ Feature: Single management CLI anticorruption boundary
       Then every declared component reports Desired, Deployed and Actual independently
       And Desired comes from installation-owned configuration
       And Deployed is the latest successfully recorded guarded upgrade when known
+      And a component without guarded-upgrade history adopts its observed runtime as the pre-history deployment baseline
+      And versioned deployment that does not apply is represented as n/a rather than unknown
       And Actual comes from the observed runtime image
       And Drift compares Desired with Actual
+      And Drift is yes when Desired and Actual differ
+      And Drift is no when Desired and Actual match
+      And Drift is n/a when Desired has no meaningful version
       And an upgrade selection is not treated as desired or deployed state
-      And an absent upgrade-history record is represented as unknown rather than inferred
 
     @CLI-STATUS-002
     Scenario: Automation consumes component state without internal coupling
       When the consumer runs "./local-ai --json status"
-      Then it receives the versioned status contract
+      Then it receives status schema version 2
       And every component contains desired, deployed, actual and drift fields
+      And drift uses only yes, no or n/a
       And stack identifiers use stable stackN machine identities
       And runtime state is not synthesized from desired configuration
