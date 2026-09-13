@@ -61,6 +61,8 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertTrue(cli.stat().st_mode & 0o111)
         self.assertTrue((ROOT / "commands").is_dir())
         self.assertTrue((ROOT / "internal").is_dir())
+        self.assertFalse((ROOT / "install.py").exists())
+        self.assertTrue((ROOT / "installer" / "install.py").is_file())
 
 
 if __name__ == "__main__":
