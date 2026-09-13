@@ -14,7 +14,7 @@ class Stack6BuzzContractTests(unittest.TestCase):
     def test_stack6_prepare_provisions_buzz_after_base_prepare(self) -> None:
         lifecycle = json.loads(LIFECYCLE.read_text(encoding="utf-8"))
         prepare = lifecycle["stacks"]["6"]["prepare"]
-        self.assertEqual(prepare[:2], [["./01-prepare.sh"], ["./03-buzz.sh"]])
+        self.assertEqual(prepare[:2], [["./01-prepare.sh"], ["bash", "./03-buzz.sh"]])
 
     def test_compose_defaults_buzz_cli_to_managed_runtime_path(self) -> None:
         compose = (STACK6 / "docker-compose.yml").read_text(encoding="utf-8")
