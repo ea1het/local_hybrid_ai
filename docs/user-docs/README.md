@@ -13,9 +13,10 @@ This area contains the supported operator-facing contract for Local Hybrid AI. O
 ## Start here
 
 - [CLI reference](cli.md) — complete supported management surface, including human and JSON contracts.
-- [Component version authority](version-authority.md) — exact source baselines, non-disruptive adoption and installation-owned version intent.
+- [Upgrading components](upgrade.md) — human workflow for discovering, selecting, applying and recovering from component upgrades; explains `SELECTABLE` and `NO SELECTABLE`.
+- [Component version authority](version-authority.md) — migration/advanced background for installations that predate installation-owned version authority.
 - [Installation](../installation.md) — planning, installation and lifecycle convergence.
-- [Upgrade policy](../upgrade-policy.md) — registry discovery, compatibility, explicit selection and guarded execution.
+- [Upgrade policy](../upgrade-policy.md) — compatibility boundaries and installation policy overrides.
 - [Disaster recovery](../dr/README.md) — backup, restore planning, drills and clean-target recovery.
 - [Configuration and secrets](../configuration/README.md) — protected environment and secret ownership.
 - [Integrations](integrations/README.md) — Hermes and LiteLLM/MCP integration guidance.
