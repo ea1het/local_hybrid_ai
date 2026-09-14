@@ -383,7 +383,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
     `actual` is observed runtime. `available` is registry discovery. Compatibility
     policy, executor selectability and operator selection are separate facts.
     Legacy `current` fields remain in JSON as aliases of actual for schema-1
-    compatibility, but the human interface uses ACTUAL.
+    compatibility. Human output labels the observed runtime version INSTALLED.
     """
     env = read_env()
     plan = load_plan()
@@ -466,7 +466,7 @@ def _human_available(row: dict) -> str:
 
 
 def print_table(rows: list[dict]) -> None:
-    headers = ("STACK", "COMPONENT", "ACTUAL", "AVAILABLE", "POLICY", "SELECTABLE", "SELECTED", "VALID")
+    headers = ("STACK", "COMPONENT", "INSTALLED", "AVAILABLE", "POLICY", "SELECTABLE", "SELECTED", "VALID")
     values = [headers]
     for row in rows:
         valid = row["selection_valid"]
