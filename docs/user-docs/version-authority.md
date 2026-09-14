@@ -14,6 +14,14 @@ Local Hybrid AI keeps an installation-owned version authority internally so that
 
 The operator-facing upgrade view deliberately reduces that model to the concepts that matter during normal work: **installed**, **available**, and **selectable**. Detailed desired-state representation remains an implementation concern unless drift or migration must be diagnosed.
 
+## Catalog boundary
+
+The upgrade catalog contains application components whose release identity is meaningful to an operator, plus project-managed local components where showing `local` makes their lifecycle explicit. It is not a mechanical list of every image referenced by Compose.
+
+Fixed implementation/support images that are part of a stack's internal construction remain source-controlled dependencies outside the operator upgrade catalog when they do not have an independent application lifecycle. For example, Stack1's `busybox:1.38.0` static-web helper is an exact source pin: changing it is a Stack1 source change reviewed and tested with that stack, not an independent `local-ai upgrade` target. Such support images must remain exact; they must not become moving registry channels.
+
+Project-built components such as the Gitea runner and Hermes sandbox are represented as `local` rather than being discovered from a registry. Their runtime health belongs to stack status, while their construction identity belongs to project source.
+
 ## Existing installations
 
 Deployments created before explicit installation-owned version authority can record the exact already-running baseline without recreating containers:
