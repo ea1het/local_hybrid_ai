@@ -32,7 +32,7 @@ AUTHORITIES: dict[str, dict[str, str]] = {
     "stack3/postgresql": {"type": "ref", "ref_key": "LITELLM_POSTGRES_IMAGE"},
     "stack3/litellm": {"type": "split", "image_key": "LITELLM_IMAGE", "version_key": "LITELLM_VERSION"},
     "stack4/gitea": {"type": "ref", "ref_key": "GITEA_IMAGE"},
-    "stack5/dockhand": {"type": "split", "image_key": "DOCKHAND_IMAGE", "version_key": "DOCKHAND_VERSION"},
+    "stack5/dockhand": {"type": "split", "image_key": "DOCKHAND_REPOSITORY", "version_key": "DOCKHAND_VERSION"},
     "stack6/hermes": {"type": "split", "image_key": "HERMES_IMAGE", "version_key": "HERMES_VERSION"},
     "stack7/open-webui": {"type": "split", "image_key": "OPENWEBUI_IMAGE", "version_key": "OPENWEBUI_VERSION"},
 }
