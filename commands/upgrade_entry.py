@@ -34,6 +34,29 @@ def _effective_policy(component) -> tuple[str, str | None, str]:
         raise upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
 
 
+def _current_runtime_version(component, env: dict[str, str]) -> str:
+    """Return the concrete running version used for policy and stale-plan checks.
+
+    Existing containers may retain a historical mutable Config.Image such as
+    ``redis:alpine`` even after installation intent has moved to an exact pin.
+    Resolve that runtime identity through the same registry boundary used by
+    inventory. Registry failure remains fail-closed: no compatible series is
+    invented from a non-version tracking tag.
+    """
+    running = upgrade.running_image(component)
+    if running:
+        literal = upgrade.version_from_image(running)
+        if component.container:
+            try:
+                state = upgrade_registry.inspect(component.container, running)
+            except upgrade_registry.RegistryError:
+                state = None
+            if state is not None and state.current_version:
+                return state.current_version
+        return literal
+    return upgrade.version_from_image(upgrade.compose_image(component, env))
+
+
 def _target_reference(component, version: str, env: dict[str, str]) -> str:
     image = upgrade.running_image(component) or upgrade.compose_image(component, env)
     if not image:
@@ -75,7 +98,7 @@ def _validate_target(component, current: str, version: str, env: dict[str, str])
 def select(stack: str, component_name: str | None, version: str) -> int:
     component = upgrade.find_component(stack, component_name)
     env = upgrade.read_env()
-    current = upgrade.version_from_image(upgrade.running_image(component) or upgrade.compose_image(component, env))
+    current = _current_runtime_version(component, env)
     if current == version:
         raise upgrade.UpgradeError(
             f"{component.stack}/{component.name} is already at {version}",
@@ -161,7 +184,7 @@ def validate_selected_baselines(selections: list[dict]) -> None:
                 f"selected component is no longer selectable: {component_key}",
                 code="UPGRADE_COMPONENT_NOT_SELECTABLE",
             )
-        current = upgrade.version_from_image(upgrade.running_image(component) or upgrade.compose_image(component, env))
+        current = _current_runtime_version(component, env)
         expected = selection.get("current_at_selection")
         if current != expected:
             raise upgrade.UpgradeError(
