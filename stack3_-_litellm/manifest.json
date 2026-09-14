@@ -15,6 +15,39 @@
     "runtime:service_-_litellm",
     "runtime:service_-_litellm-postgres"
   ],
+  "components": [
+    {
+      "id": "postgresql",
+      "service": "litellm-postgres",
+      "container": "litellm-postgres",
+      "management": {"type": "versioned"},
+      "upgrade": {
+        "upstream": "postgres/postgres",
+        "selectable": false,
+        "default_policy": "major-series",
+        "execution": {"mode": "inventory-only", "blocked_by": "migration-policy-required"}
+      }
+    },
+    {
+      "id": "litellm",
+      "service": "litellm",
+      "container": "litellm",
+      "management": {"type": "versioned"},
+      "upgrade": {
+        "upstream": "BerriAI/litellm",
+        "selectable": false,
+        "default_policy": "manual",
+        "recovery_required": true,
+        "execution": {"mode": "inventory-only", "blocked_by": "migration-policy-required"},
+        "apply": {
+          "type": "env-version",
+          "env_key": "LITELLM_VERSION",
+          "image_env_key": "LITELLM_IMAGE",
+          "deploy": ["docker", "compose", "up", "-d", "litellm"]
+        }
+      }
+    }
+  ],
   "blockers": [],
   "recovery": {
     "contract": {
