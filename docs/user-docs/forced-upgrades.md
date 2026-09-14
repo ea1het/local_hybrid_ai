@@ -36,7 +36,7 @@ It does not bypass:
 - immutable target digest capture and revalidation;
 - stale-runtime detection;
 - effective version policy;
-- exact mutation scope known by the catalog;
+- exact mutation scope declared by the owning stack manifest;
 - recovery-point requirements already declared for the component;
 - READY, RECONCILE and VERIFY processing;
 - dependent-consumer re-verification;
@@ -48,7 +48,7 @@ It does not bypass:
 
 `--force` is not a raw escape hatch to run arbitrary Compose changes. If Local Hybrid AI has no deterministic mutation recipe for a component, selection fails with `UPGRADE_FORCE_UNAVAILABLE`.
 
-This distinction is intentional: an administrator may override **support qualification**, but `local-ai` must still know which version authority to change and exactly which service to recreate. Adding a force-capable path for another component therefore requires describing that mutation in the component catalog first.
+This distinction is intentional: an administrator may override **support qualification**, but `local-ai` must still know which version authority to change and exactly which service to recreate. Adding a force-capable path for another component therefore requires describing that mutation in the owning stack's manifest metadata first.
 
 ## Clearing a forced selection
 
