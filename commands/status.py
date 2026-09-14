@@ -94,70 +94,65 @@ def _is_floating_image_reference(image: str | None) -> bool:
     return len(match.group(1).split(".")) < 3
 
 
-def _concrete_runtime_identity(component, actual_image: str | None) -> tuple[str, str | None]:
-    """Return concrete Actual and local digest evidence for the observed runtime.
-
-    A container may still report the historical mutable Config.Image string after
-    source has migrated to an exact installation-owned baseline. Runtime identity
-    therefore must be resolved independently of Desired. Registry failure never
-    invents a concrete version; callers receive the literal runtime tag and no
-    digest proof in that case.
-    """
-    actual = upgrade.version_from_image(actual_image)
-    if not actual_image or not _is_floating_image_reference(actual_image):
-        return actual, None
-    if not getattr(component, "container", None):
-        return actual, None
-    try:
-        state = upgrade_registry.inspect(component.container, actual_image)
-    except upgrade_registry.RegistryError:
-        return actual, None
-    if state is None:
-        return actual, None
-    return state.current_version or actual, state.local_digest
-
-
 def _resolve_state(component, desired_image: str | None, actual_image: str | None) -> tuple[str, str, str]:
     """Resolve Desired/Actual while keeping installation intent authoritative.
 
-    Desired comes from installation-owned configuration and is never advanced by
-    registry discovery. Actual comes from the running container and may require
-    registry mapping when Docker still records a mutable historical image tag.
+    Desired comes from installation-owned configuration. A legacy installation
+    may still have a mutable Desired channel; that compatibility path resolves
+    both sides with one registry inspection. Once Desired is exact, only a
+    mutable historical runtime reference is resolved, again with at most one
+    registry inspection.
     """
     desired = upgrade.version_from_image(desired_image)
-    actual, _local_digest = _concrete_runtime_identity(component, actual_image)
+    actual = upgrade.version_from_image(actual_image)
+    desired_floating = _is_floating_image_reference(desired_image)
+    actual_floating = _is_floating_image_reference(actual_image)
 
     if desired == "n/a":
         return desired, actual, "n/a"
     if actual == "n/a":
         return desired, actual, "yes"
 
-    if not _is_floating_image_reference(desired_image):
-        return desired, actual, _drift(desired, actual)
+    # Compatibility path for installations that have not yet adopted an exact
+    # operational version authority. Registry discovery may explain the channel,
+    # but it is not operator consent to upgrade.
+    if desired_floating:
+        if not actual_image or not getattr(component, "container", None):
+            return desired, actual, "n/a"
+        try:
+            state = upgrade_registry.inspect(
+                component.container,
+                actual_image,
+                tracking_image=desired_image,
+            )
+        except upgrade_registry.RegistryError:
+            return desired, actual, "n/a"
+        if state is None:
+            return desired, actual, "n/a"
+        desired_display = state.available_version or desired
+        actual_display = state.current_version or actual
+        if state.local_digest and state.remote_digest:
+            drift = "no" if state.local_digest == state.remote_digest else "yes"
+        elif state.current_version and state.available_version:
+            drift = "no" if state.current_version == state.available_version else "yes"
+        else:
+            drift = "n/a"
+        return desired_display, actual_display, drift
 
-    # Compatibility path for installations not yet migrated to exact authority.
-    if not actual_image or not getattr(component, "container", None):
-        return desired, actual, "n/a"
-    try:
-        state = upgrade_registry.inspect(
-            component.container,
-            actual_image,
-            tracking_image=desired_image,
-        )
-    except upgrade_registry.RegistryError:
-        return desired, actual, "n/a"
-    if state is None:
-        return desired, actual, "n/a"
+    # Exact Desired is installation intent. Docker may nevertheless keep the old
+    # mutable Config.Image string until the component is next recreated. Resolve
+    # that observed runtime identity without allowing the registry to advance
+    # Desired.
+    if actual_floating and getattr(component, "container", None):
+        try:
+            state = upgrade_registry.inspect(component.container, actual_image)
+        except upgrade_registry.RegistryError:
+            return desired, actual, "n/a"
+        if state is None or not state.current_version:
+            return desired, actual, "n/a"
+        actual = state.current_version
 
-    desired_display = state.available_version or desired
-    actual_display = state.current_version or actual
-    if state.local_digest and state.remote_digest:
-        drift = "no" if state.local_digest == state.remote_digest else "yes"
-    elif state.current_version and state.available_version:
-        drift = "no" if state.current_version == state.available_version else "yes"
-    else:
-        drift = "n/a"
-    return desired_display, actual_display, drift
+    return desired, actual, _drift(desired, actual)
 
 
 def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, str] | None = None) -> list[dict]:
