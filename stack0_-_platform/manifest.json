@@ -20,6 +20,18 @@
     "docker-network:redlocal",
     "runtime:service_-_platform"
   ],
+  "components": [
+    {
+      "id": "platform-foundation",
+      "management": {"type": "platform"},
+      "upgrade": {
+        "availability": "n/a",
+        "selectable": false,
+        "default_policy": "manual",
+        "execution": {"mode": "not-applicable", "blocked_by": "non-versioned-component"}
+      }
+    }
+  ],
   "blockers": [],
   "recovery": {
     "contract": {
