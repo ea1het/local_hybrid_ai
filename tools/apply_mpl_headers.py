@@ -15,7 +15,6 @@ being modified speculatively.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -155,10 +154,9 @@ def insert_after_prefix(text: str, header: str, style: str) -> str:
         index = 0
         if lines and lines[0].startswith("#!"):
             index = 1
-        if path_looks_python(text) and index < len(lines):
-            coding = re.compile(r"^[ \t]*#.*coding[:=][ \t]*[-\w.]+")
-            if coding.match(lines[index]):
-                index += 1
+        coding = re.compile(r"^[ \t]*#.*coding[:=][ \t]*[-\w.]+")
+        if index < len(lines) and coding.match(lines[index]):
+            index += 1
         return "".join(lines[:index]) + header + "".join(lines[index:])
     if style == "xml":
         if text.startswith("<?xml"):
@@ -176,12 +174,8 @@ def insert_after_prefix(text: str, header: str, style: str) -> str:
     return header + text
 
 
-def path_looks_python(text: str) -> bool:
-    first = text.splitlines()[0] if text.splitlines() else ""
-    return "python" in first.lower()
-
-
 def apply_header(path: Path, text: str, style: str) -> str:
+    del path
     if NOTICE_MARKER in text[:4096]:
         return text
     if style == "hash":
@@ -202,7 +196,11 @@ def apply_header(path: Path, text: str, style: str) -> str:
 
 
 def render_report(exceptions: list[tuple[str, str]]) -> str:
-    rows = "\n".join(f"| `{path}` | {reason.replace('|', '\\|')} |" for path, reason in exceptions)
+    rendered_rows: list[str] = []
+    for path, reason in exceptions:
+        safe_reason = reason.replace("|", "\\|")
+        rendered_rows.append(f"| `{path}` | {safe_reason} |")
+    rows = "\n".join(rendered_rows)
     if not rows:
         rows = "| _None_ | All tracked files were safely headered. |"
     return (
