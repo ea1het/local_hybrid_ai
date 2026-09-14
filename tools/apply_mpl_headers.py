@@ -33,7 +33,7 @@ NOTICE_MARKER = NOTICE_LINES[0]
 HASH_SUFFIXES = {
     ".py", ".sh", ".bash", ".zsh", ".fish", ".yaml", ".yml", ".toml",
     ".ini", ".cfg", ".conf", ".env", ".properties", ".feature", ".tf",
-    ".hcl", ".dockerignore", ".gitignore", ".gitattributes", ".editorconfig",
+    ".hcl",
 }
 HTML_SUFFIXES = {".md", ".markdown", ".html", ".htm"}
 C_BLOCK_SUFFIXES = {".css", ".c", ".h", ".cc", ".cpp", ".hpp", ".java"}
@@ -43,7 +43,8 @@ XML_SUFFIXES = {".xml", ".svg"}
 JINJA_SUFFIXES = {".j2", ".jinja", ".jinja2"}
 KNOWN_HASH_NAMES = {
     "Dockerfile", "Makefile", "Procfile", "requirements.txt", "constraints.txt",
-    "Pipfile", "tox.ini", "pytest.ini", ".flake8", ".coveragerc",
+    "Pipfile", "tox.ini", "pytest.ini", ".flake8", ".coveragerc", ".gitignore",
+    ".dockerignore", ".gitattributes", ".editorconfig",
 }
 PURE_JSON_SUFFIXES = {".json"}
 CRYPTO_SUFFIXES = {".pem", ".crt", ".cer", ".key", ".p12", ".pfx", ".der"}
@@ -91,8 +92,6 @@ def classify(path: Path, text: str) -> Decision:
 
     if relative == "LICENSE":
         return Decision(None, "canonical MPL-2.0 license text; header would alter the license document")
-    if path.is_symlink():
-        return Decision(None, "symbolic link; modifying content would replace or alter the link target contract")
     if suffix in BINARY_SUFFIXES:
         return Decision(None, f"binary format ({suffix or 'no suffix'})")
     if suffix in CRYPTO_SUFFIXES:
@@ -222,14 +221,13 @@ def scan(check_only: bool) -> int:
         relative = rel(path)
         if relative == REPORT.relative_to(ROOT).as_posix():
             continue
+        if path.is_symlink():
+            exceptions.append((relative, "symbolic link; modifying content would replace or alter the link target contract"))
+            continue
         try:
             data = path.read_bytes()
         except OSError as exc:
             exceptions.append((relative, f"cannot read safely: {exc}"))
-            continue
-
-        if path.is_symlink():
-            exceptions.append((relative, "symbolic link; modifying content would replace or alter the link target contract"))
             continue
         if is_binary_bytes(data):
             exceptions.append((relative, "binary or non-UTF-8 content"))
