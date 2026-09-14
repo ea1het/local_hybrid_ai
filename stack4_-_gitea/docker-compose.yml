@@ -21,13 +21,16 @@ services:
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea/config
         target: /etc/gitea
+
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea/data
         target: /var/lib/gitea
+
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea-runner/secret/registration-token
         target: /run/secrets/gitea-runner-registration-token
         read_only: true
+
       - type: bind
         source: /etc/localtime
         target: /etc/localtime
@@ -40,7 +43,11 @@ services:
       - redlocal
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/healthz || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:3000/api/healthz || exit 1"
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -48,9 +55,12 @@ services:
 
     security_opt:
       - no-new-privileges:true
+
     cap_drop:
       - ALL
+
     stop_grace_period: 30s
+
 
   gitea-runner:
     image: ${GITEA_RUNNER_IMAGE:-docker.io/gitea/runner:3}
@@ -67,10 +77,12 @@ services:
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea-runner/data
         target: /data
+
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in .env}/service_-_gitea-runner/secret/registration-token
         target: /run/secrets/gitea-runner-registration-token
         read_only: true
+
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
@@ -85,6 +97,7 @@ services:
 
     security_opt:
       - no-new-privileges:true
+
 
 networks:
   redlocal:
