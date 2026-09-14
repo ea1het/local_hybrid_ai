@@ -21,6 +21,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ├── restore apply BACKUP_SET <clean-target mode/options>
 ├── restore resume BACKUP_SET --memory-sync-ssh-bootstrap PATH
 ├── status
+├── doctor
 └── upgrade
     ├── check [--offline]
     ├── policy [stack [component] [set POLICY|clear]]
@@ -29,20 +30,23 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
     └── --yes
 ```
 
-Global `--json` may be placed before the command. It is currently supported by `start`, `stop`, `backup`, `restore`, `status` and `upgrade`; `install` deliberately returns `JSON_NOT_SUPPORTED` until an installer JSON schema is defined.
+Global `--json` may be placed before the command. It is supported by `install`, `start`, `stop`, `backup`, `restore`, `status`, `doctor` and `upgrade`.
 
 ## `install`
 
-`install` is a transparent public facade over the private manifest-driven engine in `commands/install.py`. The CLI does not reinterpret installer options; arguments such as `--plan`, `--dry-run`, `--target`, `--reconcile` and `--yes` pass through unchanged.
+`install` is the public facade over the private manifest-driven engine in `commands/install.py`. Human mode passes installer options through unchanged; machine mode uses the same manifest/lifecycle functions but exposes a stable high-level contract rather than private command lines.
 
 ```bash
 ./local-ai install --plan all
 ./local-ai install --dry-run 7
 ./local-ai install 7 --yes
 ./local-ai install 7 --reconcile --yes
+./local-ai --json install 7 --plan
 ```
 
 The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests, and reconciliation is capability-driven rather than hard-coded by stack number.
+
+The install JSON contract uses schema version `1`. It reports `requested`, `resolved_stacks`, `changed_stacks`, `reconcile_stacks`, high-level lifecycle `actions`, mode and whether mutation was executed. Action records contain stack, lifecycle phase and reason; private shell/Python command lines are deliberately not part of the public machine contract.
 
 ## `start` / `stop`
 
@@ -72,7 +76,7 @@ Creates one atomic manifest-driven full recovery point. The protected operationa
 
 ## `restore`
 
-`restore` exposes four public operations while keeping the implementation in `commands/recovery/` private.
+`restore` exposes four public operations while keeping the implementation in `commands/recovery/` private. In JSON mode the public CLI wraps the private action result in a common schema-1 envelope with `command`, `success` and `result`. Private stderr and invalid private JSON are normalized to a stable public error response instead of leaking mixed human/machine output.
 
 ### `restore plan`
 
@@ -89,7 +93,7 @@ Validates the completed backup set, checks checksums, resolves stack order and p
 ./local-ai restore drill /path/to/backup-set --destination /isolated/path
 ```
 
-Runs an isolated end-to-end recovery drill. Drill containers do not publish ports, do not attach to the platform network and do not modify the live runtime.
+Runs an isolated end-to-end recovery drill. Drill containers do not publish ports, do not attach to the platform network and do not modify the active runtime.
 
 ### `restore apply`
 
@@ -132,6 +136,17 @@ For fixed references, Drift compares the fixed desired identity with the observe
 
 The status JSON contract is schema version `2`; the drift value vocabulary is `yes`, `no`, `n/a`.
 
+## `doctor`
+
+```bash
+./local-ai doctor
+./local-ai --json doctor
+```
+
+`doctor` is read-only. It validates the root management entry point, manifest/lifecycle registry agreement, protected operational `.env` presence and mode, Docker CLI availability, Docker Compose availability and runtime-root presence. A missing runtime root is reported as a warning because a platform may legitimately be inspected before first deployment; doctor does not create it.
+
+Human output uses `PASS`, `WARN` and `FAIL` per check. JSON uses schema version `1`, command `doctor`, a top-level success flag and structured check records. Any failed prerequisite makes the command return non-zero; warnings do not.
+
 ## `upgrade check`
 
 ```bash
@@ -149,6 +164,10 @@ STACK COMPONENT ACTUAL AVAILABLE POLICY SELECTABLE SELECTED VALID
 ```
 
 `ACTUAL` is the runtime observation shared with `status`. `AVAILABLE` describes registry discovery, `POLICY` is the effective installation compatibility policy, `SELECTABLE` is executor capability/authorization, `SELECTED` is explicit operator intent, and `VALID` reports whether an existing selection remains valid. Registry availability never creates consent.
+
+Machine inventory additionally exposes an `execution` object. Selectable components declare `mode=guarded`; inventory-only components declare a stable `blocked_by` reason such as `tracked-compose-pin`, `local-build` or `migration-policy-required`. LiteLLM remains inventory-only until its migration and compatibility contract is explicitly qualified.
+
+Remote registry discovery is cached in the installation runtime area to avoid unnecessary repeated registry traffic. The cache is bounded to 64 entries, defaults to a 300-second TTL and is keyed by component, configured/running image and local immutable digest so a real local image change invalidates reuse. `LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS=0` disables cache reads/writes; values are clamped to at most one day. Cache corruption or write failure is non-fatal and never becomes authority over registry evidence.
 
 ## `upgrade policy`
 
@@ -168,7 +187,7 @@ Three policies exist:
 | `major-series` | Target must be strictly newer and remain in the same `major` series. |
 | `manual` | No series inference; the operator explicitly names the exact target. Comparable semantic downgrades remain rejected. |
 
-The project catalog supplies a default. An installation may override it in `/opt/docker/runtime/platform/upgrade-policy.json`. `clear` removes only the local override and returns to the project default. Policy changes never silently delete an existing selection; an incompatible selection is retained and reported invalid. A read-only policy response has no previous transition; `previous_effective_policy` is emitted only for mutating `set`/`clear` responses.
+The project catalog supplies a default. An installation may override it in the runtime platform state. `clear` removes only the local override and returns to the project default. Policy changes never silently delete an existing selection; an incompatible selection is retained and reported invalid. A read-only policy response has no previous transition; `previous_effective_policy` is emitted only for mutating `set`/`clear` responses.
 
 ## Upgrade selection
 
