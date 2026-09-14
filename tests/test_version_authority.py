@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import io
 import stat
 import tempfile
 import unittest
@@ -38,6 +39,26 @@ class VersionAuthorityTests(unittest.TestCase):
         self.assertNotIn("image: haproxy:3.0-alpine", stack1)
         self.assertNotIn("image: redis:alpine", stack2)
         self.assertNotIn("image: rabbitmq:3-alpine", stack2)
+
+    def test_human_upgrade_table_calls_runtime_version_installed(self):
+        rows = [{
+            "stack": "stack2",
+            "component": "redis",
+            "actual": "8.10.0-alpine3.23",
+            "actual_display": "8.10.0-alpine3.23",
+            "available": "8.10.1-alpine3.23",
+            "policy": "major-series",
+            "selectable": True,
+            "selected": None,
+            "selection_valid": None,
+            "registry": None,
+        }]
+        output = io.StringIO()
+        with mock.patch("sys.stdout", output):
+            upgrade.print_table(rows)
+        header = output.getvalue().splitlines()[0]
+        self.assertIn("INSTALLED", header)
+        self.assertNotIn("ACTUAL", header)
 
     def test_dockhand_adoption_uses_non_conflicting_split_authority(self):
         self.assertEqual(
