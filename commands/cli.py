@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import doctor, install_entry, runtime_lifecycle, status, upgrade_adopt, upgrade_entry
+from commands import doctor, install_entry, inventory, runtime_lifecycle, status, upgrade_adopt, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 RECOVERY = ROOT / "commands" / "recovery"
@@ -81,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="show operational stack state, runtime health and drift")
     sub.add_parser("doctor", help="diagnose management prerequisites and environment consistency")
+    sub.add_parser("inventory", help="validate and rescan manifest-declared component topology")
 
     for action in ("start", "stop"):
         runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
@@ -157,6 +158,9 @@ def main(argv: list[str] | None = None) -> int:
             args.append("--json")
         return _run_internal(RECOVERY / "backup-all.py", args)
 
+    if raw and raw[0] == "inventory":
+        return inventory.main(raw[1:], json_output=json_output)
+
     # Upgrade owns a rich subcommand grammar. Route it directly to the public
     # upgrade facade instead of making argparse reinterpret options such as
     # `--offline` or `--yes`. Adoption remains a distinct migration contract.
@@ -185,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.command == "doctor":
         return doctor.main(json_output=json_output)
+
+    if ns.command == "inventory":
+        return inventory.main([], json_output=json_output)
 
     if ns.command in {"start", "stop"}:
         return runtime_lifecycle.main(ns.command, ns.stack, json_output=json_output)
