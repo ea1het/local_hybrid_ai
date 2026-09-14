@@ -1,0 +1,48 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Apply MPL file headers
+
+on:
+  push:
+    branches:
+      - chore/mpl-file-headers
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: chore/mpl-file-headers
+          fetch-depth: 0
+
+      - name: Apply MPL headers conservatively
+        run: python3 tools/apply_mpl_headers.py
+
+      - name: Verify MPL coverage
+        run: python3 tools/apply_mpl_headers.py --check
+
+      - name: Run repository test gate
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Commit generated header migration
+        shell: bash
+        run: |
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "No migration changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply MPL 2.0 headers across repository"
+          git push origin HEAD:chore/mpl-file-headers
