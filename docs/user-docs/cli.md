@@ -25,7 +25,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 └── upgrade
     ├── [check] [--offline]
     ├── policy [stack [component] [set POLICY|clear]]
-    ├── stack [component] select VERSION
+    ├── stack [component] select VERSION [--force]
     ├── stack [component] clear
     ├── adopt [--yes]              # migration utility for older installations
     └── --yes
@@ -69,38 +69,15 @@ Creates one manifest-driven recovery point. The protected operational `.env` is 
 
 ## `restore`
 
-### Plan
-
 ```bash
 ./local-ai restore plan /path/to/backup-set --dry-run
-```
-
-Validates the backup, checks checksums and prints restore actions without mutation.
-
-### Drill
-
-```bash
 ./local-ai restore drill /path/to/backup-set --destination /isolated/path
-```
-
-Runs an isolated recovery drill without modifying the active runtime.
-
-### Apply
-
-```bash
 ./local-ai restore apply /path/to/backup-set --check-clean-target
-```
-
-Real restore requires the clean-target and execution gates defined by the recovery engine. The CLI never manufactures destructive consent.
-
-### Resume
-
-```bash
 ./local-ai restore resume /path/to/backup-set \
   --memory-sync-ssh-bootstrap /secure/bootstrap
 ```
 
-Resumes the narrowly defined historical recovery path after validation of restored state and prerequisites.
+Restore validation and clean-target gates belong to the recovery engine. The CLI never manufactures destructive consent.
 
 ## `status`
 
@@ -109,13 +86,29 @@ Resumes the narrowly defined historical recovery path after validation of restor
 ./local-ai --json status
 ```
 
-`status` is a **diagnostic installation-state view**, not the normal way to decide whether software updates exist.
+`status` answers the operational question **"is the platform up and coherent?"**. Human output is intentionally stack-oriented:
 
-Internally Local Hybrid AI distinguishes configured intent, successful deployment history and observed runtime because those states are needed to detect drift and protect upgrades. Human `status` may therefore expose `DESIRED`, `DEPLOYED`, `ACTUAL` and `DRIFT` when diagnosing the installation.
+```text
+STACK  NAME                  STATE     HEALTH    DRIFT
+0      platform              prepared  ready     no
+1      haproxy-web           running   ready     no
+2      searxng-firecrawl     running   ready     no
+...
+```
 
-For everyday package/version maintenance, use [`./local-ai upgrade`](upgrade.md). The normal operator questions are simpler: **what is installed, what is available, and can local-ai safely update it?**
+The fields mean:
 
-A healthy component normally has aligned configured/deployed/runtime identities and `DRIFT=no`. Drift indicates that the installation intent and observed runtime disagree and should be understood before applying unrelated upgrades.
+| Field | Meaning |
+|---|---|
+| `STATE` | Stack lifecycle/runtime state such as `unprepared`, `prepared`, `stopped`, `partial` or `running`. |
+| `HEALTH` | Generic runtime readiness derived from required container state/health; application-specific VERIFY remains stack-owned. |
+| `DRIFT` | Aggregated installation-version drift for components owned by the stack: `yes`, `no` or `n/a`. |
+
+Human `status` deliberately does **not** duplicate the version table shown by `upgrade`.
+
+The JSON diagnostic contract keeps both `stacks` and detailed `components`. Component records retain internal `desired`, `deployed`, `actual` and `drift` fields because automation and troubleshooting may need those distinctions. Those internal state dimensions are not the normal operator vocabulary for version maintenance.
+
+Use `./local-ai upgrade` when the question is **"what version is installed and is an update available?"**.
 
 ## `doctor`
 
@@ -124,29 +117,29 @@ A healthy component normally has aligned configured/deployed/runtime identities 
 ./local-ai --json doctor
 ```
 
-`doctor` is read-only. It validates management-entry, manifest/lifecycle, protected `.env`, Docker, Compose and runtime-root prerequisites. Human output uses `PASS`, `WARN` and `FAIL`. A failed prerequisite returns non-zero; warnings do not.
+`doctor` answers **"are the management prerequisites and installation metadata sane?"**. It is read-only and checks the management entry point, manifest/lifecycle consistency, protected `.env` permissions, Docker, Compose and runtime-root prerequisites. Human output uses `PASS`, `WARN` and `FAIL`; warnings do not make the command fail.
+
+`doctor` is not a runtime-status or version-maintenance command.
 
 ## `upgrade`
 
-The complete operator workflow is documented in [Upgrading Local Hybrid AI components](upgrade.md). Start here:
+The complete operator workflow is documented in [Upgrading Local Hybrid AI components](upgrade.md). Start with:
 
 ```bash
 ./local-ai upgrade
 ```
 
-`./local-ai upgrade check` remains a compatibility alias for the same online inventory. `--offline` skips remote registry discovery.
+This is the **only normal human version view**. `./local-ai upgrade check` remains a compatibility alias; new documentation and operator workflows should use `./local-ai upgrade`. `--offline` skips remote registry discovery.
 
-The version table answers the normal maintenance questions:
+The table is:
 
 ```text
 STACK  COMPONENT  INSTALLED  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
 ```
 
-`INSTALLED` is the concrete installed/running version and `AVAILABLE` is the newest version discovered from the component's configured registry/package. A newer `AVAILABLE` value never creates consent.
+`INSTALLED` is the concrete installed/running version. `AVAILABLE` is registry discovery and never creates consent. `SELECTABLE=yes` means the project has qualified the guarded executor for that component. `SELECTED` is explicit operator intent and `VALID` tells whether that stored selection still passes its gates.
 
-### SELECTABLE
-
-`SELECTABLE=yes` means Local Hybrid AI has a qualified guarded executor for that component. The supported flow is:
+A supported upgrade flow is:
 
 ```bash
 ./local-ai upgrade
@@ -155,9 +148,7 @@ STACK  COMPONENT  INSTALLED  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
 sudo ./local-ai upgrade --yes
 ```
 
-Selection is read-only with respect to the service. It verifies the target, compatibility policy and immutable registry digest, then records explicit operator intent.
-
-`upgrade --yes` applies **only already-selected targets**. Before changing anything it revalidates the runtime baseline, component eligibility, policy and immutable target identity. The executor then performs the component's qualified mutation path, including READY/VERIFY and recovery/reconciliation steps where required.
+`upgrade --yes` applies **only already-selected targets**. Before mutation it revalidates the runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and consumer checks remain part of the guarded executor contract.
 
 A successful operation ends with:
 
@@ -165,39 +156,26 @@ A successful operation ends with:
 UPGRADE: PASS
 ```
 
-That message means the supported guarded procedure completed and its required post-change verification passed. It does not merely mean that Docker started a container.
+If PASS is absent, do not infer success merely because a container is running. Inspect `./local-ai status`, the upgrade error/recovery point and `./local-ai upgrade` before retrying or recovering.
 
-If `UPGRADE: PASS` is not produced, do not assume the update completed. Read the error/recovery point and inspect:
+### Administrator-forced upgrade
+
+`SELECTABLE=no` means the project does not claim that path is qualified. An administrator may still accept that risk explicitly **when a deterministic mutation recipe already exists**:
 
 ```bash
-./local-ai status
-./local-ai upgrade
+./local-ai upgrade stack5 dockhand select v1.0.48 --force
+./local-ai upgrade --yes
 ```
 
-Failures are journaled. Local Hybrid AI does not assume that destructive automatic rollback is safe.
+The forced consent is stored in the selection; a second force flag is not required at apply time. `--force` bypasses project qualification only. It does not bypass target existence, digest validation, stale-plan detection, compatibility policy, known mutation scope, recovery requirements, READY, VERIFY or dependent-consumer checks.
 
-Clear an unexecuted selection with:
+If no deterministic mutation recipe exists, force selection fails with `UPGRADE_FORCE_UNAVAILABLE` rather than degrading into an arbitrary Compose operation. See [Administrator-forced upgrades](forced-upgrades.md).
+
+Selections can be cleared without changing runtime:
 
 ```bash
 ./local-ai upgrade stack2 redis clear
 ```
-
-### NO SELECTABLE
-
-`SELECTABLE=no` does not mean upstream software is impossible to update. It means Local Hybrid AI has **not yet qualified a safe automated procedure** for that component.
-
-Typical blocker meanings are:
-
-| Blocker | Meaning |
-|---|---|
-| `migration-policy-required` | Migration/compatibility/recovery semantics still need an explicit contract. |
-| `executor-not-qualified` | Discovery works but mutation/READY/VERIFY has not completed qualification. |
-| `local-build` | Registry-version upgrade semantics do not apply normally. |
-| `non-versioned-component` | Versioned package upgrade is not meaningful for this component. |
-
-Changing upgrade policy does not turn a non-selectable component into a selectable one. Promotion requires identity, compatibility, mutation scope, migration, recovery, READY, VERIFY, dependency-impact, automated-test and real-runtime qualification gates. See [Upgrade executor qualification](../devel-docs/upgrade-qualification.md).
-
-Once marked selectable, the project is asserting that `./local-ai upgrade` is a supported mutation path with defined success and failure semantics. The catalog flag is therefore the final record of qualification, not the mechanism that creates it.
 
 ### Upgrade policy
 
@@ -208,15 +186,7 @@ Once marked selectable, the project is asserting that `./local-ai upgrade` is a 
 ./local-ai upgrade policy stack2 redis clear
 ```
 
-Policies are compatibility boundaries, independent of selectability:
-
-| Policy | Meaning |
-|---|---|
-| `minor-series` | strictly newer target in the same `major.minor` series |
-| `major-series` | strictly newer target in the same `major` series |
-| `manual` | explicit target; no automatic series inference |
-
-A policy override cannot bypass an unqualified executor.
+Policies are compatibility boundaries, independent of support qualification. A policy override cannot by itself make an unqualified component `SELECTABLE=yes`.
 
 ### `upgrade adopt`
 
@@ -225,7 +195,7 @@ A policy override cannot bypass an unqualified executor.
 sudo ./local-ai upgrade adopt --yes
 ```
 
-`adopt` is an **installation migration utility**, not a normal update step. It records exact already-running identities as installation-owned authority for deployments that predate that model. It does not pull images, run Compose, select an update or restart services. Fresh installations should not need routine adoption.
+`adopt` is an installation migration utility for deployments that predate installation-owned exact version authority. It records already-running identities; it does not pull images, run Compose, select an update or restart services.
 
 ## Human and JSON contracts
 
