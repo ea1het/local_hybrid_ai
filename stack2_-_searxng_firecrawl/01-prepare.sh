@@ -43,6 +43,12 @@ for key in STACKS_ROOT BASE_PATH NETWORK_NAME SEARXNG_SECRET SEARXNG_BASE_URL RE
   require_env "${key}"
 done
 
+SEARXNG_IMAGE="${SEARXNG_IMAGE:-docker.io/searxng/searxng:2026.9.5-c7f3080aa}"
+FIRECRAWL_REDIS_IMAGE="${FIRECRAWL_REDIS_IMAGE:-redis}"
+FIRECRAWL_REDIS_VERSION="${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}"
+FIRECRAWL_RABBITMQ_IMAGE="${FIRECRAWL_RABBITMQ_IMAGE:-rabbitmq}"
+FIRECRAWL_RABBITMQ_VERSION="${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}"
+
 [[ "${STACKS_ROOT}" = /* && "${BASE_PATH}" = /* ]] || die "STACKS_ROOT y BASE_PATH deben ser rutas absolutas"
 [[ "${STACK_DIR}" == "${STACKS_ROOT%/}/${STACK_NAME}" ]] || \
   die "este stack debe residir en ${STACKS_ROOT%/}/${STACK_NAME}; ruta actual: ${STACK_DIR}"
@@ -105,9 +111,6 @@ mkdir -p \
   "${BASE_PATH}/service_-_firecrawl-rabbitmq/data" \
   "${POSTGRES_SERVICE}"
 
-# PGDATA belongs to the PostgreSQL container. Existing ownership/mode are never
-# rewritten by PREPARE. A new empty directory is created and the official
-# PostgreSQL entrypoint will establish its runtime ownership during initdb.
 if [[ -e "${POSTGRES_DATA}" || -L "${POSTGRES_DATA}" ]]; then
   [[ -d "${POSTGRES_DATA}" && ! -L "${POSTGRES_DATA}" ]] || \
     die "PGDATA invalido: ${POSTGRES_DATA} debe ser un directorio real"
@@ -148,9 +151,9 @@ step "Permisos de datos"
 image_uid() { docker run --rm --entrypoint id "$1" -u 2>/dev/null || true; }
 image_gid() { docker run --rm --entrypoint id "$1" -g 2>/dev/null || true; }
 declare -A IMAGE_OF=(
-  [searxng]="docker.io/searxng/searxng:2026.9.5-c7f3080aa"
-  [firecrawl-redis]="redis:alpine"
-  [firecrawl-rabbitmq]="rabbitmq:3-alpine"
+  [searxng]="${SEARXNG_IMAGE}"
+  [firecrawl-redis]="${FIRECRAWL_REDIS_IMAGE}:${FIRECRAWL_REDIS_VERSION}"
+  [firecrawl-rabbitmq]="${FIRECRAWL_RABBITMQ_IMAGE}:${FIRECRAWL_RABBITMQ_VERSION}"
 )
 for svc in "${!IMAGE_OF[@]}"; do
   uid="$(image_uid "${IMAGE_OF[$svc]}")"
