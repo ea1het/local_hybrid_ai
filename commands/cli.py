@@ -93,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="upgrade_yes",
         help="apply exactly the upgrades already selected in the local plan",
     )
+    up.add_argument(
+        "--offline",
+        action="store_true",
+        dest="upgrade_offline",
+        help="show upgrade inventory without remote registry discovery",
+    )
     up.add_argument("args", nargs=argparse.REMAINDER)
 
     return parser
@@ -197,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.command == "upgrade":
         args = list(ns.args)
+        if ns.upgrade_offline and "--offline" not in args:
+            args.insert(0, "--offline")
         if ns.upgrade_yes:
             args.insert(0, "--yes")
         return upgrade_entry.main(args, json_output=json_output)
