@@ -59,6 +59,33 @@ def load_catalog_raw() -> dict:
         raise UpgradeError(f"cannot read component catalog: {exc}", code="UPGRADE_CATALOG_INVALID") from exc
     if raw.get("schema_version") != 1 or not isinstance(raw.get("stacks"), list):
         raise UpgradeError("unsupported component catalog schema", code="UPGRADE_CATALOG_INVALID")
+
+    allowed_execution_modes = {"guarded", "inventory-only", "not-applicable"}
+    for stack in raw["stacks"]:
+        if not isinstance(stack, dict) or not isinstance(stack.get("components"), list):
+            raise UpgradeError("invalid component catalog stack record", code="UPGRADE_CATALOG_INVALID")
+        for item in stack["components"]:
+            if not isinstance(item, dict):
+                raise UpgradeError("invalid component catalog component record", code="UPGRADE_CATALOG_INVALID")
+            execution = item.get("execution")
+            if not isinstance(execution, dict) or execution.get("mode") not in allowed_execution_modes:
+                raise UpgradeError(
+                    f"component {stack.get('id')}/{item.get('id')} lacks valid execution metadata",
+                    code="UPGRADE_CATALOG_INVALID",
+                )
+            selectable = item.get("selectable", True)
+            blocked_by = execution.get("blocked_by")
+            if selectable:
+                if execution["mode"] != "guarded" or blocked_by is not None:
+                    raise UpgradeError(
+                        f"selectable component {stack.get('id')}/{item.get('id')} must declare guarded execution",
+                        code="UPGRADE_CATALOG_INVALID",
+                    )
+            elif execution["mode"] == "guarded" or not isinstance(blocked_by, str) or not blocked_by:
+                raise UpgradeError(
+                    f"non-selectable component {stack.get('id')}/{item.get('id')} must declare why execution is blocked",
+                    code="UPGRADE_CATALOG_INVALID",
+                )
     return raw
 
 
@@ -288,6 +315,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
             "available": available,
             "policy": policy_state["effective_policy"],
             "selectable": component.selectable,
+            "execution": dict(record["execution"]),
             "selected": selected.get(component_key, {}).get("version"),
             "selection_valid": policy_state["selection_valid"],
             "registry": registry,
@@ -355,5 +383,10 @@ def find_component(stack: str, name: str | None) -> Component:
         if component is None:
             raise UpgradeError(f"unknown component for {stack}: {name}", code="UPGRADE_COMPONENT_UNKNOWN")
     if not component.selectable:
-        raise UpgradeError(f"component is inventory-only: {key(component)}", code="UPGRADE_COMPONENT_NOT_SELECTABLE")
+        record = component_records()[key(component)]
+        blocked_by = record["execution"]["blocked_by"]
+        raise UpgradeError(
+            f"component is inventory-only: {key(component)} ({blocked_by})",
+            code="UPGRADE_COMPONENT_NOT_SELECTABLE",
+        )
     return component
