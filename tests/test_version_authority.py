@@ -34,15 +34,15 @@ class VersionAuthorityTests(unittest.TestCase):
         self.assertIn("${HAPROXY_VERSION:-3.0.26-alpine3.24}", stack1)
         self.assertIn("${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}", stack2)
         self.assertIn("${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}", stack2)
-        self.assertIn("${DOCKHAND_VERSION:-v1.0.40}", stack5)
+        self.assertIn("${DOCKHAND_REPOSITORY:-fnsys/dockhand}:${DOCKHAND_VERSION:-v1.0.40}", stack5)
         self.assertNotIn("image: haproxy:3.0-alpine", stack1)
         self.assertNotIn("image: redis:alpine", stack2)
         self.assertNotIn("image: rabbitmq:3-alpine", stack2)
 
-    def test_dockhand_adoption_uses_split_authority(self):
+    def test_dockhand_adoption_uses_non_conflicting_split_authority(self):
         self.assertEqual(
             upgrade_adopt.AUTHORITIES["stack5/dockhand"],
-            {"type": "split", "image_key": "DOCKHAND_IMAGE", "version_key": "DOCKHAND_VERSION"},
+            {"type": "split", "image_key": "DOCKHAND_REPOSITORY", "version_key": "DOCKHAND_VERSION"},
         )
 
     def test_exact_split_identity_does_not_need_registry_lookup(self):
