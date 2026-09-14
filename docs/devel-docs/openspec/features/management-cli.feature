@@ -196,43 +196,50 @@ Feature: Single management CLI anticorruption boundary
       And a reported recovery point remains available when one was created
       And the operator must not infer success merely because a container is running
 
-  Rule: Installation state distinguishes intent, history and runtime reality
+    @CLI-UPGRADE-010
+    Scenario: An administrator may explicitly accept an unqualified upgrade path
+      Given a component is not selectable
+      And the catalog already defines a deterministic version-authority mutation and targeted deploy recipe
+      When the administrator selects an exact target with "--force"
+      Then the selection records that project qualification was bypassed
+      And the catalog remains non-selectable
+      And policy, target existence and immutable digest validation still apply
+      And apply revalidates stale runtime, recovery, READY, VERIFY and dependency-impact gates
+      And successful history preserves that the operation was forced
+      And a component without a deterministic mutation recipe fails with UPGRADE_FORCE_UNAVAILABLE
+
+  Rule: Operational status is distinct from version maintenance and environment diagnosis
 
     @CLI-STATUS-001
-    Scenario: Component intent and runtime reality remain distinct
+    Scenario: Human status summarizes stack operation without duplicating upgrade inventory
       When the operator runs "./local-ai status"
-      Then every declared component reports Desired, Deployed and Actual independently
-      And Desired comes from installation-owned configuration
-      And fixed desired image identities remain fixed version or digest identities
-      And mutable tracking tags are resolved through the same owning registry used by upgrade discovery when possible
-      And Deployed is the latest successfully recorded guarded upgrade when known
-      And a component without guarded-upgrade history adopts its observed concrete runtime version as the pre-history deployment baseline
-      And versioned deployment that does not apply is represented as n/a rather than unknown
-      And Actual comes from the observed runtime image
-      And a mutable runtime tag is displayed as its concrete registry-mapped running version when that mapping is available
-      And Drift compares Desired with Actual
-      And Drift is yes when Desired and Actual differ
-      And Drift is no when Desired and Actual match
-      And Drift is n/a when drift is not meaningful or a mutable-tag comparison cannot be proven
-      And equal mutable tag strings alone never prove no drift
-      And an upgrade selection is not treated as desired or deployed state
+      Then exactly one operational row is rendered for each declared stack
+      And the human contract contains Stack, Name, State, Health and Drift columns
+      And State is derived from preparation and required runtime container state
+      And Health reports generic runtime readiness rather than registry update availability
+      And Drift aggregates component installation drift for the stack
+      And Desired, Deployed, Actual, Installed and Available are not human status columns
+      And version maintenance remains the responsibility of "./local-ai upgrade"
+      And management prerequisite diagnosis remains the responsibility of "./local-ai doctor"
 
     @CLI-STATUS-002
-    Scenario: Automation consumes component state without internal coupling
+    Scenario: Automation retains detailed diagnostic component state
       When the consumer runs "./local-ai --json status"
-      Then it receives status schema version 2
-      And every component contains desired, deployed, actual and drift fields
+      Then it receives status schema version 3
+      And the response contains stack operational records and detailed component records
+      And every stack record contains state, health and drift
+      And every component record contains desired, deployed, actual and drift
       And drift uses only yes, no or n/a
       And stack identifiers use stable stackN machine identities
       And runtime state is not synthesized from desired configuration
 
     @CLI-STATUS-003
-    Scenario: Registry-backed status cannot regress to tag-text equality
+    Scenario: Shared component identity remains fail-closed for mutable tags
       Given a component may use a mutable container tag such as alpine, latest, major-only or major.minor tracking
-      When status evaluates Desired and Actual
+      When management evaluates configured and observed component identity
       Then a moved mutable tag is reported as drift yes when local and remote identities differ
       And an unchanged mutable tag is reported as drift no only when registry identity evidence proves equality
       And a registry lookup failure never becomes a false drift no
       And fixed semantic tags do not require remote registry resolution merely to compare equal fixed identities
       And digest-pinned images compare their immutable digest identities directly
-      And the concrete Actual shown by status matches the internal actual value returned by upgrade inventory for the same registry-backed runtime
+      And status and upgrade consume the same low-level image identity semantics rather than independent parsers
