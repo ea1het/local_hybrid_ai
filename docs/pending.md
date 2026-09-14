@@ -30,6 +30,11 @@ Only active or intentionally deferred work belongs here. Completed work and deta
 - Decide whether Stack4 `04-gitmem` remains an explicit operation or gains a normalized lifecycle representation.
 - Keep `.lock` semantics as PREPARED only.
 
+## P1 — Version authority closeout
+
+- Resolve the Stack4 Gitea runner's legacy `docker.io/gitea/runner:3` tracking reference into an exact installation-owned identity before claiming complete component image authority. Capture the deployed runtime identity first; do not advance it from remote registry discovery.
+- Decide whether fixed support sidecars such as Stack1 `busybox:1.38.0` belong in upgrade inventory or remain explicitly outside the operator upgrade catalog. Exact fixed sidecars must not become moving registry channels.
+
 ## P2 — Operations
 
 - Define retention and cleanup treatment for historical local backup sets; verified recovery evidence must not be deleted incidentally.
