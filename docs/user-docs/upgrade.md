@@ -42,7 +42,7 @@ This is the primary human version view. `./local-ai upgrade check` remains a com
 
 | Field | Meaning |
 |---|---|
-| `ACTUAL` | The concrete version installed/running now. In operator documentation this is the installed version. |
+| `INSTALLED` | The concrete version installed/running now. |
 | `AVAILABLE` | The newest version discovered from the same registry/package. Discovery is information, not consent. |
 | `POLICY` | The compatibility boundary local-ai will enforce for an explicit target. |
 | `SELECTABLE` | Whether local-ai has a qualified automated upgrade procedure for that component. |
