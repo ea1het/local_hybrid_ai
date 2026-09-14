@@ -13,6 +13,7 @@ This area contains the supported operator-facing contract for Local Hybrid AI. O
 ## Start here
 
 - [CLI reference](cli.md) — complete supported management surface, including human and JSON contracts.
+- [Component version authority](version-authority.md) — exact source baselines, non-disruptive adoption and installation-owned version intent.
 - [Installation](../installation.md) — planning, installation and lifecycle convergence.
 - [Upgrade policy](../upgrade-policy.md) — registry discovery, compatibility, explicit selection and guarded execution.
 - [Disaster recovery](../dr/README.md) — backup, restore planning, drills and clean-target recovery.
