@@ -2,6 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Regression tests for operational version authority and guarded upgrade UX.
+
+The suite protects exact pre-adoption baselines, non-disruptive adoption,
+concrete runtime identity resolution, guarded selectability and the human
+INSTALLED terminology while keeping internal/runtime identity contracts intact.
+"""
+
 from __future__ import annotations
 
 import io
