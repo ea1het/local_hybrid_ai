@@ -15,9 +15,10 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 - [Project overview](../README.md) — what the platform is, why it is local-first, stack relationships and supported management boundary.
 - [Installation and lifecycle](installation.md) — PREPARE → DEPLOY → READY → RECONCILE → VERIFY.
 - [Operator CLI](user-docs/cli.md) — supported `./local-ai` commands and JSON contracts.
+- [Upgrade workflow](user-docs/upgrade.md) — installed/available/selectable workflow, selection, guarded apply and failure handling.
 - [Configuration and secrets](configuration/README.md) — protected `.env`, generated secrets and ownership rules.
 - [Disaster recovery](dr/README.md) — backup/restore model, operating procedure and qualification status.
-- [Upgrade policy](upgrade-policy.md) — version discovery, compatibility and guarded upgrade rules.
+- [Upgrade compatibility policy](upgrade-policy.md) — compatibility boundaries independent from executor selectability.
 
 ## Architecture
 
@@ -31,6 +32,7 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 ## Operations
 
 - [User documentation](user-docs/README.md)
+- [Upgrade workflow](user-docs/upgrade.md)
 - [Integrations](user-docs/integrations/README.md)
 - [Disaster recovery](dr/README.md)
 - [Active backlog](pending.md)
@@ -40,6 +42,7 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 - [Developer documentation](devel-docs/README.md)
 - [Documentation maintenance standard](devel-docs/documentation.md)
 - [Testing and qualification](devel-docs/testing.md)
+- [Upgrade executor qualification](devel-docs/upgrade-qualification.md)
 - [ADR index](devel-docs/adr/README.md)
 - [SDR index](devel-docs/sdr/README.md)
 - [OpenSpec index](devel-docs/openspec/README.md)
