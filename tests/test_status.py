@@ -92,6 +92,32 @@ class ComponentStateTests(unittest.TestCase):
 
 
 class StatusOperationalTests(unittest.TestCase):
+    def test_local_components_do_not_use_registry_version_drift(self):
+        component = SimpleNamespace(stack="stack4", name="runner", container="gitea-runner")
+        record = {
+            "stack": "stack4",
+            "id": "runner",
+            "availability": "local",
+            "selectable": False,
+            "default_policy": "manual",
+            "execution": {"mode": "inventory-only", "blocked_by": "local-managed"},
+        }
+        with mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.component_records", return_value={"stack4/runner": record}), \
+             mock.patch("commands.status.upgrade.running_image", return_value="docker.io/gitea/runner:3"), \
+             mock.patch("commands.status.component_state.resolve_identity") as resolve:
+            rows = status.inventory(deployed_versions={})
+        resolve.assert_not_called()
+        self.assertEqual(rows, [{
+            "stack": "stack4",
+            "component": "runner",
+            "desired": "local",
+            "deployed": "local",
+            "actual": "local",
+            "drift": "n/a",
+        }])
+
     def test_runtime_summary_distinguishes_running_stopped_partial_and_unprepared(self):
         entry = {"required_containers": ["a", "b"]}
         self.assertEqual(
