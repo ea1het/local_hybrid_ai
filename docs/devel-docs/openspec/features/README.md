@@ -11,6 +11,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 These Gherkin files describe behaviour that spans multiple stacks or belongs to the public management contract rather than to one stack implementation.
 
 - [Management CLI](management-cli.feature) — public `./local-ai` command behaviour, including lifecycle and machine-readable contracts.
+- [Component inventory](component-inventory.feature) — manifest-owned component semantics, topology validation and non-mutating structural rescans.
 - [Upgrade policy](upgrade-policy.feature) — compatibility policy, selection and guarded application behaviour.
 
 Related contracts at the parent level cover [installation](../installer.feature), [platform invariants](../platform.feature) and [disaster recovery](../disaster-recovery.feature). Per-stack behaviour lives in [../stacks/](../stacks/README.md).
