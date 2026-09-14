@@ -6,8 +6,10 @@
 
 This is a non-disruptive migration boundary for installations that predate
 explicit image authority variables. Adoption never recreates containers: it
-records the already-running image/version as installation-owned intent.
-Existing conflicting values fail closed and are never overwritten implicitly.
+records already-present runtime image/version identities as installation-owned
+intent. Unprepared stacks are skipped; a PREPARED stack whose runtime identity
+cannot be observed fails closed. Existing conflicting values are never silently
+overwritten.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import os
 import re
 from pathlib import Path
 
-from commands import upgrade, upgrade_registry
+from commands import component_state, upgrade, upgrade_registry
 
 SCHEMA_VERSION = "1"
 
@@ -98,6 +100,12 @@ def _split_identity(component, running: str) -> tuple[str, str]:
     return _repository_text(reference), version
 
 
+def _component_prepared(component) -> bool:
+    if not component.compose:
+        return True
+    return (upgrade.ROOT / component.compose).parent.joinpath(".lock").is_file()
+
+
 def desired_updates() -> tuple[dict[str, str], list[dict]]:
     components = {upgrade.key(component): component for component in upgrade.load_catalog()}
     updates: dict[str, str] = {}
@@ -110,10 +118,14 @@ def desired_updates() -> tuple[dict[str, str], list[dict]]:
                 f"version authority references unknown component: {component_key}",
                 code="UPGRADE_ADOPTION_CONFIG_INVALID",
             )
+
         running = upgrade.running_image(component)
         if not running:
+            if not _component_prepared(component):
+                adopted.append({"component": component_key, "skipped": "stack-not-prepared"})
+                continue
             raise AdoptionError(
-                f"cannot adopt {component_key}: running image is unavailable",
+                f"cannot adopt {component_key}: PREPARED component image is unavailable",
                 code="UPGRADE_ADOPTION_RUNTIME_UNAVAILABLE",
             )
 
@@ -127,7 +139,7 @@ def desired_updates() -> tuple[dict[str, str], list[dict]]:
             adopted.append({
                 "component": component_key,
                 "image": running,
-                "version": upgrade.version_from_image(running),
+                "version": component_state.version_from_image(running),
                 "running_image": running,
             })
 
@@ -206,11 +218,14 @@ def main(args: list[str], *, json_output: bool = False) -> int:
     else:
         print("VERSION AUTHORITY ADOPTION: " + ("PASS" if execute else "PLAN"))
         for item in components:
-            print(f"- {item['component']}: {item['version']}")
+            if "skipped" in item:
+                print(f"- {item['component']}: skipped ({item['skipped']})")
+            else:
+                print(f"- {item['component']}: {item['version']}")
         if missing:
             print("- missing operational keys: " + ", ".join(missing))
         else:
-            print("- operational version authority already matches runtime")
+            print("- operational version authority already matches observed installed stacks")
         if not execute and missing:
             print("- no changes made; run `./local-ai upgrade adopt --yes` to persist this exact runtime baseline")
     return 0
