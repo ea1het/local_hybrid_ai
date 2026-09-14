@@ -20,7 +20,8 @@
       {"id":"litellm","service":"litellm","container":"litellm","compose":"stack3_-_litellm/docker-compose.yml","upstream":"BerriAI/litellm","selectable":false,"default_policy":"manual","recovery_required":true,"execution":{"mode":"inventory-only","blocked_by":"migration-policy-required"},"apply":{"type":"env-version","env_key":"LITELLM_VERSION","image_env_key":"LITELLM_IMAGE","deploy":["docker","compose","up","-d","litellm"]}}
     ]},
     {"id":"stack4","components":[
-      {"id":"gitea","service":"gitea","container":"gitea","compose":"stack4_-_gitea/docker-compose.yml","upstream":"go-gitea/gitea","selectable":false,"default_policy":"minor-series","execution":{"mode":"inventory-only","blocked_by":"migration-policy-required"}}
+      {"id":"gitea","service":"gitea","container":"gitea","compose":"stack4_-_gitea/docker-compose.yml","upstream":"go-gitea/gitea","selectable":false,"default_policy":"minor-series","execution":{"mode":"inventory-only","blocked_by":"migration-policy-required"}},
+      {"id":"runner","service":"gitea-runner","container":"gitea-runner","compose":"stack4_-_gitea/docker-compose.yml","selectable":false,"availability":"local","default_policy":"manual","execution":{"mode":"inventory-only","blocked_by":"local-managed"}}
     ]},
     {"id":"stack5","components":[
       {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand","selectable":false,"default_policy":"major-series","recovery_required":false,"execution":{"mode":"inventory-only","blocked_by":"executor-not-qualified"},"apply":{"type":"env-version","env_key":"DOCKHAND_VERSION","image_env_key":"DOCKHAND_REPOSITORY","deploy":["docker","compose","up","-d","dockhand"]}}
