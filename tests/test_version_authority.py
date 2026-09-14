@@ -10,13 +10,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from commands import upgrade, upgrade_adopt, upgrade_registry
+from commands import upgrade, upgrade_adopt, upgrade_entry, upgrade_registry
 
 
 class VersionAuthorityTests(unittest.TestCase):
-    def test_haproxy_and_redis_are_guarded_components(self):
+    def test_generic_guarded_components_are_selectable(self):
         records = upgrade.component_records()
-        for component_key in ("stack1/haproxy", "stack2/redis"):
+        for component_key in ("stack1/haproxy", "stack2/redis", "stack2/rabbitmq", "stack5/dockhand"):
             record = records[component_key]
             self.assertTrue(record.get("selectable", True), component_key)
             self.assertEqual(record["execution"], {"mode": "guarded", "blocked_by": None})
@@ -30,12 +30,20 @@ class VersionAuthorityTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         stack1 = (root / "stack1_-_haproxy_web" / "docker-compose.yml").read_text(encoding="utf-8")
         stack2 = (root / "stack2_-_searxng_firecrawl" / "docker-compose.yml").read_text(encoding="utf-8")
+        stack5 = (root / "stack5_-_dockhand" / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("${HAPROXY_VERSION:-3.0.26-alpine3.24}", stack1)
         self.assertIn("${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}", stack2)
         self.assertIn("${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}", stack2)
+        self.assertIn("${DOCKHAND_VERSION:-v1.0.40}", stack5)
         self.assertNotIn("image: haproxy:3.0-alpine", stack1)
         self.assertNotIn("image: redis:alpine", stack2)
         self.assertNotIn("image: rabbitmq:3-alpine", stack2)
+
+    def test_dockhand_adoption_uses_split_authority(self):
+        self.assertEqual(
+            upgrade_adopt.AUTHORITIES["stack5/dockhand"],
+            {"type": "split", "image_key": "DOCKHAND_IMAGE", "version_key": "DOCKHAND_VERSION"},
+        )
 
     def test_exact_split_identity_does_not_need_registry_lookup(self):
         component = upgrade.Component(
@@ -75,6 +83,44 @@ class VersionAuthorityTests(unittest.TestCase):
             repository, version = upgrade_adopt._split_identity(component, "redis:alpine")
         self.assertEqual(repository, "redis")
         self.assertEqual(version, "8.10.0-alpine3.23")
+
+    def test_selection_baseline_resolves_historical_tracking_runtime(self):
+        component = upgrade.Component(
+            stack="stack2",
+            name="redis",
+            service="firecrawl-redis",
+            container="firecrawl-redis",
+            compose="stack2_-_searxng_firecrawl/docker-compose.yml",
+            upstream="redis/redis",
+        )
+        state = upgrade_registry.RegistryState(
+            image="redis:alpine",
+            local_digest="sha256:aaa",
+            remote_digest="sha256:bbb",
+            current_version="8.10.0-alpine3.23",
+            available_version="8.10.1-alpine3.23",
+        )
+        with mock.patch("commands.upgrade_entry.upgrade.running_image", return_value="redis:alpine"), \
+             mock.patch("commands.upgrade_entry.upgrade_registry.inspect", return_value=state):
+            current = upgrade_entry._current_runtime_version(component, {})
+        self.assertEqual(current, "8.10.0-alpine3.23")
+
+    def test_selection_baseline_fails_closed_to_literal_when_registry_resolution_fails(self):
+        component = upgrade.Component(
+            stack="stack2",
+            name="redis",
+            service="firecrawl-redis",
+            container="firecrawl-redis",
+            compose="stack2_-_searxng_firecrawl/docker-compose.yml",
+            upstream="redis/redis",
+        )
+        with mock.patch("commands.upgrade_entry.upgrade.running_image", return_value="redis:alpine"), \
+             mock.patch(
+                 "commands.upgrade_entry.upgrade_registry.inspect",
+                 side_effect=upgrade_registry.RegistryError("rate limited"),
+             ):
+            current = upgrade_entry._current_runtime_version(component, {})
+        self.assertEqual(current, "alpine")
 
     def test_adoption_appends_missing_authority_without_rewriting_existing_values(self):
         with tempfile.TemporaryDirectory() as tmp:
