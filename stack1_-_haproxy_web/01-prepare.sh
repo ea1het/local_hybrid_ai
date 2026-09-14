@@ -39,13 +39,14 @@ set +a
 require_env() { local key="$1"; [[ -n "${!key:-}" ]] || die "falta ${key} en ${ENV_FILE}"; }
 for key in STACKS_ROOT BASE_PATH NETWORK_NAME HAPROXY_HTTP_PORT HAPROXY_HTTPS_PORT ROOT_HOSTNAME \
            WEB_TARGET SEARCH_HOSTNAME SEARCH_TARGET CHAT_HOSTNAME CHAT_TARGET \
-           GIT_HOSTNAME GIT_TARGET \
-           GWIA_HOSTNAME GWIA_TARGET \
-           HOMELAB_HOSTNAME HOMELAB_TARGET \
+           GIT_HOSTNAME GIT_TARGET GWIA_HOSTNAME GWIA_TARGET HOMELAB_HOSTNAME HOMELAB_TARGET \
            NORAI_HOSTNAME NORAI_TARGET; do
   require_env "${key}"
 done
 
+HAPROXY_IMAGE="${HAPROXY_IMAGE:-haproxy}"
+HAPROXY_VERSION="${HAPROXY_VERSION:-3.0.26-alpine3.24}"
+HAPROXY_REF="${HAPROXY_IMAGE}:${HAPROXY_VERSION}"
 PLATFORM_PKI_GID="${PLATFORM_PKI_GID:-1999}"
 [[ "${PLATFORM_PKI_GID}" =~ ^[0-9]+$ && "${PLATFORM_PKI_GID}" -gt 0 ]] || \
   die "PLATFORM_PKI_GID debe ser un entero positivo"
@@ -95,7 +96,6 @@ cmp -s \
 log "PKI de Stack0 verificada"
 
 step "Directorios montados de Stack1"
-# Preserve directory identity: running containers keep these bind mounts.
 for directory in "${HAPROXY_SERVICE}" "${HAPROXY_SERVICE}/config" "${WEB_SERVICE}"; do
   [[ ! -L "${directory}" ]] || die "directorio runtime no puede ser un symlink: ${directory}"
   [[ ! -e "${directory}" || -d "${directory}" ]] || die "ruta runtime no es un directorio: ${directory}"
@@ -136,8 +136,8 @@ docker run --rm \
   -e HOMELAB_TARGET="${HOMELAB_TARGET}" \
   -e NORAI_HOSTNAME="${NORAI_HOSTNAME}" \
   -e NORAI_TARGET="${NORAI_TARGET}" \
-  haproxy:3.0-alpine haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg >/dev/null
-log "haproxy.cfg valida con PKI central"
+  "${HAPROXY_REF}" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg >/dev/null
+log "haproxy.cfg valida con PKI central usando ${HAPROXY_REF}"
 
 step "Validacion de Docker Compose"
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
