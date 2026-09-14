@@ -65,18 +65,26 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 - `CLI-BOUNDARY-001` — `tests/test_management_cli.py::test_cli_boundary_exposes_versioned_json_upgrade_contract`; [ADR-0002](../adr/0002-single-management-cli.md).
 - `CLI-LAYOUT-001` — `tests/test_repository_layout.py::test_local_ai_is_the_supported_root_management_cli`; [ADR-0005](../adr/0005-unified-command-implementation-package.md).
 
+### Machine-readable management contracts
+
+- `CLI-JSON-001` — `tests/test_management_json_contracts.py` verifies structured install plan output and explicit execution confirmation without exposing private command lines.
+- `CLI-JSON-002` — `tests/test_management_json_contracts.py` verifies the common restore action envelope and fail-closed normalization of private command failures.
+- `CLI-DOCTOR-001` — `tests/test_doctor.py` verifies stable doctor payload semantics and deterministic prerequisite checks without requiring a live Docker daemon.
+
 ### Selective runtime lifecycle
 
 - `CLI-RUNTIME-001` — `tests/test_runtime_lifecycle.py` and `tests/test_management_runtime_cli.py`; runtime qualification confirms selective stop preserves the existing container and subsequent start returns the stack to READY/healthy.
 - `CLI-RUNTIME-002` — `tests/test_runtime_lifecycle.py`; runtime qualification confirms that stopping a required provider while active consumers depend on it fails closed without mutating the provider.
 
-### Registry failure semantics
+### Registry discovery semantics
 
 - `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 at the registry request boundary and proves `rate_limited`/`unauthorized`/`forbidden` propagate as `available=unknown`, never `current`. Positive registry discovery is separately runtime-qualified against the supported registry families used by configured images.
+- `CLI-REGISTRY-002` — `tests/test_registry_discovery_cache.py` verifies TTL reuse, expiry, local-digest invalidation and bounded persistent cache size without contacting public registries.
 
 ### Upgrade execution
 
 - `CLI-UPGRADE-001` — management CLI inventory coverage plus `commands/upgrade-components.json`.
+- `CLI-UPGRADE-007` — `tests/test_upgrade_execution_metadata.py` verifies every component has explicit execution metadata, guarded components remain distinct from inventory-only components, and LiteLLM remains blocked on an explicit migration/compatibility policy.
 - `CLI-UPGRADE-002` — `tests/test_upgrade_selection_policy.py`; installation-local plan includes immutable target digest.
 - `CLI-UPGRADE-003` — management CLI proves `--yes` never auto-selects available versions.
 - `CLI-UPGRADE-004` — stale plan fails before execution with `UPGRADE_PLAN_STALE`.
