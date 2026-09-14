@@ -11,6 +11,8 @@ x-logging: &logging
     max-file: "3"
     compress: "true"
 
+# Todos los servicios usan la red bridge externa propiedad de Stack0.
+# 01-prepare.sh exige que exista y valida que sea de tipo bridge; nunca la crea.
 networks:
   redlocal:
     external: true
@@ -18,47 +20,72 @@ networks:
 
 services:
 
+  # -------------------------------------------------------------------------
+  # SearXNG
+  # -------------------------------------------------------------------------
   searxng:
     image: ${SEARXNG_IMAGE:-docker.io/searxng/searxng:2026.9.5-c7f3080aa}
     container_name: searxng
     restart: unless-stopped
+
     networks:
       - redlocal
+
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_searxng/config:/etc/searxng
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_searxng/data:/var/cache/searxng
+
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET}
       SEARXNG_BASE_URL: ${SEARXNG_BASE_URL}
+
     logging: *logging
 
+
+  # -------------------------------------------------------------------------
+  # Firecrawl API + workers
+  # Firecrawl authenticates to PostgreSQL with its dedicated non-admin role.
+  # -------------------------------------------------------------------------
   firecrawl-api:
     image: ${FIRECRAWL_IMAGE:-ghcr.io/firecrawl/firecrawl@sha256:1910ef022706238c7d13c0e191b9a080efcf10aab049d776ba321abd8dc512ca}
     container_name: firecrawl-api
     restart: unless-stopped
+
     command: node dist/src/harness.js --start-docker
+
     networks:
       - redlocal
+
     environment:
       HOST: "0.0.0.0"
       PORT: "3002"
       ENV: "local"
       USE_DB_AUTHENTICATION: "false"
+
       REDIS_URL: "redis://:${REDIS_PASSWORD}@firecrawl-redis:6379"
       REDIS_RATE_LIMIT_URL: "redis://:${REDIS_PASSWORD}@firecrawl-redis:6379"
+
       PLAYWRIGHT_MICROSERVICE_URL: "http://firecrawl-playwright:3000/scrape"
+
       NUQ_RABBITMQ_URL: "amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@firecrawl-rabbitmq:5672"
+
       POSTGRES_HOST: "firecrawl-postgres"
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${FIRECRAWL_DB_USER:?Set FIRECRAWL_DB_USER in .env}
       POSTGRES_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?Set FIRECRAWL_DB_PASSWORD in .env}
       POSTGRES_DB: ${FIRECRAWL_DB_NAME:?Set FIRECRAWL_DB_NAME in .env}
+
+      # Firecrawl accede directamente a SearXNG por la red Docker.
+      # No debe pasar por HAProxy para comunicación interna.
       SEARXNG_ENDPOINT: "http://searxng:8080"
+
       HARNESS_STARTUP_TIMEOUT_MS: "60000"
+
     ulimits:
       nofile:
         soft: 65535
         hard: 65535
+
     depends_on:
       searxng:
         condition: service_started
@@ -70,83 +97,127 @@ services:
         condition: service_healthy
       firecrawl-postgres:
         condition: service_healthy
+
     cpus: 4.0
     mem_limit: 8G
     memswap_limit: 8G
+
     logging: *logging
 
+
+  # -------------------------------------------------------------------------
+  # Playwright para Firecrawl
+  # -------------------------------------------------------------------------
   firecrawl-playwright:
     image: ${FIRECRAWL_PLAYWRIGHT_IMAGE:-ghcr.io/firecrawl/playwright-service@sha256:df1a393ce8bfc3801570a826a9b0dcc400ae48789adb4a0ad9d6cbf0229b059b}
     container_name: firecrawl-playwright
     restart: unless-stopped
+
     networks:
       - redlocal
+
     environment:
       PORT: "3000"
       MAX_CONCURRENT_PAGES: "10"
       BLOCK_MEDIA: "true"
+
     security_opt:
       - no-new-privileges:true
+
     cap_drop:
       - ALL
+
     tmpfs:
       - /tmp/.cache:noexec,nosuid,size=1g
+
     cpus: 2.0
     mem_limit: 4G
     memswap_limit: 4G
+
     logging: *logging
 
+
+  # -------------------------------------------------------------------------
+  # Redis para colas/rate limiting de Firecrawl.
+  # No publica puertos. Se protege con password porque redlocal es compartida.
+  # -------------------------------------------------------------------------
   firecrawl-redis:
     image: ${FIRECRAWL_REDIS_IMAGE:-redis}:${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}
     container_name: firecrawl-redis
     restart: unless-stopped
+
     networks:
       - redlocal
+
     command:
       - redis-server
       - --bind
       - "0.0.0.0"
       - --requirepass
       - ${REDIS_PASSWORD}
+
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_firecrawl-redis/data:/data
+
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping 2>/dev/null | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 5s
+
     logging: *logging
 
+
+  # -------------------------------------------------------------------------
+  # RabbitMQ para NuQ.
+  # Sin plugin/dashboard de management y sin puertos publicados en el host.
+  # -------------------------------------------------------------------------
   firecrawl-rabbitmq:
     image: ${FIRECRAWL_RABBITMQ_IMAGE:-rabbitmq}:${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}
     container_name: firecrawl-rabbitmq
     restart: unless-stopped
+
     networks:
       - redlocal
+
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_firecrawl-rabbitmq/data:/var/lib/rabbitmq
+
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 20s
+
     mem_limit: 512M
     memswap_limit: 512M
+
     logging: *logging
 
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL / NuQ.
+  # No publica el puerto 5432 en el host.
+  # postgres remains the administrative/bootstrap role. Its password is a
+  # Stack2 runtime secret; Firecrawl itself uses FIRECRAWL_DB_USER instead.
+  # -------------------------------------------------------------------------
   firecrawl-postgres:
     image: ${FIRECRAWL_POSTGRES_IMAGE:-ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6}
     container_name: firecrawl-postgres
     restart: unless-stopped
+
     networks:
       - redlocal
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
@@ -154,14 +225,17 @@ services:
       FIRECRAWL_DB_USER: ${FIRECRAWL_DB_USER:?Set FIRECRAWL_DB_USER in .env}
       FIRECRAWL_DB_PASSWORD: ${FIRECRAWL_DB_PASSWORD:?Set FIRECRAWL_DB_PASSWORD in .env}
       FIRECRAWL_DB_NAME: ${FIRECRAWL_DB_NAME:?Set FIRECRAWL_DB_NAME in .env}
+
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_firecrawl-postgres/data:/var/lib/postgresql/data
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_firecrawl-postgres/secret/postgres_admin_password:/run/secrets/postgres_admin_password:ro
       - ./config/postgres/020-firecrawl-app-role.sh:/docker-entrypoint-initdb.d/020-firecrawl-app-role.sh:ro
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 30s
+
     logging: *logging
