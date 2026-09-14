@@ -9,6 +9,27 @@
   "optional": [1],
   "provides": ["containers.management"],
   "owns": ["container:dockhand", "volume:dockhand_data"],
+  "components": [
+    {
+      "id": "dockhand",
+      "service": "dockhand",
+      "container": "dockhand",
+      "management": {"type": "versioned"},
+      "upgrade": {
+        "upstream": "Finsys/dockhand",
+        "selectable": false,
+        "default_policy": "major-series",
+        "recovery_required": false,
+        "execution": {"mode": "inventory-only", "blocked_by": "executor-not-qualified"},
+        "apply": {
+          "type": "env-version",
+          "env_key": "DOCKHAND_VERSION",
+          "image_env_key": "DOCKHAND_REPOSITORY",
+          "deploy": ["docker", "compose", "up", "-d", "dockhand"]
+        }
+      }
+    }
+  ],
   "recovery": {
     "contract": {
       "schema_version": 1,
