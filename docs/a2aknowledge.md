@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # A2A Knowledge — Local Hybrid AI
 
 Continuity contract for AI-assisted maintenance. Start with the root [README.md](../README.md), [pending.md](pending.md), the affected stack README/manifest and current Git history. For DR, also read [dr/status.md](dr/status.md).

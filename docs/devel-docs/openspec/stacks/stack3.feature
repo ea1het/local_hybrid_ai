@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Stack3 AI gateway
   Stack3 provides one OpenAI-compatible inference boundary for application stacks and
   owns LiteLLM's durable PostgreSQL state. Application credentials are separate from

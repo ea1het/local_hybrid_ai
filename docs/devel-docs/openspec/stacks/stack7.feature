@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Stack7 Open WebUI
   Stack7 provides the user-facing chat UI on top of Stack3 while preserving explicit
   model authorization and persistent application state. The reconciler owns the

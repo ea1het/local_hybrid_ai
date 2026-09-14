@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 # Created by https://www.toptal.com/developers/gitignore/api/python,react,reactnative,visualstudiocode,visualstudio,jetbrains+all,macos,windows,flask,redis,terraform,rust,node,angular,platformio,microsoftoffice,pydev,pycharm+all,pythonvanilla,jupyternotebooks,circuitpython,zsh,rust-analyzer,powershell,c,c++,cmake,premake-gmake
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,react,reactnative,visualstudiocode,visualstudio,jetbrains+all,macos,windows,flask,redis,terraform,rust,node,angular,platformio,microsoftoffice,pydev,pycharm+all,pythonvanilla,jupyternotebooks,circuitpython,zsh,rust-analyzer,powershell,c,c++,cmake,premake-gmake
 

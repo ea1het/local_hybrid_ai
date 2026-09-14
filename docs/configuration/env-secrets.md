@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Secrets explained — `.env` and runtime identities
 
 This is the canonical provenance and lifecycle guide for secrets used by `local_hybrid_ai`. `.env.template` defines which variables exist; this document explains where sensitive values come from, who generates or issues them, where they live, what consumes them and what rotation means.

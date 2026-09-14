@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Public CLI dispatch tests for selective stack runtime start/stop.
 
 These tests ensure stack selectors and the global JSON flag reach the runtime

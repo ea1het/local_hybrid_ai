@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # OpenSpec behavioural contracts
 
 [Documentation TOC](../../TOC.md) · [Developer documentation](../README.md) · [Architecture decisions](../adr/README.md) · [Security decisions](../sdr/README.md) · [Traceability](traceability.md)
