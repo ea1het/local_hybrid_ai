@@ -86,20 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
         runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
         runtime.add_argument("stack", help="stack id, stackN name, or manifest directory")
 
-    up = sub.add_parser("upgrade", help="inspect and manage the local upgrade plan")
-    up.add_argument(
-        "--yes",
-        action="store_true",
-        dest="upgrade_yes",
-        help="apply exactly the upgrades already selected in the local plan",
-    )
-    up.add_argument(
-        "--offline",
-        action="store_true",
-        dest="upgrade_offline",
-        help="show upgrade inventory without remote registry discovery",
-    )
-    up.add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("upgrade", help="inspect and manage component upgrades")
 
     return parser
 
@@ -170,12 +157,14 @@ def main(argv: list[str] | None = None) -> int:
             args.append("--json")
         return _run_internal(RECOVERY / "backup-all.py", args)
 
-    # Adoption is a distinct mutation contract: it records the exact already-
-    # running component identities and never applies an upgrade or recreates a
-    # container. Dispatch it before argparse so `upgrade adopt --yes` remains
-    # unambiguous from the existing `upgrade --yes` apply command.
-    if len(raw) >= 2 and raw[:2] == ["upgrade", "adopt"]:
-        return _upgrade_adopt(raw[2:], json_output=json_output)
+    # Upgrade owns a rich subcommand grammar. Route it directly to the public
+    # upgrade facade instead of making argparse reinterpret options such as
+    # `--offline` or `--yes` around a REMAINDER positional. Adoption remains a
+    # distinct migration contract because it has different mutation semantics.
+    if raw and raw[0] == "upgrade":
+        if len(raw) >= 2 and raw[1] == "adopt":
+            return _upgrade_adopt(raw[2:], json_output=json_output)
+        return upgrade_entry.main(raw[1:], json_output=json_output)
 
     parser = build_parser()
     ns = parser.parse_args(raw)
@@ -200,14 +189,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.command in {"start", "stop"}:
         return runtime_lifecycle.main(ns.command, ns.stack, json_output=json_output)
-
-    if ns.command == "upgrade":
-        args = list(ns.args)
-        if ns.upgrade_offline and "--offline" not in args:
-            args.insert(0, "--offline")
-        if ns.upgrade_yes:
-            args.insert(0, "--yes")
-        return upgrade_entry.main(args, json_output=json_output)
 
     parser.error("unsupported command")
     return 2
