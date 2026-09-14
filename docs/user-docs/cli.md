@@ -20,6 +20,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ├── restore drill BACKUP_SET --destination PATH
 ├── restore apply BACKUP_SET <clean-target mode/options>
 ├── restore resume BACKUP_SET --memory-sync-ssh-bootstrap PATH
+├── inventory rescan
 ├── status
 ├── doctor
 └── upgrade
@@ -78,6 +79,21 @@ Creates one manifest-driven recovery point. The protected operational `.env` is 
 ```
 
 Restore validation and clean-target gates belong to the recovery engine. The CLI never manufactures destructive consent.
+
+## `inventory rescan`
+
+```bash
+./local-ai inventory rescan
+./local-ai --json inventory rescan
+```
+
+Stack `manifest.json` files are the semantic source of component topology. Every owned container is classified as a `versioned`, `local`, `helper` or `platform` component; Compose remains the implementation binding. The CLI compiles current manifests directly on every management read, so `status` and `upgrade` do not depend on a previously generated catalog.
+
+`inventory rescan` validates that component ownership and Compose service bindings are coherent, calculates a source fingerprint and compares the current topology with the previous derived snapshot. It reports components that were added, removed or structurally changed.
+
+The snapshot is diagnostic history only. A rescan never prepares, deploys, recreates or removes a stack, never changes `.env`, never selects an upgrade and never performs registry discovery. A removed component is reported; it is not automatically treated as permission to delete its old runtime resource. Structural migrations remain explicit stack-owned operations.
+
+Because normal management compiles live manifests, forgetting to run `rescan` after `git pull` cannot leave the CLI using stale component topology. Rescan exists to make structural change visible and auditable.
 
 ## `status`
 
