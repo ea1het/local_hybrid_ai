@@ -45,18 +45,18 @@ class ManagementCliContractTests(unittest.TestCase):
 
     def test_cli_boundary_exposes_versioned_json_upgrade_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
+            cp = self.run_cli("--json", "upgrade", "--offline", runtime_root=tmp)
         self.assertEqual(cp.returncode, 0, cp.stderr)
         payload = json.loads(cp.stdout)
         self.assertEqual(payload["schema_version"], "1")
         self.assertEqual(payload["command"], "upgrade.check")
         self.assertTrue(payload["success"])
 
-    def test_upgrade_check_contains_all_declared_components_and_selected_column(self):
+    def test_upgrade_contains_all_declared_components_and_selected_column(self):
         catalog = json.loads((ROOT / "commands" / "upgrade-components.json").read_text())
         expected = sum(len(stack["components"]) for stack in catalog["stacks"])
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
+            cp = self.run_cli("--json", "upgrade", "--offline", runtime_root=tmp)
         payload = json.loads(cp.stdout)
         self.assertEqual(len(payload["components"]), expected)
         self.assertTrue(all("selected" in row for row in payload["components"]))
@@ -64,23 +64,34 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertTrue(all("policy" in row for row in payload["components"]))
         self.assertTrue(all("selectable" in row for row in payload["components"]))
 
-    def test_human_upgrade_table_uses_numeric_stack_column_only(self):
+    def test_upgrade_check_remains_compatibility_alias(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("upgrade", "check", "--offline", runtime_root=tmp)
+            primary = self.run_cli("--json", "upgrade", "--offline", runtime_root=tmp)
+            alias = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
+        self.assertEqual(primary.returncode, 0, primary.stderr)
+        self.assertEqual(alias.returncode, 0, alias.stderr)
+        self.assertEqual(json.loads(primary.stdout)["components"], json.loads(alias.stdout)["components"])
+
+    def test_human_upgrade_table_uses_installed_and_numeric_stack_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("upgrade", "--offline", runtime_root=tmp)
         self.assertEqual(cp.returncode, 0, cp.stderr)
-        self.assertIn("ACTUAL", cp.stdout.splitlines()[0])
-        self.assertNotIn("CURRENT", cp.stdout.splitlines()[0])
+        header = cp.stdout.splitlines()[0]
+        self.assertIn("INSTALLED", header)
+        self.assertNotIn("ACTUAL", header)
+        self.assertNotIn("CURRENT", header)
         data_lines = [line for line in cp.stdout.splitlines() if line and not line.startswith("STACK") and not line.startswith("-")]
         self.assertTrue(any(line.startswith("7 ") and "open-webui" in line for line in data_lines))
         self.assertFalse(any(line.startswith("stack") for line in data_lines))
 
     def test_json_upgrade_contract_keeps_stable_stack_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("--json", "upgrade", "check", "--offline", runtime_root=tmp)
+            cp = self.run_cli("--json", "upgrade", "--offline", runtime_root=tmp)
         self.assertEqual(cp.returncode, 0, cp.stderr)
         payload = json.loads(cp.stdout)
         open_webui = next(row for row in payload["components"] if row["component"] == "open-webui")
         self.assertEqual(open_webui["stack"], "stack7")
+        self.assertIn("actual", open_webui)
 
     def test_single_component_stack_policy_shorthand_persists_override(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,7 +111,7 @@ class ManagementCliContractTests(unittest.TestCase):
 
     def test_nonselectable_component_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("upgrade", "stack1", "select", "3.1-alpine", runtime_root=tmp)
+            cp = self.run_cli("upgrade", "stack3", "postgresql", "select", "17.11-alpine3.24", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("UPGRADE_COMPONENT_NOT_SELECTABLE", cp.stderr)
 
