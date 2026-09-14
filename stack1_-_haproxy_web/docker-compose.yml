@@ -25,22 +25,34 @@ services:
       - "0.0.0.0:${HAPROXY_HTTPS_PORT:-443}:8443"
 
     volumes:
+      # Stack1 owns only HAProxy configuration.
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_haproxy/config:/usr/local/etc/haproxy:ro
+
+      # Stack0 owns the shared TLS certificate/key lifecycle.
+      # Mount the directory rather than individual files so renewed/recreated
+      # files remain visible to the container after a controlled HAProxy reload.
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_platform/pki:/etc/platform-pki:ro
 
     environment:
       ROOT_HOSTNAME: ${ROOT_HOSTNAME:-casa.lan}
+
       WEB_TARGET: ${WEB_TARGET:-web:80}
+
       SEARCH_HOSTNAME: ${SEARCH_HOSTNAME:-buscar}
       SEARCH_TARGET: ${SEARCH_TARGET:-searxng:8080}
+
       CHAT_HOSTNAME: ${CHAT_HOSTNAME:-chat}
       CHAT_TARGET: ${CHAT_TARGET:-open-webui:8080}
+
       GIT_HOSTNAME: ${GIT_HOSTNAME:-git}
       GIT_TARGET: ${GIT_TARGET:-gitea:3000}
+
       GWIA_HOSTNAME: ${GWIA_HOSTNAME:-gwia}
       GWIA_TARGET: ${GWIA_TARGET:-litellm:4000}
+
       HOMELAB_HOSTNAME: ${HOMELAB_HOSTNAME:-homelab}
       HOMELAB_TARGET: ${HOMELAB_TARGET:-dockhand:3000}
+
       NORAI_HOSTNAME: ${NORAI_HOSTNAME:-norai}
       NORAI_TARGET: ${NORAI_TARGET:-hermes:9119}
 
@@ -51,15 +63,20 @@ services:
         max-file: "3"
         compress: "true"
 
+
   web:
     image: busybox:1.38.0
     container_name: web
     restart: unless-stopped
+
     command: httpd -f -p 80 -h /www
+
     networks:
       - redlocal
+
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_web:/www:ro
+
 
 networks:
   redlocal:
