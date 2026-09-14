@@ -21,12 +21,18 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - dockhand_data:/app/data
 
+
 networks:
+
   redlocal:
     external: true
     name: ${NETWORK_NAME:-redlocal}
 
+
+# Stack5 owns the lifecycle of this named volume. 01-prepare.sh creates it only
+# when absent and never deletes or recreates an existing volume.
 volumes:
+
   dockhand_data:
     external: true
     name: dockhand_data
