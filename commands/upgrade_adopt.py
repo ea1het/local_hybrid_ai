@@ -4,9 +4,9 @@
 
 """Adopt observed component image identities into the protected operational env.
 
-This is a one-time/non-disruptive migration boundary for installations that
-predate explicit image authority variables. Adoption never recreates containers:
-it only records the already-running image/version as installation-owned intent.
+This is a non-disruptive migration boundary for installations that predate
+explicit image authority variables. Adoption never recreates containers: it
+records the already-running image/version as installation-owned intent.
 Existing conflicting values fail closed and are never overwritten implicitly.
 """
 
@@ -14,15 +14,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from commands import upgrade, upgrade_registry
 
 SCHEMA_VERSION = "1"
 
-# ``split`` authorities are consumed as repository + version by Compose and by
-# the existing guarded env-version executor. ``ref`` authorities consume one
-# complete image reference and remain inventory-only until separately qualified.
 AUTHORITIES: dict[str, dict[str, str]] = {
     "stack1/haproxy": {"type": "split", "image_key": "HAPROXY_IMAGE", "version_key": "HAPROXY_VERSION"},
     "stack2/searxng": {"type": "ref", "ref_key": "SEARXNG_IMAGE"},
@@ -70,18 +68,28 @@ def _repository_text(reference: upgrade_registry.ImageReference) -> str:
     return f"{reference.registry}/{repository}"
 
 
+def _tracking_tag(tag: str | None) -> bool:
+    if not tag:
+        return True
+    match = re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:-[0-9A-Za-z][0-9A-Za-z._-]*)?", tag)
+    if match is None:
+        return True
+    return len(match.group(1).split(".")) < 3
+
+
 def _split_identity(component, running: str) -> tuple[str, str]:
     reference = upgrade_registry.parse_reference(running)
     version = reference.tag
-    try:
-        state = upgrade_registry.inspect(component.container, running)
-    except upgrade_registry.RegistryError as exc:
-        raise AdoptionError(
-            f"cannot resolve installed version for {upgrade.key(component)}: {exc}",
-            code="UPGRADE_ADOPTION_IDENTITY_UNRESOLVED",
-        ) from exc
-    if state is not None and state.current_version:
-        version = state.current_version
+    if _tracking_tag(version):
+        try:
+            state = upgrade_registry.inspect(component.container, running)
+        except upgrade_registry.RegistryError as exc:
+            raise AdoptionError(
+                f"cannot resolve installed version for {upgrade.key(component)}: {exc}",
+                code="UPGRADE_ADOPTION_IDENTITY_UNRESOLVED",
+            ) from exc
+        if state is not None and state.current_version:
+            version = state.current_version
     if not version:
         raise AdoptionError(
             f"cannot resolve installed version for {upgrade.key(component)}",
@@ -91,7 +99,6 @@ def _split_identity(component, running: str) -> tuple[str, str]:
 
 
 def desired_updates() -> tuple[dict[str, str], list[dict]]:
-    """Return env values matching the observed runtime without mutating it."""
     components = {upgrade.key(component): component for component in upgrade.load_catalog()}
     updates: dict[str, str] = {}
     adopted: list[dict] = []
@@ -114,12 +121,7 @@ def desired_updates() -> tuple[dict[str, str], list[dict]]:
             repository, version = _split_identity(component, running)
             updates[authority["image_key"]] = repository
             updates[authority["version_key"]] = version
-            adopted.append({
-                "component": component_key,
-                "image": repository,
-                "version": version,
-                "running_image": running,
-            })
+            adopted.append({"component": component_key, "image": repository, "version": version, "running_image": running})
         else:
             updates[authority["ref_key"]] = running
             adopted.append({
@@ -150,19 +152,19 @@ def _apply_missing(path: Path, expected: dict[str, str]) -> list[str]:
     if not missing:
         return []
 
+    tmp = path.with_name(path.name + ".adopt.tmp")
     try:
         original = path.read_text(encoding="utf-8")
         suffix = "" if original.endswith("\n") else "\n"
         block = [suffix, "\n# Managed component image authority (adopted by ./local-ai upgrade adopt)\n"]
         block.extend(f"{key}={value}\n" for key, value in sorted(missing.items()))
-        tmp = path.with_name(path.name + ".adopt.tmp")
         tmp.write_text(original + "".join(block), encoding="utf-8")
         os.chmod(tmp, path.stat().st_mode)
         os.replace(tmp, path)
     except OSError as exc:
         try:
             tmp.unlink(missing_ok=True)
-        except (OSError, UnboundLocalError):
+        except OSError:
             pass
         raise AdoptionError(f"cannot update operational .env atomically: {exc}", code="UPGRADE_ADOPTION_ENV_WRITE_FAILED") from exc
     return sorted(missing)
@@ -184,7 +186,7 @@ def main(args: list[str], *, json_output: bool = False) -> int:
     conflicts = [key for key, value in expected.items() if key in current and current[key] != value]
     missing = sorted(key for key in expected if key not in current)
     if conflicts:
-        _apply_missing(env_path, expected)  # raises the stable conflict error before any write
+        _apply_missing(env_path, expected)
 
     written: list[str] = []
     if execute:
