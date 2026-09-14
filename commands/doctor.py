@@ -6,7 +6,8 @@
 
 The doctor command checks management prerequisites and repository/runtime
 contracts without mutating installation state. It deliberately reuses installer
-registry validation instead of creating a second source of lifecycle truth.
+and component-inventory validation instead of creating parallel sources of
+lifecycle or component truth.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-from commands import install
+from commands import component_inventory, install
 
 SCHEMA_VERSION = "1"
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +57,27 @@ def run_checks() -> list[dict]:
                 "pass",
                 "manifest and lifecycle registries agree",
                 stacks=len(manifests),
+            )
+        )
+
+    try:
+        components = component_inventory.compile_components()
+    except (component_inventory.InventoryError, OSError, subprocess.CalledProcessError) as exc:
+        checks.append(
+            _check(
+                "component_inventory",
+                "fail",
+                "manifest component inventory validation failed",
+                error=str(exc),
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "component_inventory",
+                "pass",
+                "manifest component ownership and Compose bindings agree",
+                components=len(components),
             )
         )
 
