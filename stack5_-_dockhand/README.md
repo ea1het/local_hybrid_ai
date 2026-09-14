@@ -32,7 +32,7 @@ Dockhand persists through the existing external Docker volume `dockhand_data`; t
 
 ## Lifecycle behaviour
 
-The supported operator lifecycle is `./local-ai start 5` / `./local-ai stop 5` and the common install/upgrade paths. Selective stop uses Compose stop semantics: the existing container is preserved rather than removed or recreated. This behaviour has been runtime-qualified on m92p.
+The supported operator lifecycle is `./local-ai start 5` / `./local-ai stop 5` and the common install/upgrade paths. Selective stop uses Compose stop semantics: the existing container is preserved rather than removed or recreated. This behaviour is covered by automated lifecycle tests and representative runtime qualification.
 
 Dockhand must not become a hidden prerequisite for platform management. `./local-ai` remains authoritative even if Stack5 is absent or stopped.
 

@@ -6,79 +6,50 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # DR qualification status
 
-This file records evidence, not design intent. Read it with [howto.md](howto.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../devel-docs/adr/](../devel-docs/adr/) and [../devel-docs/sdr/](../devel-docs/sdr/). The private DR implementation and schemas now live under [`../../commands/recovery/`](../../commands/recovery/).
+This document summarizes disaster-recovery capabilities that have been qualified beyond source-only inspection. It records capability-level evidence rather than environment-specific hostnames, local paths, backup identifiers or deployment content. Read it with [howto.md](howto.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../devel-docs/adr/](../devel-docs/adr/) and [../devel-docs/sdr/](../devel-docs/sdr/). The private DR implementation and schemas live under [`../../commands/recovery/`](../../commands/recovery/).
 
 ## Core clean-target recovery — PASS
 
-A real destructive recovery of the reference host was authorized and completed before Stack7 was introduced.
+A destructive clean-target recovery has been qualified through the supported recovery workflow. Qualification verified that:
 
-```text
-backup set: /opt/local-hybrid-ai-backups/backup-20260911T172551Z
-source commit: 7cbfa2874f6e865a4de6e2854b2589de52a39913
-resolved stacks: 0,1,2,3,4,5,6
-LiteLLM PostgreSQL tables: 75
-Gitea SQLite tables: 116
-Gitea repositories: 8
-portable memory HEAD: e9c220aa26b29303a18fa4b3f43f1c6edc0760ca
-hermes-memory-sync: running
-```
+- the recovery-point checksum index remained valid;
+- restored source matched the source identity recorded by the recovery point;
+- managed PostgreSQL, Gitea and external-memory prerequisites were reconstructed and verified through their adapters;
+- a bounded resume could continue after recovery-tooling defects were corrected without repeating a destructive wipe or blindly re-importing already recovered managed state.
 
-The recovery point checksum index remained valid and restored source matched the recorded commit. A bounded resume was used after recovery-tooling defects were discovered; the host was not wiped again and managed state was not blindly re-imported.
+The qualification established that recovery is driven by the recorded recovery contract rather than by assumptions about pre-existing runtime state.
 
 ## Stack7 global recovery point — PASS
 
-```text
-backup set: /opt/local-hybrid-ai-backups/backup-20260912T213405Z
-source commit: c087f83c3a36304921a67d7cd888696d176868ab
-resolved stacks: 0,1,2,3,4,5,6,7
-artifacts: 5
-prerequisites: 3
-published atomically: true
-```
+Global backup qualification includes the Stack7 Open WebUI artifact and required prerequisites. The recovery point was verified for complete checksums and atomic publication.
 
-The complete checksum index passed, including `artifacts/stack7/open-webui-data.tar` (933,140,480 bytes).
+An isolated restore using the DR engine's safe archive extractor verified that the Open WebUI database and persisted application state can be reconstructed while leaving the active runtime unchanged. Verification covered user-role integrity, curated model activation and access policy, default model selection, disabled Arena behaviour, persisted interface settings and cleanup of the isolated temporary runtime.
 
-The Stack7 archive was restored into an isolated temporary runtime using the DR engine's safe archive extractor:
-
-```text
-archive members restored: 119
-webui.db exists: true
-users: 2
-admins: 1
-regular users: 1
-chats: 2
-active basic_autorouter rows: 1
-public read grants: 1
-ui.default_models: "basic_autorouter"
-evaluation.arena.enable: false
-ui.default_interface_settings: {"webSearch":"always"}
-temporary cleanup: PASS
-live runtime modified: no
-live open-webui: running/healthy
-```
-
-An earlier ad-hoc `tarfile.extractall(filter="data")` check rejected a Hugging Face cache symlink. That was a verifier mismatch, not backup corruption; the actual DR extractor restored the archive successfully.
+An earlier generic archive-extraction experiment rejected a cache symlink that the supported DR extractor handles safely. The supported extractor, not an ad-hoc generic extraction call, defines restore compatibility.
 
 ## Stack7 functional qualification — PASS
 
-A clean Stack7 deployment proved `basic_autorouter` selected by default, Arena disabled, explicit public-read model policy, regular-user access limited to the curated model, Web Search enabled by default, and real `search_web`/`fetch_url` results. SearXNG/Firecrawl per-request correlation is not observable in current container logs; that is an observability limitation, not claimed provider-log evidence.
+A clean Stack7 deployment has qualified the following externally relevant behaviour:
+
+- `basic_autorouter` is the configured default model;
+- Arena is disabled;
+- model access control remains enabled with explicit public-read policy for the curated model;
+- regular-user access is limited to the intended model policy;
+- Web Search is enabled by default;
+- `search_web` and `fetch_url` return functional results.
+
+Per-request correlation between SearXNG and Firecrawl is not observable in current provider logs. That is an observability limitation and is not represented as verified provider-log evidence.
 
 ## Backup destination overlap guard — PASS
 
-The guard was qualified live on m92p through the supported management boundary after fixing a CLI passthrough defect for `backup --destination`. The repository gate passed all 294 tests.
+Runtime qualification confirms that backup destinations are rejected before publication when they are:
 
-The following dangerous destinations were rejected before backup-set creation:
+- equal to a protected source or runtime root;
+- descendants of a protected root; or
+- ancestors that would contain a protected root.
 
-```text
-/opt/docker/stacks  -> overlaps STACKS_ROOT -> RC=1
-/opt/docker/runtime -> overlaps BASE_PATH   -> RC=1
-/opt/docker         -> contains STACKS_ROOT -> RC=1
-```
+Validation compares resolved paths, so `..` and symlink-based aliases are covered by automated tests. Rejected overlap attempts do not create temporary backup-set residue. The public contract is expressed in terms of `STACKS_ROOT` and `BASE_PATH`; deployment-specific absolute paths are intentionally not part of this document.
 
-The common-ancestor case proves the guard rejects overlap in both directions, not only destinations nested inside a protected root. Validation resolves paths before comparison, so the permanent unit coverage also includes `..` and symlink-based disguises.
+## Evidence retention
 
-Post-test inspection found no `.backup-*.tmp-*` directories under `/opt/docker`, confirming these rejections occurred before temporary backup publication.
-
-## Preserve as evidence
-
-Verified backup sets under `/opt/local-hybrid-ai-backups` are recovery evidence, not generic cleanup. Do not repeat the destructive wipe or Stack7 isolated restore only to reproduce an already-qualified result.
+Verified recovery points used as qualification evidence are subject to the project's retention policy and must not be treated as generic temporary files. Detailed environment-specific chronology belongs in controlled operational records and Git history rather than public repository documentation. Destructive recovery should not be repeated solely to recreate evidence for a capability that is already recorded as qualified.

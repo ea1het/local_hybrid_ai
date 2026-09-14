@@ -43,7 +43,7 @@ OpenSpec deliberately avoids hard-coding internal filenames except when the path
 
 ADRs explain architectural choices. SDRs explain security choices and accepted residual risk. Stack documentation explains the current component contract. OpenSpec turns the externally observable consequences of those decisions into durable behaviour identifiers.
 
-Unit/integration tests may exercise internal modules because they need precise diagnostics. Public contract tests exercise `./local-ai`. OpenSpec sits above both: it explains *why* the assertions exist and which behaviour must survive implementation refactoring.
+Unit and integration tests may exercise internal modules because they need precise diagnostics. Public contract tests exercise `./local-ai`. OpenSpec sits above both: it explains why the assertions exist and which behaviour must survive implementation refactoring.
 
 `tests/test_openspec_contracts.py` verifies that every tagged scenario is traceable and also enforces selected cross-cutting architecture invariants. `tests/test_documentation_contract.py` protects the minimum documentation structure. A tagged scenario without evidence is a specification defect.
 
@@ -56,6 +56,6 @@ When behaviour changes:
 3. update traceability;
 4. update ADR/SDR when the change modifies an architectural or security decision;
 5. update stack/operator documentation when the public contract changes;
-6. qualify runtime-dependent behaviour on m92p before claiming runtime verification.
+6. qualify runtime-dependent behaviour in a representative deployment environment before claiming runtime verification.
 
 Removing a scenario requires an explicit reason: superseded behaviour, retired feature or an architectural decision that makes the scenario obsolete. Specification reduction is not test cleanup.

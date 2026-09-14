@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [← Documentation map](../TOC.md)
 
-This area contains design decisions, executable-oriented specifications, security rationale, testing strategy and maintenance context. It is intentionally separate from the operator contract in [`../user-docs/`](../user-docs/README.md).
+This area contains design decisions, executable-oriented specifications, security rationale, testing strategy and maintenance guidance for contributors and maintainers. It is intentionally separate from the operator contract in [`../user-docs/`](../user-docs/README.md).
 
 ## Index
 
@@ -19,10 +19,9 @@ This area contains design decisions, executable-oriented specifications, securit
 - [Testing strategy and qualification](testing.md)
 - [Architecture reference](../architecture/README.md)
 - [Cross-stack architecture](../stacks/README.md)
-- [AI-assisted continuity context](../a2aknowledge.md)
-- [Current backlog and qualification evidence](../pending.md)
-- [Point 10 closeout record](point10-closeout.md)
+- [AI-assisted maintenance context](../a2aknowledge.md)
+- [Current backlog](../pending.md)
 
 Source-adjacent `README.md` files remain next to their code because they are local implementation entry points, not an alternative long-form documentation tree. Long-form project documentation belongs under `docs/`.
 
-Architecture rationale belongs in ADRs, security rationale in SDRs, observable behaviour in OpenSpec/Gherkin and proof in tests/qualification. Cross-links should connect those layers instead of repeating the same decision in four places.
+Architecture rationale belongs in ADRs, security rationale in SDRs, observable behaviour in OpenSpec/Gherkin, and verification rules in tests and qualification documentation. Historical implementation milestones and conversation-derived closeout notes are not canonical documentation; durable conclusions belong in the appropriate document above, while chronology remains available in Git history.
