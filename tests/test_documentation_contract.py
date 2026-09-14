@@ -2,14 +2,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Repository-level tests that keep documentation discoverable and source files self-describing.
+"""Repository-level tests that keep documentation discoverable and publication-safe.
 
-The contract is intentionally structural rather than stylistic: Python modules must
-have module docstrings, documentation directories must expose a local README,
-Gherkin feature files must explain their behavioural scope, Markdown navigation
-must resolve inside the repository, and Mermaid blocks must use supported fenced
-syntax. Content quality is still reviewed by humans; these tests prevent common
-forms of documentation regression.
+The contract is intentionally structural rather than a prose style checker: Python
+modules must have module docstrings, documentation directories must expose a local
+README, Gherkin feature files must explain their behavioural scope, Markdown
+navigation must resolve inside the repository, Mermaid blocks must use supported
+fenced syntax, and public documentation must avoid common forms of deployment-local
+operational residue. Human review remains responsible for clarity and editorial
+quality.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ DOCS = ROOT / "docs"
 
 
 class DocumentationContractTests(unittest.TestCase):
-    """Protect the minimum navigability and source-documentation contract."""
+    """Protect the minimum navigability, source-documentation and publication contract."""
 
     def test_every_python_module_has_module_docstring(self):
         excluded_parts = {".git", "__pycache__"}
@@ -115,6 +116,28 @@ class DocumentationContractTests(unittest.TestCase):
                 if not first.startswith(("flowchart ", "graph ", "sequenceDiagram", "stateDiagram", "classDiagram", "erDiagram", "journey", "gantt", "pie ", "mindmap", "timeline", "gitGraph")):
                     invalid.append(f"{markdown.relative_to(ROOT)}: {first or '<empty>'}")
         self.assertEqual(invalid, [], f"Unsupported/undocumented Mermaid block starts: {invalid}")
+
+    def test_docs_avoid_deployment_local_operational_residue(self):
+        """Keep private-host artifacts and milestone diaries out of canonical docs."""
+        violations: list[str] = []
+        private_path = re.compile(r"/(?:root|home/[^/\s`]+)/[^\s`]+")
+        timestamped_backup = re.compile(r"\bbackup-\d{8}T\d{6}Z\b")
+        closeout_name = re.compile(r"point\d+-closeout\.md$", re.IGNORECASE)
+
+        for markdown in sorted(DOCS.rglob("*.md")):
+            relative = markdown.relative_to(ROOT).as_posix()
+            if closeout_name.search(markdown.name):
+                violations.append(f"{relative}: milestone closeout document")
+                continue
+            text = markdown.read_text(encoding="utf-8")
+            if private_path.search(text):
+                violations.append(f"{relative}: host-specific home-directory path")
+            if timestamped_backup.search(text):
+                violations.append(f"{relative}: timestamped backup identifier")
+            if "## Recently closed" in text:
+                violations.append(f"{relative}: completed-work diary belongs in Git history")
+
+        self.assertEqual(violations, [], f"Deployment-local documentation residue: {violations}")
 
 
 if __name__ == "__main__":

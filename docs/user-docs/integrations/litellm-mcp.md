@@ -49,7 +49,7 @@ The validated pattern is:
 AI client --> LiteLLM MCP gateway --> upstream MCP server
 ```
 
-The initial real integration used the public Trivago MCP service as a read-only upstream. That service is an integration example, not a hard-coded platform dependency. Additional MCP servers can be registered without changing the Stack3 source contract provided their trust and permissions are reviewed.
+A validated read-only example uses a public MCP service as the upstream. The upstream service is an integration example, not a hard-coded platform dependency. Additional MCP servers can be registered without changing the Stack3 source contract provided their trust and permissions are reviewed.
 
 ## Validation sequence
 
