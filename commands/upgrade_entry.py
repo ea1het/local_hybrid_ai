@@ -388,7 +388,8 @@ def policy_command(args: list[str], *, json_output: bool) -> int:
 
 def usage() -> None:
     print("Usage:")
-    print("  ./local-ai upgrade check [--offline]")
+    print("  ./local-ai upgrade [--offline]")
+    print("  ./local-ai upgrade check [--offline]  # compatibility alias")
     print("  ./local-ai upgrade policy")
     print("  ./local-ai upgrade policy <stack> [component]")
     print("  ./local-ai upgrade policy <stack> [component] set <minor-series|major-series|manual>")
@@ -422,7 +423,7 @@ def main(args: list[str], *, json_output: bool = False) -> int:
             else:
                 upgrade.print_table(rows)
             return 0
-        if args in (["check", "--offline"], ["--offline", "check"]):
+        if args in (["--offline"], ["check", "--offline"], ["--offline", "check"]):
             rows = upgrade.inventory(query_upstream=False)
             if json_output:
                 print(json.dumps(json_payload(rows), indent=2))
