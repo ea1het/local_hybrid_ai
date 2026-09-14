@@ -2,192 +2,120 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Build the operator-facing Desired / Deployed / Actual / Drift inventory.
+"""Read-only operational status for the Local Hybrid AI installation.
 
-Status keeps installation intent, recorded guarded-upgrade history and observed
-runtime identity separate. Installation-owned configuration defines Desired;
-runtime image identity defines Actual. Mutable runtime image references are
-resolved through the same registry boundary used by upgrade discovery whenever
-possible, independently of how Desired is expressed.
+Human status answers one question: is each stack operational? Detailed component
+version state remains available in the JSON diagnostic contract, while normal
+version maintenance belongs to ``./local-ai upgrade``. Component identity/drift
+semantics are shared through ``commands.component_state`` rather than reimplemented
+here.
 """
 
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
-from commands import upgrade, upgrade_registry
+from commands import component_state, install, upgrade
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 
 class StatusError(RuntimeError):
     pass
 
 
-def _deployed_versions(runtime_root: Path) -> dict[str, str]:
-    """Return the last successfully applied version known for each component."""
-    path = runtime_root / "platform" / "upgrade-history.jsonl"
-    if not path.is_file():
-        return {}
-
-    deployed: dict[str, str] = {}
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        raise StatusError(f"cannot read upgrade history: {exc}") from exc
-
-    for number, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise StatusError(f"invalid upgrade history at line {number}") from exc
-        if event.get("success") is not True:
-            continue
-        upgraded = event.get("upgraded", [])
-        if not isinstance(upgraded, list):
-            raise StatusError(f"invalid successful upgrade history at line {number}")
-        for item in upgraded:
-            if not isinstance(item, dict):
-                raise StatusError(f"invalid successful upgrade history at line {number}")
-            stack = item.get("stack")
-            component = item.get("component")
-            version = item.get("version")
-            if all(isinstance(value, str) and value for value in (stack, component, version)):
-                deployed[f"{stack}/{component}"] = version
-    return deployed
-
-
-def _deployed(component_key: str, desired: str, actual: str, deployed_versions: dict[str, str]) -> str:
-    """Resolve deployed state without confusing absent history with uncertainty."""
-    recorded = deployed_versions.get(component_key)
-    if recorded is not None:
-        return recorded
-    if desired == "n/a" and actual == "n/a":
-        return "n/a"
-    if actual != "n/a":
-        return actual
-    return "unknown"
-
-
-def _drift(desired: str, actual: str) -> str:
-    if desired == "n/a":
-        return "n/a"
-    if actual == "n/a":
-        return "yes"
-    return "no" if desired == actual else "yes"
-
-
-def _is_floating_image_reference(image: str | None) -> bool:
-    """Return whether an image reference follows a mutable tag/channel."""
-    if not image or "${" in image or "@sha256:" in image:
-        return False
-    tag = upgrade_registry.parse_reference(image).tag
-    if not tag:
-        return True
-    match = re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:-[0-9A-Za-z][0-9A-Za-z._-]*)?", tag)
-    if match is None:
-        return True
-    return len(match.group(1).split(".")) < 3
-
-
-def _resolve_state(component, desired_image: str | None, actual_image: str | None) -> tuple[str, str, str]:
-    """Resolve Desired/Actual while keeping installation intent authoritative.
-
-    Desired comes from installation-owned configuration. A legacy installation
-    may still have a mutable Desired channel; that compatibility path resolves
-    both sides with one registry inspection. Once Desired is exact, only a
-    mutable historical runtime reference is resolved, again with at most one
-    registry inspection.
-    """
-    desired = upgrade.version_from_image(desired_image)
-    actual = upgrade.version_from_image(actual_image)
-    desired_floating = _is_floating_image_reference(desired_image)
-    actual_floating = _is_floating_image_reference(actual_image)
-
-    if desired == "n/a":
-        return desired, actual, "n/a"
-    if actual == "n/a":
-        return desired, actual, "yes"
-
-    # Compatibility path for installations that have not yet adopted an exact
-    # operational version authority. Registry discovery may explain the channel,
-    # but it is not operator consent to upgrade.
-    if desired_floating:
-        if not actual_image or not getattr(component, "container", None):
-            return desired, actual, "n/a"
-        try:
-            state = upgrade_registry.inspect(
-                component.container,
-                actual_image,
-                tracking_image=desired_image,
-            )
-        except upgrade_registry.RegistryError:
-            return desired, actual, "n/a"
-        if state is None:
-            return desired, actual, "n/a"
-        desired_display = state.available_version or desired
-        actual_display = state.current_version or actual
-        if state.local_digest and state.remote_digest:
-            drift = "no" if state.local_digest == state.remote_digest else "yes"
-        elif state.current_version and state.available_version:
-            drift = "no" if state.current_version == state.available_version else "yes"
-        else:
-            drift = "n/a"
-        return desired_display, actual_display, drift
-
-    # Exact Desired is installation intent. Docker may nevertheless keep the old
-    # mutable Config.Image string until the component is next recreated. Resolve
-    # that observed runtime identity without allowing the registry to advance
-    # Desired.
-    if actual_floating and getattr(component, "container", None):
-        try:
-            state = upgrade_registry.inspect(component.container, actual_image)
-        except upgrade_registry.RegistryError:
-            return desired, actual, "n/a"
-        if state is None or not state.current_version:
-            return desired, actual, "n/a"
-        actual = state.current_version
-
-    return desired, actual, _drift(desired, actual)
+# Compatibility aliases for internal callers/tests while ownership moves to the
+# shared state module. They are private implementation details, not public API.
+_deployed_versions = component_state.deployed_versions
+_deployed = component_state.deployed
+_drift = component_state.drift
+_is_floating_image_reference = component_state.is_floating_image_reference
+_resolve_state = component_state.resolve_identity
 
 
 def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, str] | None = None) -> list[dict]:
-    """Build status without hiding state dependencies behind global runtime lookups."""
+    """Return detailed component state for JSON diagnostics and drift aggregation."""
     env = upgrade.read_env()
     if deployed_versions is None:
-        deployed_versions = _deployed_versions(runtime_root or upgrade.runtime_root())
+        deployed_versions = component_state.deployed_versions(runtime_root or upgrade.runtime_root())
 
     rows: list[dict] = []
     for component in upgrade.load_catalog():
         desired_image = upgrade.compose_image(component, env)
         actual_image = upgrade.running_image(component)
-        desired, actual, drift = _resolve_state(component, desired_image, actual_image)
+        desired, actual, drift = component_state.resolve_identity(component, desired_image, actual_image)
         component_key = upgrade.key(component)
         rows.append({
             "stack": component.stack,
             "component": component.name,
             "desired": desired,
-            "deployed": _deployed(component_key, desired, actual, deployed_versions),
+            "deployed": component_state.deployed(component_key, desired, actual, deployed_versions),
             "actual": actual,
             "drift": drift,
         })
     return rows
 
 
+def _stack_name(directory: str) -> str:
+    marker = "_-_"
+    name = directory.split(marker, 1)[1] if marker in directory else directory
+    return name.replace("_", "-")
+
+
+def _runtime_summary(entry: dict, state: dict) -> tuple[str, str]:
+    if not state["prepared"]:
+        return "unprepared", "-"
+
+    required = entry["required_containers"]
+    if not required:
+        return "prepared", "ready"
+
+    states = [state["containers"].get(name, "absent") for name in required]
+    running = [install.is_running(value) for value in states]
+    healthy = [install.is_runtime_healthy(value) for value in states]
+
+    if all(running):
+        return "running", "ready" if all(healthy) else "degraded"
+    if not any(running):
+        return "stopped", "-"
+    return "partial", "degraded"
+
+
+def stack_inventory(component_rows: list[dict] | None = None) -> list[dict]:
+    """Return one operational row per stack using manifest/lifecycle ownership."""
+    manifests = install.all_manifests()
+    lifecycle = install.load_lifecycle()
+    install.validate_registry(manifests, lifecycle)
+    component_rows = inventory() if component_rows is None else component_rows
+
+    rows: list[dict] = []
+    for sid in sorted(manifests):
+        manifest = manifests[sid]
+        entry = lifecycle["stacks"][str(sid)]
+        runtime = install.stack_state(manifest)
+        state, health = _runtime_summary(entry, runtime)
+        stack_key = f"stack{sid}"
+        owned_components = [row for row in component_rows if row["stack"] == stack_key]
+        rows.append({
+            "stack": stack_key,
+            "name": _stack_name(manifest["directory"]),
+            "state": state,
+            "health": health,
+            "drift": component_state.aggregate_drift(owned_components),
+        })
+    return rows
+
+
 def _print_table(rows: list[dict]) -> None:
-    headers = ("STACK", "COMPONENT", "DESIRED", "DEPLOYED", "ACTUAL", "DRIFT")
+    headers = ("STACK", "NAME", "STATE", "HEALTH", "DRIFT")
     values = [headers]
     for row in rows:
         values.append((
             upgrade.human_stack_id(row["stack"]),
-            row["component"],
-            row["desired"],
-            row["deployed"],
-            row["actual"],
+            row["name"],
+            row["state"],
+            row["health"],
             row["drift"],
         ))
     widths = [max(len(str(row[i])) for row in values) for i in range(len(headers))]
@@ -199,8 +127,9 @@ def _print_table(rows: list[dict]) -> None:
 
 def main(*, json_output: bool = False) -> int:
     try:
-        rows = inventory()
-    except (StatusError, OSError, json.JSONDecodeError) as exc:
+        components = inventory()
+        stacks = stack_inventory(components)
+    except (component_state.ComponentStateError, install.InstallerError, StatusError, OSError, json.JSONDecodeError) as exc:
         if json_output:
             print(json.dumps({
                 "schema_version": SCHEMA_VERSION,
@@ -217,8 +146,9 @@ def main(*, json_output: bool = False) -> int:
             "schema_version": SCHEMA_VERSION,
             "command": "status",
             "success": True,
-            "components": rows,
+            "stacks": stacks,
+            "components": components,
         }, indent=2, sort_keys=True))
     else:
-        _print_table(rows)
+        _print_table(stacks)
     return 0
