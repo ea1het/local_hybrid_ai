@@ -9,6 +9,32 @@
   "optional": [1],
   "provides": ["git.remote", "git.runner"],
   "owns": ["container:gitea", "container:gitea-runner", "runtime:service_-_gitea", "runtime:service_-_gitea-runner"],
+  "components": [
+    {
+      "id": "gitea",
+      "service": "gitea",
+      "container": "gitea",
+      "management": {"type": "versioned"},
+      "upgrade": {
+        "upstream": "go-gitea/gitea",
+        "selectable": false,
+        "default_policy": "minor-series",
+        "execution": {"mode": "inventory-only", "blocked_by": "migration-policy-required"}
+      }
+    },
+    {
+      "id": "runner",
+      "service": "gitea-runner",
+      "container": "gitea-runner",
+      "management": {"type": "local"},
+      "upgrade": {
+        "availability": "local",
+        "selectable": false,
+        "default_policy": "manual",
+        "execution": {"mode": "inventory-only", "blocked_by": "local-managed"}
+      }
+    }
+  ],
   "recovery": {
     "contract": {
       "schema_version": 1,
