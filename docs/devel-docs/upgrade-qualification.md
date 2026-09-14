@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Upgrade executor qualification
 
-[← Developer documentation](README.md) · [Operator upgrade guide](../user-docs/upgrade.md) · [ADR-0006](adr/0006-operational-version-authority.md)
+[← Developer documentation](README.md) · [Operator upgrade guide](../user-docs/upgrade.md) · [Administrator force override](../user-docs/forced-upgrades.md) · [ADR-0006](adr/0006-operational-version-authority.md)
 
 `SELECTABLE` is a support statement, not a UI convenience. Setting a component to `execution.mode=guarded` means the project accepts `./local-ai upgrade` as a supported mutation path for that component.
 
@@ -82,6 +82,16 @@ Before promotion, the procedure is executed against a representative real deploy
 
 A unit-test-only implementation is not sufficient to assert `SELECTABLE=yes`.
 
+## Administrator override is not qualification
+
+An inventory-only component may expose a deterministic mutation recipe before that recipe is project-qualified. In that case an administrator may explicitly select a target with `--force`.
+
+This override does not change the catalog, does not set `SELECTABLE=yes`, and does not satisfy any qualification gate. It records only that the administrator knowingly accepted the missing qualification for that one selection.
+
+The forced path MUST still preserve every protection the implementation already knows how to enforce: version policy, target availability, immutable digest, stale-plan detection, exact mutation scope, declared recovery behaviour, READY/RECONCILE/VERIFY and dependency re-verification. A component with no deterministic mutation recipe cannot be made executable merely by supplying `--force`.
+
+Successful forced upgrades retain the forced marker in history so that operational evidence cannot be mistaken for a normally supported upgrade.
+
 ## Promotion decision
 
 The promotion sequence is:
@@ -110,33 +120,11 @@ SELECTABLE = yes
 
 The catalog change is deliberately the **last** step. It records an already-proven capability; it does not create that capability.
 
-## Current runtime-qualified evidence
+## Current runtime qualification evidence
 
-### Stack2 Redis
+Redis (`stack2/redis`) has completed a real guarded transition from `8.10.0-alpine3.23` to `8.10.1-alpine3.23`. The executor recorded `success=true`, immutable target identity, dependent-stack re-verification, and the post-upgrade status converged with no drift. Redis therefore remains `SELECTABLE=yes`.
 
-Redis is runtime-qualified for the generic guarded env-version executor.
-
-Representative transition:
-
-```text
-8.10.0-alpine3.23 -> 8.10.1-alpine3.23
-```
-
-Observed evidence from the deployment qualification:
-
-- selection resolved the concrete running baseline rather than the historical `redis:alpine` tag;
-- the exact target `redis:8.10.1-alpine3.23` was selected with immutable digest `sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576`;
-- the guarded executor completed successfully and wrote a `success=true` record to `upgrade-history.jsonl`;
-- affected prepared consumers in stacks 1, 6 and 7 were reverified;
-- the successful selection was cleared;
-- post-upgrade status reported Redis configured, deployed and running at `8.10.1-alpine3.23` with `DRIFT=no`;
-- the focused regression gate passed after the upgrade UX changes.
-
-This evidence supports `SELECTABLE=yes` for Stack2 Redis under the current guarded executor contract.
-
-### Components awaiting qualification
-
-HAProxy, RabbitMQ and Dockhand already have explicit version authority and an env-version executor definition, but they remain `inventory-only / executor-not-qualified` until equivalent real-runtime qualification is completed. Their executor metadata is implementation readiness, not yet a support claim.
+HAProxy, RabbitMQ and Dockhand have deterministic executor recipes but remain `SELECTABLE=no` until equivalent real-runtime qualification is completed. They may be exercised deliberately through the administrator `--force` path without changing that support statement.
 
 ## Demotion
 
