@@ -6,7 +6,9 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Upgrade compatibility policy
 
-Container registry discovery answers **what exists**. Compatibility policy answers **what this installation permits local-ai to treat as an upgrade target**. These are deliberately separate decisions.
+[← Documentation map](TOC.md) · [Operator upgrade guide](user-docs/upgrade.md) · [Executor qualification](devel-docs/upgrade-qualification.md)
+
+Container registry discovery answers **what exists**. Compatibility policy answers **which explicitly selected targets are compatible with this installation**. Executor qualification answers **whether local-ai is prepared to perform the change safely**. These are deliberately separate decisions.
 
 The supported policy vocabulary is intentionally small:
 
@@ -22,53 +24,24 @@ The supported policy vocabulary is intentionally small:
 
 Each component in the private `commands/upgrade-components.json` catalog has a project `default_policy`. An installation may override it without modifying Git or `.env`.
 
-Mutable overrides live at:
-
-```text
-/opt/docker/runtime/platform/upgrade-policy.json
-```
-
-The effective policy is the local override when one exists; otherwise the catalog default applies.
-
-Inspect all policies:
+Mutable overrides live in the installation runtime platform state (`upgrade-policy.json`). Inspect them through the supported CLI rather than editing that file directly:
 
 ```bash
 ./local-ai upgrade policy
+./local-ai upgrade policy stack2 redis
+./local-ai upgrade policy stack2 redis set major-series
+./local-ai upgrade policy stack2 redis clear
 ```
 
-Inspect one component:
+`clear` removes only the local override and makes the project default effective again. It does not introduce a fourth policy and does not delete an upgrade selection.
 
-```bash
-./local-ai upgrade policy stack4 gitea
-```
+## Policy and SELECTABLE are independent
 
-Set any of the three policies:
+A component can have `major-series` policy and still report `SELECTABLE=no`. In that case local-ai knows how to evaluate compatibility but has not yet qualified a safe automated executor for the component.
 
-```bash
-./local-ai upgrade policy stack4 gitea set minor-series
-./local-ai upgrade policy stack4 gitea set major-series
-./local-ai upgrade policy stack4 gitea set manual
-```
+Changing policy therefore **cannot** turn a `NO SELECTABLE` component into a `SELECTABLE` one. Selectability requires the engineering qualification gates defined in [Upgrade executor qualification](devel-docs/upgrade-qualification.md).
 
-For a stack containing exactly one component, the component name may be omitted:
-
-```bash
-./local-ai upgrade policy stack7 set major-series
-```
-
-Remove only the local override:
-
-```bash
-./local-ai upgrade policy stack4 gitea clear
-```
-
-`clear` does not introduce a fourth policy and does not delete an upgrade selection. It makes the catalog `default_policy` effective again.
-
-## Policy and selectable are independent
-
-Compatibility and executor capability are different gates. A component can have `major-series` policy and still be `selectable: false`. In that case local-ai may describe its compatibility policy, but the component cannot be selected through the supported executor.
-
-This is intentional for components whose safe upgrade mechanism has not yet been qualified. In particular, changing a policy does not make an inventory-only component executable.
+This distinction is intentional: registry discovery and version comparison are much easier than proving mutation scope, migrations, recovery, READY, VERIFY and dependency effects.
 
 ## Selection validation
 
@@ -77,9 +50,9 @@ A selection must pass all relevant gates:
 ```text
 exact target exists in configured registry/package
         ↓
-component is selectable
+component is SELECTABLE
         ↓
-target is not already actual
+target is not already installed
         ↓
 effective compatibility policy permits target
         ↓
@@ -88,21 +61,15 @@ exact target image + immutable digest recorded
 selection is persisted locally
 ```
 
-Stable rejection codes include:
+Stable rejection codes include `UPGRADE_COMPONENT_NOT_SELECTABLE`, `UPGRADE_TARGET_NOT_AVAILABLE`, `UPGRADE_TARGET_NOT_NEWER`, `UPGRADE_TARGET_UNSUPPORTED`, `UPGRADE_TARGET_MOVED` and `UPGRADE_PLAN_STALE`.
 
-- `UPGRADE_COMPONENT_NOT_SELECTABLE`
-- `UPGRADE_TARGET_NOT_AVAILABLE`
-- `UPGRADE_TARGET_NOT_NEWER`
-- `UPGRADE_TARGET_UNSUPPORTED`
-- `UPGRADE_TARGET_MOVED`
-
-Availability in `upgrade check` is therefore discovery state, not upgrade authorization. Apply resolves the selected tag again and rejects it before recovery or desired-state mutation if it no longer maps to the digest captured at selection.
+Availability shown by `./local-ai upgrade` is therefore discovery state, not upgrade authorization. Apply resolves the selected tag again and rejects it before recovery or version-authority mutation if it no longer maps to the digest captured at selection.
 
 ## Existing selections and policy changes
 
-Changing policy never silently clears a selected target. If an existing selection no longer satisfies the new effective policy, `upgrade policy` reports it with `VALID=no`; the selection remains in `upgrade-plan.json` for traceability.
+Changing policy never silently clears a selected target. If an existing selection no longer satisfies the new effective policy, upgrade inventory reports it with `VALID=no`; the selection remains in the installation-local plan for traceability.
 
-`./local-ai upgrade --yes` revalidates the current effective policy and fails with `UPGRADE_TARGET_UNSUPPORTED` before backup or desired-state mutation when the selection is no longer allowed. Selections created before immutable target identity was introduced must be reselected rather than inferred.
+`./local-ai upgrade --yes` revalidates the current effective policy and fails before mutation when the selection is no longer allowed. Selections created before immutable target identity was introduced must be reselected rather than inferred.
 
 ## Machine-readable contract
 
@@ -110,9 +77,9 @@ Policy commands support the standard CLI JSON mode:
 
 ```bash
 ./local-ai --json upgrade policy
-./local-ai --json upgrade policy stack4 gitea
-./local-ai --json upgrade policy stack4 gitea set manual
-./local-ai --json upgrade policy stack4 gitea clear
+./local-ai --json upgrade policy stack2 redis
+./local-ai --json upgrade policy stack2 redis set manual
+./local-ai --json upgrade policy stack2 redis clear
 ```
 
 A component policy record includes `default_policy`, `override_policy`, `effective_policy`, `selectable`, `selected` and `selection_valid`. Mutating responses also expose `previous_effective_policy` and the action performed; read-only show/list responses do not invent a previous transition.
