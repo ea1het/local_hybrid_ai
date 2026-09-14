@@ -92,6 +92,7 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 - `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted deployment and qualified single-component upgrade. Runtime qualification is required before newly promoted components are considered fully qualified.
 - `CLI-UPGRADE-006` — executor/selection tests prove digest capture and moved-tag rejection before mutation.
 - `CLI-UPGRADE-009` — executor failure tests plus the human apply contract prove `UPGRADE: PASS` is emitted only on successful guarded completion; failures remain journaled and do not become success merely because a container exists.
+- `CLI-UPGRADE-010` — `tests/test_upgrade_force_override.py` verifies explicit administrative qualification bypass is stored only for a deterministic known mutation path, does not change catalog selectability and does not authorize unrelated components. Runtime qualification includes an administrator-forced Dockhand update reported successful by the deployment operator; exact history/status evidence should be captured before final promotion decisions.
 
 ### Compatibility policy
 
@@ -101,14 +102,14 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 - `CLI-POLICY-004` — manual policy uses an explicit target without series inference.
 - `CLI-POLICY-005` — runtime qualification of `upgrade policy ... clear`.
 - `CLI-POLICY-006` — policy changes invalidate incompatible selections without silently deleting them.
-- `CLI-POLICY-007` — component `selectable` remains an independent gate.
-- `CLI-POLICY-008` — executor revalidates policy before target preflight or mutation.
+- `CLI-POLICY-007` — component `selectable` remains an independent support-qualification gate; an explicit forced selection is recorded separately rather than mutating that catalog fact.
+- `CLI-POLICY-008` — executor revalidates policy before target preflight or mutation, including forced selections.
 
 ### Status
 
-- `CLI-STATUS-001` — `tests/test_status.py` keeps Desired, Deployed and Actual separate for diagnostic state.
-- `CLI-STATUS-002` — drift vocabulary is exactly `yes`, `no`, `n/a`.
-- `CLI-STATUS-003` — status tests cover floating tags, unchanged digests, fixed tags, digest pins, cross-command runtime identity and registry-resolution failure. Runtime qualification confirms that a moved floating reference reports drift while an unchanged resolved identity reports no drift.
+- `CLI-STATUS-001` — `tests/test_status.py` verifies the human table is stack-operational (`STACK`, `NAME`, `STATE`, `HEALTH`, `DRIFT`) and does not duplicate version columns from upgrade. Runtime state is derived from manifest/lifecycle ownership and required-container observations.
+- `CLI-STATUS-002` — `commands/status.py` schema 3 plus `tests/test_status.py` preserve detailed component diagnostics alongside stack records; component drift vocabulary remains exactly `yes`, `no`, `n/a`.
+- `CLI-STATUS-003` — `tests/test_status.py` exercises shared component identity semantics for fixed/floating references, registry failure and drift aggregation. `commands/component_state.py` owns these read-only identity/drift rules so status does not maintain a second interpretation of the same facts.
 
 ## Traceability maintenance
 
