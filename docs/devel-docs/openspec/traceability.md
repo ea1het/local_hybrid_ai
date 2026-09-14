@@ -83,13 +83,15 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 
 ### Upgrade execution
 
-- `CLI-UPGRADE-001` — management CLI inventory coverage plus `commands/upgrade-components.json`.
-- `CLI-UPGRADE-007` — `tests/test_upgrade_execution_metadata.py` verifies every component has explicit execution metadata, guarded components remain distinct from inventory-only components, and LiteLLM remains blocked on an explicit migration/compatibility policy.
-- `CLI-UPGRADE-002` — `tests/test_upgrade_selection_policy.py`; installation-local plan includes immutable target digest.
+- `CLI-UPGRADE-001` — management CLI inventory coverage plus `tests/test_version_authority.py::test_human_upgrade_table_calls_runtime_version_installed`; human output uses Installed while JSON retains stable runtime fields.
+- `CLI-UPGRADE-007` — `tests/test_upgrade_execution_metadata.py` verifies every component has explicit execution metadata and guarded components remain distinct from inventory-only components.
+- `CLI-UPGRADE-008` — [Upgrade executor qualification](../upgrade-qualification.md), catalog execution metadata tests and representative runtime qualification establish that selectability is the result of an already-proven executor path, not a policy toggle.
+- `CLI-UPGRADE-002` — `tests/test_upgrade_selection_policy.py` and `tests/test_version_authority.py`; installation-local plan includes concrete runtime baseline and immutable target digest.
 - `CLI-UPGRADE-003` — management CLI proves `--yes` never auto-selects available versions.
 - `CLI-UPGRADE-004` — stale plan fails before execution with `UPGRADE_PLAN_STALE`.
-- `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted deployment and qualified single-component upgrade.
+- `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted deployment and qualified single-component upgrade. Runtime qualification is required before newly promoted components are considered fully qualified.
 - `CLI-UPGRADE-006` — executor/selection tests prove digest capture and moved-tag rejection before mutation.
+- `CLI-UPGRADE-009` — executor failure tests plus the human apply contract prove `UPGRADE: PASS` is emitted only on successful guarded completion; failures remain journaled and do not become success merely because a container exists.
 
 ### Compatibility policy
 
@@ -104,9 +106,9 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 
 ### Status
 
-- `CLI-STATUS-001` — `tests/test_status.py` keeps Desired, Deployed and Actual separate.
+- `CLI-STATUS-001` — `tests/test_status.py` keeps Desired, Deployed and Actual separate for diagnostic state.
 - `CLI-STATUS-002` — drift vocabulary is exactly `yes`, `no`, `n/a`.
-- `CLI-STATUS-003` — status tests cover floating tags, unchanged digests, fixed tags, digest pins, cross-command Actual consistency and registry-resolution failure. Runtime qualification confirms that a moved floating reference reports drift while an unchanged resolved identity reports no drift.
+- `CLI-STATUS-003` — status tests cover floating tags, unchanged digests, fixed tags, digest pins, cross-command runtime identity and registry-resolution failure. Runtime qualification confirms that a moved floating reference reports drift while an unchanged resolved identity reports no drift.
 
 ## Traceability maintenance
 
