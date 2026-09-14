@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # DR qualification status
 
 This file records evidence, not design intent. Read it with [howto.md](howto.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../devel-docs/adr/](../devel-docs/adr/) and [../devel-docs/sdr/](../devel-docs/sdr/). The private DR implementation and schemas now live under [`../../commands/recovery/`](../../commands/recovery/).

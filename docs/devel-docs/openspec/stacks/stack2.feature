@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Stack2 web capabilities
   Stack2 owns local web-search and extraction capabilities and the internal services
   required to provide them. Consumers discover these capabilities through manifests;

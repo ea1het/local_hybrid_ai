@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Point 10 closeout — `local-ai` as the sole management interface
 
 Point 10 is complete only when the public management boundary, state semantics, upgrade safety and disaster-recovery wrappers form one coherent operator contract. The source changes below are implemented on the command-unification branch; final closure still requires the complete m92p regression gate.

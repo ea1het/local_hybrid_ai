@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Stack1 ingress
   Stack1 is the user-facing HTTP ingress boundary. Applications join the shared
   internal network and are published only when Stack1 is explicitly configured to

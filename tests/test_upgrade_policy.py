@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Compatibility-policy tests for project defaults and installation overrides.
 
 These tests define the three supported policy modes, monotonic version rules,

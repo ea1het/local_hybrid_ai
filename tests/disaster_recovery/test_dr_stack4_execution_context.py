@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Protect runtime-derived Gitea execution context used by the Stack4 backup adapter.
 
 The adapter must discover rootless/rootful user, working path and custom config

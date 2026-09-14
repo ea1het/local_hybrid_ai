@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # LiteLLM MCP gateway
 
 Stack3 is the shared MCP gateway for local AI clients. The project keeps only infrastructure-level MCP behavior in Git; MCP servers, virtual keys, access groups and per-client permissions are deliberately managed dynamically through LiteLLM and persisted in its PostgreSQL state.

@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Hermes integrations
 
 Stack6 extends Hermes with local inference through LiteLLM, isolated command execution, optional web capabilities, messaging channels, MCP access and Git-backed portable memory. These integrations must preserve the Stack6 security boundary: Hermes itself has no Docker socket and arbitrary command execution is delegated to the isolated SSH sandbox.

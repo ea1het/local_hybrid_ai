@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Documentation map
 
 This is the canonical table of contents for Local Hybrid AI. Every documentation section links back here, and folder `README.md` files act as local indexes rather than independent documentation islands.

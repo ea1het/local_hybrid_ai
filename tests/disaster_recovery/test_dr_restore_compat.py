@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Protect narrowly scoped compatibility required to restore historical recovery points.
 
 The compatibility layer may recognize older installer locations and one known

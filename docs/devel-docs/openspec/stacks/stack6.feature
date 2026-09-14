@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Stack6 Hermes agent
   Stack6 runs the Hermes agent while preserving a strict privilege boundary. Model
   access goes through LiteLLM, arbitrary commands go through an isolated sandbox and

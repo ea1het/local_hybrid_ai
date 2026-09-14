@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Stack0 platform foundation
   Stack0 owns platform-wide primitives that must exist before application stacks:
   the shared Docker network, platform runtime directories and PKI/bootstrap identity.

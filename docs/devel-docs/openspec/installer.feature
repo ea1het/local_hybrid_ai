@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 Feature: Common installer lifecycle
   The internal installer is manifest-driven and is reached publicly only through
   `./local-ai install`. Planning and execution share the same dependency/lifecycle

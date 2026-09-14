@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Repository-level tests that keep documentation discoverable and source files self-describing.
 
 The contract is intentionally structural rather than stylistic: Python modules must

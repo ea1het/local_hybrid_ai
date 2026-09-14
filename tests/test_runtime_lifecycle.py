@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Behaviour tests for conservative selective stack runtime start/stop.
 
 These tests prove the runtime lifecycle uses non-destructive Compose start/stop,

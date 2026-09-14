@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Tests
 
 All automated repository tests live under this directory. Production stacks and the private `commands/` implementation package must not contain `test_*.py` files.
