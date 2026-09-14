@@ -14,7 +14,7 @@ x-logging: &logging
 services:
 
   litellm-postgres:
-    image: postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    image: ${LITELLM_POSTGRES_IMAGE:-postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193}
     container_name: litellm-postgres
     restart: unless-stopped
 
@@ -39,7 +39,6 @@ services:
 
     logging: *logging
 
-
   litellm:
     image: ${LITELLM_IMAGE}:${LITELLM_VERSION}
     container_name: litellm
@@ -60,10 +59,6 @@ services:
       UI_PASSWORD: "${UI_PASSWORD}"
       STORE_MODEL_IN_DB: "${STORE_MODEL_IN_DB}"
       LITELLM_HIDE_DEFAULT_CREDENTIALS_HINT: "true"
-
-      # Stack3 owns its PostgreSQL service. These overrides are intentionally
-      # outside the normal .env contract and are used only for controlled
-      # migration/rollback to the former Stack2 database.
       DATABASE_URL: "postgresql://${LITELLM_DB_USER}:${LITELLM_DB_PASSWORD}@${LITELLM_POSTGRES_HOST:-litellm-postgres}:${LITELLM_POSTGRES_PORT:-5432}/${LITELLM_DB_NAME}"
 
     networks:
@@ -85,7 +80,6 @@ services:
       start_period: 60s
 
     logging: *logging
-
 
 networks:
   redlocal:
