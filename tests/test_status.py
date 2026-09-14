@@ -31,18 +31,9 @@ class StatusStateTests(unittest.TestCase):
             platform = root / "platform"
             platform.mkdir(parents=True)
             events = [
-                {
-                    "success": True,
-                    "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v1"}],
-                },
-                {
-                    "success": False,
-                    "selected": [{"stack": "stack6", "component": "hermes", "version": "v2"}],
-                },
-                {
-                    "success": True,
-                    "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}],
-                },
+                {"success": True, "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v1"}]},
+                {"success": False, "selected": [{"stack": "stack6", "component": "hermes", "version": "v2"}]},
+                {"success": True, "upgraded": [{"stack": "stack6", "component": "hermes", "version": "v3"}]},
             ]
             (platform / "upgrade-history.jsonl").write_text(
                 "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
@@ -51,10 +42,7 @@ class StatusStateTests(unittest.TestCase):
         self.assertEqual(deployed["stack6/hermes"], "v3")
 
     def test_deployed_prefers_recorded_history(self):
-        self.assertEqual(
-            status._deployed("stack6/hermes", "v3", "v3", {"stack6/hermes": "v2"}),
-            "v2",
-        )
+        self.assertEqual(status._deployed("stack6/hermes", "v3", "v3", {"stack6/hermes": "v2"}), "v2")
 
     def test_deployed_adopts_observed_runtime_when_history_is_absent(self):
         self.assertEqual(status._deployed("stack7/open-webui", "v0.11.3", "v0.11.3", {}), "v0.11.3")
@@ -107,10 +95,8 @@ class StatusStateTests(unittest.TestCase):
     def test_inventory_resolves_floating_tag_to_registry_identities(self):
         component = SimpleNamespace(stack="stack2", name="redis", container="firecrawl-redis")
         state = SimpleNamespace(
-            current_version="8.10.0-alpine3.23",
-            available_version="8.10.1-alpine3.23",
-            local_digest="sha256:old",
-            remote_digest="sha256:new",
+            current_version="8.10.0-alpine3.23", available_version="8.10.1-alpine3.23",
+            local_digest="sha256:old", remote_digest="sha256:new",
         )
         with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
              mock.patch("commands.status.upgrade.read_env", return_value={}), \
@@ -124,13 +110,29 @@ class StatusStateTests(unittest.TestCase):
         self.assertEqual(rows[0]["actual"], "8.10.0-alpine3.23")
         self.assertEqual(rows[0]["drift"], "yes")
 
+    def test_exact_desired_resolves_legacy_floating_runtime_without_advancing_intent(self):
+        component = SimpleNamespace(stack="stack2", name="redis", container="firecrawl-redis")
+        state = SimpleNamespace(
+            current_version="8.10.0-alpine3.23", available_version="8.10.1-alpine3.23",
+            local_digest="sha256:old", remote_digest="sha256:new",
+        )
+        with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
+             mock.patch("commands.status.upgrade.read_env", return_value={}), \
+             mock.patch("commands.status.upgrade.compose_image", return_value="redis:8.10.0-alpine3.23"), \
+             mock.patch("commands.status.upgrade.running_image", return_value="redis:alpine"), \
+             mock.patch("commands.status.upgrade_registry.inspect", return_value=state) as inspect_mock:
+            rows = status.inventory(deployed_versions={})
+        inspect_mock.assert_called_once_with("firecrawl-redis", "redis:alpine")
+        self.assertEqual(rows[0]["desired"], "8.10.0-alpine3.23")
+        self.assertEqual(rows[0]["deployed"], "8.10.0-alpine3.23")
+        self.assertEqual(rows[0]["actual"], "8.10.0-alpine3.23")
+        self.assertEqual(rows[0]["drift"], "no")
+
     def test_floating_tag_same_digest_is_proven_no_drift(self):
         component = SimpleNamespace(stack="stack2", name="redis", container="firecrawl-redis")
         state = SimpleNamespace(
-            current_version="8.10.1-alpine3.23",
-            available_version="8.10.1-alpine3.23",
-            local_digest="sha256:same",
-            remote_digest="sha256:same",
+            current_version="8.10.1-alpine3.23", available_version="8.10.1-alpine3.23",
+            local_digest="sha256:same", remote_digest="sha256:same",
         )
         with mock.patch("commands.status.upgrade.load_catalog", return_value=[component]), \
              mock.patch("commands.status.upgrade.read_env", return_value={}), \
@@ -172,25 +174,13 @@ class StatusStateTests(unittest.TestCase):
 
     def test_status_and_upgrade_check_share_concrete_actual_for_floating_tag(self):
         component = SimpleNamespace(
-            stack="stack2",
-            name="redis",
-            container="firecrawl-redis",
-            compose="stack2_-_web/docker-compose.yml",
-            service="redis",
-            upstream=None,
-            selectable=False,
+            stack="stack2", name="redis", container="firecrawl-redis",
+            compose="stack2_-_web/docker-compose.yml", service="redis", upstream=None, selectable=False,
         )
         state = upgrade_registry.RegistryState(
-            image="redis:alpine",
-            tracking_image="redis:alpine",
-            registry="docker.io",
-            repository="library/redis",
-            local_digest="sha256:old",
-            remote_digest="sha256:new",
-            remote_status="ok",
-            tags_status="ok",
-            current_version="8.10.0-alpine3.23",
-            available_version="8.10.1-alpine3.23",
+            image="redis:alpine", tracking_image="redis:alpine", registry="docker.io", repository="library/redis",
+            local_digest="sha256:old", remote_digest="sha256:new", remote_status="ok", tags_status="ok",
+            current_version="8.10.0-alpine3.23", available_version="8.10.1-alpine3.23",
         )
         record = {"availability": "registry", "default_policy": "major-series"}
         policy_state = {"effective_policy": "major-series", "selection_valid": None}
