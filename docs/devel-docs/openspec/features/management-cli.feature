@@ -35,6 +35,32 @@ Feature: Single management CLI anticorruption boundary
       And no top-level `internal/`, `installer/` or `bkp-dr/` implementation root is required
       And historical recovery paths may be recognized only for restoring recorded source revisions
 
+  Rule: Machine consumers receive stable management envelopes
+
+    @CLI-JSON-001
+    Scenario: Install exposes a structured machine contract without publishing implementation commands
+      When the consumer runs "./local-ai --json install ..."
+      Then the response identifies schema version, command and success state
+      And requested and dependency-resolved stacks use stable stackN identities
+      And lifecycle actions expose stack, phase and reason rather than private command lines
+      And real execution remains confirmation-gated
+
+    @CLI-JSON-002
+    Scenario: Restore actions use one public JSON envelope
+      When the consumer runs a supported "./local-ai --json restore ..." action
+      Then the response identifies schema version, restore action and success state
+      And successful private recovery output is nested as the action result
+      And private stderr or invalid private JSON is converted to a stable public error response
+
+    @CLI-DOCTOR-001
+    Scenario: Doctor diagnoses management prerequisites without mutation
+      When the operator runs "./local-ai doctor" or "./local-ai --json doctor"
+      Then repository lifecycle metadata is validated
+      And protected operational configuration permissions are checked
+      And Docker and Compose availability are checked
+      And runtime-root absence is diagnostic information rather than an implicit creation request
+      And the command does not prepare, deploy, reconcile, restore or upgrade a stack
+
   Rule: Selective runtime lifecycle preserves dependency and state ownership
 
     @CLI-RUNTIME-001
@@ -65,6 +91,16 @@ Feature: Single management CLI anticorruption boundary
       And available is unknown
       And the component is never described as current from failed remote evidence
 
+    @CLI-REGISTRY-002
+    Scenario: Repeated registry discovery uses a bounded expiring cache
+      Given upgrade inventory has recently resolved a component against its configured registry package
+      When the same component and local immutable image identity are checked again inside the configured TTL
+      Then the cached registry state may be reused
+      And a changed local digest produces a cache miss
+      And expired entries produce a cache miss
+      And the cache retains only a bounded number of entries
+      And disabling the cache never changes registry-discovery semantics
+
     @CLI-UPGRADE-001
     Scenario: Upgrade check shows the complete component inventory
       When the operator runs "./local-ai upgrade check"
@@ -73,6 +109,15 @@ Feature: Single management CLI anticorruption boundary
       And Actual is the runtime observation shared with status
       And registry discovery alone does not create a selection
       And an unavailable or failed registry lookup is not silently reported as current
+
+    @CLI-UPGRADE-007
+    Scenario: Upgrade inventory explains execution safety for every component
+      When upgrade inventory is rendered for machine consumption
+      Then every component exposes explicit execution metadata
+      And selectable components declare guarded execution
+      And non-selectable components identify why execution is blocked
+      And LiteLLM remains inventory-only while its migration and compatibility policy is not explicit
+      And discovery of a newer artifact never bypasses that execution gate
 
     @CLI-UPGRADE-002
     Scenario: Selecting a version changes only the local upgrade plan

@@ -16,6 +16,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,9 @@ from commands import upgrade_policy, upgrade_registry
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "commands" / "upgrade-components.json"
 SCHEMA_VERSION = "1"
+REGISTRY_CACHE_SCHEMA_VERSION = 1
+REGISTRY_CACHE_DEFAULT_TTL_SECONDS = 300
+REGISTRY_CACHE_MAX_ENTRIES = 64
 
 
 class UpgradeError(RuntimeError):
@@ -52,6 +56,102 @@ def plan_path() -> Path:
     return runtime_root() / "platform" / "upgrade-plan.json"
 
 
+def registry_cache_path() -> Path:
+    return runtime_root() / "platform" / "registry-discovery-cache.json"
+
+
+def registry_cache_ttl_seconds() -> int:
+    raw = os.environ.get("LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS", str(REGISTRY_CACHE_DEFAULT_TTL_SECONDS))
+    try:
+        value = int(raw)
+    except ValueError:
+        return REGISTRY_CACHE_DEFAULT_TTL_SECONDS
+    return max(0, min(value, 86400))
+
+
+def _load_registry_cache() -> dict[str, dict]:
+    path = registry_cache_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if data.get("schema_version") != REGISTRY_CACHE_SCHEMA_VERSION or not isinstance(data.get("entries"), dict):
+        return {}
+    return {
+        key: value
+        for key, value in data["entries"].items()
+        if isinstance(key, str) and isinstance(value, dict)
+    }
+
+
+def _save_registry_cache(entries: dict[str, dict]) -> None:
+    path = registry_cache_path()
+    ordered = sorted(
+        entries.items(),
+        key=lambda item: float(item[1].get("stored_at", 0)),
+        reverse=True,
+    )[:REGISTRY_CACHE_MAX_ENTRIES]
+    payload = {
+        "schema_version": REGISTRY_CACHE_SCHEMA_VERSION,
+        "entries": dict(ordered),
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        return
+
+
+def _registry_cache_key(component: Component, image: str, local_digest: str | None) -> str:
+    return json.dumps(
+        {
+            "component": key(component),
+            "image": image,
+            "local_digest": local_digest,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _cached_registry_state(component: Component, image: str) -> upgrade_registry.RegistryState | None:
+    ttl = registry_cache_ttl_seconds()
+    if ttl <= 0:
+        return None
+    local = upgrade_registry.local_digest(component.container, image) if component.container else None
+    cache_key = _registry_cache_key(component, image, local)
+    entry = _load_registry_cache().get(cache_key)
+    if not entry:
+        return None
+    stored_at = entry.get("stored_at")
+    state = entry.get("state")
+    if not isinstance(stored_at, (int, float)) or time.time() - float(stored_at) > ttl:
+        return None
+    if not isinstance(state, dict):
+        return None
+    try:
+        return upgrade_registry.RegistryState(**state)
+    except TypeError:
+        return None
+
+
+def _store_registry_state(component: Component, image: str, state: upgrade_registry.RegistryState) -> None:
+    if registry_cache_ttl_seconds() <= 0:
+        return
+    local = state.local_digest
+    cache_key = _registry_cache_key(component, image, local)
+    entries = _load_registry_cache()
+    entries[cache_key] = {
+        "stored_at": time.time(),
+        "state": dict(state.__dict__),
+    }
+    _save_registry_cache(entries)
+
+
 def load_catalog_raw() -> dict:
     try:
         raw = json.loads(CATALOG.read_text(encoding="utf-8"))
@@ -59,6 +159,33 @@ def load_catalog_raw() -> dict:
         raise UpgradeError(f"cannot read component catalog: {exc}", code="UPGRADE_CATALOG_INVALID") from exc
     if raw.get("schema_version") != 1 or not isinstance(raw.get("stacks"), list):
         raise UpgradeError("unsupported component catalog schema", code="UPGRADE_CATALOG_INVALID")
+
+    allowed_execution_modes = {"guarded", "inventory-only", "not-applicable"}
+    for stack in raw["stacks"]:
+        if not isinstance(stack, dict) or not isinstance(stack.get("components"), list):
+            raise UpgradeError("invalid component catalog stack record", code="UPGRADE_CATALOG_INVALID")
+        for item in stack["components"]:
+            if not isinstance(item, dict):
+                raise UpgradeError("invalid component catalog component record", code="UPGRADE_CATALOG_INVALID")
+            execution = item.get("execution")
+            if not isinstance(execution, dict) or execution.get("mode") not in allowed_execution_modes:
+                raise UpgradeError(
+                    f"component {stack.get('id')}/{item.get('id')} lacks valid execution metadata",
+                    code="UPGRADE_CATALOG_INVALID",
+                )
+            selectable = item.get("selectable", True)
+            blocked_by = execution.get("blocked_by")
+            if selectable:
+                if execution["mode"] != "guarded" or blocked_by is not None:
+                    raise UpgradeError(
+                        f"selectable component {stack.get('id')}/{item.get('id')} must declare guarded execution",
+                        code="UPGRADE_CATALOG_INVALID",
+                    )
+            elif execution["mode"] == "guarded" or not isinstance(blocked_by, str) or not blocked_by:
+                raise UpgradeError(
+                    f"non-selectable component {stack.get('id')}/{item.get('id')} must declare why execution is blocked",
+                    code="UPGRADE_CATALOG_INVALID",
+                )
     return raw
 
 
@@ -186,6 +313,22 @@ def key(component: Component) -> str:
     return f"{component.stack}/{component.name}"
 
 
+def _execution_metadata(record: dict, component: Component) -> dict:
+    """Return explicit execution metadata while tolerating synthetic legacy records.
+
+    The repository catalog is validated strictly by ``load_catalog_raw`` and must
+    always declare execution metadata. Unit tests and private callers may provide
+    reduced synthetic records; those must not make read-only inventory crash.
+    Such records receive conservative derived metadata only for presentation.
+    """
+    execution = record.get("execution")
+    if isinstance(execution, dict):
+        return dict(execution)
+    if component.selectable:
+        return {"mode": "guarded"}
+    return {"mode": "inventory-only", "blocked_by": "legacy-or-synthetic-record"}
+
+
 def _registry_availability(
     component: Component,
     image: str | None,
@@ -195,7 +338,11 @@ def _registry_availability(
     if not online:
         return "unchecked", None, None
     try:
-        state = upgrade_registry.inspect(component.container, image)
+        state = _cached_registry_state(component, image) if image else None
+        if state is None:
+            state = upgrade_registry.inspect(component.container, image)
+            if state is not None and image:
+                _store_registry_state(component, image, state)
     except upgrade_registry.RegistryError as exc:
         raise UpgradeError(
             f"registry discovery failed for {key(component)}: {exc}",
@@ -288,6 +435,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
             "available": available,
             "policy": policy_state["effective_policy"],
             "selectable": component.selectable,
+            "execution": _execution_metadata(record, component),
             "selected": selected.get(component_key, {}).get("version"),
             "selection_valid": policy_state["selection_valid"],
             "registry": registry,
@@ -355,5 +503,10 @@ def find_component(stack: str, name: str | None) -> Component:
         if component is None:
             raise UpgradeError(f"unknown component for {stack}: {name}", code="UPGRADE_COMPONENT_UNKNOWN")
     if not component.selectable:
-        raise UpgradeError(f"component is inventory-only: {key(component)}", code="UPGRADE_COMPONENT_NOT_SELECTABLE")
+        record = component_records()[key(component)]
+        blocked_by = _execution_metadata(record, component)["blocked_by"]
+        raise UpgradeError(
+            f"component is inventory-only: {key(component)} ({blocked_by})",
+            code="UPGRADE_COMPONENT_NOT_SELECTABLE",
+        )
     return component

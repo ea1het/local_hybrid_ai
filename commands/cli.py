@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import runtime_lifecycle, status, upgrade_entry
+from commands import doctor, install_entry, runtime_lifecycle, status, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 RECOVERY = ROOT / "commands" / "recovery"
@@ -30,12 +30,45 @@ def _run_internal(path: Path, args: list[str]) -> int:
     return subprocess.run([sys.executable, str(path), *args], cwd=ROOT).returncode
 
 
-def _json_error(code: str, message: str) -> None:
-    print(json.dumps({
+def _json_error(code: str, message: str, *, command: str | None = None) -> None:
+    payload = {
         "schema_version": SCHEMA_VERSION,
         "success": False,
         "error": {"code": code, "message": message},
-    }, indent=2))
+    }
+    if command:
+        payload["command"] = command
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _run_internal_json(path: Path, args: list[str], *, command: str) -> int:
+    cp = subprocess.run(
+        [sys.executable, str(path), *args, "--json"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if cp.returncode != 0:
+        detail = (cp.stderr or cp.stdout or f"{command} failed").strip()
+        _json_error("INTERNAL_COMMAND_FAILED", detail, command=command)
+        return cp.returncode
+    try:
+        result = json.loads(cp.stdout)
+    except json.JSONDecodeError:
+        _json_error(
+            "INTERNAL_JSON_INVALID",
+            f"private implementation for {command} returned invalid JSON",
+            command=command,
+        )
+        return 1
+    print(json.dumps({
+        "schema_version": SCHEMA_VERSION,
+        "command": command,
+        "success": True,
+        "result": result,
+    }, indent=2, sort_keys=True))
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("args", nargs=argparse.REMAINDER)
 
     sub.add_parser("status", help="show desired, deployed and actual component state")
+    sub.add_parser("doctor", help="run read-only platform diagnostics")
 
     for action in ("start", "stop"):
         runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
@@ -75,7 +109,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def restore_command(args: list[str], json_output: bool) -> int:
     if not args:
-        print("Usage: ./local-ai restore <plan|drill|apply|resume> ...", file=sys.stderr)
+        if json_output:
+            _json_error(
+                "RESTORE_ACTION_REQUIRED",
+                "restore requires one of plan, drill, apply or resume",
+                command="restore",
+            )
+        else:
+            print("Usage: ./local-ai restore <plan|drill|apply|resume> ...", file=sys.stderr)
         return 2
     action, *rest = args
     mapping = {
@@ -86,10 +127,17 @@ def restore_command(args: list[str], json_output: bool) -> int:
     }
     script = mapping.get(action)
     if script is None:
-        print(f"Unknown restore action: {action}", file=sys.stderr)
+        if json_output:
+            _json_error(
+                "RESTORE_ACTION_UNKNOWN",
+                f"unknown restore action: {action}",
+                command="restore",
+            )
+        else:
+            print(f"Unknown restore action: {action}", file=sys.stderr)
         return 2
-    if json_output and "--json" not in rest:
-        rest.append("--json")
+    if json_output:
+        return _run_internal_json(script, rest, command=f"restore.{action}")
     return _run_internal(script, rest)
 
 
@@ -105,8 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     # unchanged to the implementation command.
     if raw and raw[0] == "install":
         if json_output:
-            _json_error("JSON_NOT_SUPPORTED", "install does not yet expose the stable JSON contract")
-            return 2
+            return install_entry.main(raw[1:])
         return _run_internal(ROOT / "commands" / "install.py", raw[1:])
 
     if raw and raw[0] == "backup":
@@ -132,6 +179,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.command == "status":
         return status.main(json_output=json_output)
+
+    if ns.command == "doctor":
+        return doctor.main(json_output=json_output)
 
     if ns.command in {"start", "stop"}:
         return runtime_lifecycle.main(ns.command, ns.stack, json_output=json_output)

@@ -13,15 +13,6 @@ Only active or intentionally deferred work belongs here. Completed work and deta
 - Define backup encryption-at-rest, retention generations, off-host copy and verification policy.
 - Package and document the external Stack6 memory-sync SSH bootstrap required when the configured Git origin needs that credential.
 
-## P1 — Management CLI and upgrades
-
-- `./local-ai` is the sole supported management boundary; keep internal Python, shell, Compose and DR paths outside the external contract.
-- Keep container version discovery bound to the registry/repository named by each configured image. Human versions come from tags published for that exact registry package; immutable digests remain machine identity. Do not reintroduce lateral GitHub Release lookups for container inventory.
-- Add bounded cache/TTL handling for remote registry discovery so repeated `upgrade check` calls do not waste rate-limit budget.
-- Extend safe execution metadata to components that are currently inventory-only/non-selectable because their version is pinned directly in tracked Compose or needs a component-specific migration contract. LiteLLM remains non-selectable until its compatibility and migration policy are explicit.
-- Complete stable JSON contracts for install/doctor/restore where not yet exposed.
-- Add doctor through `local-ai` rather than a new public script.
-
 ## P1 — DR engine hardening
 
 - Harden recovery validation for malformed non-string `mode`, `class` and `strategy` values.
