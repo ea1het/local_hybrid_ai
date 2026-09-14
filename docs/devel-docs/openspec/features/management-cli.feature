@@ -21,7 +21,7 @@ Feature: Single management CLI anticorruption boundary
 
     @CLI-BOUNDARY-001
     Scenario: External automation inspects upgrades without internal coupling
-      When the consumer runs "./local-ai --json upgrade check"
+      When the consumer runs "./local-ai --json upgrade"
       Then it receives a versioned machine-readable response
       And the response identifies the command and success state
       And stack identity remains stable for machine consumption
@@ -102,13 +102,14 @@ Feature: Single management CLI anticorruption boundary
       And disabling the cache never changes registry-discovery semantics
 
     @CLI-UPGRADE-001
-    Scenario: Upgrade check shows the complete component inventory
-      When the operator runs "./local-ai upgrade check"
+    Scenario: Upgrade shows the complete component inventory
+      When the operator runs "./local-ai upgrade"
       Then every declared component of every stack is represented
-      And the current human contract contains Actual, Available, Policy, Selectable, Selected and Valid columns
-      And Actual is the runtime observation shared with status
+      And the human contract contains Installed, Available, Policy, Selectable, Selected and Valid columns
+      And Installed is the concrete runtime observation
       And registry discovery alone does not create a selection
       And an unavailable or failed registry lookup is not silently reported as current
+      And "./local-ai upgrade check" remains a compatibility alias
 
     @CLI-UPGRADE-007
     Scenario: Upgrade inventory explains execution safety for every component
@@ -116,8 +117,19 @@ Feature: Single management CLI anticorruption boundary
       Then every component exposes explicit execution metadata
       And selectable components declare guarded execution
       And non-selectable components identify why execution is blocked
-      And LiteLLM remains inventory-only while its migration and compatibility policy is not explicit
       And discovery of a newer artifact never bypasses that execution gate
+
+    @CLI-UPGRADE-008
+    Scenario: Selectable is the result of executor qualification
+      Given a component is marked selectable
+      Then its upgrade path has explicit identity and compatibility rules
+      And its version-authority mutation and deployment scope are defined
+      And applicable migration and recovery behaviour are defined
+      And READY and VERIFY conditions are defined
+      And dependency impact is understood
+      And automated failure and success tests exist
+      And the path has passed representative runtime qualification
+      And changing compatibility policy alone cannot make an unqualified component selectable
 
     @CLI-UPGRADE-002
     Scenario: Selecting a version changes only the local upgrade plan
@@ -151,7 +163,7 @@ Feature: Single management CLI anticorruption boundary
       And no target deployment is started
 
     @CLI-UPGRADE-005
-    Scenario: A selected stateful component upgrades through the guarded lifecycle
+    Scenario: A selected component upgrades through the guarded lifecycle
       Given a selected component declares a safe targeted deploy method
       And the selection still satisfies selectability, baseline and effective policy
       When the operator confirms with "./local-ai upgrade --yes"
@@ -163,6 +175,7 @@ Feature: Single management CLI anticorruption boundary
       And prepared dependent consumers affected by dependency or capability relationships are reverified
       And the selection is cleared only after success
       And successful execution is appended to upgrade history
+      And human success is reported as "UPGRADE: PASS"
 
     @CLI-UPGRADE-006
     Scenario: Exact target images are proven before mutation
@@ -174,6 +187,14 @@ Feature: Single management CLI anticorruption boundary
       And a moved tag fails with UPGRADE_TARGET_MOVED
       And all target-image preflights complete before a recovery point is created
       And the operational environment is not changed before all target-image preflights pass
+
+    @CLI-UPGRADE-009
+    Scenario: Absence of PASS is not a successful upgrade
+      When guarded upgrade execution fails at any required preflight, mutation, READY, reconciliation or VERIFY step
+      Then "UPGRADE: PASS" is not emitted
+      And the failure is journaled
+      And a reported recovery point remains available when one was created
+      And the operator must not infer success merely because a container is running
 
   Rule: Installation state distinguishes intent, history and runtime reality
 
@@ -214,4 +235,4 @@ Feature: Single management CLI anticorruption boundary
       And a registry lookup failure never becomes a false drift no
       And fixed semantic tags do not require remote registry resolution merely to compare equal fixed identities
       And digest-pinned images compare their immutable digest identities directly
-      And the concrete Actual shown by status matches the concrete Actual shown by upgrade check for the same registry-backed runtime
+      And the concrete Actual shown by status matches the internal actual value returned by upgrade inventory for the same registry-backed runtime
