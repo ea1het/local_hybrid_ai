@@ -22,12 +22,21 @@ from commands import upgrade, upgrade_adopt, upgrade_entry, upgrade_registry
 
 
 class VersionAuthorityTests(unittest.TestCase):
-    def test_generic_guarded_components_are_selectable(self):
+    def test_selectability_matches_runtime_qualification_state(self):
         records = upgrade.component_records()
-        for component_key in ("stack1/haproxy", "stack2/redis", "stack2/rabbitmq", "stack5/dockhand"):
+
+        redis = records["stack2/redis"]
+        self.assertTrue(redis.get("selectable", True))
+        self.assertEqual(redis["execution"], {"mode": "guarded", "blocked_by": None})
+        self.assertEqual(redis["apply"]["type"], "env-version")
+
+        for component_key in ("stack1/haproxy", "stack2/rabbitmq", "stack5/dockhand"):
             record = records[component_key]
-            self.assertTrue(record.get("selectable", True), component_key)
-            self.assertEqual(record["execution"], {"mode": "guarded", "blocked_by": None})
+            self.assertFalse(record.get("selectable", True), component_key)
+            self.assertEqual(
+                record["execution"],
+                {"mode": "inventory-only", "blocked_by": "executor-not-qualified"},
+            )
             self.assertEqual(record["apply"]["type"], "env-version")
 
     def test_catalog_no_longer_uses_tracked_compose_pin_as_block_reason(self):
