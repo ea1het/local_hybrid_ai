@@ -110,6 +110,34 @@ SELECTABLE = yes
 
 The catalog change is deliberately the **last** step. It records an already-proven capability; it does not create that capability.
 
+## Current runtime-qualified evidence
+
+### Stack2 Redis
+
+Redis is runtime-qualified for the generic guarded env-version executor.
+
+Representative transition:
+
+```text
+8.10.0-alpine3.23 -> 8.10.1-alpine3.23
+```
+
+Observed evidence from the deployment qualification:
+
+- selection resolved the concrete running baseline rather than the historical `redis:alpine` tag;
+- the exact target `redis:8.10.1-alpine3.23` was selected with immutable digest `sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576`;
+- the guarded executor completed successfully and wrote a `success=true` record to `upgrade-history.jsonl`;
+- affected prepared consumers in stacks 1, 6 and 7 were reverified;
+- the successful selection was cleared;
+- post-upgrade status reported Redis configured, deployed and running at `8.10.1-alpine3.23` with `DRIFT=no`;
+- the focused regression gate passed after the upgrade UX changes.
+
+This evidence supports `SELECTABLE=yes` for Stack2 Redis under the current guarded executor contract.
+
+### Components awaiting qualification
+
+HAProxy, RabbitMQ and Dockhand already have explicit version authority and an env-version executor definition, but they remain `inventory-only / executor-not-qualified` until equivalent real-runtime qualification is completed. Their executor metadata is implementation readiness, not yet a support claim.
+
 ## Demotion
 
 A selectable component SHOULD be returned to inventory-only when a newly discovered upstream migration requirement, unresolved breaking change, failed qualification, or unsupported runtime condition invalidates the existing executor contract. Keeping a component selectable while its safety assumptions are known to be false is a contract bug.
