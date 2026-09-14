@@ -37,20 +37,31 @@ _resolve_state = component_state.resolve_identity
 def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, str] | None = None) -> list[dict]:
     """Return detailed component state for JSON diagnostics and drift aggregation."""
     env = upgrade.read_env()
+    records = upgrade.component_records()
     if deployed_versions is None:
         deployed_versions = component_state.deployed_versions(runtime_root or upgrade.runtime_root())
 
     rows: list[dict] = []
     for component in upgrade.load_catalog():
-        desired_image = upgrade.compose_image(component, env)
-        actual_image = upgrade.running_image(component)
-        desired, actual, drift = component_state.resolve_identity(component, desired_image, actual_image)
         component_key = upgrade.key(component)
+        actual_image = upgrade.running_image(component)
+        record = records[component_key]
+
+        if record.get("availability") == "local":
+            actual = "local" if actual_image else "n/a"
+            desired = "local"
+            deployed = "local" if actual_image else "unknown"
+            drift = "n/a"
+        else:
+            desired_image = upgrade.compose_image(component, env)
+            desired, actual, drift = component_state.resolve_identity(component, desired_image, actual_image)
+            deployed = component_state.deployed(component_key, desired, actual, deployed_versions)
+
         rows.append({
             "stack": component.stack,
             "component": component.name,
             "desired": desired,
-            "deployed": component_state.deployed(component_key, desired, actual, deployed_versions),
+            "deployed": deployed,
             "actual": actual,
             "drift": drift,
         })
