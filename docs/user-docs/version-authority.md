@@ -6,39 +6,31 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Component version authority
 
-[← User documentation](README.md) · [CLI reference](cli.md) · [ADR-0006](../devel-docs/adr/0006-operational-version-authority.md)
+[← User documentation](README.md) · [Upgrade guide](upgrade.md) · [ADR-0006](../devel-docs/adr/0006-operational-version-authority.md)
 
-Local Hybrid AI separates source defaults, installation intent, observed runtime and registry availability.
+This page is migration and advanced background. It is **not** the normal operator upgrade workflow. For day-to-day updates, start with [`./local-ai upgrade`](upgrade.md).
 
-- Git-tracked Compose provides exact source baselines for a fresh installation.
-- The protected operational `.env` carries installation-owned image/version overrides after adoption.
-- Docker runtime provides the observed `ACTUAL` state.
-- Registry discovery provides `AVAILABLE`; it does not silently change `DESIRED`.
+Local Hybrid AI keeps an installation-owned version authority internally so that source defaults, mutable container tags and remote registry changes cannot silently change what an existing installation intends to run.
 
-## Adopt an existing installation
+The operator-facing upgrade view deliberately reduces that model to the concepts that matter during normal work: **installed**, **available**, and **selectable**. Detailed desired-state representation remains an implementation concern unless drift or migration must be diagnosed.
 
-Existing deployments that predate operational image authority can record the exact already-running baseline without recreating any container.
+## Existing installations
+
+Deployments created before explicit installation-owned version authority can record the exact already-running baseline without recreating containers:
 
 ```bash
 ./local-ai upgrade adopt
 sudo ./local-ai upgrade adopt --yes
 ```
 
-The first command is read-only and prints the identities that would be adopted plus the missing operational keys. The second command writes only missing non-secret image/version keys to the protected root `.env` atomically. Existing values must already agree with the running installation; a conflict fails closed and nothing is overwritten implicitly.
+The first command is read-only. It shows the running identities and any authority keys that are still missing. The second writes only missing non-secret image/version authority keys to the protected root `.env`.
 
-Adoption does **not** pull images, run Compose, select an upgrade or restart a service.
+Adoption does **not** pull images, run Compose, select an upgrade or restart a service. Existing conflicting authority values fail closed rather than being overwritten.
 
-After successful adoption, `./local-ai status` should report installation-owned `DESIRED` values rather than following moving registry channels. `./local-ai upgrade check` may still report newer `AVAILABLE` versions independently.
+`upgrade adopt` exists to migrate old installations to the current model. It should not become a routine step in the normal upgrade process, and fresh installations should not require it as part of ordinary maintenance.
 
-## Guarded upgrades
+## Internal model
 
-A component becomes selectable only when its executor has been explicitly qualified. Externalizing version authority does not by itself authorize mutation. HAProxy and Stack2 Redis use the generic guarded repository/version executor. Stateful or migration-sensitive components remain inventory-only until their compatibility and migration contracts are explicit.
+Internally, the project still distinguishes installation intent, recorded successful deployment state, observed runtime state and remote availability. Those distinctions are necessary for drift detection, stale-plan protection and deterministic upgrade execution, but they are intentionally not the primary human interface.
 
-For example, after adoption:
-
-```bash
-./local-ai upgrade stack2 redis select 8.10.1-alpine3.23
-sudo ./local-ai upgrade --yes
-```
-
-Selection validates policy and immutable registry identity. Apply mutates only the installation-owned version key, performs targeted deployment, waits for READY and verifies the selected version. Registry discovery alone never creates consent.
+The architecture rationale and exact ownership rules are normative in [ADR-0006](../devel-docs/adr/0006-operational-version-authority.md).
