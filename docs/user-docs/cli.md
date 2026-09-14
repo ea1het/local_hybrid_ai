@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # `local-ai` command-line interface
 
-`./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Python modules under `commands/`, shell scripts, Compose files and direct stack lifecycle commands are implementation details and may change without preserving their invocation syntax.
+`./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Python modules under `commands/`, shell scripts, Compose files and direct stack lifecycle commands are implementation details.
 
 ## Command map
 
@@ -23,18 +23,19 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ├── status
 ├── doctor
 └── upgrade
-    ├── check [--offline]
+    ├── [check] [--offline]
     ├── policy [stack [component] [set POLICY|clear]]
     ├── stack [component] select VERSION
     ├── stack [component] clear
+    ├── adopt [--yes]              # migration utility for older installations
     └── --yes
 ```
 
-Global `--json` may be placed before the command. It is supported by `install`, `start`, `stop`, `backup`, `restore`, `status`, `doctor` and `upgrade`.
+Global `--json` may be placed before the command. It is supported by the management commands that expose a machine contract.
 
 ## `install`
 
-`install` is the public facade over the private manifest-driven engine in `commands/install.py`. Human mode passes installer options through unchanged; machine mode uses the same manifest/lifecycle functions but exposes a stable high-level contract rather than private command lines.
+`install` is the public facade over the manifest-driven lifecycle engine.
 
 ```bash
 ./local-ai install --plan all
@@ -44,9 +45,7 @@ Global `--json` may be placed before the command. It is supported by `install`, 
 ./local-ai --json install 7 --plan
 ```
 
-The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests, and reconciliation is capability-driven rather than hard-coded by stack number.
-
-The install JSON contract uses schema version `1`. It reports `requested`, `resolved_stacks`, `changed_stacks`, `reconcile_stacks`, high-level lifecycle `actions`, mode and whether mutation was executed. Action records contain stack, lifecycle phase and reason; private shell/Python command lines are deliberately not part of the public machine contract.
+The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests.
 
 ## `start` / `stop`
 
@@ -56,13 +55,7 @@ sudo ./local-ai start 5
 sudo ./local-ai --json stop stack5
 ```
 
-These commands expose selective runtime lifecycle through the supported management boundary. Stack selectors use the same manifest-driven forms accepted by the installer (`5`, `stack5`, or the manifest directory name). Exactly one stack must be selected.
-
-`stop` performs a controlled `docker compose stop` in the stack directory. It never performs `docker compose down`, never removes networks or volumes, and never recreates containers. Before stopping a provider, the CLI checks required dependency/capability consumers that are currently running. If a required consumer would be broken, the operation fails closed with `STACK_HAS_ACTIVE_CONSUMERS` and makes no runtime change.
-
-`start` performs a controlled `docker compose start`; it does not prepare, create or recreate a stack and it does not implicitly start required providers. The target must already be PREPARED and its required providers must already be running, otherwise the command fails closed. After start, generic READY is checked for the stack's `required_containers`; stack-specific application reconciliation remains part of the install/reconcile lifecycle rather than being silently run by `start`.
-
-Stacks without managed runtime containers, such as Stack0, reject start/stop with `STACK_RUNTIME_EMPTY`. Real start/stop execution requires root. Human output reports the stack directory and all manifest-owned containers affected by the Compose operation; JSON responses use schema version `1` and command identifiers `runtime.start` / `runtime.stop`.
+`stop` performs controlled `docker compose stop`; it never removes networks or volumes. It fails closed when an active required consumer would be broken. `start` starts an already prepared/deployed stack; it does not prepare or recreate it and requires providers to be running. Generic READY is checked after start.
 
 ## `backup`
 
@@ -72,47 +65,42 @@ Stacks without managed runtime containers, such as Stack0, reject start/stop wit
 ./local-ai --json backup
 ```
 
-Creates one atomic manifest-driven full recovery point. The protected operational `.env` is included as a sensitive global artifact. Stateful resources use stack-specific recovery strategies; reconstructable state is not copied merely because it exists at runtime.
+Creates one manifest-driven recovery point. The protected operational `.env` is included as sensitive global state. Stateful resources use stack-specific recovery strategies; reconstructable resources are not copied merely because runtime state exists.
 
 ## `restore`
 
-`restore` exposes four public operations while keeping the implementation in `commands/recovery/` private. In JSON mode the public CLI wraps the private action result in a common schema-1 envelope with `command`, `success` and `result`. Private stderr and invalid private JSON are normalized to a stable public error response instead of leaking mixed human/machine output.
-
-### `restore plan`
+### Plan
 
 ```bash
 ./local-ai restore plan /path/to/backup-set --dry-run
-./local-ai --json restore plan /path/to/backup-set --dry-run
 ```
 
-Validates the completed backup set, checks checksums, resolves stack order and prints restore actions. It makes no changes and refuses execution without `--dry-run`.
+Validates the backup, checks checksums and prints restore actions without mutation.
 
-### `restore drill`
+### Drill
 
 ```bash
 ./local-ai restore drill /path/to/backup-set --destination /isolated/path
 ```
 
-Runs an isolated end-to-end recovery drill. Drill containers do not publish ports, do not attach to the platform network and do not modify the active runtime.
+Runs an isolated recovery drill without modifying the active runtime.
 
-### `restore apply`
+### Apply
 
 ```bash
 ./local-ai restore apply /path/to/backup-set --check-clean-target
 ```
 
-The clean-target preflight proves that target paths and owned Docker objects are absent before a destructive recovery is allowed. Real execution additionally requires the underlying restore engine's explicit execution and clean-target confirmation flags; the CLI does not manufacture consent.
+Real restore requires the clean-target and execution gates defined by the recovery engine. The CLI never manufactures destructive consent.
 
-Stack6 Git-memory SSH material remains an external operator prerequisite and may be supplied through the supported bootstrap option during a real clean rebuild.
-
-### `restore resume`
+### Resume
 
 ```bash
 ./local-ai restore resume /path/to/backup-set \
   --memory-sync-ssh-bootstrap /secure/bootstrap
 ```
 
-Resumes the narrowly defined historical recovery path after a known post-reconcile readiness interruption. It validates restored source, `.env`, prepared state and durable data before continuing. Current source uses `commands/install.py`; historical recovery points containing `installer/install.py` or the older root `install.py` remain supported by the DR compatibility adapter. Those historical paths are not supported management APIs.
+Resumes the narrowly defined historical recovery path after validation of restored state and prerequisites.
 
 ## `status`
 
@@ -121,20 +109,13 @@ Resumes the narrowly defined historical recovery path after a known post-reconci
 ./local-ai --json status
 ```
 
-`status` is the installation-state view. Its public concepts are:
+`status` is a **diagnostic installation-state view**, not the normal way to decide whether software updates exist.
 
-| Field | Meaning |
-|---|---|
-| `DESIRED` | Effective version represented by this installation's declarative Compose/environment configuration. Fixed tags/digests are shown directly. Broad mutable tags such as `alpine`, major-only or major.minor tracking lines are resolved through their owning registry when possible. |
-| `DEPLOYED` | Last version recorded by a successful guarded upgrade. If no guarded-upgrade history exists yet, the observed runtime version is used as the installation's adoption baseline. Components for which versioned deployment does not apply report `n/a`. `unknown` is reserved for a genuinely indeterminate deployed state. |
-| `ACTUAL` | Version observed from the running container image. For mutable tracking tags, registry-native digest/tag mapping is used to expose the concrete running version rather than repeating the mutable tag name. |
-| `DRIFT` | Fast Desired-versus-Actual decision: `yes` means they differ, `no` means they match, and `n/a` means drift cannot meaningfully be evaluated. |
+Internally Local Hybrid AI distinguishes configured intent, successful deployment history and observed runtime because those states are needed to detect drift and protect upgrades. Human `status` may therefore expose `DESIRED`, `DEPLOYED`, `ACTUAL` and `DRIFT` when diagnosing the installation.
 
-For fixed references, Drift compares the fixed desired identity with the observed runtime identity. For mutable tracking references, Drift is based on immutable local-versus-remote digest evidence whenever available. If registry resolution is unavailable, `status` does **not** claim `no` merely because both source and runtime strings contain the same mutable tag; it reports `n/a` instead.
+For everyday package/version maintenance, use [`./local-ai upgrade`](upgrade.md). The normal operator questions are simpler: **what is installed, what is available, and can local-ai safely update it?**
 
-`DEPLOYED` remains historical evidence once guarded-upgrade history exists; the pre-history adoption fallback prevents an already-running installation from being mislabeled as unknown merely because it predates the executor. `ACTUAL` is never synthesized from desired state.
-
-The status JSON contract is schema version `2`; the drift value vocabulary is `yes`, `no`, `n/a`.
+A healthy component normally has aligned configured/deployed/runtime identities and `DRIFT=no`. Drift indicates that the installation intent and observed runtime disagree and should be understood before applying unrelated upgrades.
 
 ## `doctor`
 
@@ -143,88 +124,109 @@ The status JSON contract is schema version `2`; the drift value vocabulary is `y
 ./local-ai --json doctor
 ```
 
-`doctor` is read-only. It validates the root management entry point, manifest/lifecycle registry agreement, protected operational `.env` presence and mode, Docker CLI availability, Docker Compose availability and runtime-root presence. A missing runtime root is reported as a warning because a platform may legitimately be inspected before first deployment; doctor does not create it.
+`doctor` is read-only. It validates management-entry, manifest/lifecycle, protected `.env`, Docker, Compose and runtime-root prerequisites. Human output uses `PASS`, `WARN` and `FAIL`. A failed prerequisite returns non-zero; warnings do not.
 
-Human output uses `PASS`, `WARN` and `FAIL` per check. JSON uses schema version `1`, command `doctor`, a top-level success flag and structured check records. Any failed prerequisite makes the command return non-zero; warnings do not.
+## `upgrade`
 
-## `upgrade check`
+The complete operator workflow is documented in [Upgrading Local Hybrid AI components](upgrade.md). Start here:
 
 ```bash
-./local-ai upgrade check
-./local-ai upgrade check --offline
-./local-ai --json upgrade check
+./local-ai upgrade
 ```
 
-Online check discovers published versions from the **same container registry/package used by the configured/running image**. GitHub Releases are not mixed into operational container-version discovery. Offline check skips remote registry discovery.
+`./local-ai upgrade check` remains a compatibility alias for the same online inventory. `--offline` skips remote registry discovery.
 
-The human update-decision table is:
+The version table answers the normal maintenance questions:
 
 ```text
-STACK COMPONENT ACTUAL AVAILABLE POLICY SELECTABLE SELECTED VALID
+STACK  COMPONENT  ACTUAL  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
 ```
 
-`ACTUAL` is the runtime observation shared with `status`. `AVAILABLE` describes registry discovery, `POLICY` is the effective installation compatibility policy, `SELECTABLE` is executor capability/authorization, `SELECTED` is explicit operator intent, and `VALID` reports whether an existing selection remains valid. Registry availability never creates consent.
+For human use, read `ACTUAL` as **the concrete installed/running version** and `AVAILABLE` as **the newest version discovered from the component's configured registry/package**. A newer `AVAILABLE` value never creates consent.
 
-Machine inventory additionally exposes an `execution` object. Selectable components declare `mode=guarded`; inventory-only components declare a stable `blocked_by` reason such as `tracked-compose-pin`, `local-build` or `migration-policy-required`. LiteLLM remains inventory-only until its migration and compatibility contract is explicitly qualified.
+### SELECTABLE
 
-Remote registry discovery is cached in the installation runtime area to avoid unnecessary repeated registry traffic. The cache is bounded to 64 entries, defaults to a 300-second TTL and is keyed by component, configured/running image and local immutable digest so a real local image change invalidates reuse. `LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS=0` disables cache reads/writes; values are clamped to at most one day. Cache corruption or write failure is non-fatal and never becomes authority over registry evidence.
+`SELECTABLE=yes` means Local Hybrid AI has a qualified guarded executor for that component. The supported flow is:
 
-## `upgrade policy`
+```bash
+./local-ai upgrade
+./local-ai upgrade stack2 redis select 8.10.1-alpine3.23
+./local-ai upgrade
+sudo ./local-ai upgrade --yes
+```
+
+Selection is read-only with respect to the service. It verifies the target, compatibility policy and immutable registry digest, then records explicit operator intent.
+
+`upgrade --yes` applies **only already-selected targets**. Before changing anything it revalidates the runtime baseline, component eligibility, policy and immutable target identity. The executor then performs the component's qualified mutation path, including READY/VERIFY and recovery/reconciliation steps where required.
+
+A successful operation ends with:
+
+```text
+UPGRADE: PASS
+```
+
+That message means the supported guarded procedure completed and its required post-change verification passed. It does not merely mean that Docker started a container.
+
+If `UPGRADE: PASS` is not produced, do not assume the update completed. Read the error/recovery point and inspect:
+
+```bash
+./local-ai status
+./local-ai upgrade
+```
+
+Failures are journaled. Local Hybrid AI does not assume that destructive automatic rollback is safe.
+
+Clear an unexecuted selection with:
+
+```bash
+./local-ai upgrade stack2 redis clear
+```
+
+### NO SELECTABLE
+
+`SELECTABLE=no` does not mean upstream software is impossible to update. It means Local Hybrid AI has **not yet qualified a safe automated procedure** for that component.
+
+Typical blocker meanings are:
+
+| Blocker | Meaning |
+|---|---|
+| `migration-policy-required` | Migration/compatibility/recovery semantics still need an explicit contract. |
+| `executor-not-qualified` | Discovery works but mutation/READY/VERIFY has not completed qualification. |
+| `local-build` | Registry-version upgrade semantics do not apply normally. |
+| `non-versioned-component` | Versioned package upgrade is not meaningful for this component. |
+
+Changing upgrade policy does not turn a non-selectable component into a selectable one. Promotion requires identity, compatibility, mutation scope, migration, recovery, READY, VERIFY, dependency-impact, automated-test and real-runtime qualification gates. See [Upgrade executor qualification](../devel-docs/upgrade-qualification.md).
+
+Once marked selectable, the project is asserting that `./local-ai upgrade` is a supported mutation path with defined success and failure semantics. The catalog flag is therefore the final record of qualification, not the mechanism that creates it.
+
+### Upgrade policy
 
 ```bash
 ./local-ai upgrade policy
-./local-ai upgrade policy stack7
-./local-ai upgrade policy stack4 gitea
-./local-ai upgrade policy stack7 set major-series
-./local-ai upgrade policy stack7 clear
+./local-ai upgrade policy stack2 redis
+./local-ai upgrade policy stack2 redis set major-series
+./local-ai upgrade policy stack2 redis clear
 ```
 
-Three policies exist:
+Policies are compatibility boundaries, independent of selectability:
 
 | Policy | Meaning |
 |---|---|
-| `minor-series` | Target must be strictly newer and remain in the same `major.minor` series. |
-| `major-series` | Target must be strictly newer and remain in the same `major` series. |
-| `manual` | No series inference; the operator explicitly names the exact target. Comparable semantic downgrades remain rejected. |
+| `minor-series` | strictly newer target in the same `major.minor` series |
+| `major-series` | strictly newer target in the same `major` series |
+| `manual` | explicit target; no automatic series inference |
 
-The project catalog supplies a default. An installation may override it in the runtime platform state. `clear` removes only the local override and returns to the project default. Policy changes never silently delete an existing selection; an incompatible selection is retained and reported invalid. A read-only policy response has no previous transition; `previous_effective_policy` is emitted only for mutating `set`/`clear` responses.
+A policy override cannot bypass an unqualified executor.
 
-## Upgrade selection
-
-```bash
-./local-ai upgrade stack6 select <published-version>
-./local-ai upgrade stack7 select <published-version>
-./local-ai upgrade stack7 clear
-```
-
-Selection requires a component with executor support, a real target tag in the configured registry/package, a non-current target and an effective policy that permits the target. Multi-component stacks require the component name.
-
-The installation-local selection records:
-
-- the runtime baseline (`current_at_selection`),
-- the chosen human version/tag,
-- the effective policy at selection,
-- the exact target image reference, and
-- the immutable registry digest observed for that target.
-
-A runtime baseline change makes the plan stale. A selected registry tag that later points to a different digest is rejected rather than silently following the moved tag.
-
-Stable rejection codes include `UPGRADE_COMPONENT_NOT_SELECTABLE`, `UPGRADE_TARGET_NOT_AVAILABLE`, `UPGRADE_TARGET_NOT_NEWER`, `UPGRADE_TARGET_UNSUPPORTED`, `UPGRADE_TARGET_MOVED`, `UPGRADE_PLAN_STALE` and `UPGRADE_NOTHING_SELECTED`.
-
-## `upgrade --yes`
+### `upgrade adopt`
 
 ```bash
-./local-ai upgrade --yes
+./local-ai upgrade adopt
+sudo ./local-ai upgrade adopt --yes
 ```
 
-`--yes` confirms **exactly the targets already selected**. It never means "upgrade everything" and never auto-selects versions discovered by `upgrade check`.
-
-Before mutation, the executor revalidates selection baselines, component selectability, effective compatibility policy, target-image existence and immutable digest identity. Components marked `recovery_required` receive a recovery point only after those preflights pass. The executor updates only the selected version keys, performs targeted deployment, waits READY, reconciles, waits READY again, verifies the target version and re-verifies prepared consumers affected through dependency/capability relationships. Successful selections are cleared and history is appended. Failures are journaled; destructive automatic rollback is not attempted.
-
-Upgrade application is protected by a non-blocking installation-local lock. A concurrent apply fails with `UPGRADE_BUSY`.
+`adopt` is an **installation migration utility**, not a normal update step. It records exact already-running identities as installation-owned authority for deployments that predate that model. It does not pull images, run Compose, select an update or restart services. Fresh installations should not need routine adoption.
 
 ## Human and JSON contracts
 
-Human stack identifiers are numeric (`0` through `7`). JSON keeps stable identities such as `stack7`. JSON responses include a `schema_version`, a command identifier where applicable, `success`, structured data on success and a stable error object on failure. CLI implementation versioning and JSON contract versioning are independent.
-
-The public contract is tested through `./local-ai`; unit tests may additionally exercise private `commands/` modules directly.
+Human stack identifiers are numeric (`0` through `7`). JSON keeps stable identities such as `stack7`. Machine responses include a schema version, command identifier where applicable, structured success data and stable error objects. JSON-contract versioning is independent from private implementation details.
