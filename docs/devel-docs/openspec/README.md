@@ -15,12 +15,13 @@ OpenSpec describes observable platform behaviour at the boundary between archite
 The specification is organized by concern:
 
 ```text
-platform.feature                 repository/runtime ownership and shared platform invariants
-installer.feature                lifecycle, dependency resolution and reconciliation semantics
-disaster-recovery.feature        recovery-point completeness and safe reconstruction
-features/management-cli.feature  sole public management boundary and state/upgrade/runtime semantics
-features/upgrade-policy.feature  discovery, policy, selection and execution authorization
-stacks/stack0..stack7.feature    stack-owned behaviour and security/persistence boundaries
+platform.feature                    repository/runtime ownership and shared platform invariants
+installer.feature                   lifecycle, dependency resolution and reconciliation semantics
+disaster-recovery.feature           recovery-point completeness and safe reconstruction
+features/management-cli.feature     sole public management boundary and state/upgrade/runtime semantics
+features/component-inventory.feature manifest-owned component topology and structural rescans
+features/upgrade-policy.feature     discovery, policy, selection and execution authorization
+stacks/stack0..stack7.feature       stack-owned behaviour and security/persistence boundaries
 ```
 
 See the [feature index](features/README.md), [per-stack feature index](stacks/README.md) and [cross-stack architecture map](../../stacks/README.md).
