@@ -71,14 +71,15 @@ Supported management forms are exposed through `./local-ai restore ...`; the und
 
 Historical recovery compatibility may recognize source commits that still contain `installer/install.py` or the older root `install.py`. That is a restore-compatibility rule only; it does not make those historical paths supported management interfaces.
 
-The generic restore path has passed a real destructive clean-target qualification for stacks 0–6. Stack7 has separately passed a current isolated archive restore from a global recovery point without modifying the live runtime. Do not repeat destructive qualification merely to recreate evidence.
+The generic restore path has passed destructive clean-target qualification for stacks 0–6. Stack7 has separately passed an isolated archive restore from a global recovery point without modifying the active runtime. These statements describe qualified capabilities, not installation-specific recovery points. Detailed evidence and current qualification scope are summarized in [status.md](status.md).
 
-## Current qualified recovery points
+## Qualified recovery coverage
 
-- Core destructive clean-target proof: `/opt/local-hybrid-ai-backups/backup-20260911T172551Z`.
-- First Stack7-aware global point: `/opt/local-hybrid-ai-backups/backup-20260912T213405Z`.
+- Stacks 0–6: destructive clean-target recovery has been qualified.
+- Stack7: application-data recovery has been qualified using an isolated restore from a complete recovery point.
+- Backup-set integrity and atomic publication are part of the qualified recovery contract.
 
-Detailed evidence is in [status.md](status.md).
+Concrete backup-set names, timestamps, host paths and deployment-specific inventory belong in operational records or Git history, not in canonical project documentation.
 
 ## Deliberately excluded
 
