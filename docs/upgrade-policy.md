@@ -22,7 +22,7 @@ The supported policy vocabulary is intentionally small:
 
 ## Project default and installation override
 
-Each component in the private `commands/upgrade-components.json` catalog has a project `default_policy`. An installation may override it without modifying Git or `.env`.
+Each upgrade-visible component declares its project `default_policy` in the owning stack's `manifest.json`. The management CLI compiles this metadata dynamically from manifests; there is no second hand-maintained component catalog. An installation may override the project policy without modifying Git or `.env`.
 
 Mutable overrides live in the installation runtime platform state (`upgrade-policy.json`). Inspect them through the supported CLI rather than editing that file directly:
 
