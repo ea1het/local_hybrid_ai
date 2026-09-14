@@ -15,6 +15,26 @@
     "container:open-webui",
     "runtime:service_-_open-webui"
   ],
+  "components": [
+    {
+      "id": "open-webui",
+      "service": "open-webui",
+      "container": "open-webui",
+      "management": {"type": "versioned"},
+      "upgrade": {
+        "upstream": "open-webui/open-webui",
+        "default_policy": "minor-series",
+        "recovery_required": true,
+        "execution": {"mode": "guarded", "blocked_by": null},
+        "apply": {
+          "type": "env-version",
+          "env_key": "OPENWEBUI_VERSION",
+          "image_env_key": "OPENWEBUI_IMAGE",
+          "deploy": ["docker", "compose", "up", "-d", "open-webui"]
+        }
+      }
+    }
+  ],
   "blockers": [],
   "recovery": {
     "contract": {
