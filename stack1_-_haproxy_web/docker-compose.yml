@@ -7,7 +7,7 @@ name: Stack1 - HAProxy + Web
 services:
 
   haproxy:
-    image: ${HAPROXY_IMAGE:-haproxy:3.0.26-alpine3.24}
+    image: ${HAPROXY_IMAGE:-haproxy}:${HAPROXY_VERSION:-3.0.26-alpine3.24}
     container_name: haproxy
     restart: unless-stopped
 
