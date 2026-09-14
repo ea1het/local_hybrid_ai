@@ -313,6 +313,22 @@ def key(component: Component) -> str:
     return f"{component.stack}/{component.name}"
 
 
+def _execution_metadata(record: dict, component: Component) -> dict:
+    """Return explicit execution metadata while tolerating synthetic legacy records.
+
+    The repository catalog is validated strictly by ``load_catalog_raw`` and must
+    always declare execution metadata. Unit tests and private callers may provide
+    reduced synthetic records; those must not make read-only inventory crash.
+    Such records receive conservative derived metadata only for presentation.
+    """
+    execution = record.get("execution")
+    if isinstance(execution, dict):
+        return dict(execution)
+    if component.selectable:
+        return {"mode": "guarded"}
+    return {"mode": "inventory-only", "blocked_by": "legacy-or-synthetic-record"}
+
+
 def _registry_availability(
     component: Component,
     image: str | None,
@@ -419,7 +435,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
             "available": available,
             "policy": policy_state["effective_policy"],
             "selectable": component.selectable,
-            "execution": dict(record["execution"]),
+            "execution": _execution_metadata(record, component),
             "selected": selected.get(component_key, {}).get("version"),
             "selection_valid": policy_state["selection_valid"],
             "registry": registry,
@@ -488,7 +504,7 @@ def find_component(stack: str, name: str | None) -> Component:
             raise UpgradeError(f"unknown component for {stack}: {name}", code="UPGRADE_COMPONENT_UNKNOWN")
     if not component.selectable:
         record = component_records()[key(component)]
-        blocked_by = record["execution"]["blocked_by"]
+        blocked_by = _execution_metadata(record, component)["blocked_by"]
         raise UpgradeError(
             f"component is inventory-only: {key(component)} ({blocked_by})",
             code="UPGRADE_COMPONENT_NOT_SELECTABLE",
