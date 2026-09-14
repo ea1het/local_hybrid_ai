@@ -21,7 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from commands import cli
+from commands import cli, component_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "local-ai"
@@ -52,8 +52,8 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertEqual(payload["command"], "upgrade.check")
         self.assertTrue(payload["success"])
 
-    def test_upgrade_contains_all_declared_components_and_selected_column(self):
-        catalog = json.loads((ROOT / "commands" / "upgrade-components.json").read_text())
+    def test_upgrade_contains_all_manifest_declared_upgrade_components(self):
+        catalog = component_inventory.compile_upgrade_catalog()
         expected = sum(len(stack["components"]) for stack in catalog["stacks"])
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli("--json", "upgrade", "--offline", runtime_root=tmp)
@@ -63,6 +63,15 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertTrue(all("actual" in row for row in payload["components"]))
         self.assertTrue(all("policy" in row for row in payload["components"]))
         self.assertTrue(all("selectable" in row for row in payload["components"]))
+
+    def test_inventory_rescan_is_available_through_public_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("--json", "inventory", "rescan", runtime_root=tmp)
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        payload = json.loads(cp.stdout)
+        self.assertEqual(payload["command"], "inventory.rescan")
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["source_fingerprint"].startswith("sha256:"))
 
     def test_upgrade_check_remains_compatibility_alias(self):
         with tempfile.TemporaryDirectory() as tmp:
