@@ -1,0 +1,35 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: MPL license compliance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  license-compliance:
+    name: Verify MPL headers and explicit exceptions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify required MPL headers
+        run: python3 tools/apply_mpl_headers.py --check
+
+      - name: Regenerate exception register in runner
+        run: python3 tools/apply_mpl_headers.py
+
+      - name: Verify exception register is explicit and current
+        run: git diff --exit-code -- docs/license-header-exceptions.md
+
+      - name: Verify checker made no repository changes
+        run: git diff --exit-code
