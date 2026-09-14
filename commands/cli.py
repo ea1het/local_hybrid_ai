@@ -2,14 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Public command dispatcher behind the root ``./local-ai`` entry point.
-
-This module is the Python side of the project's management anticorruption
-boundary. It parses stable operator commands, preserves argument passthrough for
-private engines where required, and routes human/JSON output to the appropriate
-implementation module. It must not duplicate stack lifecycle or recovery logic;
-those behaviours remain owned by their domain modules behind this dispatcher.
-"""
+"""Public command dispatcher behind the root ``./local-ai`` entry point."""
 
 from __future__ import annotations
 
@@ -19,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import doctor, install_entry, runtime_lifecycle, status, upgrade_entry
+from commands import doctor, install_entry, runtime_lifecycle, status, upgrade_adopt, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 RECOVERY = ROOT / "commands" / "recovery"
@@ -78,8 +71,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
-    # install is dispatched before argparse so every installer option is passed
-    # through unchanged while ./local-ai remains the sole public entry point.
     sub.add_parser("install", help="install or reconcile stacks")
 
     backup = sub.add_parser("backup", help="create a recovery point")
@@ -141,16 +132,27 @@ def restore_command(args: list[str], json_output: bool) -> int:
     return _run_internal(script, rest)
 
 
+def _upgrade_adopt(args: list[str], *, json_output: bool) -> int:
+    try:
+        return upgrade_adopt.main(args, json_output=json_output)
+    except upgrade_adopt.AdoptionError as exc:
+        if json_output:
+            print(json.dumps({
+                "schema_version": upgrade_adopt.SCHEMA_VERSION,
+                "command": "upgrade.adopt",
+                "success": False,
+                "error": {"code": exc.code, "message": str(exc)},
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"UPGRADE ERROR [{exc.code}]: {exc}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     json_output = "--json" in raw
     raw = [arg for arg in raw if arg != "--json"]
 
-    # Option-bearing facade commands must be dispatched before argparse: an
-    # argparse subparser with REMAINDER still rejects unknown option-looking
-    # tokens such as backup --destination before they reach the private engine.
-    # Keep ./local-ai as the sole public API while forwarding those arguments
-    # unchanged to the implementation command.
     if raw and raw[0] == "install":
         if json_output:
             return install_entry.main(raw[1:])
@@ -161,6 +163,13 @@ def main(argv: list[str] | None = None) -> int:
         if json_output and "--json" not in args:
             args.append("--json")
         return _run_internal(RECOVERY / "backup-all.py", args)
+
+    # Adoption is a distinct mutation contract: it records the exact already-
+    # running component identities and never applies an upgrade or recreates a
+    # container. Dispatch it before argparse so `upgrade adopt --yes` remains
+    # unambiguous from the existing `upgrade --yes` apply command.
+    if len(raw) >= 2 and raw[:2] == ["upgrade", "adopt"]:
+        return _upgrade_adopt(raw[2:], json_output=json_output)
 
     parser = build_parser()
     ns = parser.parse_args(raw)
