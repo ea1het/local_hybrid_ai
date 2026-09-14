@@ -18,5 +18,6 @@ ADRs preserve architectural choices that are expensive to rediscover from implem
 | [0004](0004-upgrade-compatibility-policy.md) | Accepted | Separate registry availability from installation-owned upgrade compatibility policy |
 | [0005](0005-unified-command-implementation-package.md) | Accepted | Organize all private management implementation under `commands/`, with recovery as a cohesive subpackage |
 | [0006](0006-operational-version-authority.md) | Accepted | Keep operational component version intent outside moving Compose channels and adopt existing runtime non-disruptively |
+| [0007](0007-manifest-component-inventory.md) | Accepted | Make stack manifests authoritative for component semantics and derive CLI inventory/rescan state from them |
 
 Security rationale belongs in the sibling [SDR index](../sdr/README.md). A decision may reference both an ADR and an SDR when architecture and threat treatment overlap. Cross-stack impact should also be visible from the [stack map](../../stacks/README.md) and, where observable behaviour changes, from [OpenSpec traceability](../openspec/traceability.md).
