@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
-from commands import upgrade, upgrade_entry
+from commands import upgrade, upgrade_entry, upgrade_policy
 
 
 class UpgradeForceOverrideTests(unittest.TestCase):
@@ -29,6 +31,7 @@ class UpgradeForceOverrideTests(unittest.TestCase):
             "id": "dockhand",
             "stack": "stack5",
             "selectable": False,
+            "default_policy": "major-series",
             "execution": {"mode": "inventory-only", "blocked_by": "executor-not-qualified"},
         }
         if force_capable:
@@ -61,6 +64,40 @@ class UpgradeForceOverrideTests(unittest.TestCase):
             with self.assertRaises(upgrade.UpgradeError) as ctx:
                 upgrade_entry._require_selection_permission(component, force=True)
         self.assertEqual(ctx.exception.code, "UPGRADE_FORCE_UNAVAILABLE")
+
+    def test_forced_inventory_selection_is_policy_valid(self):
+        selection = {
+            "stack": "stack5",
+            "component": "dockhand",
+            "current_at_selection": "v1.0.40",
+            "version": "v1.0.48",
+            "forced": True,
+            "qualification_bypassed": "executor-not-qualified",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            status = upgrade_policy.selection_status(
+                Path(tmp),
+                "stack5/dockhand",
+                self._record(),
+                selection,
+            )
+        self.assertTrue(status["selection_valid"])
+
+    def test_unforced_inventory_selection_is_not_policy_valid(self):
+        selection = {
+            "stack": "stack5",
+            "component": "dockhand",
+            "current_at_selection": "v1.0.40",
+            "version": "v1.0.48",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            status = upgrade_policy.selection_status(
+                Path(tmp),
+                "stack5/dockhand",
+                self._record(),
+                selection,
+            )
+        self.assertFalse(status["selection_valid"])
 
     def test_execution_view_authorizes_only_explicit_forced_selection(self):
         records = {
