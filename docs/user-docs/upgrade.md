@@ -52,7 +52,7 @@ This is the primary human version view. `./local-ai upgrade check` remains a com
 | `SELECTED` | The exact target explicitly chosen by the operator. |
 | `VALID` | Whether an existing normal or explicitly forced selection still passes its applicable policy/baseline gates. |
 
-The internal desired-state/version-authority model is intentionally not part of the normal operator workflow. It exists so registry tags and source defaults cannot silently move an installation. Operators normally need to reason about **installed**, **available**, and **selectable**.
+Component topology and upgrade semantics are declared by each owning stack's `manifest.json` and compiled by the management CLI. There is no separate central component catalog to keep synchronized when a stack changes. The internal desired-state/version-authority model is intentionally not part of the normal operator workflow. It exists so registry tags and source defaults cannot silently move an installation. Operators normally need to reason about **installed**, **available**, and **selectable**.
 
 ## SELECTABLE
 
@@ -124,7 +124,7 @@ The blocker explains why. Typical classes are:
 
 A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. That is intentional: **knowing that an update exists and project support qualification are separate facts**.
 
-When the catalog already contains a deterministic version-authority mutation and targeted deployment recipe, an administrator may explicitly accept the missing project qualification:
+When the owning stack manifest already defines a deterministic version-authority mutation and targeted deployment recipe, an administrator may explicitly accept the missing project qualification:
 
 ```bash
 ./local-ai upgrade stack5 dockhand select v1.0.48 --force
@@ -135,7 +135,7 @@ The forced selection remains `SELECTABLE=no`: the project has not silently promo
 
 ### How a component becomes SELECTABLE
 
-Promotion is an engineering qualification, not a catalog toggle and not a side effect of a successful forced run. A component may move from `NO SELECTABLE` to `SELECTABLE` only after the project can answer and prove the following:
+Promotion is an engineering qualification, not a manifest toggle and not a side effect of a successful forced run. A component may move from `NO SELECTABLE` to `SELECTABLE` only after the project can answer and prove the following:
 
 1. The installed version can be identified reliably and the target can be resolved from the correct registry/package.
 2. The compatibility policy for acceptable targets is explicit.
@@ -149,7 +149,7 @@ Promotion is an engineering qualification, not a catalog toggle and not a side e
 10. Selection, stale-plan detection, immutable target validation, failure behaviour and successful execution have automated tests.
 11. The procedure has been qualified against a real runtime before the project marks it guarded/selectable.
 
-Only after those gates are satisfied should the catalog declare `execution.mode=guarded` and expose `SELECTABLE=yes`.
+Only after those gates are satisfied should the owning manifest declare `execution.mode=guarded` and expose `SELECTABLE=yes`.
 
 This distinction has operational consequences. Once a component is selectable, the project is asserting that `./local-ai upgrade ...` is a supported mutation path with defined success and failure semantics. Before qualification, normal selection remains blocked; administrative `--force` is an explicit risk-acceptance path only where local-ai already knows the deterministic mutation procedure.
 
