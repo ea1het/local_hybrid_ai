@@ -8,6 +8,8 @@ These tests inject HTTP 429, 401 and 403 responses at the registry boundary so
 no public registry is deliberately rate-limited or given invalid production
 credentials. They prove failure classification is preserved through tag/manifest
 probes and that upgrade inventory reports uncertainty rather than ``current``.
+Persistent registry discovery cache is disabled inside inventory tests so live
+installation state cannot bypass the injected deterministic boundary.
 """
 
 from __future__ import annotations
@@ -69,6 +71,7 @@ class RegistryFailureContractTests(unittest.TestCase):
                 repository="library/haproxy",
             )
             with self.subTest(status=status), \
+                 mock.patch.dict("os.environ", {"LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS": "0"}), \
                  mock.patch("commands.upgrade.load_catalog", return_value=[component]), \
                  mock.patch("commands.upgrade.component_records", return_value={"stack1/haproxy": record}), \
                  mock.patch("commands.upgrade.read_env", return_value={}), \
