@@ -23,7 +23,7 @@
       {"id":"gitea","service":"gitea","container":"gitea","compose":"stack4_-_gitea/docker-compose.yml","upstream":"go-gitea/gitea","selectable":false,"default_policy":"minor-series","execution":{"mode":"inventory-only","blocked_by":"migration-policy-required"}}
     ]},
     {"id":"stack5","components":[
-      {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand","default_policy":"major-series","recovery_required":false,"execution":{"mode":"guarded","blocked_by":null},"apply":{"type":"env-version","env_key":"DOCKHAND_VERSION","image_env_key":"DOCKHAND_IMAGE","deploy":["docker","compose","up","-d","dockhand"]}}
+      {"id":"dockhand","service":"dockhand","container":"dockhand","compose":"stack5_-_dockhand/docker-compose.yml","upstream":"Finsys/dockhand","default_policy":"major-series","recovery_required":false,"execution":{"mode":"guarded","blocked_by":null},"apply":{"type":"env-version","env_key":"DOCKHAND_VERSION","image_env_key":"DOCKHAND_REPOSITORY","deploy":["docker","compose","up","-d","dockhand"]}}
     ]},
     {"id":"stack6","components":[
       {"id":"hermes","service":"hermes","container":"hermes","compose":"stack6_-_hermes/docker-compose.yml","upstream":"NousResearch/hermes-agent","default_policy":"major-series","recovery_required":false,"execution":{"mode":"guarded","blocked_by":null},"apply":{"type":"env-version","env_key":"HERMES_VERSION","image_env_key":"HERMES_IMAGE","deploy":["docker","compose","up","-d","hermes"]}},
