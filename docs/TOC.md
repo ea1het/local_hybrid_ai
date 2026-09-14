@@ -1,7 +1,7 @@
 <!--
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
-file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
 # Documentation map
@@ -16,6 +16,8 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 - [Installation and lifecycle](installation.md) — PREPARE → DEPLOY → READY → RECONCILE → VERIFY.
 - [Operator CLI](user-docs/cli.md) — supported `./local-ai` commands and JSON contracts.
 - [Upgrade workflow](user-docs/upgrade.md) — installed/available/selectable workflow, selection, guarded apply and failure handling.
+- [Administrator-forced upgrades](user-docs/forced-upgrades.md) — explicit risk acceptance for known but not yet qualified mutation paths.
+- [Component version authority](user-docs/version-authority.md) — installation-owned version intent and migration from older deployments.
 - [Configuration and secrets](configuration/README.md) — protected `.env`, generated secrets and ownership rules.
 - [Disaster recovery](dr/README.md) — backup/restore model, operating procedure and qualification status.
 - [Upgrade compatibility policy](upgrade-policy.md) — compatibility boundaries independent from executor selectability.
@@ -33,6 +35,8 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 
 - [User documentation](user-docs/README.md)
 - [Upgrade workflow](user-docs/upgrade.md)
+- [Administrator-forced upgrades](user-docs/forced-upgrades.md)
+- [Component version authority](user-docs/version-authority.md)
 - [Integrations](user-docs/integrations/README.md)
 - [Disaster recovery](dr/README.md)
 - [Active backlog](pending.md)
