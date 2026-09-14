@@ -79,14 +79,14 @@ def build_parser() -> argparse.ArgumentParser:
     restore = sub.add_parser("restore", help="disaster-recovery operations")
     restore.add_argument("args", nargs=argparse.REMAINDER)
 
-    sub.add_parser("status", help="show desired, deployed and actual component state")
-    sub.add_parser("doctor", help="run read-only platform diagnostics")
+    sub.add_parser("status", help="show operational stack state, runtime health and drift")
+    sub.add_parser("doctor", help="diagnose management prerequisites and environment consistency")
 
     for action in ("start", "stop"):
         runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
         runtime.add_argument("stack", help="stack id, stackN name, or manifest directory")
 
-    sub.add_parser("upgrade", help="inspect and manage component upgrades")
+    sub.add_parser("upgrade", help="inspect versions and manage component upgrades")
 
     return parser
 
@@ -159,8 +159,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Upgrade owns a rich subcommand grammar. Route it directly to the public
     # upgrade facade instead of making argparse reinterpret options such as
-    # `--offline` or `--yes` around a REMAINDER positional. Adoption remains a
-    # distinct migration contract because it has different mutation semantics.
+    # `--offline` or `--yes`. Adoption remains a distinct migration contract.
     if raw and raw[0] == "upgrade":
         if len(raw) >= 2 and raw[1] == "adopt":
             return _upgrade_adopt(raw[2:], json_output=json_output)
