@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [← Developer documentation](README.md) · [Operator upgrade guide](../user-docs/upgrade.md) · [Administrator force override](../user-docs/forced-upgrades.md) · [ADR-0006](adr/0006-operational-version-authority.md)
 
-`SELECTABLE` is a support statement, not a UI convenience. Setting a component to `execution.mode=guarded` means the project accepts `./local-ai upgrade` as a supported mutation path for that component.
+`SELECTABLE` is a support statement, not a UI convenience. Setting a manifest-declared component to `execution.mode=guarded` means the project accepts `./local-ai upgrade` as a supported mutation path for that component.
 
 A component MUST remain inventory-only until the upgrade path satisfies every applicable gate below.
 
@@ -32,7 +32,7 @@ The component has one unambiguous installation-owned version authority. The exec
 
 ### 4. Deployment scope
 
-The exact runtime mutation is known. The catalog names the service(s) that may be recreated or restarted. The procedure must not broaden mutation to unrelated services merely because they share a Compose project.
+The exact runtime mutation is known. The owning stack manifest metadata names the service(s) that may be recreated or restarted. The procedure must not broaden mutation to unrelated services merely because they share a Compose project.
 
 ### 5. Migration contract
 
@@ -86,7 +86,7 @@ A unit-test-only implementation is not sufficient to assert `SELECTABLE=yes`.
 
 An inventory-only component may expose a deterministic mutation recipe before that recipe is project-qualified. In that case an administrator may explicitly select a target with `--force`.
 
-This override does not change the catalog, does not set `SELECTABLE=yes`, and does not satisfy any qualification gate. It records only that the administrator knowingly accepted the missing qualification for that one selection.
+This override does not change the manifest-declared support status, does not set `SELECTABLE=yes`, and does not satisfy any qualification gate. It records only that the administrator knowingly accepted the missing qualification for that one selection.
 
 The forced path MUST still preserve every protection the implementation already knows how to enforce: version policy, target availability, immutable digest, stale-plan detection, exact mutation scope, declared recovery behaviour, READY/RECONCILE/VERIFY and dependency re-verification. A component with no deterministic mutation recipe cannot be made executable merely by supplying `--force`.
 
@@ -118,7 +118,7 @@ execution.mode = guarded
 SELECTABLE = yes
 ```
 
-The catalog change is deliberately the **last** step. It records an already-proven capability; it does not create that capability.
+The manifest metadata change is deliberately the **last** step. It records an already-proven capability; it does not create that capability.
 
 ## Current runtime qualification evidence
 
