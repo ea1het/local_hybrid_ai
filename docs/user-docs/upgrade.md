@@ -18,12 +18,15 @@ flowchart TD
     C -- Yes --> D{"SELECTABLE?"}
 
     D -- No --> N["NO SELECTABLE"]
-    N --> N1["Update is known, but local-ai is not qualified to apply it safely"]
-    N1 --> N2["Read the blocker and qualification requirements"]
+    N --> N1["Project support qualification is absent"]
+    N1 --> N2{"Known deterministic mutation recipe?"}
+    N2 -- No --> N3["Do not automate this component yet"]
+    N2 -- Yes --> N4["Administrator may explicitly accept risk with --force"]
 
     D -- Yes --> S["SELECTABLE"]
     S --> S1["Select an exact target version"]
-    S1 --> S2["local-ai validates policy, registry identity and immutable digest"]
+    N4 --> S2["local-ai validates policy, registry identity and immutable digest"]
+    S1 --> S2
     S2 --> S3["sudo ./local-ai upgrade --yes"]
     S3 --> V{"UPGRADE: PASS?"}
     V -- Yes --> OK["Upgrade completed and verified"]
@@ -47,7 +50,7 @@ This is the primary human version view. `./local-ai upgrade check` remains a com
 | `POLICY` | The compatibility boundary local-ai will enforce for an explicit target. |
 | `SELECTABLE` | Whether local-ai has a qualified automated upgrade procedure for that component. |
 | `SELECTED` | The exact target explicitly chosen by the operator. |
-| `VALID` | Whether an existing selection still passes current policy and baseline validation. |
+| `VALID` | Whether an existing normal or explicitly forced selection still passes its applicable policy/baseline gates. |
 
 The internal desired-state/version-authority model is intentionally not part of the normal operator workflow. It exists so registry tags and source defaults cannot silently move an installation. Operators normally need to reason about **installed**, **available**, and **selectable**.
 
@@ -108,7 +111,7 @@ Changing policy never makes an unqualified component selectable.
 
 ## NO SELECTABLE
 
-`SELECTABLE=no` does **not** mean the software cannot be upgraded. It means Local Hybrid AI can see or describe the component, but the project has not yet qualified a safe automated upgrade procedure for it.
+`SELECTABLE=no` does **not** mean the software cannot be upgraded. It means Local Hybrid AI can see or describe the component, but the project has not yet qualified its automated upgrade procedure as supported.
 
 The blocker explains why. Typical classes are:
 
@@ -119,11 +122,20 @@ The blocker explains why. Typical classes are:
 | `local-build` | The component is produced locally rather than upgraded from a normal registry version stream. |
 | `non-versioned-component` | A versioned package upgrade does not meaningfully apply to this component. |
 
-A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. That is intentional: **knowing that an update exists and being prepared to perform it safely are separate facts**.
+A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. That is intentional: **knowing that an update exists and project support qualification are separate facts**.
+
+When the catalog already contains a deterministic version-authority mutation and targeted deployment recipe, an administrator may explicitly accept the missing project qualification:
+
+```bash
+./local-ai upgrade stack5 dockhand select v1.0.48 --force
+./local-ai upgrade --yes
+```
+
+The forced selection remains `SELECTABLE=no`: the project has not silently promoted the path to supported. The stored selection records the qualification bypass and `VALID=yes` means that this explicit administrative choice still satisfies the remaining gates. `--force` does not bypass policy, target existence, immutable digest, stale-plan protection, recovery requirements, READY, VERIFY or dependency-impact checks. If no deterministic mutation recipe exists, local-ai refuses the forced selection with `UPGRADE_FORCE_UNAVAILABLE` rather than inventing an arbitrary Compose procedure. See [Administrator-forced upgrades](forced-upgrades.md).
 
 ### How a component becomes SELECTABLE
 
-Promotion is an engineering qualification, not a catalog toggle. A component may move from `NO SELECTABLE` to `SELECTABLE` only after the project can answer and prove the following:
+Promotion is an engineering qualification, not a catalog toggle and not a side effect of a successful forced run. A component may move from `NO SELECTABLE` to `SELECTABLE` only after the project can answer and prove the following:
 
 1. The installed version can be identified reliably and the target can be resolved from the correct registry/package.
 2. The compatibility policy for acceptable targets is explicit.
@@ -139,7 +151,7 @@ Promotion is an engineering qualification, not a catalog toggle. A component may
 
 Only after those gates are satisfied should the catalog declare `execution.mode=guarded` and expose `SELECTABLE=yes`.
 
-This distinction has operational consequences. Once a component is selectable, the project is asserting that `./local-ai upgrade ...` is a supported mutation path with defined success and failure semantics. Until then, Local Hybrid AI must prefer refusing automation over pretending that `docker compose pull && docker compose up -d` is a complete upgrade strategy.
+This distinction has operational consequences. Once a component is selectable, the project is asserting that `./local-ai upgrade ...` is a supported mutation path with defined success and failure semantics. Before qualification, normal selection remains blocked; administrative `--force` is an explicit risk-acceptance path only where local-ai already knows the deterministic mutation procedure.
 
 For the engineering qualification contract, see [Upgrade executor qualification](../devel-docs/upgrade-qualification.md).
 
@@ -152,4 +164,4 @@ For the engineering qualification contract, see [Upgrade executor qualification]
 sudo ./local-ai upgrade adopt --yes
 ```
 
-The read-only form shows what exact running identities would be recorded. The `--yes` form writes only missing non-secret authority keys and does not pull images, run Compose, select an upgrade or restart services. Fresh installations should already have exact source baselines and should not require routine adoption.
+The read-only form shows what exact running identities would be recorded. Unprepared stacks are skipped; a PREPARED component whose runtime identity cannot be observed fails closed. The `--yes` form writes only missing non-secret authority keys and does not pull images, run Compose, select an upgrade or restart services. Fresh installations should already have exact source baselines and should not require routine adoption.
