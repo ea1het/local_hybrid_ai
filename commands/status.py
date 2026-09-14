@@ -4,11 +4,11 @@
 
 """Build the operator-facing Desired / Deployed / Actual / Drift inventory.
 
-Status keeps configuration intent, recorded guarded-upgrade history and observed
-runtime identity separate. Mutable image tags are resolved through the same
-registry boundary used by upgrade discovery when possible; registry uncertainty
-must never be converted into a false no-drift result. The module renders both
-human output and the versioned machine contract exposed by ``./local-ai``.
+Status keeps installation intent, recorded guarded-upgrade history and observed
+runtime identity separate. Installation-owned configuration defines Desired;
+runtime image identity defines Actual. Mutable runtime image references are
+resolved through the same registry boundary used by upgrade discovery whenever
+possible, independently of how Desired is expressed.
 """
 
 from __future__ import annotations
@@ -62,12 +62,7 @@ def _deployed_versions(runtime_root: Path) -> dict[str, str]:
 
 
 def _deployed(component_key: str, desired: str, actual: str, deployed_versions: dict[str, str]) -> str:
-    """Resolve the best known deployed state without confusing missing history with uncertainty.
-
-    Guarded-upgrade history is authoritative when it exists. Installations that predate
-    that history use the observed runtime as their adoption baseline. Components for
-    which versioned deployment does not apply remain n/a.
-    """
+    """Resolve deployed state without confusing absent history with uncertainty."""
     recorded = deployed_versions.get(component_key)
     if recorded is not None:
         return recorded
@@ -79,19 +74,15 @@ def _deployed(component_key: str, desired: str, actual: str, deployed_versions: 
 
 
 def _drift(desired: str, actual: str) -> str:
-    """Return the operator-facing Desired-versus-Actual drift decision."""
     if desired == "n/a":
         return "n/a"
+    if actual == "n/a":
+        return "yes"
     return "no" if desired == actual else "yes"
 
 
 def _is_floating_image_reference(image: str | None) -> bool:
-    """Return whether a configured image reference follows a mutable tag line.
-
-    Digest-pinned and three-or-more-part semantic/build tags are treated as fixed
-    identities. Broad tags such as alpine/latest, major-only and major.minor lines
-    are tracking references whose registry target can move without a source edit.
-    """
+    """Return whether an image reference follows a mutable tag/channel."""
     if not image or "${" in image or "@sha256:" in image:
         return False
     tag = upgrade_registry.parse_reference(image).tag
@@ -103,25 +94,50 @@ def _is_floating_image_reference(image: str | None) -> bool:
     return len(match.group(1).split(".")) < 3
 
 
-def _resolve_floating_state(component, desired_image: str | None, actual_image: str | None) -> tuple[str, str, str]:
-    """Resolve floating desired/runtime identities through the owning registry.
+def _concrete_runtime_identity(component, actual_image: str | None) -> tuple[str, str | None]:
+    """Return concrete Actual and local digest evidence for the observed runtime.
 
-    A mutable configured tag is not itself a meaningful deployed version. When the
-    registry can map local and remote digests to human versions, status exposes those
-    identities and computes drift from immutable digest evidence. If that proof is
-    unavailable, status fails open for display but marks drift n/a rather than claiming
-    a false no-drift result from two equal mutable tag strings.
+    A container may still report the historical mutable Config.Image string after
+    source has migrated to an exact installation-owned baseline. Runtime identity
+    therefore must be resolved independently of Desired. Registry failure never
+    invents a concrete version; callers receive the literal runtime tag and no
+    digest proof in that case.
+    """
+    actual = upgrade.version_from_image(actual_image)
+    if not actual_image or not _is_floating_image_reference(actual_image):
+        return actual, None
+    if not getattr(component, "container", None):
+        return actual, None
+    try:
+        state = upgrade_registry.inspect(component.container, actual_image)
+    except upgrade_registry.RegistryError:
+        return actual, None
+    if state is None:
+        return actual, None
+    return state.current_version or actual, state.local_digest
+
+
+def _resolve_state(component, desired_image: str | None, actual_image: str | None) -> tuple[str, str, str]:
+    """Resolve Desired/Actual while keeping installation intent authoritative.
+
+    Desired comes from installation-owned configuration and is never advanced by
+    registry discovery. Actual comes from the running container and may require
+    registry mapping when Docker still records a mutable historical image tag.
     """
     desired = upgrade.version_from_image(desired_image)
-    actual = upgrade.version_from_image(actual_image)
+    actual, _local_digest = _concrete_runtime_identity(component, actual_image)
+
+    if desired == "n/a":
+        return desired, actual, "n/a"
+    if actual == "n/a":
+        return desired, actual, "yes"
 
     if not _is_floating_image_reference(desired_image):
         return desired, actual, _drift(desired, actual)
-    if actual_image is None:
-        return desired, actual, "yes"
-    if not getattr(component, "container", None):
-        return desired, actual, _drift(desired, actual)
 
+    # Compatibility path for installations not yet migrated to exact authority.
+    if not actual_image or not getattr(component, "container", None):
+        return desired, actual, "n/a"
     try:
         state = upgrade_registry.inspect(
             component.container,
@@ -130,20 +146,17 @@ def _resolve_floating_state(component, desired_image: str | None, actual_image: 
         )
     except upgrade_registry.RegistryError:
         return desired, actual, "n/a"
-
     if state is None:
         return desired, actual, "n/a"
 
-    actual_display = state.current_version or actual
     desired_display = state.available_version or desired
-
+    actual_display = state.current_version or actual
     if state.local_digest and state.remote_digest:
         drift = "no" if state.local_digest == state.remote_digest else "yes"
     elif state.current_version and state.available_version:
         drift = "no" if state.current_version == state.available_version else "yes"
     else:
         drift = "n/a"
-
     return desired_display, actual_display, drift
 
 
@@ -157,7 +170,7 @@ def inventory(*, runtime_root: Path | None = None, deployed_versions: dict[str, 
     for component in upgrade.load_catalog():
         desired_image = upgrade.compose_image(component, env)
         actual_image = upgrade.running_image(component)
-        desired, actual, drift = _resolve_floating_state(component, desired_image, actual_image)
+        desired, actual, drift = _resolve_state(component, desired_image, actual_image)
         component_key = upgrade.key(component)
         rows.append({
             "stack": component.stack,
