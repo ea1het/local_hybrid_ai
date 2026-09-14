@@ -139,10 +139,10 @@ The complete operator workflow is documented in [Upgrading Local Hybrid AI compo
 The version table answers the normal maintenance questions:
 
 ```text
-STACK  COMPONENT  ACTUAL  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
+STACK  COMPONENT  INSTALLED  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
 ```
 
-For human use, read `ACTUAL` as **the concrete installed/running version** and `AVAILABLE` as **the newest version discovered from the component's configured registry/package**. A newer `AVAILABLE` value never creates consent.
+`INSTALLED` is the concrete installed/running version and `AVAILABLE` is the newest version discovered from the component's configured registry/package. A newer `AVAILABLE` value never creates consent.
 
 ### SELECTABLE
 
