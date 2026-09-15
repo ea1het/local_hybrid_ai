@@ -80,6 +80,13 @@ def metadata_value(conn: sqlite3.Connection, key: str) -> str | None:
     return row[0] if row else None
 
 
+def set_metadata(conn: sqlite3.Connection, **values: str) -> None:
+    conn.executemany(
+        "INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)",
+        values.items(),
+    )
+
+
 def read_marker() -> str:
     if MARKER.is_symlink() or not MARKER.is_file():
         raise RuntimeError(f"sandbox generation marker missing/invalid; {RESET_HINT}")
@@ -136,16 +143,11 @@ def initialize_new() -> None:
         conn = connect()
         try:
             create_schema(conn)
-            conn.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version','1')"
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES('generation_id',?)",
-                (generation_id,),
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES('created_at',?)",
-                (created,),
+            set_metadata(
+                conn,
+                schema_version="1",
+                generation_id=generation_id,
+                created_at=created,
             )
             protect_workspace_baseline(conn, created)
             conn.commit()
