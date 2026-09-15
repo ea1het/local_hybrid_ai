@@ -227,6 +227,25 @@ chown -R "${HERMES_UID}:${HERMES_GID}" "${MEMORY_DATA}"
 chmod 0750 "${MEMORY_DATA}"
 chmod 0640 "${MEMORY_DATA}/MEMORY.md" "${MEMORY_DATA}/USER.md"
 
+worktree_changes() {
+  {
+    "${GIT[@]}" diff --name-only
+    "${GIT[@]}" diff --cached --name-only
+    "${GIT[@]}" ls-files --others --exclude-standard
+  } | LC_ALL=C sort -u | awk 'NF'
+}
+
+validate_memory_changes() {
+  local path
+  while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
+    case "${path}" in
+      MEMORY.md|USER.md) ;;
+      *) die "cambio no autorizado tras adopcion: ${path}" ;;
+    esac
+  done
+}
+
 step "Auditoria"
 [[ -d "${MEMORY_DATA}/.git" && ! -L "${MEMORY_DATA}/.git" ]] \
   || die ".git ausente o invalido"
@@ -237,19 +256,8 @@ for file in MEMORY.md USER.md; do
     || die "propietario/permisos inesperados en ${MEMORY_DATA}/${file}"
 done
 
-changed_paths="$({
-  "${GIT[@]}" diff --name-only
-  "${GIT[@]}" diff --cached --name-only
-  "${GIT[@]}" ls-files --others --exclude-standard
-} | LC_ALL=C sort -u | awk 'NF')"
-if [[ -n "${changed_paths}" ]]; then
-  while IFS= read -r path; do
-    case "${path}" in
-      MEMORY.md|USER.md) ;;
-      *) die "cambio no autorizado tras adopcion: ${path}" ;;
-    esac
-  done <<< "${changed_paths}"
-fi
+changed_paths="$(worktree_changes)"
+printf '%s\n' "${changed_paths}" | validate_memory_changes
 
 ENV_SHA256_AFTER="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
 LOCK_SHA256_AFTER="$(sha256sum "${LOCK_FILE}" | awk '{print $1}')"
