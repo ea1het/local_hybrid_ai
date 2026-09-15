@@ -238,16 +238,32 @@ audit_runtime_shadow_configuration() {
 audit_runtime_shadow_configuration
 
 step "Configuracion gestionada"
-RENDERED_CONFIG="$(mktemp)"; trap 'rm -f "${RENDERED_CONFIG:-}"' EXIT
-awk -v model="${HERMES_MODEL}" '{ gsub(/\$\{HERMES_MODEL\}/, model); print }' "${HERMES_CONFIG_SRC}" > "${RENDERED_CONFIG}"
-[[ -s "${RENDERED_CONFIG}" ]] || die "config.yaml renderizado esta vacio"
-grep -qF '${HERMES_MODEL}' "${RENDERED_CONFIG}" && die "config.yaml renderizado conserva \${HERMES_MODEL}; se aborta"
-DEPLOYED_MODEL="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${RENDERED_CONFIG}")"
-[[ "${DEPLOYED_MODEL}" == "${HERMES_MODEL}" ]] || die "model.default renderizado '${DEPLOYED_MODEL}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
-install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml"
-install -m 0644 -o 0 -g 0 "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile"
-install -m 0755 -o 0 -g 0 "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh"
-log "configuracion sincronizada; HERMES_MODEL renderizado como ${HERMES_MODEL}"
+RENDERED_CONFIG="$(mktemp)"
+trap 'rm -f "${RENDERED_CONFIG:-}"' EXIT
+
+deploy_managed_config() {
+  local deployed_model
+
+  awk -v model="${HERMES_MODEL}" '{ gsub(/\$\{HERMES_MODEL\}/, model); print }' \
+    "${HERMES_CONFIG_SRC}" > "${RENDERED_CONFIG}"
+  [[ -s "${RENDERED_CONFIG}" ]] || die "config.yaml renderizado esta vacio"
+  grep -qF '${HERMES_MODEL}' "${RENDERED_CONFIG}" \
+    && die "config.yaml renderizado conserva \${HERMES_MODEL}; se aborta"
+
+  deployed_model="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${RENDERED_CONFIG}")"
+  [[ "${deployed_model}" == "${HERMES_MODEL}" ]] \
+    || die "model.default renderizado '${deployed_model}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
+
+  install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" \
+    "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml"
+  install -m 0644 -o 0 -g 0 \
+    "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile"
+  install -m 0755 -o 0 -g 0 \
+    "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh"
+  log "configuracion sincronizada; HERMES_MODEL renderizado como ${HERMES_MODEL}"
+}
+
+deploy_managed_config
 
 step "Claves SSH"
 SSH_PRIVATE="${HERMES_CONFIG}/ssh/hermes_executor_ed25519"; SSH_PUBLIC="${SSH_PRIVATE}.pub"; AUTHORIZED_KEYS="${SANDBOX_DATA}/home/.ssh/authorized_keys"
