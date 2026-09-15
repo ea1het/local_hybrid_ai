@@ -39,11 +39,13 @@ class LocalComponentTests(unittest.TestCase):
     def test_gitea_runner_source_identity_is_repo_owned_and_immutable(self):
         compose = (ROOT / "stack4_-_gitea" / "docker-compose.yml").read_text(encoding="utf-8")
         prepare = (ROOT / "stack4_-_gitea" / "01-prepare.sh").read_text(encoding="utf-8")
+        env_template = (ROOT / ".env.template").read_text(encoding="utf-8")
 
         self.assertIn(f"docker.io/gitea/runner:3@{RUNNER_DIGEST}", compose)
         self.assertNotIn("${GITEA_RUNNER_IMAGE", compose)
         required_env_block = prepare.split("for key in ", 1)[1].split("; do", 1)[0]
         self.assertNotIn("GITEA_RUNNER_IMAGE", required_env_block)
+        self.assertNotIn("GITEA_RUNNER_IMAGE=", env_template)
 
 
 if __name__ == "__main__":
