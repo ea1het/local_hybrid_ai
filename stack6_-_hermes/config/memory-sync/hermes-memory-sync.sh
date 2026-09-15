@@ -63,6 +63,64 @@ worktree_dirty() {
     [[ -n "$("${GIT[@]}" ls-files --others --exclude-standard)" ]]
 }
 
+commit_memory() {
+  "${GIT[@]}" add -- MEMORY.md USER.md
+  "${GIT[@]}" \
+    -c user.name="Hermes Memory Sync" \
+    -c user.email="nhi-hermes@local" \
+    commit -m "Sync Hermes memory $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+
+reconcile_heads() {
+  local local_head="$1"
+  local remote_head="$2"
+  local dirty="$3"
+
+  if [[ "${local_head}" == "${remote_head}" ]]; then
+    if [[ "${dirty}" == true ]]; then
+      log "local and remote aligned; committing memory"
+      commit_memory
+      log "push origin/${BRANCH}"
+      "${GIT[@]}" push origin "HEAD:${BRANCH}"
+    else
+      log "no changes"
+    fi
+    return
+  fi
+
+  if "${GIT[@]}" merge-base --is-ancestor "${local_head}" "${remote_head}"; then
+    [[ "${dirty}" == false ]] || die "remote is ahead while local memory has changes; refusing automatic merge/rebase"
+    log "remote ahead; fast-forward only"
+    "${GIT[@]}" merge --ff-only "origin/${BRANCH}"
+    return
+  fi
+
+  if "${GIT[@]}" merge-base --is-ancestor "${remote_head}" "${local_head}"; then
+    if [[ "${dirty}" == true ]]; then
+      log "local ahead with new memory changes; committing"
+      commit_memory
+    fi
+    log "local ahead; pushing"
+    "${GIT[@]}" push origin "HEAD:${BRANCH}"
+    return
+  fi
+
+  die "Git history diverged; manual intervention required"
+}
+
+verify_final_state() {
+  local local_final remote_final
+
+  "${GIT[@]}" fetch origin "${BRANCH}"
+  local_final="$("${GIT[@]}" rev-parse HEAD)"
+  remote_final="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
+  [[ "${local_final}" == "${remote_final}" ]] || die "final verification failed: local and remote differ"
+  [[ -z "$("${GIT[@]}" status --porcelain)" ]] || die "working tree is not clean after sync"
+
+  log "sync completed"
+  log "HEAD=${local_final}"
+}
+
 validate_worktree_changes
 
 dirty=false
@@ -75,43 +133,5 @@ log "fetch origin/${BRANCH}"
 local_head="$("${GIT[@]}" rev-parse HEAD)"
 remote_head="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
 
-commit_memory() {
-  "${GIT[@]}" add -- MEMORY.md USER.md
-  "${GIT[@]}" \
-    -c user.name="Hermes Memory Sync" \
-    -c user.email="nhi-hermes@local" \
-    commit -m "Sync Hermes memory $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-}
-
-if [[ "${local_head}" == "${remote_head}" ]]; then
-  if [[ "${dirty}" == true ]]; then
-    log "local and remote aligned; committing memory"
-    commit_memory
-    log "push origin/${BRANCH}"
-    "${GIT[@]}" push origin "HEAD:${BRANCH}"
-  else
-    log "no changes"
-  fi
-elif "${GIT[@]}" merge-base --is-ancestor "${local_head}" "${remote_head}"; then
-  [[ "${dirty}" == false ]] || die "remote is ahead while local memory has changes; refusing automatic merge/rebase"
-  log "remote ahead; fast-forward only"
-  "${GIT[@]}" merge --ff-only "origin/${BRANCH}"
-elif "${GIT[@]}" merge-base --is-ancestor "${remote_head}" "${local_head}"; then
-  if [[ "${dirty}" == true ]]; then
-    log "local ahead with new memory changes; committing"
-    commit_memory
-  fi
-  log "local ahead; pushing"
-  "${GIT[@]}" push origin "HEAD:${BRANCH}"
-else
-  die "Git history diverged; manual intervention required"
-fi
-
-"${GIT[@]}" fetch origin "${BRANCH}"
-local_final="$("${GIT[@]}" rev-parse HEAD)"
-remote_final="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
-[[ "${local_final}" == "${remote_final}" ]] || die "final verification failed: local and remote differ"
-[[ -z "$("${GIT[@]}" status --porcelain)" ]] || die "working tree is not clean after sync"
-
-log "sync completed"
-log "HEAD=${local_final}"
+reconcile_heads "${local_head}" "${remote_head}" "${dirty}"
+verify_final_state
