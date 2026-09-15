@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Installation
 
-`./local-ai` is the supported management interface. The installer, lifecycle registry, stack scripts and Compose files are internal implementation details and are not integration contracts.
+`./local-ai` is the supported management interface. The lifecycle registry, stack scripts, Compose files and Python modules are implementation details rather than integration contracts.
 
 ```mermaid
 flowchart LR
@@ -15,7 +15,7 @@ flowchart LR
 
 ## 1. Prepare protected configuration
 
-Copy `.env.template` to the operational root `.env` and set real values. The operational `.env` is ignored by Git and is not a stack-owned generated file.
+Copy `.env.template` to the operational root `.env` and set real values. The operational `.env` is ignored by Git and is not a stack-owned generated file. PREPARE must not silently replace an existing operational file.
 
 ## 2. Inspect the plan
 
@@ -23,7 +23,7 @@ Copy `.env.template` to the operational root `.env` and set real values. The ope
 ./local-ai install --plan all
 ```
 
-Planning must be read-only. For one application, request its stack id; required dependencies are resolved automatically.
+Planning is read-only. For one application, request its numeric stack id; required dependencies are resolved from manifests.
 
 ## 3. Install
 
@@ -37,62 +37,96 @@ For a single stack:
 ./local-ai install 7 --yes
 ```
 
-A `.lock` only records successful PREPARE. Runtime readiness and verification are separate.
+A `.lock` records successful PREPARE only. Runtime readiness and verification are separate lifecycle facts.
 
-## 4. Explicit stack bootstrap/reconcile steps
+## 4. Reconciliation and explicit bootstrap
 
-Some actions are intentionally operator-explicit because they issue credentials or depend on a real user identity. Stack7, for example, bootstraps its dedicated LiteLLM credential explicitly and reconciles model policy only after the first Open WebUI administrator exists. Those implementation mechanisms may remain stack-owned, but supported operator workflows must be surfaced through `local-ai` as the management CLI evolves.
+The common lifecycle is `PREPARE → DEPLOY → READY → RECONCILE → VERIFY`. Reconciliation may depend on capabilities or application state that exists only after deployment. If reconciliation restarts runtime, READY is re-established before final verification.
+
+Some credential/bootstrap operations remain explicitly gated because they issue credentials or depend on a real application identity. The supported workflow still crosses `./local-ai`; stack scripts are not promoted to public APIs merely because they implement one lifecycle stage.
 
 ## 5. Machine integration
 
-External automation must not import internal modules or invoke individual Python/shell scripts. Use `./local-ai ... --json` for commands that expose the stable JSON contract. The JSON schema version is independent from internal implementation versions.
+External automation must not import `commands/` modules or invoke individual stack scripts. Use `./local-ai --json ...` where the command exposes a stable JSON contract. Machine schema versions are independent from private implementation versions.
 
-## 6. Validate tests
+## 6. Validate development changes
+
+The canonical full repository gate is:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 Tests are a development interface, not an operator management interface.
 
-## Runtime ownership
+## Runtime and component ownership
 
-Project source normally lives at `/opt/docker/stacks`; persistent mutable state lives at `/opt/docker/runtime`. Each installation owns its management state. GitHub publishes the project; it does not silently dictate an installation's selected upgrade target or local compatibility policy.
+Project source and mutable installation state are separate. Each stack manifest declares owned resources and semantic components. `components[]` is the operational component inventory; Compose supplies implementation bindings. The retired static `commands/upgrade-components.json` catalog is not part of the current architecture.
 
-Upgrade selections are recorded under the installation runtime area and are visible through:
+`./local-ai inventory rescan` validates current manifest/Compose topology and writes a diagnostic snapshot. Normal management reads compile current manifests directly; the snapshot is not version authority and is not required before `status` or `upgrade`.
+
+## Operational version authority
+
+Git/Compose provides a fresh-install bootstrap baseline. After adoption, ongoing version intent belongs to the installation. The normal human version view is:
 
 ```bash
-./local-ai upgrade check
+./local-ai upgrade
 ```
 
-The human table shows numeric stack ids, while the JSON contract preserves stable ids such as `stack7`.
+`./local-ai upgrade check` remains a compatibility alias, not the preferred documented workflow.
 
-Registry discovery and upgrade authorization are separate. Inspect or change the installation's effective compatibility policy with:
+Registry discovery answers what is available; it never changes desired state or creates consent. Existing deployments that predate installation-owned exact version authority can record their already-running identities non-disruptively with:
+
+```bash
+./local-ai upgrade adopt
+sudo ./local-ai upgrade adopt --yes
+```
+
+Adoption does not pull, recreate or restart containers.
+
+## Compatibility policy and explicit selection
+
+Inspect or change compatibility policy with:
 
 ```bash
 ./local-ai upgrade policy
-./local-ai upgrade policy stack7
-./local-ai upgrade policy stack7 set major-series
-./local-ai upgrade policy stack7 clear
+./local-ai upgrade policy stack2 redis
+./local-ai upgrade policy stack2 redis set major-series
+./local-ai upgrade policy stack2 redis clear
 ```
 
-The only compatibility modes are `minor-series`, `major-series` and `manual`. The project catalog supplies a default; an installation-local override, when present, wins. `clear` removes only that override and returns to the project default. Policy does not override the independent `selectable` gate.
+The compatibility modes are `minor-series`, `major-series` and `manual`. Policy is independent from project qualification: changing policy cannot turn an inventory-only component into a normally selectable component.
 
-A version is selected explicitly before execution. Use a real target version published by the component's configured container registry, for example:
+Select a real published target explicitly before apply:
 
 ```bash
-./local-ai upgrade stack6 select <published-version>
-./local-ai upgrade stack7 select <published-version>
+./local-ai upgrade stack2 redis select <published-version>
+./local-ai upgrade stack7 open-webui select <published-version>
 ```
 
-Selection proves that the exact target exists, that the component is selectable, and that the effective compatibility policy permits the target. `--yes` means only "apply the versions already selected". It never selects all available upgrades.
+For a stack with exactly one upgrade-visible component, the CLI may resolve the component when omitted; documentation names the component explicitly because it remains unambiguous if a stack later gains more components.
+
+`--yes` means only “apply already-selected targets”:
 
 ```bash
-./local-ai upgrade --yes
+sudo ./local-ai upgrade --yes
 ```
 
-Before mutation, the executor compares each component's actual runtime version with `current_at_selection` and revalidates the current effective compatibility policy. A runtime mismatch fails closed with `UPGRADE_PLAN_STALE`; a selection invalidated by a later policy change fails with `UPGRADE_TARGET_UNSUPPORTED`. Components that require durable recovery create a global recovery point before the operational version key is changed. Only catalog-declared targeted deploy commands are executable. After deployment the selected stack must become READY, reconciliation runs where declared, stack verification must pass, the actual running image must match the selected target, and prepared dependent consumers are reverified. The selection is removed only after all of those gates pass.
+Before mutation the executor revalidates runtime baseline, compatibility policy, target existence, immutable digest and executor eligibility. Required recovery, targeted deployment, READY, reconciliation, VERIFY, final runtime identity and prepared dependent-consumer checks remain part of guarded execution. A selection is cleared only after successful completion and `UPGRADE: PASS`.
 
-The explicit upgrade operation may atomically change only the version keys corresponding to selected executable components in the protected operational `.env`; PREPARE remains forbidden from silently rewriting that file. On a late failure the executor does not attempt a destructive automatic rollback. It preserves the selection and reports the recovery point when one exists so recovery remains an explicit operator decision.
+An administrator may use `select ... --force` only when an inventory-only component already has a deterministic mutation recipe. Force bypasses project qualification, not the remaining safety gates.
 
-Compatibility-policy details and CLI examples are documented in [upgrade-policy.md](upgrade-policy.md). Backup and recovery are documented in [dr/howto.md](dr/howto.md).
+On late failure the executor does not perform a destructive automatic rollback. It preserves explicit state/evidence and reports a recovery point where applicable so recovery remains an operator decision.
+
+See [upgrade workflow](user-docs/upgrade.md), [version authority](user-docs/version-authority.md), [upgrade policy](upgrade-policy.md) and [disaster recovery](dr/README.md).
+
+## Shell completion
+
+Bash/Zsh completion can be installed persistently after checkout/install without changing stack lifecycle:
+
+```bash
+./local-ai completion install
+./local-ai completion status
+```
+
+The completion installer is explicit, idempotent and separate from `./local-ai install` because it changes the operator shell environment rather than platform runtime. See [shell completion](user-docs/completion.md).
