@@ -27,15 +27,14 @@ Only active or intentionally deferred work belongs here. Completed work and impl
 ## P1 — Installer/platform hardening
 
 - Add a common installer concurrency lock.
-- Decide whether Stack4 `04-gitmem` remains an explicit operation or gains a normalized lifecycle representation.
+- Decide whether Stack6 `04-gitmem` remains an explicit operation or gains a normalized lifecycle representation.
 - Keep `.lock` semantics as PREPARED only.
 
-## P1 — CLI completion correctness and specification
+## P1 — CLI completion correctness
 
 - Align `start`/`stop` TAB candidates with the documented human numeric stack identifiers (`0` through `7`); the current completion engine emits `stackN` candidates even though numeric identifiers are the primary human contract.
-- Reconcile upgrade-policy completion with the actual grammar. The current completion engine advertises `show` after `upgrade policy <stack> <component>` although the documented/operator grammar uses inspection with no action plus `set` and `clear`.
-- Add stable OpenSpec tags for completion candidate semantics, source-only completion boundaries and persistent Bash/Zsh installation, then map those tags in `openspec/traceability.md` to `tests/test_completion.py` and runtime qualification where applicable.
-- Add documentation-contract coverage ensuring every public top-level `local-ai` command, including `completion`, is represented in the CLI command map and canonical TOC.
+- Reconcile upgrade-policy completion with the actual grammar. The current completion engine advertises `show` after `upgrade policy <stack> <component>` although the operator grammar uses inspection with no action plus `set` and `clear`.
+- Add documentation-contract coverage ensuring every public top-level `local-ai` command, including `completion`, is represented in the CLI command map and canonical navigation.
 
 ## P2 — Operations
 
@@ -44,5 +43,5 @@ Only active or intentionally deferred work belongs here. Completed work and impl
 
 ## P2 — Documentation maintenance
 
-- Keep [current-state.md](current-state.md) synchronized when a public command family, component-authority rule or implementation root is added/retired.
-- During future structural migrations, search canonical docs for retired path/command names and retain them only in ADR/history/restore-compatibility context where the historical reference is intentional.
+- Keep [current-state.md](current-state.md) synchronized when a public command family, component-authority rule or implementation root is added or retired.
+- During structural migrations, search canonical docs for retired path/command names and retain them only in ADR/history/restore-compatibility context where the historical reference is intentional.
