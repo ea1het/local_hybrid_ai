@@ -91,34 +91,44 @@ esac
 [[ "${MEMORY_ROOT}" != "/" && "${MEMORY_ROOT}" != "${BASE_REAL}" ]] \
   || die "ruta de memoria insegura: ${MEMORY_ROOT}"
 
+validate_hermes_stopped() {
+  local running
+  if docker inspect "${HERMES_CONTAINER}" >/dev/null 2>&1; then
+    running="$(docker inspect -f '{{.State.Running}}' "${HERMES_CONTAINER}")"
+    [[ "${running}" != "true" ]] \
+      || die "el contenedor ${HERMES_CONTAINER} sigue corriendo; detener solo Hermes antes de preparar Git memory"
+    log "${HERMES_CONTAINER}: detenido"
+  else
+    log "${HERMES_CONTAINER}: no creado"
+  fi
+}
+
 step "Estado de Hermes"
-if docker inspect "${HERMES_CONTAINER}" >/dev/null 2>&1; then
-  running="$(docker inspect -f '{{.State.Running}}' "${HERMES_CONTAINER}")"
-  [[ "${running}" != "true" ]] \
-    || die "el contenedor ${HERMES_CONTAINER} sigue corriendo; detener solo Hermes antes de preparar Git memory"
-  log "${HERMES_CONTAINER}: detenido"
-else
-  log "${HERMES_CONTAINER}: no creado"
-fi
+validate_hermes_stopped
+
+prepare_memory_directory() {
+  local file path
+  [[ ! -L "${MEMORY_ROOT}" ]] || die "${MEMORY_ROOT} no puede ser symlink"
+  [[ ! -e "${MEMORY_ROOT}" || -d "${MEMORY_ROOT}" ]] || die "${MEMORY_ROOT} no es un directorio"
+  install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_ROOT}"
+
+  [[ ! -L "${MEMORY_DATA}" ]] || die "${MEMORY_DATA} no puede ser symlink"
+  [[ ! -e "${MEMORY_DATA}" || -d "${MEMORY_DATA}" ]] || die "${MEMORY_DATA} existe pero no es un directorio"
+  install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_DATA}"
+
+  for file in MEMORY.md USER.md; do
+    path="${MEMORY_DATA}/${file}"
+    [[ ! -L "${path}" ]] || die "${path} no puede ser symlink"
+    [[ ! -e "${path}" || -f "${path}" ]] || die "${path} existe pero no es fichero normal"
+    if [[ ! -e "${path}" ]]; then
+      install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" /dev/null "${path}"
+      log "creado fichero local vacio: ${file}"
+    fi
+  done
+}
 
 step "Directorio persistente de memoria"
-[[ ! -L "${MEMORY_ROOT}" ]] || die "${MEMORY_ROOT} no puede ser symlink"
-[[ ! -e "${MEMORY_ROOT}" || -d "${MEMORY_ROOT}" ]] || die "${MEMORY_ROOT} no es un directorio"
-install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_ROOT}"
-
-[[ ! -L "${MEMORY_DATA}" ]] || die "${MEMORY_DATA} no puede ser symlink"
-[[ ! -e "${MEMORY_DATA}" || -d "${MEMORY_DATA}" ]] || die "${MEMORY_DATA} existe pero no es un directorio"
-install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_DATA}"
-
-for file in MEMORY.md USER.md; do
-  path="${MEMORY_DATA}/${file}"
-  [[ ! -L "${path}" ]] || die "${path} no puede ser symlink"
-  [[ ! -e "${path}" || -f "${path}" ]] || die "${path} existe pero no es fichero normal"
-  if [[ ! -e "${path}" ]]; then
-    install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" /dev/null "${path}"
-    log "creado fichero local vacio: ${file}"
-  fi
-done
+prepare_memory_directory
 
 step "Working tree Git"
 if [[ -d "${MEMORY_DATA}/.git" && ! -L "${MEMORY_DATA}/.git" ]]; then
@@ -193,35 +203,45 @@ fi
 
 GIT=(git -c "safe.directory=${MEMORY_DATA}" -C "${MEMORY_DATA}")
 
-origin="$("${GIT[@]}" remote get-url origin 2>/dev/null || true)"
-[[ -n "${origin}" ]] || die "el working tree no tiene remote origin"
-[[ "${origin}" == "${GITMEM_REPOSITORY}" ]] \
-  || die "origin inesperado: '${origin}' (esperado '${GITMEM_REPOSITORY}')"
+validate_working_tree_identity() {
+  local file path
+  origin="$("${GIT[@]}" remote get-url origin 2>/dev/null || true)"
+  [[ -n "${origin}" ]] || die "el working tree no tiene remote origin"
+  [[ "${origin}" == "${GITMEM_REPOSITORY}" ]] \
+    || die "origin inesperado: '${origin}' (esperado '${GITMEM_REPOSITORY}')"
 
-branch="$("${GIT[@]}" branch --show-current)"
-[[ "${branch}" == "${GITMEM_BRANCH}" ]] \
-  || die "branch activa inesperada: '${branch}' (esperada '${GITMEM_BRANCH}')"
+  branch="$("${GIT[@]}" branch --show-current)"
+  [[ "${branch}" == "${GITMEM_BRANCH}" ]] \
+    || die "branch activa inesperada: '${branch}' (esperada '${GITMEM_BRANCH}')"
 
-for file in MEMORY.md USER.md; do
-  "${GIT[@]}" ls-files --error-unmatch -- "${file}" >/dev/null 2>&1 \
-    || die "Git memory debe versionar ${file}"
-  path="${MEMORY_DATA}/${file}"
-  [[ -f "${path}" && ! -L "${path}" ]] \
-    || die "el repositorio debe contener ${file} como fichero normal"
-done
+  for file in MEMORY.md USER.md; do
+    "${GIT[@]}" ls-files --error-unmatch -- "${file}" >/dev/null 2>&1 \
+      || die "Git memory debe versionar ${file}"
+    path="${MEMORY_DATA}/${file}"
+    [[ -f "${path}" && ! -L "${path}" ]] \
+      || die "el repositorio debe contener ${file} como fichero normal"
+  done
+}
+
+validate_working_tree_identity
+
+validate_legacy_memory() {
+  local file legacy current
+  for file in MEMORY.md USER.md; do
+    legacy="${LEGACY_MEMORY}/${file}"
+    current="${MEMORY_DATA}/${file}"
+    if [[ -f "${legacy}" && -s "${legacy}" ]]; then
+      cmp -s "${legacy}" "${current}" \
+        || die "${legacy} contiene memoria distinta. Migra ese contenido deliberadamente y vuelve a ejecutar 04-gitmem.sh"
+      log "${file}: legacy coincide con memoria activa"
+    else
+      log "${file}: sin memoria legacy no vacia"
+    fi
+  done
+}
 
 step "Memoria legacy"
-for file in MEMORY.md USER.md; do
-  legacy="${LEGACY_MEMORY}/${file}"
-  current="${MEMORY_DATA}/${file}"
-  if [[ -f "${legacy}" && -s "${legacy}" ]]; then
-    cmp -s "${legacy}" "${current}" \
-      || die "${legacy} contiene memoria distinta. Migra ese contenido deliberadamente y vuelve a ejecutar 04-gitmem.sh"
-    log "${file}: legacy coincide con memoria activa"
-  else
-    log "${file}: sin memoria legacy no vacia"
-  fi
-done
+validate_legacy_memory
 
 chown -R "${HERMES_UID}:${HERMES_GID}" "${MEMORY_DATA}"
 chmod 0750 "${MEMORY_DATA}"
@@ -246,25 +266,33 @@ validate_memory_changes() {
   done
 }
 
-step "Auditoria"
-[[ -d "${MEMORY_DATA}/.git" && ! -L "${MEMORY_DATA}/.git" ]] \
-  || die ".git ausente o invalido"
-[[ "$(stat -c '%u:%g:%a' "${MEMORY_DATA}")" == "${HERMES_UID}:${HERMES_GID}:750" ]] \
-  || die "propietario/permisos inesperados en ${MEMORY_DATA}"
-for file in MEMORY.md USER.md; do
-  [[ "$(stat -c '%u:%g:%a' "${MEMORY_DATA}/${file}")" == "${HERMES_UID}:${HERMES_GID}:640" ]] \
-    || die "propietario/permisos inesperados en ${MEMORY_DATA}/${file}"
-done
+audit_memory_worktree() {
+  local file
+  [[ -d "${MEMORY_DATA}/.git" && ! -L "${MEMORY_DATA}/.git" ]] \
+    || die ".git ausente o invalido"
+  [[ "$(stat -c '%u:%g:%a' "${MEMORY_DATA}")" == "${HERMES_UID}:${HERMES_GID}:750" ]] \
+    || die "propietario/permisos inesperados en ${MEMORY_DATA}"
+  for file in MEMORY.md USER.md; do
+    [[ "$(stat -c '%u:%g:%a' "${MEMORY_DATA}/${file}")" == "${HERMES_UID}:${HERMES_GID}:640" ]] \
+      || die "propietario/permisos inesperados en ${MEMORY_DATA}/${file}"
+  done
+}
 
+audit_control_files_immutable() {
+  local env_sha256_after lock_sha256_after
+  env_sha256_after="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
+  lock_sha256_after="$(sha256sum "${LOCK_FILE}" | awk '{print $1}')"
+  [[ "${ENV_SHA256_BEFORE}" == "${env_sha256_after}" ]] \
+    || die ".env ha cambiado durante 04-gitmem.sh"
+  [[ "${LOCK_SHA256_BEFORE}" == "${lock_sha256_after}" ]] \
+    || die ".lock ha cambiado durante 04-gitmem.sh"
+}
+
+step "Auditoria"
+audit_memory_worktree
 changed_paths="$(worktree_changes)"
 printf '%s\n' "${changed_paths}" | validate_memory_changes
-
-ENV_SHA256_AFTER="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
-LOCK_SHA256_AFTER="$(sha256sum "${LOCK_FILE}" | awk '{print $1}')"
-[[ "${ENV_SHA256_BEFORE}" == "${ENV_SHA256_AFTER}" ]] \
-  || die ".env ha cambiado durante 04-gitmem.sh"
-[[ "${LOCK_SHA256_BEFORE}" == "${LOCK_SHA256_AFTER}" ]] \
-  || die ".lock ha cambiado durante 04-gitmem.sh"
+audit_control_files_immutable
 
 log "working tree: ${MEMORY_DATA}"
 log "origin: ${origin}"
