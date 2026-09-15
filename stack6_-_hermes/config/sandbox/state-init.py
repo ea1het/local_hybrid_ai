@@ -121,10 +121,15 @@ def protect_workspace_baseline(conn: sqlite3.Connection, created: str) -> None:
     protect(conn, MARKER.name, None, created)
 
 
+def generation_presence() -> tuple[bool, bool]:
+    return DB.exists() or DB.is_symlink(), MARKER.exists() or MARKER.is_symlink()
+
+
 def initialize_new() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
-    if DB.exists() or MARKER.exists() or MARKER.is_symlink():
+    db_present, marker_present = generation_presence()
+    if db_present or marker_present:
         raise RuntimeError(f"sandbox generation is partially initialized; {RESET_HINT}")
 
     for stale in STATE_FILES[1:]:
@@ -214,9 +219,7 @@ def main() -> int:
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
-    db_present = DB.exists() or DB.is_symlink()
-    marker_present = MARKER.exists() or MARKER.is_symlink()
-
+    db_present, marker_present = generation_presence()
     if db_present or marker_present:
         if not (db_present and marker_present):
             raise RuntimeError(f"sandbox generation is incomplete; {RESET_HINT}")
