@@ -161,11 +161,10 @@ def mark_activity(name: str) -> None:
         return
     path = WORKSPACE / name
     timestamp = iso()
-    inode = None
     try:
         inode = path.lstat().st_ino
     except FileNotFoundError:
-        pass
+        inode = None
 
     with _LOCK:
         conn = connect()
@@ -189,7 +188,8 @@ def mark_activity(name: str) -> None:
 
 
 def mark_deleted_if_missing(name: str) -> None:
-    if (WORKSPACE / name).exists() or (WORKSPACE / name).is_symlink():
+    path = WORKSPACE / name
+    if path.exists() or path.is_symlink():
         return
     with _LOCK:
         conn = connect()
@@ -218,11 +218,11 @@ def watcher() -> None:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         assert proc.stdout is not None
         for line in proc.stdout:
-            raw = line.rstrip("\n")
-            name = top_level(Path(raw))
+            name = top_level(Path(line.rstrip("\n")))
             if not name or name == ".cleanup-quarantine":
                 continue
-            if (WORKSPACE / name).exists() or (WORKSPACE / name).is_symlink():
+            path = WORKSPACE / name
+            if path.exists() or path.is_symlink():
                 mark_activity(name)
             else:
                 mark_deleted_if_missing(name)
@@ -274,9 +274,9 @@ def quarantine_candidate(conn: sqlite3.Connection, name: str, last_activity: str
 
 
 def quarantine_matches(name: str) -> list[Path]:
-    matches: list[Path] = []
     if not QUARANTINE.is_dir() or QUARANTINE.is_symlink():
-        return matches
+        return []
+    matches: list[Path] = []
     for candidate in QUARANTINE.iterdir():
         parts = candidate.name.rsplit(".", 2)
         if len(parts) != 3:
@@ -329,12 +329,14 @@ def audit(conn: sqlite3.Connection) -> None:
                 count += 1
             except FileNotFoundError:
                 pass
+    counts = {
+        state: conn.execute("SELECT COUNT(*) FROM objects WHERE state=?", (state,)).fetchone()[0]
+        for state in ("ACTIVE", "QUARANTINED")
+    }
     protected = conn.execute("SELECT COUNT(*) FROM objects WHERE protected=1").fetchone()[0]
-    active = conn.execute("SELECT COUNT(*) FROM objects WHERE state='ACTIVE'").fetchone()[0]
-    quarantined = conn.execute("SELECT COUNT(*) FROM objects WHERE state='QUARANTINED'").fetchone()[0]
     print(
         f"[sandbox-cleanup] AUDIT files={count} bytes={total_bytes} "
-        f"protected={protected} active={active} quarantined={quarantined}"
+        f"protected={protected} active={counts['ACTIVE']} quarantined={counts['QUARANTINED']}"
     )
 
 
@@ -349,10 +351,10 @@ def sweep() -> None:
             rows = conn.execute(
                 "SELECT path,last_activity_at FROM objects WHERE protected=0 AND state='ACTIVE'"
             ).fetchall()
-            quarantined = 0
-            for name, last_activity in rows:
-                if quarantine_candidate(conn, name, last_activity):
-                    quarantined += 1
+            quarantined = sum(
+                quarantine_candidate(conn, name, last_activity)
+                for name, last_activity in rows
+            )
             deleted = delete_quarantined(conn)
             cutoff = iso(now_utc() - timedelta(days=DB_RETENTION_DAYS))
             conn.execute(
@@ -387,14 +389,19 @@ def scheduler() -> None:
             print(f"[sandbox-cleanup] sweep failed: {exc}", file=sys.stderr)
 
 
-def main() -> int:
-    for value, name in [
-        (RETENTION_DAYS, "RETENTION_DAYS"),
-        (QUARANTINE_DAYS, "QUARANTINE_DAYS"),
-        (DB_RETENTION_DAYS, "DB_RETENTION_DAYS"),
-    ]:
+def validate_settings() -> None:
+    settings = {
+        "RETENTION_DAYS": RETENTION_DAYS,
+        "QUARANTINE_DAYS": QUARANTINE_DAYS,
+        "DB_RETENTION_DAYS": DB_RETENTION_DAYS,
+    }
+    for name, value in settings.items():
         if value < 1:
             raise RuntimeError(f"{name} must be >= 1")
+
+
+def main() -> int:
+    validate_settings()
     generation = validate_state()
     print(f"[sandbox-cleanup] start generation={generation}")
     sweep()
