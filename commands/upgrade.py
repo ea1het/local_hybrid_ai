@@ -19,7 +19,15 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands import component_inventory, upgrade_cache, upgrade_plan, upgrade_policy, upgrade_registry, upgrade_runtime
+from commands import (
+    component_inventory,
+    upgrade_cache,
+    upgrade_catalog,
+    upgrade_plan,
+    upgrade_policy,
+    upgrade_registry,
+    upgrade_runtime,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
@@ -124,29 +132,13 @@ def load_catalog_raw() -> dict:
 
 
 def component_records() -> dict[str, dict]:
-    result: dict[str, dict] = {}
-    for stack in load_catalog_raw()["stacks"]:
-        for item in stack["components"]:
-            record = dict(item)
-            record["stack"] = stack["id"]
-            result[f"{stack['id']}/{item['id']}"] = record
-    return result
+    """Compatibility facade for callers consuming manifest component records."""
+    return upgrade_catalog.records(load_catalog_raw())
 
 
 def load_catalog() -> list[Component]:
-    result: list[Component] = []
-    for stack in load_catalog_raw()["stacks"]:
-        for item in stack["components"]:
-            result.append(Component(
-                stack=stack["id"],
-                name=item["id"],
-                service=item.get("service"),
-                container=item.get("container"),
-                compose=item.get("compose"),
-                upstream=item.get("upstream"),
-                selectable=item.get("selectable", True),
-            ))
-    return result
+    """Compatibility facade returning the established Component type."""
+    return upgrade_catalog.components(load_catalog_raw(), Component)
 
 
 def read_env() -> dict[str, str]:
