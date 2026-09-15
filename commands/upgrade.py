@@ -13,6 +13,7 @@ to the executor.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ class Component:
 
 
 def runtime_root() -> Path:
-    return Path(__import__("os").environ.get("LOCAL_AI_RUNTIME_ROOT", "/opt/docker/runtime"))
+    return Path(os.environ.get("LOCAL_AI_RUNTIME_ROOT", "/opt/docker/runtime"))
 
 
 def plan_path() -> Path:
