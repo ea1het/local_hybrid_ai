@@ -121,6 +121,28 @@ stop_memory_sync_if_running() {
   fi
 }
 
+write_git_memory_state() {
+  local state="$1"
+  local tmp="${GIT_MEMORY_STATE_FILE}.tmp"
+
+  printf '%s\n' "${state}" > "${tmp}"
+  chown "${HERMES_UID}:${HERMES_GID}" "${tmp}"
+  chmod 0640 "${tmp}"
+  mv "${tmp}" "${GIT_MEMORY_STATE_FILE}"
+}
+
+read_git_memory_state() {
+  local state="disabled"
+
+  if [[ -f "${GIT_MEMORY_STATE_FILE}" && ! -L "${GIT_MEMORY_STATE_FILE}" ]]; then
+    read -r state < "${GIT_MEMORY_STATE_FILE}" || true
+  fi
+
+  [[ "${state}" == "enabled" || "${state}" == "disabled" ]] \
+    || die "invalid Git-memory desired state in ${GIT_MEMORY_STATE_FILE}"
+  printf '%s\n' "${state}"
+}
+
 # ---------------------------------------------------------------------------
 # web.search + web.extract
 # ---------------------------------------------------------------------------
@@ -181,27 +203,12 @@ fi
 install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_DIR}"
 
 case "${GIT_MEMORY_ACTION}" in
-  enable)
-    printf 'enabled\n' > "${GIT_MEMORY_STATE_FILE}.tmp"
-    chown "${HERMES_UID}:${HERMES_GID}" "${GIT_MEMORY_STATE_FILE}.tmp"
-    chmod 0640 "${GIT_MEMORY_STATE_FILE}.tmp"
-    mv "${GIT_MEMORY_STATE_FILE}.tmp" "${GIT_MEMORY_STATE_FILE}"
-    ;;
-  disable)
-    printf 'disabled\n' > "${GIT_MEMORY_STATE_FILE}.tmp"
-    chown "${HERMES_UID}:${HERMES_GID}" "${GIT_MEMORY_STATE_FILE}.tmp"
-    chmod 0640 "${GIT_MEMORY_STATE_FILE}.tmp"
-    mv "${GIT_MEMORY_STATE_FILE}.tmp" "${GIT_MEMORY_STATE_FILE}"
-    ;;
+  enable) write_git_memory_state enabled ;;
+  disable) write_git_memory_state disabled ;;
   preserve) ;;
 esac
 
-GIT_MEMORY_DESIRED="disabled"
-if [[ -f "${GIT_MEMORY_STATE_FILE}" && ! -L "${GIT_MEMORY_STATE_FILE}" ]]; then
-  read -r GIT_MEMORY_DESIRED < "${GIT_MEMORY_STATE_FILE}" || true
-fi
-[[ "${GIT_MEMORY_DESIRED}" == "enabled" || "${GIT_MEMORY_DESIRED}" == "disabled" ]] \
-  || die "invalid Git-memory desired state in ${GIT_MEMORY_STATE_FILE}"
+GIT_MEMORY_DESIRED="$(read_git_memory_state)"
 
 GITEA_PROVIDER_CONTAINER="${GITEA_CONTAINER_NAME:-gitea}"
 GIT_REMOTE_AVAILABLE=false
