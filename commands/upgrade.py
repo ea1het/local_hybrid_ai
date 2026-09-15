@@ -205,42 +205,75 @@ def _registry_availability(component: Component, image: str | None, *, online: b
     return upgrade_inventory.registry_state(state)
 
 
+def _inventory_availability(
+    component: Component,
+    record: dict,
+    observed_image: str | None,
+    desired_image: str | None,
+    *,
+    query_upstream: bool,
+) -> tuple[str, dict | None, str]:
+    actual = version_from_image(observed_image)
+    availability = record.get("availability")
+    if availability in ("local", "n/a"):
+        actual_display = "local" if availability == "local" and observed_image else actual
+        return availability, None, actual_display
+
+    available, registry, discovered_current = _registry_availability(
+        component,
+        observed_image or desired_image,
+        online=query_upstream,
+    )
+    actual_display = (
+        upgrade_registry.display_label(observed_image, discovered_version=discovered_current)
+        if observed_image
+        else actual
+    )
+    return available, registry, actual_display
+
+
+def _selection_status(component_key: str, record: dict, selection: dict | None) -> dict:
+    try:
+        return upgrade_policy.selection_status(runtime_root(), component_key, record, selection)
+    except upgrade_policy.PolicyError as exc:
+        raise UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
+
+
 def inventory(*, query_upstream: bool = True) -> list[dict]:
     """Return upgrade-decision state without conflating it with installation intent."""
     env = read_env()
-    plan = load_plan()
-    selected = plan["selected"]
+    selected = load_plan()["selected"]
     records = component_records()
     rows: list[dict] = []
+
     for component in load_catalog():
         component_key = key(component)
-        desired_image = compose_image(component, env)
         observed_image = running_image(component)
-        discovery_image = observed_image or desired_image
-        actual = version_from_image(observed_image)
-        actual_display = actual
         record = records[component_key]
-        registry = None
-        availability = record.get("availability")
-        if availability in ("local", "n/a"):
-            available = availability
-            if availability == "local" and observed_image:
-                actual_display = "local"
-        else:
-            available, registry, discovered_current = _registry_availability(component, discovery_image, online=query_upstream)
-            if observed_image:
-                actual_display = upgrade_registry.display_label(observed_image, discovered_version=discovered_current)
-        try:
-            policy_state = upgrade_policy.selection_status(runtime_root(), component_key, record, selected.get(component_key))
-        except upgrade_policy.PolicyError as exc:
-            raise UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
+        selection = selected.get(component_key)
+        available, registry, actual_display = _inventory_availability(
+            component,
+            record,
+            observed_image,
+            compose_image(component, env),
+            query_upstream=query_upstream,
+        )
+        actual = version_from_image(observed_image)
+        policy_state = _selection_status(component_key, record, selection)
         rows.append({
-            "stack": component.stack, "component": component.name, "actual": actual,
-            "actual_display": actual_display, "current": actual, "current_display": actual_display,
-            "available": available, "policy": policy_state["effective_policy"],
-            "selectable": component.selectable, "execution": _execution_metadata(record, component),
-            "selected": selected.get(component_key, {}).get("version"),
-            "selection_valid": policy_state["selection_valid"], "registry": registry,
+            "stack": component.stack,
+            "component": component.name,
+            "actual": actual,
+            "actual_display": actual_display,
+            "current": actual,
+            "current_display": actual_display,
+            "available": available,
+            "policy": policy_state["effective_policy"],
+            "selectable": component.selectable,
+            "execution": _execution_metadata(record, component),
+            "selected": selection.get("version") if selection else None,
+            "selection_valid": policy_state["selection_valid"],
+            "registry": registry,
         })
     return rows
 
