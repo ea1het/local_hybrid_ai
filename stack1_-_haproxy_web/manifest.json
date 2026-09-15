@@ -9,6 +9,33 @@
   "optional": [2, 3, 4, 5, 6, 7],
   "provides": ["ingress.https", "web.static"],
   "owns": ["container:haproxy", "container:web", "runtime:service_-_haproxy", "runtime:service_-_web"],
+  "components": [
+    {
+      "id": "haproxy",
+      "service": "haproxy",
+      "container": "haproxy",
+      "management": {"type": "versioned"},
+      "upgrade": {
+        "upstream": "haproxy/haproxy",
+        "selectable": false,
+        "default_policy": "minor-series",
+        "recovery_required": false,
+        "execution": {"mode": "inventory-only", "blocked_by": "executor-not-qualified"},
+        "apply": {
+          "type": "env-version",
+          "env_key": "HAPROXY_VERSION",
+          "image_env_key": "HAPROXY_IMAGE",
+          "deploy": ["docker", "compose", "up", "-d", "haproxy"]
+        }
+      }
+    },
+    {
+      "id": "web",
+      "service": "web",
+      "container": "web",
+      "management": {"type": "helper"}
+    }
+  ],
   "recovery": {
     "contract": {
       "schema_version": 1,

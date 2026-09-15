@@ -71,6 +71,12 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 - `CLI-JSON-002` — `tests/test_management_json_contracts.py` verifies the common restore action envelope and fail-closed normalization of private command failures.
 - `CLI-DOCTOR-001` — `tests/test_doctor.py` verifies stable doctor payload semantics and deterministic prerequisite checks without requiring a live Docker daemon.
 
+### Manifest component inventory
+
+- `CLI-INVENTORY-001` — `tests/test_component_inventory.py` verifies that every owned container has one manifest component classification and that local/helper semantics are explicit; `commands/component_inventory.py` validates ownership and Compose service bindings.
+- `CLI-INVENTORY-002` — `tests/test_component_inventory.py`, `tests/test_management_cli.py` and `tests/test_upgrade_policy.py` verify that upgrade metadata is compiled from current manifests and that the retired static component catalog is not part of repository layout. [ADR-0007](../adr/0007-manifest-component-inventory.md) is normative.
+- `CLI-INVENTORY-003` — `tests/test_component_inventory.py` and `tests/test_management_cli.py` verify the public rescan command, source fingerprint, derived snapshot and structural diff semantics. Runtime qualification is not required because rescan deliberately performs no Docker/registry mutation.
+
 ### Selective runtime lifecycle
 
 - `CLI-RUNTIME-001` — `tests/test_runtime_lifecycle.py` and `tests/test_management_runtime_cli.py`; runtime qualification confirms selective stop preserves the existing container and subsequent start returns the stack to READY/healthy.
@@ -83,13 +89,16 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 
 ### Upgrade execution
 
-- `CLI-UPGRADE-001` — management CLI inventory coverage plus `commands/upgrade-components.json`.
-- `CLI-UPGRADE-007` — `tests/test_upgrade_execution_metadata.py` verifies every component has explicit execution metadata, guarded components remain distinct from inventory-only components, and LiteLLM remains blocked on an explicit migration/compatibility policy.
-- `CLI-UPGRADE-002` — `tests/test_upgrade_selection_policy.py`; installation-local plan includes immutable target digest.
+- `CLI-UPGRADE-001` — management CLI inventory coverage plus `tests/test_version_authority.py::test_human_upgrade_table_calls_runtime_version_installed`; human output uses Installed while JSON retains stable runtime fields.
+- `CLI-UPGRADE-007` — `tests/test_upgrade_execution_metadata.py` verifies every upgrade-visible component has explicit execution metadata and guarded components remain distinct from inventory-only components.
+- `CLI-UPGRADE-008` — [Upgrade executor qualification](../upgrade-qualification.md), execution metadata tests and representative runtime qualification establish that selectability is the result of an already-proven executor path, not a policy toggle.
+- `CLI-UPGRADE-002` — `tests/test_upgrade_selection_policy.py` and `tests/test_version_authority.py`; installation-local plan includes concrete runtime baseline and immutable target digest.
 - `CLI-UPGRADE-003` — management CLI proves `--yes` never auto-selects available versions.
 - `CLI-UPGRADE-004` — stale plan fails before execution with `UPGRADE_PLAN_STALE`.
-- `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted deployment and qualified single-component upgrade.
+- `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted deployment and qualified single-component upgrade. Runtime qualification is required before newly promoted components are considered fully qualified.
 - `CLI-UPGRADE-006` — executor/selection tests prove digest capture and moved-tag rejection before mutation.
+- `CLI-UPGRADE-009` — executor failure tests plus the human apply contract prove `UPGRADE: PASS` is emitted only on successful guarded completion; failures remain journaled and do not become success merely because a container exists.
+- `CLI-UPGRADE-010` — `tests/test_upgrade_force_override.py` verifies explicit administrative qualification bypass is stored only for a deterministic known mutation path, does not change manifest-declared selectability and does not authorize unrelated components. Runtime qualification includes an administrator-forced Dockhand update reported successful by the deployment operator; exact history/status evidence should be captured before final promotion decisions.
 
 ### Compatibility policy
 
@@ -99,14 +108,14 @@ See [per-stack feature contracts](stacks/README.md) and the [cross-stack archite
 - `CLI-POLICY-004` — manual policy uses an explicit target without series inference.
 - `CLI-POLICY-005` — runtime qualification of `upgrade policy ... clear`.
 - `CLI-POLICY-006` — policy changes invalidate incompatible selections without silently deleting them.
-- `CLI-POLICY-007` — component `selectable` remains an independent gate.
-- `CLI-POLICY-008` — executor revalidates policy before target preflight or mutation.
+- `CLI-POLICY-007` — component `selectable` remains an independent support-qualification gate; an explicit forced selection is recorded separately rather than mutating that manifest fact.
+- `CLI-POLICY-008` — executor revalidates policy before target preflight or mutation, including forced selections.
 
 ### Status
 
-- `CLI-STATUS-001` — `tests/test_status.py` keeps Desired, Deployed and Actual separate.
-- `CLI-STATUS-002` — drift vocabulary is exactly `yes`, `no`, `n/a`.
-- `CLI-STATUS-003` — status tests cover floating tags, unchanged digests, fixed tags, digest pins, cross-command Actual consistency and registry-resolution failure. Runtime qualification confirms that a moved floating reference reports drift while an unchanged resolved identity reports no drift.
+- `CLI-STATUS-001` — `tests/test_status.py` verifies the human table is stack-operational (`STACK`, `NAME`, `STATE`, `HEALTH`, `DRIFT`) and does not duplicate version columns from upgrade. Runtime state is derived from manifest/lifecycle ownership and required-container observations.
+- `CLI-STATUS-002` — `commands/status.py` schema 3 plus `tests/test_status.py` preserve detailed component diagnostics alongside stack records; component drift vocabulary remains exactly `yes`, `no`, `n/a`.
+- `CLI-STATUS-003` — `tests/test_status.py` exercises shared component identity semantics for fixed/floating references, registry failure and drift aggregation. `commands/component_state.py` owns these read-only identity/drift rules so status does not maintain a second interpretation of the same facts.
 
 ## Traceability maintenance
 

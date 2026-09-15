@@ -24,7 +24,7 @@ services:
   # SearXNG
   # -------------------------------------------------------------------------
   searxng:
-    image: docker.io/searxng/searxng:2026.9.5-c7f3080aa
+    image: ${SEARXNG_IMAGE:-docker.io/searxng/searxng:2026.9.5-c7f3080aa}
     container_name: searxng
     restart: unless-stopped
 
@@ -47,7 +47,7 @@ services:
   # Firecrawl authenticates to PostgreSQL with its dedicated non-admin role.
   # -------------------------------------------------------------------------
   firecrawl-api:
-    image: ghcr.io/firecrawl/firecrawl@sha256:1910ef022706238c7d13c0e191b9a080efcf10aab049d776ba321abd8dc512ca
+    image: ${FIRECRAWL_IMAGE:-ghcr.io/firecrawl/firecrawl@sha256:1910ef022706238c7d13c0e191b9a080efcf10aab049d776ba321abd8dc512ca}
     container_name: firecrawl-api
     restart: unless-stopped
 
@@ -109,7 +109,7 @@ services:
   # Playwright para Firecrawl
   # -------------------------------------------------------------------------
   firecrawl-playwright:
-    image: ghcr.io/firecrawl/playwright-service@sha256:df1a393ce8bfc3801570a826a9b0dcc400ae48789adb4a0ad9d6cbf0229b059b
+    image: ${FIRECRAWL_PLAYWRIGHT_IMAGE:-ghcr.io/firecrawl/playwright-service@sha256:df1a393ce8bfc3801570a826a9b0dcc400ae48789adb4a0ad9d6cbf0229b059b}
     container_name: firecrawl-playwright
     restart: unless-stopped
 
@@ -142,7 +142,7 @@ services:
   # No publica puertos. Se protege con password porque redlocal es compartida.
   # -------------------------------------------------------------------------
   firecrawl-redis:
-    image: redis:alpine
+    image: ${FIRECRAWL_REDIS_IMAGE:-redis}:${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}
     container_name: firecrawl-redis
     restart: unless-stopped
 
@@ -177,7 +177,7 @@ services:
   # Sin plugin/dashboard de management y sin puertos publicados en el host.
   # -------------------------------------------------------------------------
   firecrawl-rabbitmq:
-    image: rabbitmq:3-alpine
+    image: ${FIRECRAWL_RABBITMQ_IMAGE:-rabbitmq}:${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}
     container_name: firecrawl-rabbitmq
     restart: unless-stopped
 
@@ -211,7 +211,7 @@ services:
   # Stack2 runtime secret; Firecrawl itself uses FIRECRAWL_DB_USER instead.
   # -------------------------------------------------------------------------
   firecrawl-postgres:
-    image: ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
+    image: ${FIRECRAWL_POSTGRES_IMAGE:-ghcr.io/firecrawl/nuq-postgres@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6}
     container_name: firecrawl-postgres
     restart: unless-stopped
 

@@ -17,9 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commands import upgrade_policy
-
-ROOT = Path(__file__).resolve().parents[1]
+from commands import upgrade, upgrade_policy
 
 
 class UpgradePolicyTests(unittest.TestCase):
@@ -40,10 +38,7 @@ class UpgradePolicyTests(unittest.TestCase):
         self.assertFalse(upgrade_policy.target_supported("manual", "1.27.1", "1.27.1"))
 
     def test_dockhand_default_policy_is_major_series(self):
-        catalog = json.loads((ROOT / "commands" / "upgrade-components.json").read_text(encoding="utf-8"))
-        stack5 = next(stack for stack in catalog["stacks"] if stack["id"] == "stack5")
-        dockhand = next(component for component in stack5["components"] if component["id"] == "dockhand")
-        self.assertEqual(dockhand["default_policy"], "major-series")
+        self.assertEqual(upgrade.component_records()["stack5/dockhand"]["default_policy"], "major-series")
 
     def test_override_is_installation_local_and_clear_restores_default(self):
         component = {"stack": "stack4", "id": "gitea", "default_policy": "minor-series"}

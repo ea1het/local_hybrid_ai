@@ -133,10 +133,11 @@ def selection_status(runtime_root: Path, component_key: str, component: dict, se
     if selection:
         current = selection.get("current_at_selection")
         target = selection.get("version")
+        qualification_accepted = component.get("selectable", True) or selection.get("forced") is True
         result["selection_valid"] = bool(
             isinstance(current, str)
             and isinstance(target, str)
-            and component.get("selectable", True)
+            and qualification_accepted
             and target_supported(effective, current, target)
         )
     return result

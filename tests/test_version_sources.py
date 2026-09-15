@@ -8,19 +8,17 @@ Upgrade inventory must derive version evidence from the registry/repository that
 owns the configured image rather than lateral APIs or hand-maintained metadata.
 These tests also cover offline behavior, local-only components and failure states
 so unavailable registry evidence never becomes a fabricated current version.
+Persistent discovery cache is disabled inside the synthetic inventory helper;
+cache behavior itself is covered independently by the registry-cache suite.
 """
 
 from __future__ import annotations
 
-import json
 import unittest
-from pathlib import Path
 from unittest import mock
 
-from commands import upgrade
+from commands import component_inventory, upgrade
 from commands import upgrade_registry as container_registry
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class VersionSourceTests(unittest.TestCase):
@@ -33,6 +31,7 @@ class VersionSourceTests(unittest.TestCase):
     def _inventory(self, component, record, image, *, online=True, registry_state=None):
         records = {f"{component.stack}/{component.name}": record}
         patches = [
+            mock.patch.dict("os.environ", {"LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS": "0"}),
             mock.patch("commands.upgrade.load_catalog", return_value=[component]),
             mock.patch("commands.upgrade.component_records", return_value=records),
             mock.patch("commands.upgrade.read_env", return_value={}),
@@ -40,11 +39,11 @@ class VersionSourceTests(unittest.TestCase):
             mock.patch("commands.upgrade.running_image", return_value=image),
             mock.patch("commands.upgrade.upgrade_registry.inspect", return_value=registry_state),
         ]
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5] as registry:
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6] as registry:
             return upgrade.inventory(query_upstream=online), registry
 
-    def test_catalog_uses_no_lateral_version_sources(self):
-        catalog = json.loads((ROOT / "commands" / "upgrade-components.json").read_text(encoding="utf-8"))
+    def test_manifest_upgrade_metadata_uses_no_lateral_version_sources(self):
+        catalog = component_inventory.compile_upgrade_catalog()
         components = [component for stack in catalog["stacks"] for component in stack["components"]]
         self.assertFalse(any("version_source" in component for component in components))
         self.assertFalse(any("registry_source" in component for component in components))

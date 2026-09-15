@@ -5,9 +5,10 @@
 """Core upgrade inventory, plan persistence and component metadata helpers.
 
 This module keeps runtime observation, registry availability, compatibility
-policy, selectability and explicit operator selection as separate facts. It owns
-the installation-local upgrade plan format and component catalog interpretation,
-but it does not execute upgrades; guarded mutation belongs to the executor.
+policy, selectability and explicit operator selection as separate facts. Stack
+manifests own component topology and upgrade semantics; this module consumes the
+compiled manifest view but does not execute upgrades. Guarded mutation belongs
+to the executor.
 """
 
 from __future__ import annotations
@@ -20,10 +21,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands import upgrade_policy, upgrade_registry
+from commands import component_inventory, upgrade_policy, upgrade_registry
 
 ROOT = Path(__file__).resolve().parents[1]
-CATALOG = ROOT / "commands" / "upgrade-components.json"
 SCHEMA_VERSION = "1"
 REGISTRY_CACHE_SCHEMA_VERSION = 1
 REGISTRY_CACHE_DEFAULT_TTL_SECONDS = 300
@@ -153,39 +153,13 @@ def _store_registry_state(component: Component, image: str, state: upgrade_regis
 
 
 def load_catalog_raw() -> dict:
+    """Return the upgrade-shaped view compiled from validated stack manifests."""
     try:
-        raw = json.loads(CATALOG.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise UpgradeError(f"cannot read component catalog: {exc}", code="UPGRADE_CATALOG_INVALID") from exc
+        raw = component_inventory.compile_upgrade_catalog()
+    except component_inventory.InventoryError as exc:
+        raise UpgradeError(f"cannot compile component catalog: {exc}", code="UPGRADE_CATALOG_INVALID") from exc
     if raw.get("schema_version") != 1 or not isinstance(raw.get("stacks"), list):
         raise UpgradeError("unsupported component catalog schema", code="UPGRADE_CATALOG_INVALID")
-
-    allowed_execution_modes = {"guarded", "inventory-only", "not-applicable"}
-    for stack in raw["stacks"]:
-        if not isinstance(stack, dict) or not isinstance(stack.get("components"), list):
-            raise UpgradeError("invalid component catalog stack record", code="UPGRADE_CATALOG_INVALID")
-        for item in stack["components"]:
-            if not isinstance(item, dict):
-                raise UpgradeError("invalid component catalog component record", code="UPGRADE_CATALOG_INVALID")
-            execution = item.get("execution")
-            if not isinstance(execution, dict) or execution.get("mode") not in allowed_execution_modes:
-                raise UpgradeError(
-                    f"component {stack.get('id')}/{item.get('id')} lacks valid execution metadata",
-                    code="UPGRADE_CATALOG_INVALID",
-                )
-            selectable = item.get("selectable", True)
-            blocked_by = execution.get("blocked_by")
-            if selectable:
-                if execution["mode"] != "guarded" or blocked_by is not None:
-                    raise UpgradeError(
-                        f"selectable component {stack.get('id')}/{item.get('id')} must declare guarded execution",
-                        code="UPGRADE_CATALOG_INVALID",
-                    )
-            elif execution["mode"] == "guarded" or not isinstance(blocked_by, str) or not blocked_by:
-                raise UpgradeError(
-                    f"non-selectable component {stack.get('id')}/{item.get('id')} must declare why execution is blocked",
-                    code="UPGRADE_CATALOG_INVALID",
-                )
     return raw
 
 
@@ -316,10 +290,10 @@ def key(component: Component) -> str:
 def _execution_metadata(record: dict, component: Component) -> dict:
     """Return explicit execution metadata while tolerating synthetic legacy records.
 
-    The repository catalog is validated strictly by ``load_catalog_raw`` and must
-    always declare execution metadata. Unit tests and private callers may provide
-    reduced synthetic records; those must not make read-only inventory crash.
-    Such records receive conservative derived metadata only for presentation.
+    Manifest-derived catalog records always declare execution metadata. Unit tests
+    and private callers may provide reduced synthetic records; those must not make
+    read-only inventory crash. Such records receive conservative metadata only for
+    presentation.
     """
     execution = record.get("execution")
     if isinstance(execution, dict):
@@ -383,7 +357,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
     `actual` is observed runtime. `available` is registry discovery. Compatibility
     policy, executor selectability and operator selection are separate facts.
     Legacy `current` fields remain in JSON as aliases of actual for schema-1
-    compatibility, but the human interface uses ACTUAL.
+    compatibility. Human output labels the observed runtime version INSTALLED.
     """
     env = read_env()
     plan = load_plan()
@@ -466,7 +440,7 @@ def _human_available(row: dict) -> str:
 
 
 def print_table(rows: list[dict]) -> None:
-    headers = ("STACK", "COMPONENT", "ACTUAL", "AVAILABLE", "POLICY", "SELECTABLE", "SELECTED", "VALID")
+    headers = ("STACK", "COMPONENT", "INSTALLED", "AVAILABLE", "POLICY", "SELECTABLE", "SELECTED", "VALID")
     values = [headers]
     for row in rows:
         valid = row["selection_valid"]

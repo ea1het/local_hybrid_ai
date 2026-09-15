@@ -17,6 +17,7 @@ This area contains design decisions, executable-oriented specifications, securit
 - [Security Decision Records](sdr/README.md)
 - [OpenSpec / Gherkin behavioural contracts](openspec/README.md)
 - [Testing strategy and qualification](testing.md)
+- [Upgrade executor qualification](upgrade-qualification.md)
 - [Architecture reference](../architecture/README.md)
 - [Cross-stack architecture](../stacks/README.md)
 - [AI-assisted maintenance context](../a2aknowledge.md)

@@ -50,15 +50,18 @@ class DoctorTests(unittest.TestCase):
                  mock.patch("commands.doctor.install.all_manifests", return_value={0: {"directory": "stack0"}}), \
                  mock.patch("commands.doctor.install.load_lifecycle", return_value={"stacks": {"0": {}}}), \
                  mock.patch("commands.doctor.install.validate_registry") as validate, \
+                 mock.patch("commands.doctor.component_inventory.compile_components", return_value=[{"stack": "stack0", "id": "platform-foundation"}]) as components, \
                  mock.patch("commands.doctor.shutil.which", return_value="/usr/bin/docker"), \
                  mock.patch("commands.doctor.subprocess.run", return_value=compose):
                 checks = doctor.run_checks()
 
         validate.assert_called_once()
+        components.assert_called_once_with()
         statuses = {item["id"]: item["status"] for item in checks}
         self.assertEqual(statuses, {
             "management_entrypoint": "pass",
             "lifecycle_registry": "pass",
+            "component_inventory": "pass",
             "operational_env": "pass",
             "docker_cli": "pass",
             "docker_compose": "pass",

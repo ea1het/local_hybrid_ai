@@ -28,6 +28,8 @@ commands/
 ├── cli.py
 ├── install.py
 ├── install-lifecycle.json
+├── component_inventory.py
+├── inventory.py
 ├── status.py
 ├── upgrade.py
 ├── upgrade_entry.py
@@ -35,7 +37,6 @@ commands/
 ├── upgrade_executor.py
 ├── upgrade_guard.py
 ├── upgrade_policy.py
-├── upgrade-components.json
 └── recovery/
     ├── backup-all.py
     ├── restore-*.py
@@ -43,7 +44,7 @@ commands/
     └── *.schema.json
 ```
 
-Installation, status and upgrade remain direct modules/configuration because each is a compact command domain. Disaster recovery is a `commands/recovery/` subpackage because its engines, restore adapters, verification helpers and schemas form one larger cohesive domain.
+Installation, inventory, status and upgrade remain direct modules/configuration because each is a compact command domain. Component topology itself belongs to stack manifests as specified by [ADR-0007](0007-manifest-component-inventory.md), rather than to a central command-package catalog. Disaster recovery is a `commands/recovery/` subpackage because its engines, restore adapters, verification helpers and schemas form one larger cohesive domain.
 
 There are no separate top-level `internal/`, `installer/` or `bkp-dr/` implementation roots. Stack-owned lifecycle scripts remain with their stacks because the stack owns that behavior; the command package orchestrates those lifecycle entry points rather than absorbing them.
 

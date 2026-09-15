@@ -9,6 +9,11 @@ immutable registry target identity before delegating mutation to the guarded
 executor. It also implements upgrade-policy inspection/mutation and stable
 human/JSON command responses. Registry discovery never implies consent and
 ``--yes`` never broadens the set of already selected targets.
+
+Inventory-only components remain unsupported by default. An administrator may
+explicitly bypass qualification with ``select <version> --force`` only when the
+catalog already contains a deterministic env-version mutation recipe. Forced
+consent is persisted in the selection and therefore in successful history.
 """
 
 from __future__ import annotations
@@ -32,6 +37,83 @@ def _effective_policy(component) -> tuple[str, str | None, str]:
         )
     except upgrade_policy.PolicyError as exc:
         raise upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
+
+
+def _resolve_component(stack: str, name: str | None):
+    matches = [component for component in upgrade.load_catalog() if component.stack == stack]
+    if not matches:
+        raise upgrade.UpgradeError(f"unknown stack: {stack}", code="UPGRADE_STACK_UNKNOWN")
+    if name is None:
+        if len(matches) != 1:
+            raise upgrade.UpgradeError(
+                f"{stack} has multiple components; specify one: " + ", ".join(c.name for c in matches),
+                code="UPGRADE_COMPONENT_REQUIRED",
+            )
+        return matches[0]
+    component = next((candidate for candidate in matches if candidate.name == name), None)
+    if component is None:
+        raise upgrade.UpgradeError(f"unknown component for {stack}: {name}", code="UPGRADE_COMPONENT_UNKNOWN")
+    return component
+
+
+def _force_metadata(component) -> tuple[bool, str | None]:
+    """Return whether an inventory-only component has a deterministic force path."""
+    record = _component_record(component)
+    execution = record.get("execution") or {}
+    apply = record.get("apply") or {}
+    force_capable = (
+        execution.get("mode") == "inventory-only"
+        and apply.get("type") == "env-version"
+        and isinstance(apply.get("env_key"), str)
+        and bool(apply.get("env_key"))
+        and isinstance(apply.get("image_env_key"), str)
+        and bool(apply.get("image_env_key"))
+        and isinstance(apply.get("deploy"), list)
+        and bool(apply.get("deploy"))
+    )
+    return force_capable, execution.get("blocked_by")
+
+
+def _require_selection_permission(component, *, force: bool) -> tuple[bool, str | None]:
+    if component.selectable:
+        return False, None
+
+    force_capable, blocked_by = _force_metadata(component)
+    if not force:
+        hint = "; use --force to accept administrator risk" if force_capable else ""
+        raise upgrade.UpgradeError(
+            f"component is inventory-only: {upgrade.key(component)} ({blocked_by}){hint}",
+            code="UPGRADE_COMPONENT_NOT_SELECTABLE",
+        )
+    if not force_capable:
+        raise upgrade.UpgradeError(
+            f"component has no deterministic forced-upgrade recipe: {upgrade.key(component)} ({blocked_by})",
+            code="UPGRADE_FORCE_UNAVAILABLE",
+        )
+    return True, blocked_by
+
+
+def _current_runtime_version(component, env: dict[str, str]) -> str:
+    """Return the concrete running version used for policy and stale-plan checks.
+
+    Existing containers may retain a historical mutable Config.Image such as
+    ``redis:alpine`` even after installation intent has moved to an exact pin.
+    Resolve that runtime identity through the same registry boundary used by
+    inventory. Registry failure remains fail-closed: no compatible series is
+    invented from a non-version tracking tag.
+    """
+    running = upgrade.running_image(component)
+    if running:
+        literal = upgrade.version_from_image(running)
+        if component.container:
+            try:
+                state = upgrade_registry.inspect(component.container, running)
+            except upgrade_registry.RegistryError:
+                state = None
+            if state is not None and state.current_version:
+                return state.current_version
+        return literal
+    return upgrade.version_from_image(upgrade.compose_image(component, env))
 
 
 def _target_reference(component, version: str, env: dict[str, str]) -> str:
@@ -72,10 +154,11 @@ def _validate_target(component, current: str, version: str, env: dict[str, str])
     return effective, target_ref, target_digest
 
 
-def select(stack: str, component_name: str | None, version: str) -> int:
-    component = upgrade.find_component(stack, component_name)
+def select(stack: str, component_name: str | None, version: str, *, force: bool = False) -> int:
+    component = _resolve_component(stack, component_name)
+    forced, blocked_by = _require_selection_permission(component, force=force)
     env = upgrade.read_env()
-    current = upgrade.version_from_image(upgrade.running_image(component) or upgrade.compose_image(component, env))
+    current = _current_runtime_version(component, env)
     if current == version:
         raise upgrade.UpgradeError(
             f"{component.stack}/{component.name} is already at {version}",
@@ -83,7 +166,7 @@ def select(stack: str, component_name: str | None, version: str) -> int:
         )
     effective, target_ref, target_digest = _validate_target(component, current, version, env)
     plan = upgrade.load_plan()
-    plan["selected"][upgrade.key(component)] = {
+    selection = {
         "stack": component.stack,
         "component": component.name,
         "current_at_selection": current,
@@ -92,16 +175,21 @@ def select(stack: str, component_name: str | None, version: str) -> int:
         "target_image": target_ref,
         "target_digest": target_digest,
     }
+    if forced:
+        selection["forced"] = True
+        selection["qualification_bypassed"] = blocked_by
+    plan["selected"][upgrade.key(component)] = selection
     upgrade.save_plan(plan)
+    qualifier = f", FORCED: {blocked_by}" if forced else ""
     print(
         f"Selected {component.stack}/{component.name}: {current} -> {version} "
-        f"({effective}, {target_digest})"
+        f"({effective}, {target_digest}{qualifier})"
     )
     return 0
 
 
 def clear(stack: str, component_name: str | None) -> int:
-    component = upgrade.find_component(stack, component_name)
+    component = _resolve_component(stack, component_name)
     plan = upgrade.load_plan()
     plan["selected"].pop(upgrade.key(component), None)
     upgrade.save_plan(plan)
@@ -157,11 +245,18 @@ def validate_selected_baselines(selections: list[dict]) -> None:
                 code="UPGRADE_PLAN_STALE",
             )
         if not component.selectable:
-            raise upgrade.UpgradeError(
-                f"selected component is no longer selectable: {component_key}",
-                code="UPGRADE_COMPONENT_NOT_SELECTABLE",
-            )
-        current = upgrade.version_from_image(upgrade.running_image(component) or upgrade.compose_image(component, env))
+            if selection.get("forced") is not True:
+                raise upgrade.UpgradeError(
+                    f"selected component is no longer selectable: {component_key}",
+                    code="UPGRADE_COMPONENT_NOT_SELECTABLE",
+                )
+            force_capable, blocked_by = _force_metadata(component)
+            if not force_capable:
+                raise upgrade.UpgradeError(
+                    f"forced upgrade recipe is no longer available: {component_key} ({blocked_by})",
+                    code="UPGRADE_FORCE_UNAVAILABLE",
+                )
+        current = _current_runtime_version(component, env)
         expected = selection.get("current_at_selection")
         if current != expected:
             raise upgrade.UpgradeError(
@@ -188,6 +283,20 @@ def validate_selected_baselines(selections: list[dict]) -> None:
         _validate_immutable_target(component, selection, env)
 
 
+def _execution_records_for(selections: list[dict]) -> dict[str, dict]:
+    """Authorize only explicitly forced selections in an ephemeral catalog view."""
+    records = upgrade.component_records()
+    result = {key: dict(value) for key, value in records.items()}
+    for selection in selections:
+        if selection.get("forced") is not True:
+            continue
+        component_key = f"{selection['stack']}/{selection['component']}"
+        record = dict(result[component_key])
+        record["selectable"] = True
+        result[component_key] = record
+    return result
+
+
 def execute_selected(*, json_output: bool) -> int:
     selections = selected_records()
     if not selections:
@@ -198,7 +307,7 @@ def execute_selected(*, json_output: bool) -> int:
             root=upgrade.ROOT,
             runtime_root=upgrade.runtime_root(),
             selections=selections,
-            components=upgrade.component_records(),
+            components=_execution_records_for(selections),
             plan_path=upgrade.plan_path(),
             quiet=json_output,
         )
@@ -220,7 +329,11 @@ def execute_selected(*, json_output: bool) -> int:
         if payload["recovery_point"]:
             print(f"- recovery point: {payload['recovery_point']}")
         for item in payload["upgraded"]:
-            print(f"- {item['stack']}/{item['component']}: {item['current_at_selection']} -> {item['version']}")
+            marker = " [FORCED]" if item.get("forced") is True else ""
+            print(
+                f"- {item['stack']}/{item['component']}: "
+                f"{item['current_at_selection']} -> {item['version']}{marker}"
+            )
         if payload["reverified_stacks"]:
             print("- reverified consumers: " + ", ".join(payload["reverified_stacks"]))
     return 0
@@ -365,12 +478,13 @@ def policy_command(args: list[str], *, json_output: bool) -> int:
 
 def usage() -> None:
     print("Usage:")
-    print("  ./local-ai upgrade check [--offline]")
+    print("  ./local-ai upgrade [--offline]")
+    print("  ./local-ai upgrade check [--offline]  # compatibility alias")
     print("  ./local-ai upgrade policy")
     print("  ./local-ai upgrade policy <stack> [component]")
     print("  ./local-ai upgrade policy <stack> [component] set <minor-series|major-series|manual>")
     print("  ./local-ai upgrade policy <stack> [component] clear")
-    print("  ./local-ai upgrade <stack> [component] select <version>")
+    print("  ./local-ai upgrade <stack> [component] select <version> [--force]")
     print("  ./local-ai upgrade <stack> [component] clear")
     print("  ./local-ai upgrade --yes")
 
@@ -399,7 +513,7 @@ def main(args: list[str], *, json_output: bool = False) -> int:
             else:
                 upgrade.print_table(rows)
             return 0
-        if args in (["check", "--offline"], ["--offline", "check"]):
+        if args in (["--offline"], ["check", "--offline"], ["--offline", "check"]):
             rows = upgrade.inventory(query_upstream=False)
             if json_output:
                 print(json.dumps(json_payload(rows), indent=2))
@@ -412,11 +526,15 @@ def main(args: list[str], *, json_output: bool = False) -> int:
             return policy_command(args[1:], json_output=json_output)
 
         if "select" in args:
-            pos = args.index("select")
-            left, right = args[:pos], args[pos + 1:]
+            if args.count("--force") > 1:
+                raise upgrade.UpgradeError("invalid select syntax", code="UPGRADE_USAGE")
+            force = "--force" in args
+            select_args = [arg for arg in args if arg != "--force"]
+            pos = select_args.index("select")
+            left, right = select_args[:pos], select_args[pos + 1:]
             if len(right) != 1 or len(left) not in (1, 2):
                 raise upgrade.UpgradeError("invalid select syntax", code="UPGRADE_USAGE")
-            return select(left[0], left[1] if len(left) == 2 else None, right[0])
+            return select(left[0], left[1] if len(left) == 2 else None, right[0], force=force)
 
         if args[-1:] == ["clear"] and len(args) in (2, 3):
             left = args[:-1]

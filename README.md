@@ -109,7 +109,7 @@ Common entry points:
 ./local-ai status
 ./local-ai start 5
 ./local-ai stop 5
-./local-ai upgrade check
+./local-ai upgrade
 ./local-ai backup
 ./local-ai restore plan <backup-set> --dry-run
 ```
@@ -122,7 +122,7 @@ Security decisions are recorded explicitly rather than buried in Compose files. 
 
 ## Upgrades and recovery
 
-Registry availability does not imply compatibility or consent. Upgrade discovery follows the registry/repository of the configured image, while policy determines whether a target is acceptable. Explicit selection records the target digest and guarded apply revalidates it before mutation. See [upgrade policy](docs/upgrade-policy.md) and [ADR-0003](docs/devel-docs/adr/0003-human-version-vs-image-digest.md).
+The normal upgrade workflow is **installed → available → selectable → selected → verified PASS**. Registry availability is discovery, not consent, and a component is selectable only after its executor has been qualified. Start with the [upgrade guide](docs/user-docs/upgrade.md); compatibility rules are documented separately in [upgrade policy](docs/upgrade-policy.md).
 
 Disaster recovery is manifest-driven. Stateful resources are backed up according to their recovery strategy; reconstructable resources are rebuilt. Backup publication and restore validation fail closed. Start with the [DR guide](docs/dr/README.md).
 
