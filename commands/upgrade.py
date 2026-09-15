@@ -14,7 +14,6 @@ to the executor.
 from __future__ import annotations
 
 import os
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +22,7 @@ from commands import (
     component_inventory,
     upgrade_cache,
     upgrade_catalog,
+    upgrade_inventory,
     upgrade_plan,
     upgrade_policy,
     upgrade_registry,
@@ -162,15 +162,8 @@ def running_image(component: Component) -> str | None:
 
 
 def version_from_image(image: str | None) -> str:
-    """Return the installed identity used for status and stale-plan protection."""
-    if not image:
-        return "n/a"
-    if "@sha256:" in image:
-        base, digest = image.split("@sha256:", 1)
-        tag = base.rsplit(":", 1)[1] if ":" in base.rsplit("/", 1)[-1] else None
-        return f"{tag}@{digest[:12]}" if tag else f"sha256:{digest[:12]}"
-    tail = image.rsplit("/", 1)[-1]
-    return tail.rsplit(":", 1)[1] if ":" in tail else "latest"
+    """Compatibility facade for installed image identity parsing."""
+    return upgrade_inventory.version_from_image(image)
 
 
 def load_plan() -> dict:
@@ -191,19 +184,8 @@ def key(component: Component) -> str:
 
 
 def _execution_metadata(record: dict, component: Component) -> dict:
-    """Return explicit execution metadata while tolerating synthetic legacy records.
-
-    Manifest-derived catalog records always declare execution metadata. Unit tests
-    and private callers may provide reduced synthetic records; those must not make
-    read-only inventory crash. Such records receive conservative metadata only for
-    presentation.
-    """
-    execution = record.get("execution")
-    if isinstance(execution, dict):
-        return dict(execution)
-    if component.selectable:
-        return {"mode": "guarded"}
-    return {"mode": "inventory-only", "blocked_by": "legacy-or-synthetic-record"}
+    """Compatibility facade for inventory execution metadata."""
+    return upgrade_inventory.execution_metadata(record, selectable=component.selectable)
 
 
 def _registry_availability(component: Component, image: str | None, *, online: bool) -> tuple[str, dict | None, str | None]:
@@ -220,26 +202,7 @@ def _registry_availability(component: Component, image: str | None, *, online: b
             f"registry discovery failed for {key(component)}: {exc}",
             code="UPGRADE_REGISTRY_SOURCE_INVALID",
         ) from exc
-    if state is None:
-        return "n/a", None, None
-    details = {
-        "image": state.image, "registry": state.registry, "repository": state.repository,
-        "tracking_image": state.tracking_image, "local_digest": state.local_digest,
-        "remote_digest": state.remote_digest, "remote_status": state.remote_status,
-        "tags_status": state.tags_status, "current_version": state.current_version,
-        "available_version": state.available_version, "update_available": state.update_available,
-    }
-    if state.available_version:
-        if state.current_version == state.available_version:
-            return "current", details, state.current_version
-        return state.available_version, details, state.current_version
-    if state.update_available is True:
-        return "update", details, state.current_version
-    if state.update_available is False:
-        return "current", details, state.current_version
-    if state.remote_status == "not_tracked":
-        return "pinned", details, state.current_version
-    return "unknown", details, state.current_version
+    return upgrade_inventory.registry_state(state)
 
 
 def inventory(*, query_upstream: bool = True) -> list[dict]:
@@ -283,25 +246,13 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
 
 
 def human_stack_id(stack: str) -> str:
-    match = re.fullmatch(r"stack(\d+)", stack)
-    return match.group(1) if match else stack
+    """Compatibility facade for compact stack labels."""
+    return upgrade_inventory.human_stack_id(stack)
 
 
 def _human_available(row: dict) -> str:
-    available = row["available"]
-    registry = row.get("registry")
-    if available == "unknown" and registry:
-        status = registry.get("remote_status")
-        if status == "rate_limited":
-            return "unknown (rate limited)"
-        if status and status not in {"ok", "not_tracked"}:
-            return f"unknown ({status.replace('_', ' ')})"
-        tags_status = registry.get("tags_status")
-        if tags_status == "rate_limited":
-            return "unknown (rate limited)"
-        if tags_status and tags_status not in {"ok", "unchecked"}:
-            return f"unknown ({tags_status.replace('_', ' ')})"
-    return available
+    """Compatibility facade for registry availability presentation."""
+    return upgrade_inventory.human_available(row)
 
 
 def print_table(rows: list[dict]) -> None:
