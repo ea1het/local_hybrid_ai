@@ -3,6 +3,8 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 Feature: Source-local shell completion
+  Bash and Zsh completion must expose the current CLI topology without creating
+  a second component authority or crossing runtime and registry boundaries.
 
   Scenario: Component completion follows manifest inventory
     Given stack manifests declare the current component topology
