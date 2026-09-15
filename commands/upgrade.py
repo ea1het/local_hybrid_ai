@@ -16,12 +16,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands import component_inventory, upgrade_policy, upgrade_registry
+from commands import component_inventory, upgrade_policy, upgrade_registry, upgrade_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
@@ -190,64 +189,23 @@ def load_catalog() -> list[Component]:
 
 
 def read_env() -> dict[str, str]:
-    result: dict[str, str] = {}
-    path = ROOT / ".env"
-    if not path.is_file():
-        path = ROOT / ".env.template"
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        result[key.strip()] = value.strip().strip('"').strip("'")
-    return result
+    """Compatibility facade for callers that import runtime helpers from upgrade."""
+    return upgrade_runtime.read_env(ROOT)
 
 
 def substitute_env(value: str, env: dict[str, str]) -> str:
-    pattern = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::[-?]([^}]*))?\}")
-
-    def repl(match: re.Match[str]) -> str:
-        key, default = match.group(1), match.group(2)
-        return env.get(key) or (default or match.group(0))
-
-    return pattern.sub(repl, value)
+    """Compatibility facade for the extracted runtime helper."""
+    return upgrade_runtime.substitute_env(value, env)
 
 
 def compose_image(component: Component, env: dict[str, str]) -> str | None:
-    if not component.compose or not component.service:
-        return None
-    path = ROOT / component.compose
-    if not path.is_file():
-        return None
-    current_service: str | None = None
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        service_match = re.match(r"^  ([A-Za-z0-9_.-]+):\s*$", raw)
-        if service_match:
-            current_service = service_match.group(1)
-            continue
-        if current_service == component.service:
-            image_match = re.match(r"^    image:\s*(.+?)\s*$", raw)
-            if image_match:
-                return substitute_env(image_match.group(1).strip('"').strip("'"), env)
-    return None
+    """Return the configured image while preserving the established public API."""
+    return upgrade_runtime.compose_image(ROOT, component, env)
 
 
 def running_image(component: Component) -> str | None:
-    if not component.container:
-        return None
-    try:
-        cp = subprocess.run(
-            ["docker", "inspect", "-f", "{{.Config.Image}}", component.container],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return None
-    if cp.returncode != 0:
-        return None
-    return cp.stdout.strip() or None
+    """Return the observed container image while preserving the established public API."""
+    return upgrade_runtime.running_image(ROOT, component)
 
 
 def version_from_image(image: str | None) -> str:
