@@ -13,7 +13,8 @@ This area contains the supported operator-facing contract for Local Hybrid AI. O
 ## Start here
 
 - [CLI reference](cli.md) — complete supported management surface, including human and JSON contracts.
-- [Upgrading components](upgrade.md) — human workflow for discovering, selecting, applying and recovering from component upgrades; explains `SELECTABLE` and `NO SELECTABLE`.
+- [Shell completion](completion.md) — Bash/Zsh adapters, `completion install` and persistent-install status.
+- [Upgrading components](upgrade.md) — discovering, selecting, applying and recovering from component upgrades; explains selectability and explicit consent.
 - [Administrator-forced upgrades](forced-upgrades.md) — explicit `--force` override for inventory-only components that already have a deterministic mutation recipe.
 - [Component version authority](version-authority.md) — migration/advanced background for installations that predate installation-owned version authority.
 - [Installation](../installation.md) — planning, installation and lifecycle convergence.
@@ -21,6 +22,8 @@ This area contains the supported operator-facing contract for Local Hybrid AI. O
 - [Disaster recovery](../dr/README.md) — backup, restore planning, drills and clean-target recovery.
 - [Configuration and secrets](../configuration/README.md) — protected environment and secret ownership.
 - [Integrations](integrations/README.md) — Hermes and LiteLLM/MCP integration guidance.
+
+For a compact statement of what exists now and what legacy implementation surfaces have been retired, see [current implementation state](../current-state.md).
 
 `commands/` is a private implementation package behind the CLI. Historical restore compatibility may recognize older source layouts, but those historical paths are not supported operator interfaces.
 

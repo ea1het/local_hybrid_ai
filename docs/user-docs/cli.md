@@ -23,20 +23,19 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ├── inventory rescan
 ├── status
 ├── doctor
+├── completion bash|zsh|install|status
 └── upgrade
     ├── [check] [--offline]
     ├── policy [stack [component] [set POLICY|clear]]
     ├── stack [component] select VERSION [--force]
     ├── stack [component] clear
-    ├── adopt [--yes]              # migration utility for older installations
+    ├── adopt [--yes]
     └── --yes
 ```
 
-Global `--json` may be placed before the command. It is supported by the management commands that expose a machine contract.
+Global `--json` may be placed before the command. It is supported only by management commands that expose a machine contract.
 
 ## `install`
-
-`install` is the public facade over the manifest-driven lifecycle engine.
 
 ```bash
 ./local-ai install --plan all
@@ -46,39 +45,29 @@ Global `--json` may be placed before the command. It is supported by the managem
 ./local-ai --json install 7 --plan
 ```
 
-The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests.
+`install` is the public facade over the manifest-driven lifecycle engine. The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests.
 
 ## `start` / `stop`
 
 ```bash
 sudo ./local-ai stop 5
 sudo ./local-ai start 5
-sudo ./local-ai --json stop stack5
 ```
 
-`stop` performs controlled `docker compose stop`; it never removes networks or volumes. It fails closed when an active required consumer would be broken. `start` starts an already prepared/deployed stack; it does not prepare or recreate it and requires providers to be running. Generic READY is checked after start.
+`stop` performs controlled `docker compose stop`; it does not remove networks or volumes and fails closed when an active required consumer would be broken. `start` starts an already prepared/deployed stack; it does not prepare or recreate it and requires hard providers to be running. Generic READY is checked after start.
 
-## `backup`
+## `backup` / `restore`
 
 ```bash
 ./local-ai backup
 ./local-ai backup --destination /path/to/backup-root
-./local-ai --json backup
-```
-
-Creates one manifest-driven recovery point. The protected operational `.env` is included as sensitive global state. Stateful resources use stack-specific recovery strategies; reconstructable resources are not copied merely because runtime state exists.
-
-## `restore`
-
-```bash
 ./local-ai restore plan /path/to/backup-set --dry-run
 ./local-ai restore drill /path/to/backup-set --destination /isolated/path
 ./local-ai restore apply /path/to/backup-set --check-clean-target
-./local-ai restore resume /path/to/backup-set \
-  --memory-sync-ssh-bootstrap /secure/bootstrap
+./local-ai restore resume /path/to/backup-set --memory-sync-ssh-bootstrap /secure/bootstrap
 ```
 
-Restore validation and clean-target gates belong to the recovery engine. The CLI never manufactures destructive consent.
+Backup creates one manifest-driven recovery point. The protected operational `.env` is sensitive global state. Managed resources use their declared recovery strategy; reconstructable resources are not promoted to backup artifacts merely because runtime files exist. Restore validation and clean-target gates belong to the recovery engine and the CLI never manufactures destructive consent. See [DR documentation](../dr/README.md).
 
 ## `inventory rescan`
 
@@ -87,13 +76,9 @@ Restore validation and clean-target gates belong to the recovery engine. The CLI
 ./local-ai --json inventory rescan
 ```
 
-Stack `manifest.json` files are the semantic source of component topology. Every owned container is classified as a `versioned`, `local`, `helper` or `platform` component; Compose remains the implementation binding. The CLI compiles current manifests directly on every management read, so `status` and `upgrade` do not depend on a previously generated catalog.
+Stack `manifest.json` files are the semantic source of component topology. Every owned container is classified as `versioned`, `local`, `helper` or `platform`; Compose is the implementation binding. Normal management compiles current manifests directly and does not depend on a generated static component catalog.
 
-`inventory rescan` validates that component ownership and Compose service bindings are coherent, calculates a source fingerprint and compares the current topology with the previous derived snapshot. It reports components that were added, removed or structurally changed.
-
-The snapshot is diagnostic history only. A rescan never prepares, deploys, recreates or removes a stack, never changes `.env`, never selects an upgrade and never performs registry discovery. A removed component is reported; it is not automatically treated as permission to delete its old runtime resource. Structural migrations remain explicit stack-owned operations.
-
-Because normal management compiles live manifests, forgetting to run `rescan` after `git pull` cannot leave the CLI using stale component topology. Rescan exists to make structural change visible and auditable.
+`inventory rescan` validates ownership/service bindings, calculates a source fingerprint and compares current topology with the previous derived snapshot. The snapshot is diagnostic history only. Rescan does not prepare/deploy/remove stacks, change `.env`, select upgrades or query registries. A removed component is reported, not implicitly authorized for runtime deletion.
 
 ## `status`
 
@@ -102,29 +87,18 @@ Because normal management compiles live manifests, forgetting to run `rescan` af
 ./local-ai --json status
 ```
 
-`status` answers the operational question **"is the platform up and coherent?"**. Human output is intentionally stack-oriented:
+`status` answers whether the platform is operational and coherent. Human output is stack-oriented:
 
 ```text
 STACK  NAME                  STATE     HEALTH    DRIFT
 0      platform              prepared  ready     no
 1      haproxy-web           running   ready     no
-2      searxng-firecrawl     running   ready     no
 ...
 ```
 
-The fields mean:
+`STATE` describes lifecycle/runtime state, `HEALTH` is generic readiness from required container observations, and `DRIFT` aggregates component installation drift as `yes`, `no` or `n/a`. Application-specific VERIFY remains stack-owned.
 
-| Field | Meaning |
-|---|---|
-| `STATE` | Stack lifecycle/runtime state such as `unprepared`, `prepared`, `stopped`, `partial` or `running`. |
-| `HEALTH` | Generic runtime readiness derived from required container state/health; application-specific VERIFY remains stack-owned. |
-| `DRIFT` | Aggregated installation-version drift for components owned by the stack: `yes`, `no` or `n/a`. |
-
-Human `status` deliberately does **not** duplicate the version table shown by `upgrade`.
-
-The JSON diagnostic contract keeps both `stacks` and detailed `components`. Component records retain internal `desired`, `deployed`, `actual` and `drift` fields because automation and troubleshooting may need those distinctions. Those internal state dimensions are not the normal operator vocabulary for version maintenance.
-
-Use `./local-ai upgrade` when the question is **"what version is installed and is an update available?"**.
+The JSON diagnostic contract retains stack records plus detailed component `desired`, `deployed`, `actual` and `drift` dimensions for automation/troubleshooting. Human `status` deliberately does not duplicate the version table shown by `upgrade`.
 
 ## `doctor`
 
@@ -133,29 +107,36 @@ Use `./local-ai upgrade` when the question is **"what version is installed and i
 ./local-ai --json doctor
 ```
 
-`doctor` answers **"are the management prerequisites and installation metadata sane?"**. It is read-only and checks the management entry point, manifest/lifecycle consistency, protected `.env` permissions, Docker, Compose and runtime-root prerequisites. Human output uses `PASS`, `WARN` and `FAIL`; warnings do not make the command fail.
+`doctor` is read-only and checks management prerequisites and installation metadata: entry point, manifests/lifecycle consistency, protected `.env` permissions, Docker, Compose, runtime-root prerequisites and component-inventory coherence. Human output uses `PASS`, `WARN` and `FAIL`; warnings do not make the command fail. It is not the runtime-status or version-maintenance view.
 
-`doctor` is not a runtime-status or version-maintenance command.
+## `completion`
+
+```bash
+./local-ai completion install
+./local-ai completion status
+./local-ai completion bash
+./local-ai completion zsh
+```
+
+`completion bash|zsh` prints a side-effect-free adapter. `completion install` detects supported Bash/Zsh from the operator environment and writes the generated adapter to the selected conventional target; `completion status` verifies that target against current generated content. The installer does not edit shell startup files. Shell-specific prerequisites and currently tracked grammar discrepancies are documented in [Shell completion](completion.md).
 
 ## `upgrade`
 
-The complete operator workflow is documented in [Upgrading Local Hybrid AI components](upgrade.md). Start with:
+The complete workflow is documented in [Upgrading Local Hybrid AI components](upgrade.md). The normal human version view is:
 
 ```bash
 ./local-ai upgrade
 ```
 
-This is the **only normal human version view**. `./local-ai upgrade check` remains a compatibility alias; new documentation and operator workflows should use `./local-ai upgrade`. `--offline` skips remote registry discovery.
-
-The table is:
+`./local-ai upgrade check` remains a compatibility alias. `--offline` skips remote registry discovery.
 
 ```text
 STACK  COMPONENT  INSTALLED  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
 ```
 
-`INSTALLED` is the concrete installed/running version. `AVAILABLE` is registry discovery and never creates consent. `SELECTABLE=yes` means the project has qualified the guarded executor for that component. `SELECTED` is explicit operator intent and `VALID` tells whether that stored selection still passes its gates.
+`INSTALLED` is concrete installed/running identity. `AVAILABLE` is registry discovery and never creates consent. `SELECTABLE=yes` means the project has qualified the guarded executor for that component. `SELECTED` is explicit operator intent and `VALID` says whether the stored selection still passes its gates.
 
-A supported upgrade flow is:
+A supported flow is:
 
 ```bash
 ./local-ai upgrade
@@ -164,45 +145,30 @@ A supported upgrade flow is:
 sudo ./local-ai upgrade --yes
 ```
 
-`upgrade --yes` applies **only already-selected targets**. Before mutation it revalidates the runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and consumer checks remain part of the guarded executor contract.
-
-A successful operation ends with:
-
-```text
-UPGRADE: PASS
-```
-
-If PASS is absent, do not infer success merely because a container is running. Inspect `./local-ai status`, the upgrade error/recovery point and `./local-ai upgrade` before retrying or recovering.
+`upgrade --yes` applies only already-selected targets. Before mutation it revalidates runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and dependent-consumer checks remain part of the guarded executor contract. Success ends with `UPGRADE: PASS`; absence of PASS must not be interpreted as success merely because a container exists.
 
 ### Administrator-forced upgrade
 
-`SELECTABLE=no` means the project does not claim that path is qualified. An administrator may still accept that risk explicitly **when a deterministic mutation recipe already exists**:
+For `SELECTABLE=no`, an administrator can bypass project qualification only when a deterministic mutation recipe already exists:
 
 ```bash
 ./local-ai upgrade stack5 dockhand select v1.0.48 --force
-./local-ai upgrade --yes
+sudo ./local-ai upgrade --yes
 ```
 
-The forced consent is stored in the selection; a second force flag is not required at apply time. `--force` bypasses project qualification only. It does not bypass target existence, digest validation, stale-plan detection, compatibility policy, known mutation scope, recovery requirements, READY, VERIFY or dependent-consumer checks.
+Forced consent is stored in the selection. It does not bypass target existence/digest checks, stale-plan detection, compatibility policy, known mutation scope, recovery requirements, READY, VERIFY or consumer checks. If no deterministic recipe exists, selection fails with `UPGRADE_FORCE_UNAVAILABLE`. See [Administrator-forced upgrades](forced-upgrades.md).
 
-If no deterministic mutation recipe exists, force selection fails with `UPGRADE_FORCE_UNAVAILABLE` rather than degrading into an arbitrary Compose operation. See [Administrator-forced upgrades](forced-upgrades.md).
-
-Selections can be cleared without changing runtime:
+### Selection and policy
 
 ```bash
 ./local-ai upgrade stack2 redis clear
-```
-
-### Upgrade policy
-
-```bash
 ./local-ai upgrade policy
 ./local-ai upgrade policy stack2 redis
 ./local-ai upgrade policy stack2 redis set major-series
 ./local-ai upgrade policy stack2 redis clear
 ```
 
-Policies are compatibility boundaries, independent of support qualification. A policy override cannot by itself make an unqualified component `SELECTABLE=yes`.
+Compatibility policy and support qualification are independent. A policy override cannot make an unqualified component `SELECTABLE=yes`.
 
 ### `upgrade adopt`
 
@@ -211,8 +177,8 @@ Policies are compatibility boundaries, independent of support qualification. A p
 sudo ./local-ai upgrade adopt --yes
 ```
 
-`adopt` is an installation migration utility for deployments that predate installation-owned exact version authority. It records already-running identities; it does not pull images, run Compose, select an update or restart services.
+`adopt` is a migration utility for installations that predate installation-owned exact version authority. It records already-running identities without pulling images, running Compose, selecting an update or restarting services.
 
 ## Human and JSON contracts
 
-Human stack identifiers are numeric (`0` through `7`). JSON keeps stable identities such as `stack7`. Machine responses include a schema version, command identifier where applicable, structured success data and stable error objects. JSON-contract versioning is independent from private implementation details.
+The primary human stack identifiers are numeric (`0` through `7`). Machine contracts preserve stable identities such as `stack7`. Machine responses include schema version, command identifier where applicable, structured success data and stable error objects. JSON-contract versioning is independent from private implementation details.

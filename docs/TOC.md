@@ -6,17 +6,19 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Documentation map
 
-This is the canonical table of contents for Local Hybrid AI. Every documentation section links back here, and folder `README.md` files act as local indexes rather than independent documentation islands.
+This is the canonical table of contents for Local Hybrid AI. Folder `README.md` files act as local indexes rather than independent documentation islands.
 
 [← Project README](../README.md)
 
 ## Start here
 
-- [Project overview](../README.md) — what the platform is, why it is local-first, stack relationships and supported management boundary.
+- [Project overview](../README.md) — purpose, local-first philosophy, stack relationships and management boundary.
+- [Current implementation state](current-state.md) — concise current-state contract plus explicitly retired legacy surfaces.
 - [Installation and lifecycle](installation.md) — PREPARE → DEPLOY → READY → RECONCILE → VERIFY.
-- [Operator CLI](user-docs/cli.md) — supported `./local-ai` commands and JSON contracts.
-- [Upgrade workflow](user-docs/upgrade.md) — installed/available/selectable workflow, selection, guarded apply and failure handling.
-- [Administrator-forced upgrades](user-docs/forced-upgrades.md) — explicit risk acceptance for known but not yet qualified mutation paths.
+- [Operator CLI](user-docs/cli.md) — supported `./local-ai` commands and machine contracts.
+- [Shell completion](user-docs/completion.md) — Bash/Zsh generation, automatic persistent installation and status.
+- [Upgrade workflow](user-docs/upgrade.md) — installed/available/selectable workflow, explicit selection and guarded apply.
+- [Administrator-forced upgrades](user-docs/forced-upgrades.md) — explicit risk acceptance for deterministic but unqualified mutation paths.
 - [Component version authority](user-docs/version-authority.md) — installation-owned version intent and migration from older deployments.
 - [Configuration and secrets](configuration/README.md) — protected `.env`, generated secrets and ownership rules.
 - [Disaster recovery](dr/README.md) — backup/restore model, operating procedure and qualification status.
@@ -25,15 +27,17 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 ## Architecture
 
 - [Architecture index](architecture/README.md)
-- [Stack architecture](stacks/README.md) — responsibilities, hard dependencies, optional capabilities and cross-stack data/control flows.
-- [Architecture Decision Records](devel-docs/adr/README.md) — durable architectural choices and their consequences.
-- [Security Decision Records](devel-docs/sdr/README.md) — security boundaries, least privilege and accepted constraints.
+- [Stack architecture](stacks/README.md) — responsibilities, hard dependencies, optional capabilities and cross-stack flows.
+- [Architecture Decision Records](devel-docs/adr/README.md) — durable architectural choices and consequences.
+- [Security Decision Records](devel-docs/sdr/README.md) — security boundaries and least privilege.
 - [Behavioural specifications](devel-docs/openspec/README.md) — Gherkin/OpenSpec contracts linked to implementation and tests.
-- [Traceability](devel-docs/openspec/traceability.md) — contract → implementation → test mapping.
+- [Traceability](devel-docs/openspec/traceability.md) — contract → implementation → test/qualification mapping.
 
 ## Operations
 
 - [User documentation](user-docs/README.md)
+- [CLI reference](user-docs/cli.md)
+- [Shell completion](user-docs/completion.md)
 - [Upgrade workflow](user-docs/upgrade.md)
 - [Administrator-forced upgrades](user-docs/forced-upgrades.md)
 - [Component version authority](user-docs/version-authority.md)
@@ -56,14 +60,15 @@ This is the canonical table of contents for Local Hybrid AI. Every documentation
 
 ## Documentation rules
 
-1. `README.md` at repository root explains the system to a new reader; it is not a file inventory.
+1. Root `README.md` explains the system to a new reader; it is not a file inventory.
 2. `docs/TOC.md` is the canonical navigation map.
-3. Every folder below `docs/` has a `README.md` that links to this TOC and indexes the documents it owns.
-4. Stack implementation READMEs explain the local stack contract; `docs/stacks/README.md` explains relationships across stacks.
-5. ADRs explain architectural decisions; SDRs explain security decisions; Gherkin/OpenSpec describes externally observable behaviour. These documents cross-link instead of duplicating one another.
-6. Wide tables are avoided. Prefer compact tables with short cells, followed by prose for detail.
-7. Mermaid diagrams use GitHub-supported syntax and model one concern per diagram. Cross-stack diagrams identify required dependencies separately from optional capability relationships.
-8. Historical documents are retained only when they contain knowledge not represented by current canonical documentation. Once migrated, obsolete legacy copies are deleted.
-9. Python modules and tests start with module-level documentation that explains responsibility, behavioural scope and important negative boundaries.
+3. Folder READMEs index the documents they own and link back toward canonical navigation.
+4. Stack implementation READMEs explain local stack contracts; `docs/stacks/README.md` explains relationships across stacks.
+5. ADRs explain architectural decisions; SDRs explain security decisions; Gherkin/OpenSpec describes observable behaviour. They cross-link instead of duplicating one another.
+6. Current operator documentation describes the current public CLI. Historical names or layouts appear only where required to explain migration, compatibility or an accepted decision.
+7. Wide tables are avoided. Prefer compact tables followed by prose for detail.
+8. Mermaid diagrams use GitHub-supported syntax and model one concern per diagram.
+9. Historical documents are retained only when they contain knowledge not represented by current canonical documentation. Once migrated, obsolete legacy copies are deleted.
+10. Python modules and tests start with module-level documentation explaining responsibility, behavioural scope and important negative boundaries.
 
 The complete maintenance rules are defined in [the documentation standard](devel-docs/documentation.md).
