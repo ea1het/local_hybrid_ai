@@ -8,53 +8,52 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 ## Principles
 
-The test suite protects distinct public, architectural and internal boundaries. Apparent duplication is acceptable when two tests prove different contracts or failure classes. Test structure should be refactored only when equivalent coverage is demonstrable; reducing file or assertion count is not, by itself, a quality goal.
-
-Automated tests and runtime qualification provide different evidence. Repository tests must remain deterministic wherever practical, while behaviour that depends on real Docker, registry or application interaction can additionally be qualified in a representative deployment environment.
+The suite protects distinct public, architectural and internal boundaries. Apparent duplication is acceptable when tests prove different contracts or failure classes. Automated repository tests should be deterministic wherever practical; behaviour requiring real Docker, registry or application interaction additionally needs representative runtime qualification.
 
 ## Test layers
 
 ### Public management contract
 
-`tests/test_management_cli.py` exercises `./local-ai`. These tests protect the operator-facing anticorruption boundary: JSON shape, human stack identifiers, installer option passthrough, explicit upgrade selection and stable errors. They must not be replaced by direct imports of command internals when the public boundary itself is the contract.
+`tests/test_management_cli.py`, management JSON tests and command-specific CLI tests protect `./local-ai` as the operator/automation anticorruption boundary: human identifiers, stable machine envelopes, installer passthrough, explicit upgrade selection and stable errors. They must not be replaced by direct imports when the public boundary itself is the contract.
 
-### Installation state and lifecycle
+### Installation, inventory and lifecycle
 
-`tests/test_installer.py`, `tests/test_status.py`, `tests/test_repository_layout.py` and lifecycle-specific tests protect dependency resolution, PREPARED/READY semantics, reconciliation behaviour, source layout and the desired/deployed/actual model.
+Installer, status, repository-layout, component-inventory and runtime-lifecycle tests protect manifest dependency resolution, PREPARED/READY semantics, reconciliation, source/runtime separation, semantic component discovery and selective start/stop safety. The retired static upgrade-component catalog must remain absent.
 
-### Upgrade discovery, policy and execution
+### Upgrade discovery, authority, policy and execution
 
-Registry discovery, tag ordering, latest-only digest handling, compatibility policy, selection, guarded execution and concurrency have separate tests. They deliberately split discovery from authorization and authorization from mutation. Combining these into a single end-to-end test would reduce diagnostic precision without removing meaningful complexity.
+Registry discovery, cache behaviour, tag ordering, latest-only digest handling, installation-owned version authority, adoption, compatibility policy, explicit selection, forced qualification bypass and guarded execution have separate tests. Discovery is fact gathering, selection is consent and execution is mutation; tests keep those boundaries separate.
+
+### Shell completion
+
+`tests/test_completion.py` protects source-local candidate generation, Bash/Zsh adapter generation, shell detection, target selection and idempotent file installation. Completion must not contact Docker or registries. Known candidate-grammar discrepancies that are not yet corrected belong in the active backlog and must not be documented as supported CLI syntax.
 
 ### Stack contracts
 
-Stack6 and Stack7 tests protect security and product behaviour that generic installer tests cannot prove: no Docker socket for Hermes, capability reconciliation, Open WebUI model policy and web capability behaviour.
+Stack-specific tests protect behaviour generic orchestration cannot prove, including Stack6 isolation/capability reconciliation and Stack7 model/web policy.
 
 ### Disaster recovery
 
-`tests/disaster_recovery/` covers independent safety boundaries: archive safety, filesystem rules, backup-set publication, planning, PostgreSQL logical recovery, Gitea native recovery, clean-target enforcement, historical installer compatibility, isolated drills, source staging and Stack6 external-memory prerequisites. These tests are not redundant merely because they exercise the same recovery subsystem.
+`tests/disaster_recovery/` protects archive safety, filesystem rules, backup publication, planning, PostgreSQL logical recovery, Gitea-native recovery, clean-target enforcement, historical source compatibility, drills, staging and Stack6 external-memory prerequisites.
 
 ### Specification traceability
 
-`tests/test_openspec_contracts.py` checks that every tagged OpenSpec scenario has explicit evidence and also asserts selected architecture invariants directly. It is a bridge between prose/specification and executable tests, not a replacement for either.
+`tests/test_openspec_contracts.py` bridges tagged OpenSpec scenarios to explicit evidence. New behavioural tags require traceability entries; removed behaviour must be marked superseded/retired rather than silently disappearing.
 
-## Regression rule: registry identity must cross subsystem boundaries
+## Regression rule: shared runtime identity semantics
 
-Runtime qualification exposed a semantic failure class that isolated tests had not caught: `status` can compare configured/running image tag text while `upgrade check` resolves registry-backed runtime identity. With mutable or partially floating image references, equal tag strings can hide different immutable artifacts and incorrectly report no drift.
+Runtime qualification exposed a failure class in which stack status and version maintenance could interpret the same floating image differently. Permanent tests therefore protect these invariants:
 
-Permanent regression tests therefore protect these cross-subsystem invariants:
-
-1. Registry-backed `status.actual` and `upgrade check.actual` use the same runtime image identity and normalization semantics.
-2. Floating-tag drift is determined from resolved artifact identity or digest, never only from equal tag text.
-3. A moved floating tag produces a new desired registry identity, preserves the running identity as actual, and reports drift.
+1. Registry-backed component state and `upgrade` use the same runtime image identity/normalization semantics.
+2. Floating-tag drift is determined from resolved artifact identity/digest, not equal tag text alone.
+3. A moved floating tag changes desired registry identity while preserving the running actual identity and reports drift.
 4. An unchanged floating tag reports no drift.
 5. Pinned semantic tags and digest-pinned images preserve deterministic identity behaviour.
-6. When floating-tag resolution cannot obtain the registry evidence required for a safe comparison, status fails closed and never synthesizes a no-drift result.
-7. `DEPLOYED` remains orthogonal: guarded-upgrade history is authoritative when present; otherwise the observed runtime identity is the installation adoption baseline.
+6. If required registry evidence cannot be obtained, status fails closed rather than synthesizing no drift.
+7. `DEPLOYED` is orthogonal: guarded-upgrade history is authoritative when present; otherwise observed runtime identity is the adoption baseline.
+8. `AVAILABLE` remains discovery only and must never become DESIRED/SELECTED implicitly.
 
-These tests should be component-agnostic. Representative Redis-, HAProxy- or RabbitMQ-like fixtures are appropriate, but production special cases should not be encoded solely to reproduce one deployment. Prefer existing `commands.upgrade_registry` helpers and mocked registry/Docker probes so automated tests remain deterministic and independent of the public Internet.
-
-A focused gate for registry-identity changes includes at minimum:
+Use component-agnostic fixtures and mocked registry/Docker boundaries for deterministic repository tests. A focused identity gate includes:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v \
@@ -64,20 +63,18 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v \
   tests.test_registry_pinned_latest
 ```
 
-If the public CLI output or JSON contract changes, include `tests.test_management_cli`. After focused tests, run the complete repository suite and verify that generated Python caches and tracked worktree changes are absent.
+If public CLI output or JSON changes, include `tests.test_management_cli`. If documentation/OpenSpec changes, include documentation-contract and OpenSpec-contract tests.
 
 ## Refactoring guidance
 
-Shared fixture factories, fake Docker inspection helpers, common registry-probe fixtures and CLI subprocess helpers are reasonable refactoring targets when they reduce setup duplication without removing assertions or behavioural cases.
+Shared fixtures and fake Docker/registry/CLI helpers are appropriate when they reduce setup duplication without removing behavioural assertions. DR compatibility tests that reference historical layouts remain valid only as explicit compatibility evidence for recovery points created by those layouts; historical names must not leak back into current operator documentation.
 
-DR compatibility tests that refer to historical source layouts remain valuable while recovery points created by those layouts are supported. Compatibility evidence should be retired only together with an explicit support-policy change.
+## Required gate
 
-## Required gates
-
-Focused tests are useful during implementation, but a repository change is not considered fully qualified until the complete suite passes:
+A repository change is fully qualified only after the complete suite passes:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Changes to documentation roots must additionally keep repository-layout and OpenSpec traceability tests green. Public CLI changes must include `tests.test_management_cli` in the focused gate.
+Documentation changes must keep repository-layout, documentation-contract and OpenSpec traceability tests green. Runtime qualification must never be inferred from source-only evidence.
