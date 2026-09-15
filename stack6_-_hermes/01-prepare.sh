@@ -207,113 +207,133 @@ MEMORY_SYNC_DOCKERFILE_SRC="${STACK_DIR}/config/memory-sync/Dockerfile"
 MEMORY_SYNC_ENTRYPOINT_SRC="${STACK_DIR}/config/memory-sync/entrypoint.sh"
 MEMORY_SYNC_SOURCE="${STACK_DIR}/config/memory-sync/hermes-memory-sync.sh"
 
-for source in \
-  "${HERMES_CONFIG_SRC}" \
-  "${SANDBOX_DOCKERFILE_SRC}" \
-  "${SANDBOX_ENTRYPOINT_SRC}" \
-  "${SANDBOX_STATE_INIT_SRC}" \
-  "${CLEANUP_DOCKERFILE_SRC}" \
-  "${CLEANUP_SOURCE}" \
-  "${MEMORY_SYNC_DOCKERFILE_SRC}" \
-  "${MEMORY_SYNC_ENTRYPOINT_SRC}" \
-  "${MEMORY_SYNC_SOURCE}"; do
-  [[ -s "${source}" ]] || die "falta o esta vacio ${source}"
-done
+validate_stack_sources() {
+  local source source_main_model source_summary_model model_ref
 
-# HERMES_MODEL is the single source of truth for model selection. The source
-# config intentionally contains ${HERMES_MODEL}; prepare renders ONLY that
-# variable into the deployed config. Other ${...} expressions remain untouched.
-grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG_SRC}" \
-  || die "config/hermes/config.yaml debe contener \${HERMES_MODEL}"
+  for source in \
+    "${HERMES_CONFIG_SRC}" \
+    "${SANDBOX_DOCKERFILE_SRC}" \
+    "${SANDBOX_ENTRYPOINT_SRC}" \
+    "${SANDBOX_STATE_INIT_SRC}" \
+    "${CLEANUP_DOCKERFILE_SRC}" \
+    "${CLEANUP_SOURCE}" \
+    "${MEMORY_SYNC_DOCKERFILE_SRC}" \
+    "${MEMORY_SYNC_ENTRYPOINT_SRC}" \
+    "${MEMORY_SYNC_SOURCE}"; do
+    [[ -s "${source}" ]] || die "falta o esta vacio ${source}"
+  done
 
-grep -qF '${LITELLM_MCP_URL}' "${HERMES_CONFIG_SRC}" \
-  || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_URL}"
-grep -qF '${LITELLM_MCP_API_KEY}' "${HERMES_CONFIG_SRC}" \
-  || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_API_KEY}"
+  # HERMES_MODEL is the single source of truth for model selection. The source
+  # config intentionally contains ${HERMES_MODEL}; prepare renders ONLY that
+  # variable into the deployed config. Other ${...} expressions remain untouched.
+  grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG_SRC}" \
+    || die "config/hermes/config.yaml debe contener \${HERMES_MODEL}"
 
-[[ "${HERMES_MODEL}" =~ ^[A-Za-z0-9._:/+@-]+$ ]] \
-  || die "HERMES_MODEL contiene caracteres no admitidos para render seguro: ${HERMES_MODEL}"
+  grep -qF '${LITELLM_MCP_URL}' "${HERMES_CONFIG_SRC}" \
+    || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_URL}"
+  grep -qF '${LITELLM_MCP_API_KEY}' "${HERMES_CONFIG_SRC}" \
+    || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_API_KEY}"
 
-# Every actual model reference in the managed source must use HERMES_MODEL.
-# This prevents a future model change from leaving MoA/auxiliary/compression
-# pinned to an old literal model name.
-SOURCE_MAIN_MODEL="$(
-  awk '
-    /^model:[[:space:]]*$/ { in_model=1; next }
-    in_model && /^[^[:space:]]/ { exit }
-    in_model && /^[[:space:]]+default:[[:space:]]*/ {
-      sub(/^[[:space:]]+default:[[:space:]]*/, "")
-      print
-      exit
-    }
-  ' "${HERMES_CONFIG_SRC}"
-)"
+  [[ "${HERMES_MODEL}" =~ ^[A-Za-z0-9._:/+@-]+$ ]] \
+    || die "HERMES_MODEL contiene caracteres no admitidos para render seguro: ${HERMES_MODEL}"
 
-[[ "${SOURCE_MAIN_MODEL}" == '${HERMES_MODEL}' ]] \
-  || die "model.default en config/hermes/config.yaml debe ser \${HERMES_MODEL}"
+  # Every actual model reference in the managed source must use HERMES_MODEL.
+  # This prevents a future model change from leaving MoA/auxiliary/compression
+  # pinned to an old literal model name.
+  source_main_model="$(
+    awk '
+      /^model:[[:space:]]*$/ { in_model=1; next }
+      in_model && /^[^[:space:]]/ { exit }
+      in_model && /^[[:space:]]+default:[[:space:]]*/ {
+        sub(/^[[:space:]]+default:[[:space:]]*/, "")
+        print
+        exit
+      }
+    ' "${HERMES_CONFIG_SRC}"
+  )"
 
-while IFS= read -r MODEL_REF; do
-  [[ "${MODEL_REF}" == '${HERMES_MODEL}' ]] \
-    || die "referencia de modelo hardcodeada en config/hermes/config.yaml: ${MODEL_REF}"
-done < <(
-  awk '
-    /^[[:space:]]+model:[[:space:]]+/ {
-      sub(/^[[:space:]]+model:[[:space:]]*/, "")
-      print
-    }
-  ' "${HERMES_CONFIG_SRC}"
-)
+  [[ "${source_main_model}" == '${HERMES_MODEL}' ]] \
+    || die "model.default en config/hermes/config.yaml debe ser \${HERMES_MODEL}"
 
-SOURCE_SUMMARY_MODEL="$(
-  awk '
-    /^[[:space:]]*summary_model:[[:space:]]*/ {
-      sub(/^[[:space:]]*summary_model:[[:space:]]*/, "")
-      print
-      exit
-    }
-  ' "${HERMES_CONFIG_SRC}"
-)"
+  while IFS= read -r model_ref; do
+    [[ "${model_ref}" == '${HERMES_MODEL}' ]] \
+      || die "referencia de modelo hardcodeada en config/hermes/config.yaml: ${model_ref}"
+  done < <(
+    awk '
+      /^[[:space:]]+model:[[:space:]]+/ {
+        sub(/^[[:space:]]+model:[[:space:]]*/, "")
+        print
+      }
+    ' "${HERMES_CONFIG_SRC}"
+  )
 
-if [[ -n "${SOURCE_SUMMARY_MODEL}" ]]; then
-  [[ "${SOURCE_SUMMARY_MODEL}" == '${HERMES_MODEL}' ]] \
-    || die "compression.summary_model debe ser \${HERMES_MODEL}"
-fi
+  source_summary_model="$(
+    awk '
+      /^[[:space:]]*summary_model:[[:space:]]*/ {
+        sub(/^[[:space:]]*summary_model:[[:space:]]*/, "")
+        print
+        exit
+      }
+    ' "${HERMES_CONFIG_SRC}"
+  )"
 
-# The runtime entrypoint must never prepare ownership/authorized_keys.
-if grep -qE '(^|[[:space:]])(install|chown|chmod)([[:space:]]|$)|hermes_authorized_key|AUTHORIZED_SOURCE' \
-     "${SANDBOX_ENTRYPOINT_SRC}"; then
-  die "entrypoint.sh contiene logica de preparacion antigua; no se instala"
-fi
+  if [[ -n "${source_summary_model}" ]]; then
+    [[ "${source_summary_model}" == '${HERMES_MODEL}' ]] \
+      || die "compression.summary_model debe ser \${HERMES_MODEL}"
+  fi
 
-log "fuentes presentes y coherentes"
+  # The runtime entrypoint must never prepare ownership/authorized_keys.
+  if grep -qE '(^|[[:space:]])(install|chown|chmod)([[:space:]]|$)|hermes_authorized_key|AUTHORIZED_SOURCE' \
+       "${SANDBOX_ENTRYPOINT_SRC}"; then
+    die "entrypoint.sh contiene logica de preparacion antigua; no se instala"
+  fi
+
+  log "fuentes presentes y coherentes"
+}
+
+validate_stack_sources
 
 # -----------------------------------------------------------------------------
 # Docker network - owned exclusively by Stack0
 # -----------------------------------------------------------------------------
 step "Red Docker ${NETWORK_NAME}"
 
-docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1   || die "falta la red compartida ${NETWORK_NAME}; debe crearla Stack0"
+validate_shared_network() {
+  local driver
 
-driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
-[[ "${driver}" == "bridge" ]]   || die "la red ${NETWORK_NAME} existe pero usa driver '${driver}', no bridge"
+  docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 \
+    || die "falta la red compartida ${NETWORK_NAME}; debe crearla Stack0"
 
-log "existe, es bridge y permanece propiedad de Stack0"
+  driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
+  [[ "${driver}" == "bridge" ]] \
+    || die "la red ${NETWORK_NAME} existe pero usa driver '${driver}', no bridge"
+
+  log "existe, es bridge y permanece propiedad de Stack0"
+}
+
+validate_shared_network
 
 # -----------------------------------------------------------------------------
 # Containers must be stopped. Cleanup is handled by 02-cleanup.sh.
 # -----------------------------------------------------------------------------
 step "Estado de Hermes"
 
-for container in "${HERMES_CONTAINER}" "${SANDBOX_CONTAINER}"; do
-  if docker inspect "${container}" >/dev/null 2>&1; then
-    running="$(docker inspect -f '{{.State.Running}}' "${container}")"
-    [[ "${running}" != "true" ]] \
-      || die "el contenedor '${container}' sigue corriendo; ejecutar docker compose stop"
-    log "${container}: detenido"
-  else
-    log "${container}: no creado"
-  fi
-done
+validate_stopped_containers() {
+  local container running
+
+  for container in "${HERMES_CONTAINER}" "${SANDBOX_CONTAINER}"; do
+    if docker inspect "${container}" >/dev/null 2>&1; then
+      running="$(docker inspect -f '{{.State.Running}}' "${container}")"
+      [[ "${running}" != "true" ]] \
+        || die "el contenedor '${container}' sigue corriendo; ejecutar docker compose stop"
+      log "${container}: detenido"
+    else
+      log "${container}: no creado"
+    fi
+  done
+}
+
+validate_stopped_containers
 
 # -----------------------------------------------------------------------------
 # Persistent target filesystem
