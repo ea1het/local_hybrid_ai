@@ -30,10 +30,8 @@ Only active or intentionally deferred work belongs here. Completed work and impl
 - Decide whether Stack6 `04-gitmem` remains an explicit operation or gains a normalized lifecycle representation.
 - Keep `.lock` semantics as PREPARED only.
 
-## P1 — CLI completion correctness
+## P1 — CLI/documentation contract
 
-- Align `start`/`stop` TAB candidates with the documented human numeric stack identifiers (`0` through `7`); the current completion engine emits `stackN` candidates even though numeric identifiers are the primary human contract.
-- Reconcile upgrade-policy completion with the actual grammar. The current completion engine advertises `show` after `upgrade policy <stack> <component>` although the operator grammar uses inspection with no action plus `set` and `clear`.
 - Add documentation-contract coverage ensuring every public top-level `local-ai` command, including `completion`, is represented in the CLI command map and canonical navigation.
 
 ## P2 — Operations
