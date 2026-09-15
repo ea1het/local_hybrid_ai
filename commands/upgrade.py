@@ -13,14 +13,12 @@ to the executor.
 
 from __future__ import annotations
 
-import json
-import os
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands import component_inventory, upgrade_cache, upgrade_policy, upgrade_registry, upgrade_runtime
+from commands import component_inventory, upgrade_cache, upgrade_plan, upgrade_policy, upgrade_registry, upgrade_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
@@ -48,11 +46,12 @@ class Component:
 
 
 def runtime_root() -> Path:
-    return Path(os.environ.get("LOCAL_AI_RUNTIME_ROOT", "/opt/docker/runtime"))
+    return Path(__import__("os").environ.get("LOCAL_AI_RUNTIME_ROOT", "/opt/docker/runtime"))
 
 
 def plan_path() -> Path:
-    return runtime_root() / "platform" / "upgrade-plan.json"
+    """Compatibility facade for callers that consume the persisted plan path."""
+    return upgrade_plan.path(runtime_root())
 
 
 def registry_cache_path() -> Path:
@@ -182,24 +181,16 @@ def version_from_image(image: str | None) -> str:
 
 
 def load_plan() -> dict:
-    path = plan_path()
-    if not path.is_file():
-        return {"schema_version": 1, "selected": {}}
+    """Compatibility facade for persisted upgrade selections."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise UpgradeError(f"cannot read upgrade plan: {exc}", code="UPGRADE_PLAN_INVALID") from exc
-    if data.get("schema_version") != 1 or not isinstance(data.get("selected"), dict):
-        raise UpgradeError("unsupported upgrade plan schema", code="UPGRADE_PLAN_INVALID")
-    return data
+        return upgrade_plan.load(plan_path())
+    except upgrade_plan.PlanError as exc:
+        raise UpgradeError(str(exc), code="UPGRADE_PLAN_INVALID") from exc
 
 
 def save_plan(plan: dict) -> None:
-    path = plan_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    """Compatibility facade for persisted upgrade selections."""
+    upgrade_plan.save(plan_path(), plan)
 
 
 def key(component: Component) -> str:
@@ -222,12 +213,7 @@ def _execution_metadata(record: dict, component: Component) -> dict:
     return {"mode": "inventory-only", "blocked_by": "legacy-or-synthetic-record"}
 
 
-def _registry_availability(
-    component: Component,
-    image: str | None,
-    *,
-    online: bool,
-) -> tuple[str, dict | None, str | None]:
+def _registry_availability(component: Component, image: str | None, *, online: bool) -> tuple[str, dict | None, str | None]:
     if not online:
         return "unchecked", None, None
     try:
@@ -243,19 +229,12 @@ def _registry_availability(
         ) from exc
     if state is None:
         return "n/a", None, None
-
     details = {
-        "image": state.image,
-        "registry": state.registry,
-        "repository": state.repository,
-        "tracking_image": state.tracking_image,
-        "local_digest": state.local_digest,
-        "remote_digest": state.remote_digest,
-        "remote_status": state.remote_status,
-        "tags_status": state.tags_status,
-        "current_version": state.current_version,
-        "available_version": state.available_version,
-        "update_available": state.update_available,
+        "image": state.image, "registry": state.registry, "repository": state.repository,
+        "tracking_image": state.tracking_image, "local_digest": state.local_digest,
+        "remote_digest": state.remote_digest, "remote_status": state.remote_status,
+        "tags_status": state.tags_status, "current_version": state.current_version,
+        "available_version": state.available_version, "update_available": state.update_available,
     }
     if state.available_version:
         if state.current_version == state.available_version:
@@ -271,19 +250,12 @@ def _registry_availability(
 
 
 def inventory(*, query_upstream: bool = True) -> list[dict]:
-    """Return upgrade-decision state without conflating it with installation intent.
-
-    `actual` is observed runtime. `available` is registry discovery. Compatibility
-    policy, executor selectability and operator selection are separate facts.
-    Legacy `current` fields remain in JSON as aliases of actual for schema-1
-    compatibility. Human output labels the observed runtime version INSTALLED.
-    """
+    """Return upgrade-decision state without conflating it with installation intent."""
     env = read_env()
     plan = load_plan()
     selected = plan["selected"]
     records = component_records()
     rows: list[dict] = []
-
     for component in load_catalog():
         component_key = key(component)
         desired_image = compose_image(component, env)
@@ -294,44 +266,25 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
         record = records[component_key]
         registry = None
         availability = record.get("availability")
-
         if availability in ("local", "n/a"):
             available = availability
             if availability == "local" and observed_image:
                 actual_display = "local"
         else:
-            available, registry, discovered_current = _registry_availability(
-                component,
-                discovery_image,
-                online=query_upstream,
-            )
+            available, registry, discovered_current = _registry_availability(component, discovery_image, online=query_upstream)
             if observed_image:
-                actual_display = upgrade_registry.display_label(
-                    observed_image,
-                    discovered_version=discovered_current,
-                )
-
+                actual_display = upgrade_registry.display_label(observed_image, discovered_version=discovered_current)
         try:
-            policy_state = upgrade_policy.selection_status(
-                runtime_root(), component_key, record, selected.get(component_key)
-            )
+            policy_state = upgrade_policy.selection_status(runtime_root(), component_key, record, selected.get(component_key))
         except upgrade_policy.PolicyError as exc:
             raise UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
-
         rows.append({
-            "stack": component.stack,
-            "component": component.name,
-            "actual": actual,
-            "actual_display": actual_display,
-            "current": actual,
-            "current_display": actual_display,
-            "available": available,
-            "policy": policy_state["effective_policy"],
-            "selectable": component.selectable,
-            "execution": _execution_metadata(record, component),
+            "stack": component.stack, "component": component.name, "actual": actual,
+            "actual_display": actual_display, "current": actual, "current_display": actual_display,
+            "available": available, "policy": policy_state["effective_policy"],
+            "selectable": component.selectable, "execution": _execution_metadata(record, component),
             "selected": selected.get(component_key, {}).get("version"),
-            "selection_valid": policy_state["selection_valid"],
-            "registry": registry,
+            "selection_valid": policy_state["selection_valid"], "registry": registry,
         })
     return rows
 
@@ -363,16 +316,9 @@ def print_table(rows: list[dict]) -> None:
     values = [headers]
     for row in rows:
         valid = row["selection_valid"]
-        values.append((
-            human_stack_id(row["stack"]),
-            row["component"],
-            row.get("actual_display", row["actual"]),
-            _human_available(row),
-            row["policy"],
-            "yes" if row["selectable"] else "no",
-            row["selected"] or "-",
-            "-" if valid is None else ("yes" if valid else "no"),
-        ))
+        values.append((human_stack_id(row["stack"]), row["component"], row.get("actual_display", row["actual"]),
+                       _human_available(row), row["policy"], "yes" if row["selectable"] else "no",
+                       row["selected"] or "-", "-" if valid is None else ("yes" if valid else "no")))
     widths = [max(len(str(row[i])) for row in values) for i in range(len(headers))]
     for index, row in enumerate(values):
         print("  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row)))
@@ -386,10 +332,7 @@ def find_component(stack: str, name: str | None) -> Component:
         raise UpgradeError(f"unknown stack: {stack}", code="UPGRADE_STACK_UNKNOWN")
     if name is None:
         if len(matches) != 1:
-            raise UpgradeError(
-                f"{stack} has multiple components; specify one: " + ", ".join(c.name for c in matches),
-                code="UPGRADE_COMPONENT_REQUIRED",
-            )
+            raise UpgradeError(f"{stack} has multiple components; specify one: " + ", ".join(c.name for c in matches), code="UPGRADE_COMPONENT_REQUIRED")
         component = matches[0]
     else:
         component = next((c for c in matches if c.name == name), None)
@@ -398,8 +341,5 @@ def find_component(stack: str, name: str | None) -> Component:
     if not component.selectable:
         record = component_records()[key(component)]
         blocked_by = _execution_metadata(record, component)["blocked_by"]
-        raise UpgradeError(
-            f"component is inventory-only: {key(component)} ({blocked_by})",
-            code="UPGRADE_COMPONENT_NOT_SELECTABLE",
-        )
+        raise UpgradeError(f"component is inventory-only: {key(component)} ({blocked_by})", code="UPGRADE_COMPONENT_NOT_SELECTABLE")
     return component
