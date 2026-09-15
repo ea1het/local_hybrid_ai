@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,9 @@ from commands import component_inventory, upgrade_cache, upgrade_policy, upgrade
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
+REGISTRY_CACHE_SCHEMA_VERSION = upgrade_cache.SCHEMA_VERSION
+REGISTRY_CACHE_DEFAULT_TTL_SECONDS = upgrade_cache.DEFAULT_TTL_SECONDS
+REGISTRY_CACHE_MAX_ENTRIES = upgrade_cache.MAX_ENTRIES
 
 
 class UpgradeError(RuntimeError):
@@ -64,7 +68,13 @@ def _load_registry_cache() -> dict[str, dict]:
 
 
 def _save_registry_cache(entries: dict[str, dict]) -> None:
-    upgrade_cache.save(registry_cache_path(), entries)
+    cache_path = registry_cache_path()
+    ordered = sorted(
+        entries.items(),
+        key=lambda item: float(item[1].get("stored_at", 0)),
+        reverse=True,
+    )[:REGISTRY_CACHE_MAX_ENTRIES]
+    upgrade_cache.save(cache_path, dict(ordered))
 
 
 def _registry_cache_key(component: Component, image: str, local_digest: str | None) -> str:
@@ -72,11 +82,34 @@ def _registry_cache_key(component: Component, image: str, local_digest: str | No
 
 
 def _cached_registry_state(component: Component, image: str) -> upgrade_registry.RegistryState | None:
-    return upgrade_cache.get(registry_cache_path(), key(component), component.container, image)
+    ttl = registry_cache_ttl_seconds()
+    if ttl <= 0:
+        return None
+    local = upgrade_registry.local_digest(component.container, image) if component.container else None
+    entry = _load_registry_cache().get(_registry_cache_key(component, image, local))
+    if not entry:
+        return None
+    stored_at = entry.get("stored_at")
+    state = entry.get("state")
+    if not isinstance(stored_at, (int, float)) or time.time() - float(stored_at) > ttl:
+        return None
+    if not isinstance(state, dict):
+        return None
+    try:
+        return upgrade_registry.RegistryState(**state)
+    except TypeError:
+        return None
 
 
 def _store_registry_state(component: Component, image: str, state: upgrade_registry.RegistryState) -> None:
-    upgrade_cache.store(registry_cache_path(), key(component), image, state)
+    if registry_cache_ttl_seconds() <= 0:
+        return
+    entries = _load_registry_cache()
+    entries[_registry_cache_key(component, image, state.local_digest)] = {
+        "stored_at": time.time(),
+        "state": dict(state.__dict__),
+    }
+    _save_registry_cache(entries)
 
 
 def load_catalog_raw() -> dict:
