@@ -11,9 +11,6 @@ writes runtime state, or contacts registries.
 
 from __future__ import annotations
 
-import shlex
-from pathlib import Path
-
 from commands import component_inventory, install
 
 TOP_LEVEL = (
@@ -56,14 +53,20 @@ def _candidates(before: list[str]) -> list[str]:
         if tail[0] in {"--offline", "--yes", "check", "adopt"}:
             return []
         if tail[0] == "policy":
-            return _stack_ids() if len(tail) == 1 else _upgrade_components(tail[1]) if len(tail) == 2 else ["clear", "set", "show"] if len(tail) == 3 else []
+            if len(tail) == 1:
+                return _stack_ids()
+            if len(tail) == 2:
+                return _upgrade_components(tail[1])
+            if len(tail) == 3:
+                return ["clear", "set", "show"]
+            return []
         stack = tail[0]
         if stack in _stack_ids():
             if len(tail) == 1:
                 return _upgrade_components(stack)
             if len(tail) == 2:
                 return ["clear", "select"]
-            if len(tail) == 3 and tail[2] == "select":
+            if len(tail) == 4 and tail[2] == "select":
                 return ["--force"]
         return []
     return []
@@ -81,8 +84,11 @@ def shell_script(shell: str) -> str:
     if shell == "bash":
         return r'''_local_ai_complete() {
     local cmd="${COMP_WORDS[0]}"
-    local current="${COMP_WORDS[COMP_CWORD]}"
-    local -a args=("${COMP_WORDS[@]:1:COMP_CWORD-1}" "$current")
+    local -a args=()
+    local i
+    for ((i=1; i<=COMP_CWORD; i++)); do
+        args+=("${COMP_WORDS[i]}")
+    done
     mapfile -t COMPREPLY < <("$cmd" __complete "${args[@]}" 2>/dev/null)
 }
 complete -F _local_ai_complete local-ai ./local-ai
