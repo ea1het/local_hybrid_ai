@@ -243,26 +243,16 @@ trap 'rm -f "${RENDERED_CONFIG:-}"' EXIT
 
 deploy_managed_config() {
   local deployed_model
-
-  awk -v model="${HERMES_MODEL}" '{ gsub(/\$\{HERMES_MODEL\}/, model); print }' \
-    "${HERMES_CONFIG_SRC}" > "${RENDERED_CONFIG}"
+  awk -v model="${HERMES_MODEL}" '{ gsub(/\$\{HERMES_MODEL\}/, model); print }' "${HERMES_CONFIG_SRC}" > "${RENDERED_CONFIG}"
   [[ -s "${RENDERED_CONFIG}" ]] || die "config.yaml renderizado esta vacio"
-  grep -qF '${HERMES_MODEL}' "${RENDERED_CONFIG}" \
-    && die "config.yaml renderizado conserva \${HERMES_MODEL}; se aborta"
-
+  grep -qF '${HERMES_MODEL}' "${RENDERED_CONFIG}" && die "config.yaml renderizado conserva \${HERMES_MODEL}; se aborta"
   deployed_model="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${RENDERED_CONFIG}")"
-  [[ "${deployed_model}" == "${HERMES_MODEL}" ]] \
-    || die "model.default renderizado '${deployed_model}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
-
-  install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" \
-    "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml"
-  install -m 0644 -o 0 -g 0 \
-    "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile"
-  install -m 0755 -o 0 -g 0 \
-    "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh"
+  [[ "${deployed_model}" == "${HERMES_MODEL}" ]] || die "model.default renderizado '${deployed_model}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
+  install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml"
+  install -m 0644 -o 0 -g 0 "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile"
+  install -m 0755 -o 0 -g 0 "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh"
   log "configuracion sincronizada; HERMES_MODEL renderizado como ${HERMES_MODEL}"
 }
-
 deploy_managed_config
 
 step "Claves SSH"
@@ -271,7 +261,6 @@ SSH_PUBLIC="${SSH_PRIVATE}.pub"
 AUTHORIZED_KEYS="${SANDBOX_DATA}/home/.ssh/authorized_keys"
 HOST_PRIVATE="${SANDBOX_CONFIG}/ssh-host/ssh_host_ed25519_key"
 HOST_PUBLIC="${HOST_PRIVATE}.pub"
-
 ensure_keypair() {
   local private="$1" public="$2" comment="$3" uid="$4" gid="$5" derived actual
   if [[ -e "${private}" || -e "${public}" ]]; then
@@ -289,25 +278,20 @@ ensure_keypair() {
   chmod 0600 "${private}"
   chmod 0644 "${public}"
 }
-
 prepare_ssh_keys() {
   ensure_keypair "${SSH_PRIVATE}" "${SSH_PUBLIC}" "hermes-sandbox" "${HERMES_UID}" "${HERMES_GID}"
   ensure_keypair "${HOST_PRIVATE}" "${HOST_PUBLIC}" "hermes-sandbox-host" 0 0
-  install -m 0600 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
-    "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}"
+  install -m 0600 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}"
   log "Hermes -> sandbox: ${AUTHORIZED_KEYS}"
   log "host key sandbox: ${HOST_PRIVATE}"
 }
-
 prepare_ssh_keys
 
 step "Dependencias existentes"
 validate_dependencies() {
   local container running attached
-
   for container in litellm; do
-    docker inspect "${container}" >/dev/null 2>&1 \
-      || die "no existe el contenedor requerido '${container}'"
+    docker inspect "${container}" >/dev/null 2>&1 || die "no existe el contenedor requerido '${container}'"
     running="$(docker inspect -f '{{.State.Running}}' "${container}")"
     [[ "${running}" == "true" ]] || die "el contenedor '${container}' no esta corriendo"
     attached="$(docker inspect -f "{{if index .NetworkSettings.Networks \"${NETWORK_NAME}\"}}yes{{else}}no{{end}}" "${container}")"
@@ -315,7 +299,6 @@ validate_dependencies() {
     log "${container}: running + ${NETWORK_NAME}"
   done
 }
-
 validate_dependencies
 
 step "Validacion Docker Compose"
@@ -327,30 +310,86 @@ assert_file() { local path="$1" uid="$2" gid="$3" mode="$4"; [[ -f "${path}" && 
 assert_regular_file() { local path="$1" uid="$2" gid="$3" mode="$4"; [[ -f "${path}" && ! -L "${path}" ]] || die "fichero ausente o invalido: ${path}"; [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"; }
 assert_exact_tree() { local root="$1" expected="$2" actual; actual="$(find "${root}" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"; [[ "${actual}" == "${expected}" ]] || { printf 'ERROR: arbol inesperado bajo %s\n--- esperado ---\n%s\n--- real ---\n%s\n' "${root}" "${expected}" "${actual}" >&2; exit 1; }; }
 assert_top_level() { local root="$1" expected="$2" actual; actual="$(find "${root}" -mindepth 1 -maxdepth 1 -printf '%P\n' | LC_ALL=C sort)"; [[ "${actual}" == "${expected}" ]] || { printf 'ERROR: top-level inesperado bajo %s\n--- esperado ---\n%s\n--- real ---\n%s\n' "${root}" "${expected}" "${actual}" >&2; exit 1; }; }
-ROOT_EXPECTED=$'config\ndata\nlogs'
-HERMES_CONFIG_EXPECTED=$'config.yaml\nssh\nssh/hermes_executor_ed25519\nssh/hermes_executor_ed25519.pub'
-SANDBOX_CONFIG_EXPECTED=$'Dockerfile\nentrypoint.sh\nssh-host\nssh-host/ssh_host_ed25519_key\nssh-host/ssh_host_ed25519_key.pub'
-assert_top_level "${HERMES_ROOT}" "${ROOT_EXPECTED}"; assert_top_level "${SANDBOX_ROOT}" "${ROOT_EXPECTED}"
-assert_exact_tree "${HERMES_CONFIG}" "${HERMES_CONFIG_EXPECTED}"; assert_exact_tree "${SANDBOX_CONFIG}" "${SANDBOX_CONFIG_EXPECTED}"; log "arbol gestionado: OK"
-assert_dir "${HERMES_ROOT}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${HERMES_CONFIG}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${HERMES_CONFIG}/ssh" "${HERMES_UID}" "${HERMES_GID}" 700
-assert_dir "${HERMES_DATA}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${HERMES_LOGS}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${MEMORY_ROOT}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${MEMORY_DATA}" "${HERMES_UID}" "${HERMES_GID}" 750
-assert_regular_file "${MEMORY_DATA}/MEMORY.md" "${HERMES_UID}" "${HERMES_GID}" 640; assert_regular_file "${MEMORY_DATA}/USER.md" "${HERMES_UID}" "${HERMES_GID}" 640
-assert_file "${HERMES_CONFIG}/config.yaml" "${HERMES_UID}" "${HERMES_GID}" 640; assert_file "${SSH_PRIVATE}" "${HERMES_UID}" "${HERMES_GID}" 600; assert_file "${SSH_PUBLIC}" "${HERMES_UID}" "${HERMES_GID}" 644
-assert_dir "${SANDBOX_ROOT}" 0 0 750; assert_dir "${SANDBOX_CONFIG}" 0 0 750; assert_dir "${SANDBOX_CONFIG}/ssh-host" 0 0 750; assert_file "${SANDBOX_CONFIG}/Dockerfile" 0 0 644; assert_file "${SANDBOX_CONFIG}/entrypoint.sh" 0 0 755
-assert_file "${HOST_PRIVATE}" 0 0 600; assert_file "${HOST_PUBLIC}" 0 0 644; assert_dir "${SANDBOX_DATA}" 0 0 750; assert_dir "${SANDBOX_DATA}/home" "${SANDBOX_UID}" "${SANDBOX_GID}" 750; assert_dir "${SANDBOX_DATA}/home/.ssh" "${SANDBOX_UID}" "${SANDBOX_GID}" 700
-assert_file "${AUTHORIZED_KEYS}" "${SANDBOX_UID}" "${SANDBOX_GID}" 600; assert_dir "${SANDBOX_DATA}/workspace" "${SANDBOX_UID}" "${SANDBOX_GID}" 750; assert_dir "${SANDBOX_DATA}/state" 0 0 700; assert_dir "${SANDBOX_LOGS}" "${SANDBOX_UID}" "${SANDBOX_GID}" 750; log "propietarios/permisos: OK"
-cmp -s "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml" || die "config.yaml desplegado no coincide con el render esperado"
-cmp -s "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile" || die "Dockerfile desplegado no coincide con la fuente"
-cmp -s "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh" || die "entrypoint.sh desplegado no coincide con la fuente"
-cmp -s "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}" || die "authorized_keys no coincide con la clave publica de Hermes"; log "ficheros gestionados: OK"
-executor_derived="$(ssh-keygen -y -f "${SSH_PRIVATE}" | awk '{print $1" "$2}')"; executor_public="$(awk '{print $1" "$2}' "${SSH_PUBLIC}")"; [[ "${executor_derived}" == "${executor_public}" ]] || die "la pareja SSH Hermes -> sandbox no es coherente"
-host_derived="$(ssh-keygen -y -f "${HOST_PRIVATE}" | awk '{print $1" "$2}')"; host_public="$(awk '{print $1" "$2}' "${HOST_PUBLIC}")"; [[ "${host_derived}" == "${host_public}" ]] || die "la pareja de host keys del sandbox no es coherente"; log "claves SSH: OK"
-audit_runtime_shadow_configuration
-if grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG}/config.yaml"; then die "config.yaml desplegado contiene \${HERMES_MODEL}"; fi
-AUDIT_MODEL="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${HERMES_CONFIG}/config.yaml")"
-[[ "${AUDIT_MODEL}" == "${HERMES_MODEL}" ]] || die "model.default desplegado '${AUDIT_MODEL}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
-log "modelo renderizado / shadow config: OK"
-ENV_SHA256_AFTER="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"; [[ "${ENV_SHA256_BEFORE}" == "${ENV_SHA256_AFTER}" ]] || die ".env ha cambiado durante la preparacion; se aborta"; log ".env inmutable: OK"
+assert_keypair() { local private="$1" public="$2" label="$3" derived actual; derived="$(ssh-keygen -y -f "${private}" | awk '{print $1" "$2}')"; actual="$(awk '{print $1" "$2}' "${public}")"; [[ "${derived}" == "${actual}" ]] || die "${label}"; }
+
+audit_managed_tree() {
+  local root_expected hermes_config_expected sandbox_config_expected
+  root_expected=$'config\ndata\nlogs'
+  hermes_config_expected=$'config.yaml\nssh\nssh/hermes_executor_ed25519\nssh/hermes_executor_ed25519.pub'
+  sandbox_config_expected=$'Dockerfile\nentrypoint.sh\nssh-host\nssh-host/ssh_host_ed25519_key\nssh-host/ssh_host_ed25519_key.pub'
+  assert_top_level "${HERMES_ROOT}" "${root_expected}"
+  assert_top_level "${SANDBOX_ROOT}" "${root_expected}"
+  assert_exact_tree "${HERMES_CONFIG}" "${hermes_config_expected}"
+  assert_exact_tree "${SANDBOX_CONFIG}" "${sandbox_config_expected}"
+  log "arbol gestionado: OK"
+}
+
+audit_managed_permissions() {
+  assert_dir "${HERMES_ROOT}" "${HERMES_UID}" "${HERMES_GID}" 750
+  assert_dir "${HERMES_CONFIG}" "${HERMES_UID}" "${HERMES_GID}" 750
+  assert_dir "${HERMES_CONFIG}/ssh" "${HERMES_UID}" "${HERMES_GID}" 700
+  assert_dir "${HERMES_DATA}" "${HERMES_UID}" "${HERMES_GID}" 750
+  assert_dir "${HERMES_LOGS}" "${HERMES_UID}" "${HERMES_GID}" 750
+  assert_dir "${MEMORY_ROOT}" "${HERMES_UID}" "${HERMES_GID}" 750
+  assert_dir "${MEMORY_DATA}" "${HERMES_UID}" "${HERMES_GID}" 750
+  assert_regular_file "${MEMORY_DATA}/MEMORY.md" "${HERMES_UID}" "${HERMES_GID}" 640
+  assert_regular_file "${MEMORY_DATA}/USER.md" "${HERMES_UID}" "${HERMES_GID}" 640
+  assert_file "${HERMES_CONFIG}/config.yaml" "${HERMES_UID}" "${HERMES_GID}" 640
+  assert_file "${SSH_PRIVATE}" "${HERMES_UID}" "${HERMES_GID}" 600
+  assert_file "${SSH_PUBLIC}" "${HERMES_UID}" "${HERMES_GID}" 644
+  assert_dir "${SANDBOX_ROOT}" 0 0 750
+  assert_dir "${SANDBOX_CONFIG}" 0 0 750
+  assert_dir "${SANDBOX_CONFIG}/ssh-host" 0 0 750
+  assert_file "${SANDBOX_CONFIG}/Dockerfile" 0 0 644
+  assert_file "${SANDBOX_CONFIG}/entrypoint.sh" 0 0 755
+  assert_file "${HOST_PRIVATE}" 0 0 600
+  assert_file "${HOST_PUBLIC}" 0 0 644
+  assert_dir "${SANDBOX_DATA}" 0 0 750
+  assert_dir "${SANDBOX_DATA}/home" "${SANDBOX_UID}" "${SANDBOX_GID}" 750
+  assert_dir "${SANDBOX_DATA}/home/.ssh" "${SANDBOX_UID}" "${SANDBOX_GID}" 700
+  assert_file "${AUTHORIZED_KEYS}" "${SANDBOX_UID}" "${SANDBOX_GID}" 600
+  assert_dir "${SANDBOX_DATA}/workspace" "${SANDBOX_UID}" "${SANDBOX_GID}" 750
+  assert_dir "${SANDBOX_DATA}/state" 0 0 700
+  assert_dir "${SANDBOX_LOGS}" "${SANDBOX_UID}" "${SANDBOX_GID}" 750
+  log "propietarios/permisos: OK"
+}
+
+audit_managed_files() {
+  cmp -s "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml" || die "config.yaml desplegado no coincide con el render esperado"
+  cmp -s "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile" || die "Dockerfile desplegado no coincide con la fuente"
+  cmp -s "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh" || die "entrypoint.sh desplegado no coincide con la fuente"
+  cmp -s "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}" || die "authorized_keys no coincide con la clave publica de Hermes"
+  log "ficheros gestionados: OK"
+}
+
+audit_ssh_keys() {
+  assert_keypair "${SSH_PRIVATE}" "${SSH_PUBLIC}" "la pareja SSH Hermes -> sandbox no es coherente"
+  assert_keypair "${HOST_PRIVATE}" "${HOST_PUBLIC}" "la pareja de host keys del sandbox no es coherente"
+  log "claves SSH: OK"
+}
+
+audit_deployed_model() {
+  local audit_model
+  audit_runtime_shadow_configuration
+  grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG}/config.yaml" && die "config.yaml desplegado contiene \${HERMES_MODEL}"
+  audit_model="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${HERMES_CONFIG}/config.yaml")"
+  [[ "${audit_model}" == "${HERMES_MODEL}" ]] || die "model.default desplegado '${audit_model}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
+  log "modelo renderizado / shadow config: OK"
+}
+
+audit_env_immutable() {
+  local env_sha256_after
+  env_sha256_after="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
+  [[ "${ENV_SHA256_BEFORE}" == "${env_sha256_after}" ]] || die ".env ha cambiado durante la preparacion; se aborta"
+  log ".env inmutable: OK"
+}
+
+audit_managed_tree
+audit_managed_permissions
+audit_managed_files
+audit_ssh_keys
+audit_deployed_model
+audit_env_immutable
 
 step "Lock"
 install -m 0600 -o 0 -g 0 /dev/null "${LOCK_FILE}"; log "creado ${LOCK_FILE}"
