@@ -30,35 +30,20 @@ step() { printf '\n== %s\n' "$*"; }
 warn() { printf '  AVISO: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-# -----------------------------------------------------------------------------
-# LOCK: this is deliberately the first operational check.
-# -----------------------------------------------------------------------------
 if [[ -f "${LOCK_FILE}" ]]; then
   printf 'LOCK: %s existe. No se valida ni se modifica nada.\n' "${LOCK_FILE}"
   exit 0
 fi
 
-# -----------------------------------------------------------------------------
-# Host prerequisites
-# -----------------------------------------------------------------------------
 [[ "$(id -u)" -eq 0 ]] || die "ejecutar como root"
-
 for cmd in docker ssh-keygen install grep chmod chown stat find sort cmp sha256sum awk rm mktemp; do
   command -v "${cmd}" >/dev/null 2>&1 || die "falta el comando requerido: ${cmd}"
 done
-
-docker compose version >/dev/null 2>&1 \
-  || die "se requiere Docker Compose v2 ('docker compose')"
-
+docker compose version >/dev/null 2>&1 || die "se requiere Docker Compose v2 ('docker compose')"
 [[ -f "${ENV_FILE}" ]] || die "falta ${ENV_FILE}; el script no lo crea"
-
 ENV_SHA256_BEFORE="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
 
-# -----------------------------------------------------------------------------
-# .env contract validation - READ ONLY
-# -----------------------------------------------------------------------------
 step "Validacion de .env (solo lectura)"
-
 ALL_KEYS=(
   STACKS_ROOT BASE_PATH NETWORK_NAME TZ
   HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE
@@ -66,137 +51,84 @@ ALL_KEYS=(
   HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE MEMORY_SYNC_IMAGE SANDBOX_CLEANUP_IMAGE
   HERMES_UID HERMES_GID
   HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
-  LITELLM_MCP_URL LITELLM_MCP_API_KEY
-  TELEGRAM_BOT_TOKEN
+  LITELLM_MCP_URL LITELLM_MCP_API_KEY TELEGRAM_BOT_TOKEN
   HERMES_DASHBOARD HERMES_DASHBOARD_HOST
-  API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY
-  API_SERVER_MODEL_NAME API_SERVER_CORS_ORIGINS
+  API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY API_SERVER_MODEL_NAME API_SERVER_CORS_ORIGINS
   SEARXNG_URL FIRECRAWL_API_URL FIRECRAWL_API_KEY
-  TERMINAL_SSH_HOST TERMINAL_SSH_USER TERMINAL_SSH_PORT TERMINAL_SSH_KEY
-  TERMINAL_SSH_PERSISTENT TERMINAL_TIMEOUT
-  SANDBOX_UID SANDBOX_GID SANDBOX_CPU SANDBOX_MEMORY SANDBOX_PIDS
-  SANDBOX_SHM_SIZE
+  TERMINAL_SSH_HOST TERMINAL_SSH_USER TERMINAL_SSH_PORT TERMINAL_SSH_KEY TERMINAL_SSH_PERSISTENT TERMINAL_TIMEOUT
+  SANDBOX_UID SANDBOX_GID SANDBOX_CPU SANDBOX_MEMORY SANDBOX_PIDS SANDBOX_SHM_SIZE
   MEMORY_SYNC_INTERVAL_SECONDS GITMEM_REPOSITORY GITMEM_BRANCH
-  SANDBOX_CLEANUP_RETENTION_DAYS SANDBOX_CLEANUP_QUARANTINE_DAYS
-  SANDBOX_CLEANUP_DB_RETENTION_DAYS SANDBOX_CLEANUP_SWEEP_HOUR
-  SANDBOX_CLEANUP_SWEEP_MINUTE
+  SANDBOX_CLEANUP_RETENTION_DAYS SANDBOX_CLEANUP_QUARANTINE_DAYS SANDBOX_CLEANUP_DB_RETENTION_DAYS
+  SANDBOX_CLEANUP_SWEEP_HOUR SANDBOX_CLEANUP_SWEEP_MINUTE
 )
-
 for key in "${ALL_KEYS[@]}"; do
   grep -qE "^${key}=" "${ENV_FILE}" || die "falta la variable ${key} en .env"
 done
-
-# shellcheck disable=SC1090
 set -a
+# shellcheck disable=SC1090
 source "${ENV_FILE}"
 set +a
-
 REQUIRED_NONEMPTY=(
   STACKS_ROOT BASE_PATH NETWORK_NAME TZ
   HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE
   HERMES_CONTAINER MEMORY_SYNC_CONTAINER SANDBOX_CONTAINER SANDBOX_CLEANUP_CONTAINER
   HERMES_IMAGE HERMES_VERSION SANDBOX_IMAGE MEMORY_SYNC_IMAGE SANDBOX_CLEANUP_IMAGE
-  HERMES_UID HERMES_GID
-  HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY
-  LITELLM_MCP_URL LITELLM_MCP_API_KEY
-  HERMES_DASHBOARD HERMES_DASHBOARD_HOST
-  API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY
-  API_SERVER_MODEL_NAME
-  TERMINAL_SSH_HOST TERMINAL_SSH_USER TERMINAL_SSH_PORT TERMINAL_SSH_KEY
-  TERMINAL_SSH_PERSISTENT TERMINAL_TIMEOUT
-  SANDBOX_UID SANDBOX_GID SANDBOX_CPU SANDBOX_MEMORY SANDBOX_PIDS
-  SANDBOX_SHM_SIZE
-  MEMORY_SYNC_INTERVAL_SECONDS
-  SANDBOX_CLEANUP_RETENTION_DAYS SANDBOX_CLEANUP_QUARANTINE_DAYS
-  SANDBOX_CLEANUP_DB_RETENTION_DAYS SANDBOX_CLEANUP_SWEEP_HOUR
-  SANDBOX_CLEANUP_SWEEP_MINUTE
+  HERMES_UID HERMES_GID HERMES_MODEL LITELLM_BASE_URL LITELLM_API_KEY LITELLM_MCP_URL LITELLM_MCP_API_KEY
+  HERMES_DASHBOARD HERMES_DASHBOARD_HOST API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT API_SERVER_KEY API_SERVER_MODEL_NAME
+  TERMINAL_SSH_HOST TERMINAL_SSH_USER TERMINAL_SSH_PORT TERMINAL_SSH_KEY TERMINAL_SSH_PERSISTENT TERMINAL_TIMEOUT
+  SANDBOX_UID SANDBOX_GID SANDBOX_CPU SANDBOX_MEMORY SANDBOX_PIDS SANDBOX_SHM_SIZE MEMORY_SYNC_INTERVAL_SECONDS
+  SANDBOX_CLEANUP_RETENTION_DAYS SANDBOX_CLEANUP_QUARANTINE_DAYS SANDBOX_CLEANUP_DB_RETENTION_DAYS
+  SANDBOX_CLEANUP_SWEEP_HOUR SANDBOX_CLEANUP_SWEEP_MINUTE
 )
-
 for key in "${REQUIRED_NONEMPTY[@]}"; do
   value="${!key:-}"
   [[ -n "${value}" ]] || die "${key} esta vacia en .env"
   [[ "${value}" != CHANGE_ME* ]] || die "${key} sigue sin definir: ${value}"
   [[ "${value}" != PUT_YOUR_* ]] || die "${key} sigue usando un placeholder: ${value}"
 done
-
 [[ ${#API_SERVER_KEY} -ge 8 ]] || die "API_SERVER_KEY debe tener al menos 8 caracteres"
 [[ ${#LITELLM_MCP_API_KEY} -ge 8 ]] || die "LITELLM_MCP_API_KEY debe tener al menos 8 caracteres"
-
 [[ "${HERMES_VERSION}" != "latest" ]] || die "HERMES_VERSION no puede ser latest"
 [[ "${HERMES_IMAGE}" != *:latest ]] || die "HERMES_IMAGE no puede incluir :latest"
-
-[[ "${LITELLM_MCP_URL}" =~ ^https?://[^[:space:]]+/mcp/?$ ]] \
-  || die "LITELLM_MCP_URL debe ser un endpoint HTTP(S) terminado en /mcp"
-
+[[ "${LITELLM_MCP_URL}" =~ ^https?://[^[:space:]]+/mcp/?$ ]] || die "LITELLM_MCP_URL debe ser un endpoint HTTP(S) terminado en /mcp"
 TELEGRAM_ENABLED=false
 if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
-  [[ "${TELEGRAM_BOT_TOKEN}" != CHANGE_ME* ]] \
-    || die "TELEGRAM_BOT_TOKEN sigue sin definir"
-  [[ "${TELEGRAM_BOT_TOKEN}" != PUT_YOUR_* ]] \
-    || die "TELEGRAM_BOT_TOKEN sigue usando un placeholder"
-  [[ "${TELEGRAM_BOT_TOKEN}" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] \
-    || die "TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather"
+  [[ "${TELEGRAM_BOT_TOKEN}" != CHANGE_ME* ]] || die "TELEGRAM_BOT_TOKEN sigue sin definir"
+  [[ "${TELEGRAM_BOT_TOKEN}" != PUT_YOUR_* ]] || die "TELEGRAM_BOT_TOKEN sigue usando un placeholder"
+  [[ "${TELEGRAM_BOT_TOKEN}" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] || die "TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather"
   TELEGRAM_ENABLED=true
 fi
-
 [[ "${STACKS_ROOT}" == /* ]] || die "STACKS_ROOT debe ser una ruta absoluta"
 [[ "${BASE_PATH}" == /* ]] || die "BASE_PATH debe ser una ruta absoluta"
-
 STACKS_ROOT="${STACKS_ROOT%/}"
 BASE_PATH="${BASE_PATH%/}"
-
 [[ -n "${STACKS_ROOT}" && "${STACKS_ROOT}" != "/" ]] || die "STACKS_ROOT no puede ser /"
 [[ -n "${BASE_PATH}" && "${BASE_PATH}" != "/" ]] || die "BASE_PATH no puede ser /"
-
-[[ "${STACK_DIR}" == "${STACKS_ROOT}/stack6_-_hermes" ]]   || die "Stack6 debe residir en ${STACKS_ROOT}/stack6_-_hermes; ruta actual: ${STACK_DIR}"
-
+[[ "${STACK_DIR}" == "${STACKS_ROOT}/stack6_-_hermes" ]] || die "Stack6 debe residir en ${STACKS_ROOT}/stack6_-_hermes; ruta actual: ${STACK_DIR}"
 STACK0_LOCK="${STACKS_ROOT}/stack0_-_platform/.lock"
 STACK3_LOCK="${STACKS_ROOT}/stack3_-_litellm/.lock"
-
-[[ -f "${STACK0_LOCK}" ]]   || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
-[[ -f "${STACK3_LOCK}" ]]   || die "Stack3 no esta preparado: falta ${STACK3_LOCK}"
-
+[[ -f "${STACK0_LOCK}" ]] || die "Stack0 no esta preparado: falta ${STACK0_LOCK}"
+[[ -f "${STACK3_LOCK}" ]] || die "Stack3 no esta preparado: falta ${STACK3_LOCK}"
 for service_var in HERMES_SERVICE HERMES_MEMORY_SERVICE MEMORY_SYNC_SERVICE SANDBOX_SERVICE; do
   service_value="${!service_var}"
-  [[ "${service_value}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] \
-    || die "${service_var} debe seguir el patron service_-_*"
+  [[ "${service_value}" =~ ^service_-_[A-Za-z0-9._-]+$ ]] || die "${service_var} debe seguir el patron service_-_*"
 done
-
-[[ "${HERMES_SERVICE}" != "${SANDBOX_SERVICE}" ]] \
-  || die "HERMES_SERVICE y SANDBOX_SERVICE no pueden ser iguales"
-[[ "${HERMES_SERVICE}" != "${HERMES_MEMORY_SERVICE}" ]] \
-  || die "HERMES_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
-[[ "${SANDBOX_SERVICE}" != "${HERMES_MEMORY_SERVICE}" ]] \
-  || die "SANDBOX_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
-
+[[ "${HERMES_SERVICE}" != "${SANDBOX_SERVICE}" ]] || die "HERMES_SERVICE y SANDBOX_SERVICE no pueden ser iguales"
+[[ "${HERMES_SERVICE}" != "${HERMES_MEMORY_SERVICE}" ]] || die "HERMES_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
+[[ "${SANDBOX_SERVICE}" != "${HERMES_MEMORY_SERVICE}" ]] || die "SANDBOX_SERVICE y HERMES_MEMORY_SERVICE no pueden ser iguales"
 HERMES_ROOT="${BASE_PATH}/${HERMES_SERVICE}"
 MEMORY_ROOT="${BASE_PATH}/${HERMES_MEMORY_SERVICE}"
 MEMORY_DATA="${MEMORY_ROOT}/data"
 SANDBOX_ROOT="${BASE_PATH}/${SANDBOX_SERVICE}"
-
-HERMES_CONFIG="${HERMES_ROOT}/config"
-HERMES_DATA="${HERMES_ROOT}/data"
-HERMES_LOGS="${HERMES_ROOT}/logs"
-
-SANDBOX_CONFIG="${SANDBOX_ROOT}/config"
-SANDBOX_DATA="${SANDBOX_ROOT}/data"
-SANDBOX_LOGS="${SANDBOX_ROOT}/logs"
-
+HERMES_CONFIG="${HERMES_ROOT}/config"; HERMES_DATA="${HERMES_ROOT}/data"; HERMES_LOGS="${HERMES_ROOT}/logs"
+SANDBOX_CONFIG="${SANDBOX_ROOT}/config"; SANDBOX_DATA="${SANDBOX_ROOT}/data"; SANDBOX_LOGS="${SANDBOX_ROOT}/logs"
 log ".env completo; no se ha modificado"
 log "Hermes fijado a ${HERMES_IMAGE}:${HERMES_VERSION}"
 log "memoria externa declarada: ${BASE_PATH}/${HERMES_MEMORY_SERVICE}/data"
 log "MCP gateway: ${LITELLM_MCP_URL}"
-if "${TELEGRAM_ENABLED}"; then
-  log "Telegram: habilitado; token presente y formato valido"
-else
-  log "Telegram: deshabilitado; TELEGRAM_BOT_TOKEN vacio"
-fi
+if "${TELEGRAM_ENABLED}"; then log "Telegram: habilitado; token presente y formato valido"; else log "Telegram: deshabilitado; TELEGRAM_BOT_TOKEN vacio"; fi
 
-# -----------------------------------------------------------------------------
-# Source files
-# -----------------------------------------------------------------------------
 step "Ficheros fuente del stack"
-
 HERMES_CONFIG_SRC="${STACK_DIR}/config/hermes/config.yaml"
 SANDBOX_DOCKERFILE_SRC="${STACK_DIR}/config/sandbox/Dockerfile"
 SANDBOX_ENTRYPOINT_SRC="${STACK_DIR}/config/sandbox/entrypoint.sh"
@@ -206,575 +138,182 @@ CLEANUP_SOURCE="${STACK_DIR}/config/sandbox-cleanup/cleanup.py"
 MEMORY_SYNC_DOCKERFILE_SRC="${STACK_DIR}/config/memory-sync/Dockerfile"
 MEMORY_SYNC_ENTRYPOINT_SRC="${STACK_DIR}/config/memory-sync/entrypoint.sh"
 MEMORY_SYNC_SOURCE="${STACK_DIR}/config/memory-sync/hermes-memory-sync.sh"
-
 validate_stack_sources() {
   local source source_main_model source_summary_model model_ref
-
-  for source in \
-    "${HERMES_CONFIG_SRC}" \
-    "${SANDBOX_DOCKERFILE_SRC}" \
-    "${SANDBOX_ENTRYPOINT_SRC}" \
-    "${SANDBOX_STATE_INIT_SRC}" \
-    "${CLEANUP_DOCKERFILE_SRC}" \
-    "${CLEANUP_SOURCE}" \
-    "${MEMORY_SYNC_DOCKERFILE_SRC}" \
-    "${MEMORY_SYNC_ENTRYPOINT_SRC}" \
-    "${MEMORY_SYNC_SOURCE}"; do
+  for source in "${HERMES_CONFIG_SRC}" "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_STATE_INIT_SRC}" "${CLEANUP_DOCKERFILE_SRC}" "${CLEANUP_SOURCE}" "${MEMORY_SYNC_DOCKERFILE_SRC}" "${MEMORY_SYNC_ENTRYPOINT_SRC}" "${MEMORY_SYNC_SOURCE}"; do
     [[ -s "${source}" ]] || die "falta o esta vacio ${source}"
   done
-
-  # HERMES_MODEL is the single source of truth for model selection. The source
-  # config intentionally contains ${HERMES_MODEL}; prepare renders ONLY that
-  # variable into the deployed config. Other ${...} expressions remain untouched.
-  grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG_SRC}" \
-    || die "config/hermes/config.yaml debe contener \${HERMES_MODEL}"
-
-  grep -qF '${LITELLM_MCP_URL}' "${HERMES_CONFIG_SRC}" \
-    || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_URL}"
-  grep -qF '${LITELLM_MCP_API_KEY}' "${HERMES_CONFIG_SRC}" \
-    || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_API_KEY}"
-
-  [[ "${HERMES_MODEL}" =~ ^[A-Za-z0-9._:/+@-]+$ ]] \
-    || die "HERMES_MODEL contiene caracteres no admitidos para render seguro: ${HERMES_MODEL}"
-
-  # Every actual model reference in the managed source must use HERMES_MODEL.
-  # This prevents a future model change from leaving MoA/auxiliary/compression
-  # pinned to an old literal model name.
-  source_main_model="$(
-    awk '
-      /^model:[[:space:]]*$/ { in_model=1; next }
-      in_model && /^[^[:space:]]/ { exit }
-      in_model && /^[[:space:]]+default:[[:space:]]*/ {
-        sub(/^[[:space:]]+default:[[:space:]]*/, "")
-        print
-        exit
-      }
-    ' "${HERMES_CONFIG_SRC}"
-  )"
-
-  [[ "${source_main_model}" == '${HERMES_MODEL}' ]] \
-    || die "model.default en config/hermes/config.yaml debe ser \${HERMES_MODEL}"
-
-  while IFS= read -r model_ref; do
-    [[ "${model_ref}" == '${HERMES_MODEL}' ]] \
-      || die "referencia de modelo hardcodeada en config/hermes/config.yaml: ${model_ref}"
-  done < <(
-    awk '
-      /^[[:space:]]+model:[[:space:]]+/ {
-        sub(/^[[:space:]]+model:[[:space:]]*/, "")
-        print
-      }
-    ' "${HERMES_CONFIG_SRC}"
-  )
-
-  source_summary_model="$(
-    awk '
-      /^[[:space:]]*summary_model:[[:space:]]*/ {
-        sub(/^[[:space:]]*summary_model:[[:space:]]*/, "")
-        print
-        exit
-      }
-    ' "${HERMES_CONFIG_SRC}"
-  )"
-
-  if [[ -n "${source_summary_model}" ]]; then
-    [[ "${source_summary_model}" == '${HERMES_MODEL}' ]] \
-      || die "compression.summary_model debe ser \${HERMES_MODEL}"
-  fi
-
-  # The runtime entrypoint must never prepare ownership/authorized_keys.
-  if grep -qE '(^|[[:space:]])(install|chown|chmod)([[:space:]]|$)|hermes_authorized_key|AUTHORIZED_SOURCE' \
-       "${SANDBOX_ENTRYPOINT_SRC}"; then
-    die "entrypoint.sh contiene logica de preparacion antigua; no se instala"
-  fi
-
+  grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG_SRC}" || die "config/hermes/config.yaml debe contener \${HERMES_MODEL}"
+  grep -qF '${LITELLM_MCP_URL}' "${HERMES_CONFIG_SRC}" || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_URL}"
+  grep -qF '${LITELLM_MCP_API_KEY}' "${HERMES_CONFIG_SRC}" || die "config/hermes/config.yaml debe contener \${LITELLM_MCP_API_KEY}"
+  [[ "${HERMES_MODEL}" =~ ^[A-Za-z0-9._:/+@-]+$ ]] || die "HERMES_MODEL contiene caracteres no admitidos para render seguro: ${HERMES_MODEL}"
+  source_main_model="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${HERMES_CONFIG_SRC}")"
+  [[ "${source_main_model}" == '${HERMES_MODEL}' ]] || die "model.default en config/hermes/config.yaml debe ser \${HERMES_MODEL}"
+  while IFS= read -r model_ref; do [[ "${model_ref}" == '${HERMES_MODEL}' ]] || die "referencia de modelo hardcodeada en config/hermes/config.yaml: ${model_ref}"; done < <(awk '/^[[:space:]]+model:[[:space:]]+/ { sub(/^[[:space:]]+model:[[:space:]]*/, ""); print }' "${HERMES_CONFIG_SRC}")
+  source_summary_model="$(awk '/^[[:space:]]*summary_model:[[:space:]]*/ { sub(/^[[:space:]]*summary_model:[[:space:]]*/, ""); print; exit }' "${HERMES_CONFIG_SRC}")"
+  [[ -z "${source_summary_model}" || "${source_summary_model}" == '${HERMES_MODEL}' ]] || die "compression.summary_model debe ser \${HERMES_MODEL}"
+  if grep -qE '(^|[[:space:]])(install|chown|chmod)([[:space:]]|$)|hermes_authorized_key|AUTHORIZED_SOURCE' "${SANDBOX_ENTRYPOINT_SRC}"; then die "entrypoint.sh contiene logica de preparacion antigua; no se instala"; fi
   log "fuentes presentes y coherentes"
 }
-
 validate_stack_sources
 
-# -----------------------------------------------------------------------------
-# Docker network - owned exclusively by Stack0
-# -----------------------------------------------------------------------------
 step "Red Docker ${NETWORK_NAME}"
-
 validate_shared_network() {
   local driver
-
-  docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 \
-    || die "falta la red compartida ${NETWORK_NAME}; debe crearla Stack0"
-
+  docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || die "falta la red compartida ${NETWORK_NAME}; debe crearla Stack0"
   driver="$(docker network inspect -f '{{.Driver}}' "${NETWORK_NAME}")"
-  [[ "${driver}" == "bridge" ]] \
-    || die "la red ${NETWORK_NAME} existe pero usa driver '${driver}', no bridge"
-
+  [[ "${driver}" == "bridge" ]] || die "la red ${NETWORK_NAME} existe pero usa driver '${driver}', no bridge"
   log "existe, es bridge y permanece propiedad de Stack0"
 }
-
 validate_shared_network
 
-# -----------------------------------------------------------------------------
-# Containers must be stopped. Cleanup is handled by 02-cleanup.sh.
-# -----------------------------------------------------------------------------
 step "Estado de Hermes"
-
 validate_stopped_containers() {
   local container running
-
   for container in "${HERMES_CONTAINER}" "${SANDBOX_CONTAINER}"; do
     if docker inspect "${container}" >/dev/null 2>&1; then
       running="$(docker inspect -f '{{.State.Running}}' "${container}")"
-      [[ "${running}" != "true" ]] \
-        || die "el contenedor '${container}' sigue corriendo; ejecutar docker compose stop"
+      [[ "${running}" != "true" ]] || die "el contenedor '${container}' sigue corriendo; ejecutar docker compose stop"
       log "${container}: detenido"
     else
       log "${container}: no creado"
     fi
   done
 }
-
 validate_stopped_containers
 
-# -----------------------------------------------------------------------------
-# Persistent target filesystem
-# -----------------------------------------------------------------------------
 step "Creacion/verificacion del arbol objetivo"
-
-install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" \
-  "${HERMES_ROOT}" \
-  "${HERMES_CONFIG}" \
-  "${HERMES_DATA}" \
-  "${HERMES_LOGS}" \
-  "${MEMORY_ROOT}" \
-  "${MEMORY_DATA}"
-install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" \
-  "${HERMES_CONFIG}/ssh"
-
-install -d -m 0750 -o 0 -g 0 \
-  "${SANDBOX_ROOT}" \
-  "${SANDBOX_CONFIG}" \
-  "${SANDBOX_CONFIG}/ssh-host" \
-  "${SANDBOX_DATA}"
-install -d -m 0750 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
-  "${SANDBOX_DATA}/home" \
-  "${SANDBOX_DATA}/workspace" \
-  "${SANDBOX_LOGS}"
-install -d -m 0700 -o 0 -g 0 \
-  "${SANDBOX_DATA}/state"
-install -d -m 0700 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
-  "${SANDBOX_DATA}/home/.ssh"
-
-for file in MEMORY.md USER.md; do
-  path="${MEMORY_DATA}/${file}"
-
-  if [[ -e "${path}" ]]; then
-    [[ -f "${path}" && ! -L "${path}" ]] \
-      || die "${path} debe ser un fichero regular"
-    log "memoria existente preservada: ${file}"
-  else
-    install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" /dev/null "${path}"
-    log "memoria local inicial creada: ${file}"
-  fi
-
-  chown "${HERMES_UID}:${HERMES_GID}" "${path}"
-  chmod 0640 "${path}"
-done
-
-chown "${HERMES_UID}:${HERMES_GID}" "${MEMORY_ROOT}" "${MEMORY_DATA}"
-chmod 0750 "${MEMORY_ROOT}" "${MEMORY_DATA}"
-
-log "${HERMES_ROOT}/{config,data,logs}"
-log "${MEMORY_DATA}: memoria persistente local"
-log "${SANDBOX_ROOT}/{config,data,logs}"
-log "data/, logs/, workspace, memoria y data/bin se preservan"
-log "Git memory-sync es opcional y no forma parte del Stack6 minimo"
-
-# -----------------------------------------------------------------------------
-# Runtime / shadow configuration
-# -----------------------------------------------------------------------------
-step "Runtime / shadow configuration"
-
-# Hermes legitimately maintains /opt/data/.env at runtime. It is allowed to
-# contain Hermes-owned operational settings, but it must never take ownership
-# of stack-managed routing, model selection or credentials.
-RUNTIME_ENV_ALLOWED_KEYS=(
-  BROWSERBASE_ADVANCED_STEALTH
-  BROWSERBASE_PROXIES
-  BROWSER_INACTIVITY_TIMEOUT
-  BROWSER_SESSION_TIMEOUT
-  IMAGE_TOOLS_DEBUG
-  MOA_TOOLS_DEBUG
-  TERMINAL_LIFETIME_SECONDS
-  TERMINAL_MODAL_IMAGE
-  TERMINAL_TIMEOUT
-  VISION_TOOLS_DEBUG
-  WEB_TOOLS_DEBUG
-)
-
-runtime_env_key_allowed() {
-  local candidate="$1"
-  local allowed
-
-  for allowed in "${RUNTIME_ENV_ALLOWED_KEYS[@]}"; do
-    [[ "${candidate}" == "${allowed}" ]] && return 0
-  done
-
-  return 1
-}
-
-audit_runtime_shadow_configuration() {
-  local runtime_env="${HERMES_DATA}/.env"
-  local runtime_config="${HERMES_DATA}/config.yaml"
-  local key
-
-  # Legacy .hermes remains a real shadow namespace.
-  if [[ -e "${HERMES_DATA}/.hermes" || -L "${HERMES_DATA}/.hermes" ]]; then
-    die "configuracion shadow detectada: ${HERMES_DATA}/.hermes; ejecutar 02-cleanup.sh"
-  fi
-
-  # Hermes may leave an empty config.yaml below the bind-mounted managed
-  # config. An empty regular file is harmless; any content or symlink is not.
-  if [[ -L "${runtime_config}" ]]; then
-    die "configuracion shadow detectada (symlink): ${runtime_config}; ejecutar 02-cleanup.sh"
-  elif [[ -e "${runtime_config}" ]]; then
-    [[ -f "${runtime_config}" ]] \
-      || die "configuracion shadow invalida: ${runtime_config}; ejecutar 02-cleanup.sh"
-
-    if [[ -s "${runtime_config}" ]]; then
-      die "configuracion shadow activa y no vacia: ${runtime_config}; ejecutar 02-cleanup.sh"
+prepare_persistent_filesystem() {
+  local file path
+  install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${HERMES_ROOT}" "${HERMES_CONFIG}" "${HERMES_DATA}" "${HERMES_LOGS}" "${MEMORY_ROOT}" "${MEMORY_DATA}"
+  install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" "${HERMES_CONFIG}/ssh"
+  install -d -m 0750 -o 0 -g 0 "${SANDBOX_ROOT}" "${SANDBOX_CONFIG}" "${SANDBOX_CONFIG}/ssh-host" "${SANDBOX_DATA}"
+  install -d -m 0750 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" "${SANDBOX_DATA}/home" "${SANDBOX_DATA}/workspace" "${SANDBOX_LOGS}"
+  install -d -m 0700 -o 0 -g 0 "${SANDBOX_DATA}/state"
+  install -d -m 0700 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" "${SANDBOX_DATA}/home/.ssh"
+  for file in MEMORY.md USER.md; do
+    path="${MEMORY_DATA}/${file}"
+    if [[ -e "${path}" ]]; then
+      [[ -f "${path}" && ! -L "${path}" ]] || die "${path} debe ser un fichero regular"
+      log "memoria existente preservada: ${file}"
+    else
+      install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" /dev/null "${path}"
+      log "memoria local inicial creada: ${file}"
     fi
+    chown "${HERMES_UID}:${HERMES_GID}" "${path}"
+    chmod 0640 "${path}"
+  done
+  chown "${HERMES_UID}:${HERMES_GID}" "${MEMORY_ROOT}" "${MEMORY_DATA}"
+  chmod 0750 "${MEMORY_ROOT}" "${MEMORY_DATA}"
+  log "${HERMES_ROOT}/{config,data,logs}"
+  log "${MEMORY_DATA}: memoria persistente local"
+  log "${SANDBOX_ROOT}/{config,data,logs}"
+  log "data/, logs/, workspace, memoria y data/bin se preservan"
+  log "Git memory-sync es opcional y no forma parte del Stack6 minimo"
+}
+prepare_persistent_filesystem
 
+step "Runtime / shadow configuration"
+RUNTIME_ENV_ALLOWED_KEYS=(BROWSERBASE_ADVANCED_STEALTH BROWSERBASE_PROXIES BROWSER_INACTIVITY_TIMEOUT BROWSER_SESSION_TIMEOUT IMAGE_TOOLS_DEBUG MOA_TOOLS_DEBUG TERMINAL_LIFETIME_SECONDS TERMINAL_MODAL_IMAGE TERMINAL_TIMEOUT VISION_TOOLS_DEBUG WEB_TOOLS_DEBUG)
+runtime_env_key_allowed() { local candidate="$1" allowed; for allowed in "${RUNTIME_ENV_ALLOWED_KEYS[@]}"; do [[ "${candidate}" == "${allowed}" ]] && return 0; done; return 1; }
+audit_runtime_shadow_configuration() {
+  local runtime_env="${HERMES_DATA}/.env" runtime_config="${HERMES_DATA}/config.yaml" key
+  [[ ! -e "${HERMES_DATA}/.hermes" && ! -L "${HERMES_DATA}/.hermes" ]] || die "configuracion shadow detectada: ${HERMES_DATA}/.hermes; ejecutar 02-cleanup.sh"
+  if [[ -L "${runtime_config}" ]]; then die "configuracion shadow detectada (symlink): ${runtime_config}; ejecutar 02-cleanup.sh"; elif [[ -e "${runtime_config}" ]]; then
+    [[ -f "${runtime_config}" ]] || die "configuracion shadow invalida: ${runtime_config}; ejecutar 02-cleanup.sh"
+    [[ ! -s "${runtime_config}" ]] || die "configuracion shadow activa y no vacia: ${runtime_config}; ejecutar 02-cleanup.sh"
     warn "data/config.yaml vacio permitido; queda oculto por el bind mount gestionado"
   fi
-
-  # Runtime .env is legitimate Hermes state. Backups (.env.bak-*) are also
-  # legitimate historical state and are deliberately ignored here.
-  if [[ -L "${runtime_env}" ]]; then
-    die "runtime .env no puede ser un symlink: ${runtime_env}"
-  elif [[ -e "${runtime_env}" ]]; then
-    [[ -f "${runtime_env}" ]] \
-      || die "runtime .env no es un fichero regular: ${runtime_env}"
-
+  if [[ -L "${runtime_env}" ]]; then die "runtime .env no puede ser un symlink: ${runtime_env}"; elif [[ -e "${runtime_env}" ]]; then
+    [[ -f "${runtime_env}" ]] || die "runtime .env no es un fichero regular: ${runtime_env}"
     while IFS= read -r key; do
       [[ -n "${key}" ]] || continue
-
-      # Known Hermes-owned runtime variables are explicitly allowed, even when
-      # a variable such as TERMINAL_TIMEOUT also exists in the stack .env.
       runtime_env_key_allowed "${key}" && continue
-
-      # Any other runtime variable that collides with a stack-owned variable is
-      # rejected. Unknown Hermes-only runtime variables remain allowed so an
-      # upstream release can add internal settings without breaking prepare.
-      if grep -qE "^${key}=" "${ENV_FILE}"; then
-        die "runtime .env intenta redefinir variable gestionada por el stack: ${key}"
-      fi
-    done < <(
-      sed -nE         's/^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p'         "${runtime_env}" |
-      LC_ALL=C sort -u
-    )
-
+      grep -qE "^${key}=" "${ENV_FILE}" && die "runtime .env intenta redefinir variable gestionada por el stack: ${key}"
+    done < <(sed -nE 's/^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p' "${runtime_env}" | LC_ALL=C sort -u)
     log "data/.env runtime permitido; sin colisiones con variables gestionadas por el stack"
   fi
-
   log "shadow config: OK"
 }
-
 audit_runtime_shadow_configuration
 
-# -----------------------------------------------------------------------------
-# Managed configuration: stack -> service
-# -----------------------------------------------------------------------------
 step "Configuracion gestionada"
-
-RENDERED_CONFIG="$(mktemp)"
-trap 'rm -f "${RENDERED_CONFIG:-}"' EXIT
-
-awk -v model="${HERMES_MODEL}" '
-  {
-    gsub(/\$\{HERMES_MODEL\}/, model)
-    print
-  }
-' "${HERMES_CONFIG_SRC}" > "${RENDERED_CONFIG}"
-
+RENDERED_CONFIG="$(mktemp)"; trap 'rm -f "${RENDERED_CONFIG:-}"' EXIT
+awk -v model="${HERMES_MODEL}" '{ gsub(/\$\{HERMES_MODEL\}/, model); print }' "${HERMES_CONFIG_SRC}" > "${RENDERED_CONFIG}"
 [[ -s "${RENDERED_CONFIG}" ]] || die "config.yaml renderizado esta vacio"
-
-if grep -qF '${HERMES_MODEL}' "${RENDERED_CONFIG}"; then
-  die "config.yaml renderizado conserva \${HERMES_MODEL}; se aborta"
-fi
-
-DEPLOYED_MODEL="$(
-  awk '
-    /^model:[[:space:]]*$/ { in_model=1; next }
-    in_model && /^[^[:space:]]/ { exit }
-    in_model && /^[[:space:]]+default:[[:space:]]*/ {
-      sub(/^[[:space:]]+default:[[:space:]]*/, "")
-      print
-      exit
-    }
-  ' "${RENDERED_CONFIG}"
-)"
-
-[[ "${DEPLOYED_MODEL}" == "${HERMES_MODEL}" ]] \
-  || die "model.default renderizado '${DEPLOYED_MODEL}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
-
-install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" \
-  "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml"
-install -m 0644 -o 0 -g 0 \
-  "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile"
-install -m 0755 -o 0 -g 0 \
-  "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh"
-
+grep -qF '${HERMES_MODEL}' "${RENDERED_CONFIG}" && die "config.yaml renderizado conserva \${HERMES_MODEL}; se aborta"
+DEPLOYED_MODEL="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${RENDERED_CONFIG}")"
+[[ "${DEPLOYED_MODEL}" == "${HERMES_MODEL}" ]] || die "model.default renderizado '${DEPLOYED_MODEL}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
+install -m 0640 -o "${HERMES_UID}" -g "${HERMES_GID}" "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml"
+install -m 0644 -o 0 -g 0 "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile"
+install -m 0755 -o 0 -g 0 "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh"
 log "configuracion sincronizada; HERMES_MODEL renderizado como ${HERMES_MODEL}"
 
-# -----------------------------------------------------------------------------
-# SSH identities
-# -----------------------------------------------------------------------------
 step "Claves SSH"
-
-SSH_PRIVATE="${HERMES_CONFIG}/ssh/hermes_executor_ed25519"
-SSH_PUBLIC="${SSH_PRIVATE}.pub"
-AUTHORIZED_KEYS="${SANDBOX_DATA}/home/.ssh/authorized_keys"
-HOST_PRIVATE="${SANDBOX_CONFIG}/ssh-host/ssh_host_ed25519_key"
-HOST_PUBLIC="${HOST_PRIVATE}.pub"
-
+SSH_PRIVATE="${HERMES_CONFIG}/ssh/hermes_executor_ed25519"; SSH_PUBLIC="${SSH_PRIVATE}.pub"; AUTHORIZED_KEYS="${SANDBOX_DATA}/home/.ssh/authorized_keys"
+HOST_PRIVATE="${SANDBOX_CONFIG}/ssh-host/ssh_host_ed25519_key"; HOST_PUBLIC="${HOST_PRIVATE}.pub"
 ensure_keypair() {
-  local private="$1" public="$2" comment="$3" uid="$4" gid="$5"
-  local derived actual
-
+  local private="$1" public="$2" comment="$3" uid="$4" gid="$5" derived actual
   if [[ -e "${private}" || -e "${public}" ]]; then
-    [[ -s "${private}" && -s "${public}" ]] \
-      || die "pareja SSH incompleta: ${private} / ${public}"
-
-    derived="$(ssh-keygen -y -f "${private}" | awk '{print $1" "$2}')"
-    actual="$(awk '{print $1" "$2}' "${public}")"
-
-    [[ "${derived}" == "${actual}" ]] \
-      || die "pareja SSH incoherente: ${private} / ${public}"
-
+    [[ -s "${private}" && -s "${public}" ]] || die "pareja SSH incompleta: ${private} / ${public}"
+    derived="$(ssh-keygen -y -f "${private}" | awk '{print $1" "$2}')"; actual="$(awk '{print $1" "$2}' "${public}")"
+    [[ "${derived}" == "${actual}" ]] || die "pareja SSH incoherente: ${private} / ${public}"
     log "clave existente conservada: ${private}"
   else
-    umask 077
-    ssh-keygen -q -t ed25519 -N "" -C "${comment}" -f "${private}"
-    log "clave creada: ${private}"
+    umask 077; ssh-keygen -q -t ed25519 -N "" -C "${comment}" -f "${private}"; log "clave creada: ${private}"
   fi
-
-  chown "${uid}:${gid}" "${private}" "${public}"
-  chmod 0600 "${private}"
-  chmod 0644 "${public}"
+  chown "${uid}:${gid}" "${private}" "${public}"; chmod 0600 "${private}"; chmod 0644 "${public}"
 }
+ensure_keypair "${SSH_PRIVATE}" "${SSH_PUBLIC}" "hermes-sandbox" "${HERMES_UID}" "${HERMES_GID}"
+ensure_keypair "${HOST_PRIVATE}" "${HOST_PUBLIC}" "hermes-sandbox-host" 0 0
+install -m 0600 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}"
+log "Hermes -> sandbox: ${AUTHORIZED_KEYS}"; log "host key sandbox: ${HOST_PRIVATE}"
 
-ensure_keypair \
-  "${SSH_PRIVATE}" "${SSH_PUBLIC}" \
-  "hermes-sandbox" "${HERMES_UID}" "${HERMES_GID}"
-
-ensure_keypair \
-  "${HOST_PRIVATE}" "${HOST_PUBLIC}" \
-  "hermes-sandbox-host" 0 0
-
-install -m 0600 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
-  "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}"
-
-log "Hermes -> sandbox: ${AUTHORIZED_KEYS}"
-log "host key sandbox: ${HOST_PRIVATE}"
-
-# -----------------------------------------------------------------------------
-# Dependencies already running on redlocal
-# -----------------------------------------------------------------------------
 step "Dependencias existentes"
-
 for container in litellm; do
-  docker inspect "${container}" >/dev/null 2>&1 \
-    || die "no existe el contenedor requerido '${container}'"
-
-  running="$(docker inspect -f '{{.State.Running}}' "${container}")"
-  [[ "${running}" == "true" ]] || die "el contenedor '${container}' no esta corriendo"
-
+  docker inspect "${container}" >/dev/null 2>&1 || die "no existe el contenedor requerido '${container}'"
+  running="$(docker inspect -f '{{.State.Running}}' "${container}")"; [[ "${running}" == "true" ]] || die "el contenedor '${container}' no esta corriendo"
   attached="$(docker inspect -f "{{if index .NetworkSettings.Networks \"${NETWORK_NAME}\"}}yes{{else}}no{{end}}" "${container}")"
-  [[ "${attached}" == "yes" ]] \
-    || die "el contenedor '${container}' no esta conectado a ${NETWORK_NAME}"
-
+  [[ "${attached}" == "yes" ]] || die "el contenedor '${container}' no esta conectado a ${NETWORK_NAME}"
   log "${container}: running + ${NETWORK_NAME}"
 done
 
-# -----------------------------------------------------------------------------
-# Docker Compose validation
-# -----------------------------------------------------------------------------
 step "Validacion Docker Compose"
+cd "${STACK_DIR}"; docker compose config --quiet; log "docker compose config: OK"
 
-cd "${STACK_DIR}"
-docker compose config --quiet
-log "docker compose config: OK"
-
-# -----------------------------------------------------------------------------
-# Final strict filesystem audit
-# -----------------------------------------------------------------------------
 step "Auditoria final del filesystem"
-
-assert_dir() {
-  local path="$1" uid="$2" gid="$3" mode="$4"
-  [[ -d "${path}" && ! -L "${path}" ]] || die "directorio ausente o invalido: ${path}"
-  [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] \
-    || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"
-}
-
-assert_file() {
-  local path="$1" uid="$2" gid="$3" mode="$4"
-  [[ -f "${path}" && ! -L "${path}" && -s "${path}" ]] || die "fichero ausente, vacio o invalido: ${path}"
-  [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] \
-    || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"
-}
-
-assert_regular_file() {
-  local path="$1" uid="$2" gid="$3" mode="$4"
-  [[ -f "${path}" && ! -L "${path}" ]] || die "fichero ausente o invalido: ${path}"
-  [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] \
-    || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"
-}
-
-assert_exact_tree() {
-  local root="$1" expected="$2" actual
-  actual="$(find "${root}" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"
-  [[ "${actual}" == "${expected}" ]] || {
-    printf 'ERROR: arbol inesperado bajo %s\n' "${root}" >&2
-    printf '%s\n' '--- esperado ---' >&2
-    printf '%s\n' "${expected}" >&2
-    printf '%s\n' '--- real ---' >&2
-    printf '%s\n' "${actual}" >&2
-    exit 1
-  }
-}
-
-assert_top_level() {
-  local root="$1" expected="$2" actual
-  actual="$(find "${root}" -mindepth 1 -maxdepth 1 -printf '%P\n' | LC_ALL=C sort)"
-  [[ "${actual}" == "${expected}" ]] || {
-    printf 'ERROR: top-level inesperado bajo %s\n' "${root}" >&2
-    printf '%s\n' '--- esperado ---' >&2
-    printf '%s\n' "${expected}" >&2
-    printf '%s\n' '--- real ---' >&2
-    printf '%s\n' "${actual}" >&2
-    exit 1
-  }
-}
-
-ROOT_EXPECTED="$(cat <<'TREE'
-config
-data
-logs
-TREE
-)"
-
-HERMES_CONFIG_EXPECTED="$(cat <<'TREE'
-config.yaml
-ssh
-ssh/hermes_executor_ed25519
-ssh/hermes_executor_ed25519.pub
-TREE
-)"
-
-SANDBOX_CONFIG_EXPECTED="$(cat <<'TREE'
-Dockerfile
-entrypoint.sh
-ssh-host
-ssh-host/ssh_host_ed25519_key
-ssh-host/ssh_host_ed25519_key.pub
-TREE
-)"
-
-# Runtime state is allowed under data/, logs/ and workspace. Exact auditing is
-# retained for namespaces completely managed by prepare.
-assert_top_level "${HERMES_ROOT}" "${ROOT_EXPECTED}"
-assert_top_level "${SANDBOX_ROOT}" "${ROOT_EXPECTED}"
-assert_exact_tree "${HERMES_CONFIG}" "${HERMES_CONFIG_EXPECTED}"
-assert_exact_tree "${SANDBOX_CONFIG}" "${SANDBOX_CONFIG_EXPECTED}"
-log "arbol gestionado: OK"
-
-assert_dir "${HERMES_ROOT}"                    "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_dir "${HERMES_CONFIG}"                  "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_dir "${HERMES_CONFIG}/ssh"              "${HERMES_UID}"  "${HERMES_GID}" 700
-assert_dir "${HERMES_DATA}"                    "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_dir "${HERMES_LOGS}"                    "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_dir "${MEMORY_ROOT}"                      "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_dir "${MEMORY_DATA}"                      "${HERMES_UID}"  "${HERMES_GID}" 750
-assert_regular_file "${MEMORY_DATA}/MEMORY.md"   "${HERMES_UID}"  "${HERMES_GID}" 640
-assert_regular_file "${MEMORY_DATA}/USER.md"     "${HERMES_UID}"  "${HERMES_GID}" 640
-assert_file "${HERMES_CONFIG}/config.yaml"       "${HERMES_UID}"  "${HERMES_GID}" 640
-assert_file "${SSH_PRIVATE}"                    "${HERMES_UID}"  "${HERMES_GID}" 600
-assert_file "${SSH_PUBLIC}"                     "${HERMES_UID}"  "${HERMES_GID}" 644
-
-assert_dir "${SANDBOX_ROOT}"                   0 0 750
-assert_dir "${SANDBOX_CONFIG}"                 0 0 750
-assert_dir "${SANDBOX_CONFIG}/ssh-host"        0 0 750
-assert_file "${SANDBOX_CONFIG}/Dockerfile"     0 0 644
-assert_file "${SANDBOX_CONFIG}/entrypoint.sh"  0 0 755
-assert_file "${HOST_PRIVATE}"                   0 0 600
-assert_file "${HOST_PUBLIC}"                    0 0 644
-assert_dir "${SANDBOX_DATA}"                   0 0 750
-assert_dir "${SANDBOX_DATA}/home"              "${SANDBOX_UID}" "${SANDBOX_GID}" 750
-assert_dir "${SANDBOX_DATA}/home/.ssh"         "${SANDBOX_UID}" "${SANDBOX_GID}" 700
-assert_file "${AUTHORIZED_KEYS}"                "${SANDBOX_UID}" "${SANDBOX_GID}" 600
-assert_dir "${SANDBOX_DATA}/workspace"         "${SANDBOX_UID}" "${SANDBOX_GID}" 750
-assert_dir "${SANDBOX_DATA}/state"               0 0 700
-assert_dir "${SANDBOX_LOGS}"                     "${SANDBOX_UID}" "${SANDBOX_GID}" 750
-log "propietarios/permisos: OK"
-
-cmp -s "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml" \
-  || die "config.yaml desplegado no coincide con el render esperado"
-cmp -s "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile" \
-  || die "Dockerfile desplegado no coincide con la fuente"
-cmp -s "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh" \
-  || die "entrypoint.sh desplegado no coincide con la fuente"
-cmp -s "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}" \
-  || die "authorized_keys no coincide con la clave publica de Hermes"
-log "ficheros gestionados: OK"
-
-executor_derived="$(ssh-keygen -y -f "${SSH_PRIVATE}" | awk '{print $1" "$2}')"
-executor_public="$(awk '{print $1" "$2}' "${SSH_PUBLIC}")"
-[[ "${executor_derived}" == "${executor_public}" ]] \
-  || die "la pareja SSH Hermes -> sandbox no es coherente"
-
-host_derived="$(ssh-keygen -y -f "${HOST_PRIVATE}" | awk '{print $1" "$2}')"
-host_public="$(awk '{print $1" "$2}' "${HOST_PUBLIC}")"
-[[ "${host_derived}" == "${host_public}" ]] \
-  || die "la pareja de host keys del sandbox no es coherente"
-log "claves SSH: OK"
-
+assert_dir() { local path="$1" uid="$2" gid="$3" mode="$4"; [[ -d "${path}" && ! -L "${path}" ]] || die "directorio ausente o invalido: ${path}"; [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"; }
+assert_file() { local path="$1" uid="$2" gid="$3" mode="$4"; [[ -f "${path}" && ! -L "${path}" && -s "${path}" ]] || die "fichero ausente, vacio o invalido: ${path}"; [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"; }
+assert_regular_file() { local path="$1" uid="$2" gid="$3" mode="$4"; [[ -f "${path}" && ! -L "${path}" ]] || die "fichero ausente o invalido: ${path}"; [[ "$(stat -c '%u:%g:%a' "${path}")" == "${uid}:${gid}:${mode}" ]] || die "permisos/propietario incorrectos en ${path}: $(stat -c '%u:%g:%a' "${path}") esperado ${uid}:${gid}:${mode}"; }
+assert_exact_tree() { local root="$1" expected="$2" actual; actual="$(find "${root}" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"; [[ "${actual}" == "${expected}" ]] || { printf 'ERROR: arbol inesperado bajo %s\n--- esperado ---\n%s\n--- real ---\n%s\n' "${root}" "${expected}" "${actual}" >&2; exit 1; }; }
+assert_top_level() { local root="$1" expected="$2" actual; actual="$(find "${root}" -mindepth 1 -maxdepth 1 -printf '%P\n' | LC_ALL=C sort)"; [[ "${actual}" == "${expected}" ]] || { printf 'ERROR: top-level inesperado bajo %s\n--- esperado ---\n%s\n--- real ---\n%s\n' "${root}" "${expected}" "${actual}" >&2; exit 1; }; }
+ROOT_EXPECTED=$'config\ndata\nlogs'
+HERMES_CONFIG_EXPECTED=$'config.yaml\nssh\nssh/hermes_executor_ed25519\nssh/hermes_executor_ed25519.pub'
+SANDBOX_CONFIG_EXPECTED=$'Dockerfile\nentrypoint.sh\nssh-host\nssh-host/ssh_host_ed25519_key\nssh-host/ssh_host_ed25519_key.pub'
+assert_top_level "${HERMES_ROOT}" "${ROOT_EXPECTED}"; assert_top_level "${SANDBOX_ROOT}" "${ROOT_EXPECTED}"
+assert_exact_tree "${HERMES_CONFIG}" "${HERMES_CONFIG_EXPECTED}"; assert_exact_tree "${SANDBOX_CONFIG}" "${SANDBOX_CONFIG_EXPECTED}"; log "arbol gestionado: OK"
+assert_dir "${HERMES_ROOT}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${HERMES_CONFIG}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${HERMES_CONFIG}/ssh" "${HERMES_UID}" "${HERMES_GID}" 700
+assert_dir "${HERMES_DATA}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${HERMES_LOGS}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${MEMORY_ROOT}" "${HERMES_UID}" "${HERMES_GID}" 750; assert_dir "${MEMORY_DATA}" "${HERMES_UID}" "${HERMES_GID}" 750
+assert_regular_file "${MEMORY_DATA}/MEMORY.md" "${HERMES_UID}" "${HERMES_GID}" 640; assert_regular_file "${MEMORY_DATA}/USER.md" "${HERMES_UID}" "${HERMES_GID}" 640
+assert_file "${HERMES_CONFIG}/config.yaml" "${HERMES_UID}" "${HERMES_GID}" 640; assert_file "${SSH_PRIVATE}" "${HERMES_UID}" "${HERMES_GID}" 600; assert_file "${SSH_PUBLIC}" "${HERMES_UID}" "${HERMES_GID}" 644
+assert_dir "${SANDBOX_ROOT}" 0 0 750; assert_dir "${SANDBOX_CONFIG}" 0 0 750; assert_dir "${SANDBOX_CONFIG}/ssh-host" 0 0 750; assert_file "${SANDBOX_CONFIG}/Dockerfile" 0 0 644; assert_file "${SANDBOX_CONFIG}/entrypoint.sh" 0 0 755
+assert_file "${HOST_PRIVATE}" 0 0 600; assert_file "${HOST_PUBLIC}" 0 0 644; assert_dir "${SANDBOX_DATA}" 0 0 750; assert_dir "${SANDBOX_DATA}/home" "${SANDBOX_UID}" "${SANDBOX_GID}" 750; assert_dir "${SANDBOX_DATA}/home/.ssh" "${SANDBOX_UID}" "${SANDBOX_GID}" 700
+assert_file "${AUTHORIZED_KEYS}" "${SANDBOX_UID}" "${SANDBOX_GID}" 600; assert_dir "${SANDBOX_DATA}/workspace" "${SANDBOX_UID}" "${SANDBOX_GID}" 750; assert_dir "${SANDBOX_DATA}/state" 0 0 700; assert_dir "${SANDBOX_LOGS}" "${SANDBOX_UID}" "${SANDBOX_GID}" 750; log "propietarios/permisos: OK"
+cmp -s "${RENDERED_CONFIG}" "${HERMES_CONFIG}/config.yaml" || die "config.yaml desplegado no coincide con el render esperado"
+cmp -s "${SANDBOX_DOCKERFILE_SRC}" "${SANDBOX_CONFIG}/Dockerfile" || die "Dockerfile desplegado no coincide con la fuente"
+cmp -s "${SANDBOX_ENTRYPOINT_SRC}" "${SANDBOX_CONFIG}/entrypoint.sh" || die "entrypoint.sh desplegado no coincide con la fuente"
+cmp -s "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}" || die "authorized_keys no coincide con la clave publica de Hermes"; log "ficheros gestionados: OK"
+executor_derived="$(ssh-keygen -y -f "${SSH_PRIVATE}" | awk '{print $1" "$2}')"; executor_public="$(awk '{print $1" "$2}' "${SSH_PUBLIC}")"; [[ "${executor_derived}" == "${executor_public}" ]] || die "la pareja SSH Hermes -> sandbox no es coherente"
+host_derived="$(ssh-keygen -y -f "${HOST_PRIVATE}" | awk '{print $1" "$2}')"; host_public="$(awk '{print $1" "$2}' "${HOST_PUBLIC}")"; [[ "${host_derived}" == "${host_public}" ]] || die "la pareja de host keys del sandbox no es coherente"; log "claves SSH: OK"
 audit_runtime_shadow_configuration
-
-if grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG}/config.yaml"; then
-  die "config.yaml desplegado contiene \${HERMES_MODEL}"
-fi
-
-AUDIT_MODEL="$(
-  awk '
-    /^model:[[:space:]]*$/ { in_model=1; next }
-    in_model && /^[^[:space:]]/ { exit }
-    in_model && /^[[:space:]]+default:[[:space:]]*/ {
-      sub(/^[[:space:]]+default:[[:space:]]*/, "")
-      print
-      exit
-    }
-  ' "${HERMES_CONFIG}/config.yaml"
-)"
-
-[[ "${AUDIT_MODEL}" == "${HERMES_MODEL}" ]] \
-  || die "model.default desplegado '${AUDIT_MODEL}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
-
+if grep -qF '${HERMES_MODEL}' "${HERMES_CONFIG}/config.yaml"; then die "config.yaml desplegado contiene \${HERMES_MODEL}"; fi
+AUDIT_MODEL="$(awk '/^model:[[:space:]]*$/ { in_model=1; next } in_model && /^[^[:space:]]/ { exit } in_model && /^[[:space:]]+default:[[:space:]]*/ { sub(/^[[:space:]]+default:[[:space:]]*/, ""); print; exit }' "${HERMES_CONFIG}/config.yaml")"
+[[ "${AUDIT_MODEL}" == "${HERMES_MODEL}" ]] || die "model.default desplegado '${AUDIT_MODEL}' no coincide con HERMES_MODEL='${HERMES_MODEL}'"
 log "modelo renderizado / shadow config: OK"
+ENV_SHA256_AFTER="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"; [[ "${ENV_SHA256_BEFORE}" == "${ENV_SHA256_AFTER}" ]] || die ".env ha cambiado durante la preparacion; se aborta"; log ".env inmutable: OK"
 
-ENV_SHA256_AFTER="$(sha256sum "${ENV_FILE}" | awk '{print $1}')"
-[[ "${ENV_SHA256_BEFORE}" == "${ENV_SHA256_AFTER}" ]] \
-  || die ".env ha cambiado durante la preparacion; se aborta"
-log ".env inmutable: OK"
-
-# -----------------------------------------------------------------------------
-# Lock only after the complete audit succeeds.
-# -----------------------------------------------------------------------------
 step "Lock"
-
-install -m 0600 -o 0 -g 0 /dev/null "${LOCK_FILE}"
-log "creado ${LOCK_FILE}"
-
+install -m 0600 -o 0 -g 0 /dev/null "${LOCK_FILE}"; log "creado ${LOCK_FILE}"
 cat <<EOF2
 
 Stack preparado y auditado. No se ha arrancado ningun contenedor.
