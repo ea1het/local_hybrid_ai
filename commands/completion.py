@@ -2,14 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Side-effect-free shell completion for the public ``local-ai`` CLI.
-
-Completion is deliberately source-local: it reads the command grammar and
-manifest-derived component inventory only. It never inspects Docker, reads or
-writes runtime state, or contacts registries.
-"""
+"""Shell completion generation and explicit persistent installation."""
 
 from __future__ import annotations
+
+import os
+from pathlib import Path
 
 from commands import component_inventory, install
 
@@ -38,9 +36,8 @@ def _candidates(before: list[str]) -> list[str]:
         return list(TOP_LEVEL)
     command = before[0]
     tail = before[1:]
-
     if command == "completion":
-        return ["bash", "zsh"] if not tail else []
+        return ["bash", "install", "status", "zsh"] if not tail else []
     if command in {"start", "stop"}:
         return _stack_ids() if not tail else []
     if command == "restore":
@@ -108,9 +105,68 @@ compdef _local_ai_complete local-ai ./local-ai
     raise ValueError(f"unsupported shell: {shell}")
 
 
+def detect_shell(environ: dict[str, str] | None = None) -> str:
+    """Detect the operator shell without guessing unsupported shells."""
+    env = os.environ if environ is None else environ
+    name = Path(env.get("SHELL", "")).name.lower()
+    if name in {"bash", "zsh"}:
+        return name
+    raise ValueError(f"unsupported shell: {name or 'unknown'}")
+
+
+def completion_target(shell: str, *, euid: int | None = None, home: Path | None = None) -> Path:
+    """Return the persistent target for a supported shell and privilege level."""
+    uid = os.geteuid() if euid is None else euid
+    user_home = Path.home() if home is None else home
+    if shell == "bash":
+        return Path("/etc/bash_completion.d/local-ai") if uid == 0 else user_home / ".local/share/bash-completion/completions/local-ai"
+    if shell == "zsh":
+        return Path("/usr/local/share/zsh/site-functions/_local-ai") if uid == 0 else user_home / ".local/share/zsh/site-functions/_local-ai"
+    raise ValueError(f"unsupported shell: {shell}")
+
+
+def install_completion(*, environ: dict[str, str] | None = None, euid: int | None = None, home: Path | None = None) -> tuple[str, Path]:
+    """Install completion atomically enough for idempotent operator use."""
+    shell = detect_shell(environ)
+    target = completion_target(shell, euid=euid, home=home)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    content = shell_script(shell)
+    if not target.exists() or target.read_text(encoding="utf-8") != content:
+        target.write_text(content, encoding="utf-8")
+    return shell, target
+
+
+def completion_status(*, environ: dict[str, str] | None = None, euid: int | None = None, home: Path | None = None) -> tuple[str, Path, bool]:
+    shell = detect_shell(environ)
+    target = completion_target(shell, euid=euid, home=home)
+    installed = target.is_file() and target.read_text(encoding="utf-8") == shell_script(shell)
+    return shell, target, installed
+
+
 def main(args: list[str]) -> int:
-    if len(args) != 1 or args[0] not in {"bash", "zsh"}:
-        print("Usage: ./local-ai completion <bash|zsh>")
-        return 2
-    print(shell_script(args[0]), end="")
-    return 0
+    if len(args) == 1 and args[0] in {"bash", "zsh"}:
+        print(shell_script(args[0]), end="")
+        return 0
+    if args == ["install"]:
+        try:
+            shell, target = install_completion()
+        except (OSError, ValueError) as exc:
+            print(f"Completion installation failed: {exc}")
+            return 1
+        print(f"Detected shell: {shell}")
+        print(f"Completion target: {target}")
+        print("Installed: yes")
+        print("Status: ready for new shell sessions")
+        return 0
+    if args == ["status"]:
+        try:
+            shell, target, installed = completion_status()
+        except (OSError, ValueError) as exc:
+            print(f"Completion status failed: {exc}")
+            return 1
+        print(f"Shell: {shell}")
+        print(f"Installed: {'yes' if installed else 'no'}")
+        print(f"Target: {target}")
+        return 0 if installed else 1
+    print("Usage: ./local-ai completion <bash|zsh|install|status>")
+    return 2
