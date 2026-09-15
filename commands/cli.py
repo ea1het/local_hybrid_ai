@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from commands import doctor, install_entry, inventory, runtime_lifecycle, status, upgrade_adopt, upgrade_entry
+from commands import completion, doctor, install_entry, inventory, runtime_lifecycle, status, upgrade_adopt, upgrade_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 RECOVERY = ROOT / "commands" / "recovery"
@@ -82,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show operational stack state, runtime health and drift")
     sub.add_parser("doctor", help="diagnose management prerequisites and environment consistency")
     sub.add_parser("inventory", help="validate and rescan manifest-declared component topology")
+    sub.add_parser("completion", help="emit Bash or Zsh completion integration")
 
     for action in ("start", "stop"):
         runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
@@ -147,6 +148,19 @@ def main(argv: list[str] | None = None) -> int:
     json_output = "--json" in raw
     raw = [arg for arg in raw if arg != "--json"]
 
+    # Shell completion is an intentionally private, read-only source query.
+    # It is routed before argparse and before every runtime/registry facade.
+    if raw and raw[0] == "__complete":
+        try:
+            print("\n".join(completion.complete(raw[1:])))
+            return 0
+        except Exception:
+            # TAB must fail quiet rather than disrupt the interactive shell.
+            return 0
+
+    if raw and raw[0] == "completion":
+        return completion.main(raw[1:])
+
     if raw and raw[0] == "install":
         if json_output:
             return install_entry.main(raw[1:])
@@ -161,9 +175,6 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "inventory":
         return inventory.main(raw[1:], json_output=json_output)
 
-    # Upgrade owns a rich subcommand grammar. Route it directly to the public
-    # upgrade facade instead of making argparse reinterpret options such as
-    # `--offline` or `--yes`. Adoption remains a distinct migration contract.
     if raw and raw[0] == "upgrade":
         if len(raw) >= 2 and raw[1] == "adopt":
             return _upgrade_adopt(raw[2:], json_output=json_output)
