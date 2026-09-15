@@ -266,33 +266,57 @@ deploy_managed_config() {
 deploy_managed_config
 
 step "Claves SSH"
-SSH_PRIVATE="${HERMES_CONFIG}/ssh/hermes_executor_ed25519"; SSH_PUBLIC="${SSH_PRIVATE}.pub"; AUTHORIZED_KEYS="${SANDBOX_DATA}/home/.ssh/authorized_keys"
-HOST_PRIVATE="${SANDBOX_CONFIG}/ssh-host/ssh_host_ed25519_key"; HOST_PUBLIC="${HOST_PRIVATE}.pub"
+SSH_PRIVATE="${HERMES_CONFIG}/ssh/hermes_executor_ed25519"
+SSH_PUBLIC="${SSH_PRIVATE}.pub"
+AUTHORIZED_KEYS="${SANDBOX_DATA}/home/.ssh/authorized_keys"
+HOST_PRIVATE="${SANDBOX_CONFIG}/ssh-host/ssh_host_ed25519_key"
+HOST_PUBLIC="${HOST_PRIVATE}.pub"
+
 ensure_keypair() {
   local private="$1" public="$2" comment="$3" uid="$4" gid="$5" derived actual
   if [[ -e "${private}" || -e "${public}" ]]; then
     [[ -s "${private}" && -s "${public}" ]] || die "pareja SSH incompleta: ${private} / ${public}"
-    derived="$(ssh-keygen -y -f "${private}" | awk '{print $1" "$2}')"; actual="$(awk '{print $1" "$2}' "${public}")"
+    derived="$(ssh-keygen -y -f "${private}" | awk '{print $1" "$2}')"
+    actual="$(awk '{print $1" "$2}' "${public}")"
     [[ "${derived}" == "${actual}" ]] || die "pareja SSH incoherente: ${private} / ${public}"
     log "clave existente conservada: ${private}"
   else
-    umask 077; ssh-keygen -q -t ed25519 -N "" -C "${comment}" -f "${private}"; log "clave creada: ${private}"
+    umask 077
+    ssh-keygen -q -t ed25519 -N "" -C "${comment}" -f "${private}"
+    log "clave creada: ${private}"
   fi
-  chown "${uid}:${gid}" "${private}" "${public}"; chmod 0600 "${private}"; chmod 0644 "${public}"
+  chown "${uid}:${gid}" "${private}" "${public}"
+  chmod 0600 "${private}"
+  chmod 0644 "${public}"
 }
-ensure_keypair "${SSH_PRIVATE}" "${SSH_PUBLIC}" "hermes-sandbox" "${HERMES_UID}" "${HERMES_GID}"
-ensure_keypair "${HOST_PRIVATE}" "${HOST_PUBLIC}" "hermes-sandbox-host" 0 0
-install -m 0600 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}"
-log "Hermes -> sandbox: ${AUTHORIZED_KEYS}"; log "host key sandbox: ${HOST_PRIVATE}"
+
+prepare_ssh_keys() {
+  ensure_keypair "${SSH_PRIVATE}" "${SSH_PUBLIC}" "hermes-sandbox" "${HERMES_UID}" "${HERMES_GID}"
+  ensure_keypair "${HOST_PRIVATE}" "${HOST_PUBLIC}" "hermes-sandbox-host" 0 0
+  install -m 0600 -o "${SANDBOX_UID}" -g "${SANDBOX_GID}" \
+    "${SSH_PUBLIC}" "${AUTHORIZED_KEYS}"
+  log "Hermes -> sandbox: ${AUTHORIZED_KEYS}"
+  log "host key sandbox: ${HOST_PRIVATE}"
+}
+
+prepare_ssh_keys
 
 step "Dependencias existentes"
-for container in litellm; do
-  docker inspect "${container}" >/dev/null 2>&1 || die "no existe el contenedor requerido '${container}'"
-  running="$(docker inspect -f '{{.State.Running}}' "${container}")"; [[ "${running}" == "true" ]] || die "el contenedor '${container}' no esta corriendo"
-  attached="$(docker inspect -f "{{if index .NetworkSettings.Networks \"${NETWORK_NAME}\"}}yes{{else}}no{{end}}" "${container}")"
-  [[ "${attached}" == "yes" ]] || die "el contenedor '${container}' no esta conectado a ${NETWORK_NAME}"
-  log "${container}: running + ${NETWORK_NAME}"
-done
+validate_dependencies() {
+  local container running attached
+
+  for container in litellm; do
+    docker inspect "${container}" >/dev/null 2>&1 \
+      || die "no existe el contenedor requerido '${container}'"
+    running="$(docker inspect -f '{{.State.Running}}' "${container}")"
+    [[ "${running}" == "true" ]] || die "el contenedor '${container}' no esta corriendo"
+    attached="$(docker inspect -f "{{if index .NetworkSettings.Networks \"${NETWORK_NAME}\"}}yes{{else}}no{{end}}" "${container}")"
+    [[ "${attached}" == "yes" ]] || die "el contenedor '${container}' no esta conectado a ${NETWORK_NAME}"
+    log "${container}: running + ${NETWORK_NAME}"
+  done
+}
+
+validate_dependencies
 
 step "Validacion Docker Compose"
 cd "${STACK_DIR}"; docker compose config --quiet; log "docker compose config: OK"
