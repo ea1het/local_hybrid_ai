@@ -10,17 +10,17 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 `SELECTABLE=no` means that the project does not claim the component's automated upgrade path is qualified and supported. It does **not** remove an administrator's ability to accept that risk explicitly when Local Hybrid AI already knows a deterministic mutation procedure for the component.
 
-Use:
+The public stack selector is numeric:
 
 ```bash
-./local-ai upgrade <stack> <component> select <version> --force
+./local-ai upgrade <0..7> <component> select <version> --force
 ./local-ai upgrade --yes
 ```
 
 For example:
 
 ```bash
-./local-ai upgrade stack5 dockhand select v1.0.48 --force
+./local-ai upgrade 5 dockhand select v1.0.48 --force
 ./local-ai upgrade --yes
 ```
 
@@ -28,19 +28,7 @@ The forced selection records that qualification was bypassed. A successful histo
 
 ## What `--force` bypasses
 
-`--force` bypasses only the project's **qualification gate** for an inventory-only component. It means: "I understand this executor is not yet claimed as supported, and I explicitly accept that risk."
-
-It does not bypass:
-
-- target registry existence checks;
-- immutable target digest capture and revalidation;
-- stale-runtime detection;
-- effective version policy;
-- exact mutation scope declared by the owning stack manifest;
-- recovery-point requirements already declared for the component;
-- READY, RECONCILE and VERIFY processing;
-- dependent-consumer re-verification;
-- success/failure history semantics.
+`--force` bypasses only the project's **qualification gate** for an inventory-only component. It does not bypass target registry existence, immutable target digest capture and revalidation, stale-runtime detection, effective version policy, exact mutation scope, recovery requirements, READY/RECONCILE/VERIFY, dependent-consumer re-verification or success/failure history semantics.
 
 `./local-ai upgrade --yes` does not need a second force flag. The consent is part of the stored selection and is revalidated before execution.
 
@@ -52,10 +40,8 @@ This distinction is intentional: an administrator may override **support qualifi
 
 ## Clearing a forced selection
 
-A forced inventory-only selection can be removed normally:
+A forced inventory-only selection can be removed normally without mutating runtime:
 
 ```bash
-./local-ai upgrade <stack> <component> clear
+./local-ai upgrade <0..7> <component> clear
 ```
-
-Clearing never mutates the runtime.

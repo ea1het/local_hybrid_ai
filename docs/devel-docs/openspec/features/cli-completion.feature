@@ -11,6 +11,7 @@ Feature: Source-local shell completion
     Given stack manifests declare the current component topology
     When the operator requests TAB completion for an upgrade stack
     Then completion candidates are derived from the compiled manifest inventory
+    And public stack candidates are numeric ids
     And no separate static component list is required
 
   @CLI-COMPLETION-002
@@ -24,4 +25,6 @@ Feature: Source-local shell completion
   Scenario: Bash and Zsh adapters use the same completion semantics
     When the operator runs local-ai completion for Bash or Zsh
     Then the generated shell adapter delegates candidates to the private completion endpoint
+    And lifecycle and upgrade completion use the same numeric stack selector grammar
+    And upgrade policy completion exposes set and clear but not a public show action
     And invalid source inventory makes completion fail quietly in the interactive shell

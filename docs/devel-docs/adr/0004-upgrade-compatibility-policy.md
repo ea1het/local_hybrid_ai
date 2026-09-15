@@ -26,33 +26,22 @@ Each catalog component declares a project `default_policy`. The only valid compa
 - `major-series`: an automatically compatible target must be strictly newer and remain in the same major series.
 - `manual`: no minor/major series boundary is inferred. The operator must explicitly name the exact target. If current and target are comparable semantic versions, a downgrade is still rejected. Non-semantic identities may be used only as explicit targets and remain subject to registry existence and executor checks.
 
-The project default is not the installation decision. An installation may override any component policy locally. Overrides are stored outside the Git checkout and outside `.env` in:
+The project default is not the installation decision. An installation may override any component policy locally. Overrides are stored outside the Git checkout and outside `.env` in installation runtime state. The effective policy is the installation override when present, otherwise the catalog `default_policy`.
 
-```text
-/opt/docker/runtime/platform/upgrade-policy.json
-```
-
-The effective policy is:
-
-```text
-installation override, when present
-otherwise catalog default_policy
-```
-
-`./local-ai` is the sole supported interface for policy management:
+`./local-ai` is the sole supported interface for policy management. Public stack selectors are numeric and match lifecycle/status display; internal identities such as `stack7` are not accepted as alternate operator selectors:
 
 ```text
 ./local-ai upgrade policy
-./local-ai upgrade policy <stack> [component]
-./local-ai upgrade policy <stack> [component] set minor-series
-./local-ai upgrade policy <stack> [component] set major-series
-./local-ai upgrade policy <stack> [component] set manual
-./local-ai upgrade policy <stack> [component] clear
+./local-ai upgrade policy <0..7> [component]
+./local-ai upgrade policy <0..7> [component] set minor-series
+./local-ai upgrade policy <0..7> [component] set major-series
+./local-ai upgrade policy <0..7> [component] set manual
+./local-ai upgrade policy <0..7> [component] clear
 ```
 
-`clear` removes only the installation override. It does not introduce a fourth policy and does not clear an upgrade selection; the catalog default becomes effective again.
+The component form without an action shows the effective policy. `clear` removes only the installation override. It does not introduce a fourth policy and does not clear an upgrade selection; the catalog default becomes effective again. There is no public `show` action.
 
-Policy and executor capability are independent. A target may satisfy compatibility policy while the component remains `selectable: false`. Such a component cannot be selected or executed through the supported upgrade path.
+Policy and executor capability are independent. A target may satisfy compatibility policy while the component remains `selectable: false`. Such a component cannot be selected or executed through the supported upgrade path unless the explicitly constrained administrative force path applies.
 
 Selection validates the exact target against the configured image registry/package, rejects a target that is not available, applies the current effective policy and refuses comparable downgrades. Availability alone is never authorization.
 
@@ -70,3 +59,4 @@ The executor revalidates the current effective policy before target-image prefli
 - `selectable` remains a separate safety/executor capability gate.
 - Existing selections remain auditable across policy changes and fail closed when they become unsupported.
 - The executor cannot rely only on policy captured at selection time.
+- Stack selection has one public representation: numeric ids.

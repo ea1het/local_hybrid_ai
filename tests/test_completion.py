@@ -24,14 +24,23 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(completion.complete(["up"]), ["upgrade"])
         self.assertEqual(completion.complete(["completion", ""]), ["bash", "install", "status", "zsh"])
 
-    def test_stack_completion_is_manifest_driven(self):
+    def test_stack_completion_is_manifest_driven_and_numeric(self):
         with mock.patch("commands.completion.install.all_manifests", return_value={0: {}, 2: {}, 7: {}}):
-            self.assertEqual(completion.complete(["start", "stack"]), ["stack0", "stack2", "stack7"])
+            self.assertEqual(completion.complete(["start", ""]), ["0", "2", "7"])
+            self.assertEqual(completion.complete(["stop", ""]), ["0", "2", "7"])
+            self.assertEqual(completion.complete(["start", "stack"]), [])
 
-    def test_upgrade_components_are_manifest_driven(self):
+    def test_upgrade_components_are_manifest_driven_with_numeric_public_stack(self):
         compiled = {"schema_version": 1, "stacks": [{"id": "stack2", "components": [{"id": "redis"}, {"id": "searxng"}]}]}
         with mock.patch("commands.completion.component_inventory.compile_upgrade_catalog", return_value=compiled), mock.patch("commands.completion.install.all_manifests", return_value={2: {}}):
-            self.assertEqual(completion.complete(["upgrade", "stack2", ""]), ["redis", "searxng"])
+            self.assertEqual(completion.complete(["upgrade", "2", ""]), ["redis", "searxng"])
+            self.assertEqual(completion.complete(["upgrade", "stack2", ""]), [])
+
+    def test_upgrade_actions_match_public_grammar(self):
+        compiled = {"schema_version": 1, "stacks": [{"id": "stack7", "components": [{"id": "open-webui"}]}]}
+        with mock.patch("commands.completion.component_inventory.compile_upgrade_catalog", return_value=compiled), mock.patch("commands.completion.install.all_manifests", return_value={7: {}}):
+            self.assertEqual(completion.complete(["upgrade", "7", "open-webui", ""]), ["clear", "select"])
+            self.assertEqual(completion.complete(["upgrade", "policy", "7", "open-webui", ""]), ["clear", "set"])
 
     def test_shell_scripts_delegate_to_private_endpoint(self):
         self.assertIn("__complete", completion.shell_script("bash"))

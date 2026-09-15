@@ -24,24 +24,22 @@ The supported policy vocabulary is intentionally small:
 
 Each upgrade-visible component declares its project `default_policy` in the owning stack's `manifest.json`. The management CLI compiles this metadata dynamically from manifests; there is no second hand-maintained component catalog. An installation may override the project policy without modifying Git or `.env`.
 
-Mutable overrides live in the installation runtime platform state (`upgrade-policy.json`). Inspect them through the supported CLI rather than editing that file directly:
+Mutable overrides live in the installation runtime platform state (`upgrade-policy.json`). Inspect them through the supported CLI rather than editing that file directly. Public stack selectors are numeric:
 
 ```bash
 ./local-ai upgrade policy
-./local-ai upgrade policy stack2 redis
-./local-ai upgrade policy stack2 redis set major-series
-./local-ai upgrade policy stack2 redis clear
+./local-ai upgrade policy 2 redis
+./local-ai upgrade policy 2 redis set major-series
+./local-ai upgrade policy 2 redis clear
 ```
 
-`clear` removes only the local override and makes the project default effective again. It does not introduce a fourth policy and does not delete an upgrade selection.
+With no trailing action, the component form shows the current policy. `set` writes the installation-local override. `clear` removes only that override and makes the project default effective again. It does not introduce a fourth policy and does not delete an upgrade selection. There is no public `show` action.
 
 ## Policy and SELECTABLE are independent
 
 A component can have `major-series` policy and still report `SELECTABLE=no`. In that case local-ai knows how to evaluate compatibility but has not yet qualified a safe automated executor for the component.
 
 Changing policy therefore **cannot** turn a `NO SELECTABLE` component into a `SELECTABLE` one. Selectability requires the engineering qualification gates defined in [Upgrade executor qualification](devel-docs/upgrade-qualification.md).
-
-This distinction is intentional: registry discovery and version comparison are much easier than proving mutation scope, migrations, recovery, READY, VERIFY and dependency effects.
 
 ## Selection validation
 
@@ -63,7 +61,7 @@ selection is persisted locally
 
 Stable rejection codes include `UPGRADE_COMPONENT_NOT_SELECTABLE`, `UPGRADE_TARGET_NOT_AVAILABLE`, `UPGRADE_TARGET_NOT_NEWER`, `UPGRADE_TARGET_UNSUPPORTED`, `UPGRADE_TARGET_MOVED` and `UPGRADE_PLAN_STALE`.
 
-Availability shown by `./local-ai upgrade` is therefore discovery state, not upgrade authorization. Apply resolves the selected tag again and rejects it before recovery or version-authority mutation if it no longer maps to the digest captured at selection.
+Availability shown by `./local-ai upgrade` is discovery state, not upgrade authorization. Apply resolves the selected tag again and rejects it before recovery or version-authority mutation if it no longer maps to the digest captured at selection.
 
 ## Existing selections and policy changes
 
@@ -73,15 +71,15 @@ Changing policy never silently clears a selected target. If an existing selectio
 
 ## Machine-readable contract
 
-Policy commands support the standard CLI JSON mode:
+Policy commands support the standard CLI JSON mode and use the same numeric public selector:
 
 ```bash
 ./local-ai --json upgrade policy
-./local-ai --json upgrade policy stack2 redis
-./local-ai --json upgrade policy stack2 redis set manual
-./local-ai --json upgrade policy stack2 redis clear
+./local-ai --json upgrade policy 2 redis
+./local-ai --json upgrade policy 2 redis set manual
+./local-ai --json upgrade policy 2 redis clear
 ```
 
-A component policy record includes `default_policy`, `override_policy`, `effective_policy`, `selectable`, `selected` and `selection_valid`. Mutating responses also expose `previous_effective_policy` and the action performed; read-only show/list responses do not invent a previous transition.
+A component policy record includes `default_policy`, `override_policy`, `effective_policy`, `selectable`, `selected` and `selection_valid`. Mutating responses also expose `previous_effective_policy` and the action performed. Internal machine records may retain stable identities such as `stack2`; that is not an alternate public selector.
 
 The JSON contract version is independent from the private implementation and policy-state file schema.

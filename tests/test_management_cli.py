@@ -105,22 +105,28 @@ class ManagementCliContractTests(unittest.TestCase):
     def test_single_component_stack_policy_shorthand_persists_override(self):
         with tempfile.TemporaryDirectory() as tmp:
             cp = self.run_cli(
-                "upgrade", "policy", "stack7", "set", "major-series",
+                "upgrade", "policy", "7", "set", "major-series",
                 runtime_root=tmp,
             )
             self.assertEqual(cp.returncode, 0, cp.stderr)
             policy = json.loads((Path(tmp) / "platform" / "upgrade-policy.json").read_text())
         self.assertEqual(policy["overrides"]["stack7/open-webui"], "major-series")
 
+    def test_public_upgrade_rejects_internal_stack_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("upgrade", "stack7", "open-webui", "clear", runtime_root=tmp)
+        self.assertEqual(cp.returncode, 2)
+        self.assertIn("STACK_SELECTOR_INVALID", cp.stderr)
+
     def test_multicomponent_stack_requires_component_name(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("upgrade", "stack3", "select", "1.100.0", runtime_root=tmp)
+            cp = self.run_cli("upgrade", "3", "select", "1.100.0", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("multiple components", cp.stderr)
 
     def test_nonselectable_component_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli("upgrade", "stack3", "postgresql", "select", "17.11-alpine3.24", runtime_root=tmp)
+            cp = self.run_cli("upgrade", "3", "postgresql", "select", "17.11-alpine3.24", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("UPGRADE_COMPONENT_NOT_SELECTABLE", cp.stderr)
 

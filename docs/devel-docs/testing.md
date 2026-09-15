@@ -14,7 +14,7 @@ The suite protects distinct public, architectural and internal boundaries. Appar
 
 ### Public management contract
 
-`tests/test_management_cli.py`, management JSON tests and command-specific CLI tests protect `./local-ai` as the operator/automation anticorruption boundary: human identifiers, stable machine envelopes, installer passthrough, explicit upgrade selection and stable errors. They must not be replaced by direct imports when the public boundary itself is the contract.
+`tests/test_management_cli.py`, management JSON tests and command-specific CLI tests protect `./local-ai` as the operator/automation anticorruption boundary: numeric human stack selectors, stable machine identities/envelopes, installer passthrough, explicit upgrade selection and stable errors. They must not be replaced by direct imports when the public boundary itself is the contract.
 
 ### Installation, inventory and lifecycle
 
@@ -26,7 +26,7 @@ Registry discovery, cache behaviour, tag ordering, latest-only digest handling, 
 
 ### Shell completion
 
-`tests/test_completion.py` protects source-local candidate generation, Bash/Zsh adapter generation, shell detection, target selection and idempotent file installation. Completion must not contact Docker or registries. Known candidate-grammar discrepancies that are not yet corrected belong in the active backlog and must not be documented as supported CLI syntax.
+`tests/test_completion.py` protects source-local candidate generation, Bash/Zsh adapter generation, shell detection, target selection and idempotent file installation. Completion must not contact Docker or registries. Candidate grammar is part of the public contract: lifecycle and upgrade use numeric stack ids, selection exposes `select`/`clear`, and policy exposes `set`/`clear` without inventing a `show` action.
 
 ### Stack contracts
 
