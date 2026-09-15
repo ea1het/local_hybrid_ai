@@ -2,16 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Best-effort persistence for upgrade registry discovery state."""
+"""Best-effort persistence primitives for upgrade registry discovery state."""
 
 from __future__ import annotations
 
 import json
 import os
-import time
 from pathlib import Path
-
-from commands import upgrade_registry
 
 SCHEMA_VERSION = 1
 DEFAULT_TTL_SECONDS = 300
@@ -77,44 +74,3 @@ def key(component_key: str, image: str, local_digest: str | None) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-
-
-def get(
-    cache_path: Path,
-    component_key: str,
-    container: str | None,
-    image: str,
-) -> upgrade_registry.RegistryState | None:
-    ttl = ttl_seconds()
-    if ttl <= 0:
-        return None
-    local = upgrade_registry.local_digest(container, image) if container else None
-    entry = load(cache_path).get(key(component_key, image, local))
-    if not entry:
-        return None
-    stored_at = entry.get("stored_at")
-    state = entry.get("state")
-    if not isinstance(stored_at, (int, float)) or time.time() - float(stored_at) > ttl:
-        return None
-    if not isinstance(state, dict):
-        return None
-    try:
-        return upgrade_registry.RegistryState(**state)
-    except TypeError:
-        return None
-
-
-def store(
-    cache_path: Path,
-    component_key: str,
-    image: str,
-    state: upgrade_registry.RegistryState,
-) -> None:
-    if ttl_seconds() <= 0:
-        return
-    entries = load(cache_path)
-    entries[key(component_key, image, state.local_digest)] = {
-        "stored_at": time.time(),
-        "state": dict(state.__dict__),
-    }
-    save(cache_path, entries)
