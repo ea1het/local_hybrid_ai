@@ -57,19 +57,17 @@ Every tagged behavioural contract needs automated or qualified evidence. Contrac
 
 ### Selective runtime lifecycle
 
-- `CLI-RUNTIME-001` — runtime-lifecycle and management-runtime tests plus qualified stop/start preserving container identity and returning READY.
+- `CLI-RUNTIME-001` — runtime-lifecycle and management-runtime tests plus qualified stop/start preserving container identity and returning READY. Public dispatch tests require numeric stack selectors and reject internal names/directories.
 - `CLI-RUNTIME-002` — runtime-lifecycle tests plus qualified provider-stop refusal while required consumers are active.
 
 ### Shell completion
 
-- `CLI-COMPLETION-001` — `tests/test_completion.py` verifies upgrade-component candidates are compiled from current manifest inventory rather than a static catalog.
+- `CLI-COMPLETION-001` — `tests/test_completion.py` verifies upgrade-component candidates are compiled from current manifest inventory and public stack candidates are numeric rather than internal `stackN` identities.
 - `CLI-COMPLETION-002` — `tests/test_completion.py` verifies the completion module does not import/call runtime or registry discovery paths; source-local candidate calculation is the contract.
-- `CLI-COMPLETION-003` — `tests/test_completion.py` verifies Bash/Zsh generated adapters delegate to `__complete` and share the same candidate engine.
+- `CLI-COMPLETION-003` — `tests/test_completion.py` verifies Bash/Zsh generated adapters delegate to `__complete`, share the same candidate engine, use numeric lifecycle/upgrade stack ids and expose only implemented upgrade actions (`select`/`clear`, policy `set`/`clear`).
 - `CLI-COMPLETION-004` — `tests/test_completion.py` verifies Bash/Zsh detection, root/user targets, exact generated content and idempotent installation; deployment qualification has additionally exercised the root Bash target.
 - `CLI-COMPLETION-005` — `tests/test_completion.py` verifies unsupported shells fail rather than selecting a guessed target.
 - `CLI-COMPLETION-006` — implementation boundary in `commands/completion.py` plus installation tests: only the adapter target/parent is written; shell startup files are outside installer ownership.
-
-The currently known candidate-grammar discrepancies for lifecycle stack IDs and upgrade-policy `show` are implementation gaps recorded in [pending work](../../pending.md); they are not specified as desired behaviour here.
 
 ### Registry discovery semantics
 
