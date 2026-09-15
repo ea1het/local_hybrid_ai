@@ -38,25 +38,35 @@ for file in MEMORY.md USER.md; do
   [[ -f "${REPO}/${file}" && ! -L "${REPO}/${file}" ]] || die "${file} missing, non-regular or symlink"
 done
 
-changed_paths="$({
-  "${GIT[@]}" diff --name-only
-  "${GIT[@]}" diff --cached --name-only
-  "${GIT[@]}" ls-files --others --exclude-standard
-} | sort -u | sed '/^$/d')"
+worktree_changes() {
+  {
+    "${GIT[@]}" diff --name-only
+    "${GIT[@]}" diff --cached --name-only
+    "${GIT[@]}" ls-files --others --exclude-standard
+  } | sort -u | sed '/^$/d'
+}
 
-if [[ -n "${changed_paths}" ]]; then
+validate_worktree_changes() {
+  local path
   while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
     case "${path}" in
       MEMORY.md|USER.md) ;;
       *) die "unauthorized working-tree change: ${path}" ;;
     esac
-  done <<< "${changed_paths}"
-fi
+  done < <(worktree_changes)
+}
+
+worktree_dirty() {
+  ! "${GIT[@]}" diff --quiet || \
+    ! "${GIT[@]}" diff --cached --quiet || \
+    [[ -n "$("${GIT[@]}" ls-files --others --exclude-standard)" ]]
+}
+
+validate_worktree_changes
 
 dirty=false
-if ! "${GIT[@]}" diff --quiet || \
-   ! "${GIT[@]}" diff --cached --quiet || \
-   [[ -n "$("${GIT[@]}" ls-files --others --exclude-standard)" ]]; then
+if worktree_dirty; then
   dirty=true
 fi
 
