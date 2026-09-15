@@ -16,17 +16,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands import component_inventory, upgrade_policy, upgrade_registry, upgrade_runtime
+from commands import component_inventory, upgrade_cache, upgrade_policy, upgrade_registry, upgrade_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
-REGISTRY_CACHE_SCHEMA_VERSION = 1
-REGISTRY_CACHE_DEFAULT_TTL_SECONDS = 300
-REGISTRY_CACHE_MAX_ENTRIES = 64
 
 
 class UpgradeError(RuntimeError):
@@ -56,99 +52,31 @@ def plan_path() -> Path:
 
 
 def registry_cache_path() -> Path:
-    return runtime_root() / "platform" / "registry-discovery-cache.json"
+    return upgrade_cache.path(runtime_root())
 
 
 def registry_cache_ttl_seconds() -> int:
-    raw = os.environ.get("LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS", str(REGISTRY_CACHE_DEFAULT_TTL_SECONDS))
-    try:
-        value = int(raw)
-    except ValueError:
-        return REGISTRY_CACHE_DEFAULT_TTL_SECONDS
-    return max(0, min(value, 86400))
+    return upgrade_cache.ttl_seconds()
 
 
 def _load_registry_cache() -> dict[str, dict]:
-    path = registry_cache_path()
-    if not path.is_file():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if data.get("schema_version") != REGISTRY_CACHE_SCHEMA_VERSION or not isinstance(data.get("entries"), dict):
-        return {}
-    return {
-        key: value
-        for key, value in data["entries"].items()
-        if isinstance(key, str) and isinstance(value, dict)
-    }
+    return upgrade_cache.load(registry_cache_path())
 
 
 def _save_registry_cache(entries: dict[str, dict]) -> None:
-    path = registry_cache_path()
-    ordered = sorted(
-        entries.items(),
-        key=lambda item: float(item[1].get("stored_at", 0)),
-        reverse=True,
-    )[:REGISTRY_CACHE_MAX_ENTRIES]
-    payload = {
-        "schema_version": REGISTRY_CACHE_SCHEMA_VERSION,
-        "entries": dict(ordered),
-    }
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
-    except OSError:
-        return
+    upgrade_cache.save(registry_cache_path(), entries)
 
 
 def _registry_cache_key(component: Component, image: str, local_digest: str | None) -> str:
-    return json.dumps(
-        {
-            "component": key(component),
-            "image": image,
-            "local_digest": local_digest,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    return upgrade_cache.key(key(component), image, local_digest)
 
 
 def _cached_registry_state(component: Component, image: str) -> upgrade_registry.RegistryState | None:
-    ttl = registry_cache_ttl_seconds()
-    if ttl <= 0:
-        return None
-    local = upgrade_registry.local_digest(component.container, image) if component.container else None
-    cache_key = _registry_cache_key(component, image, local)
-    entry = _load_registry_cache().get(cache_key)
-    if not entry:
-        return None
-    stored_at = entry.get("stored_at")
-    state = entry.get("state")
-    if not isinstance(stored_at, (int, float)) or time.time() - float(stored_at) > ttl:
-        return None
-    if not isinstance(state, dict):
-        return None
-    try:
-        return upgrade_registry.RegistryState(**state)
-    except TypeError:
-        return None
+    return upgrade_cache.get(registry_cache_path(), key(component), component.container, image)
 
 
 def _store_registry_state(component: Component, image: str, state: upgrade_registry.RegistryState) -> None:
-    if registry_cache_ttl_seconds() <= 0:
-        return
-    local = state.local_digest
-    cache_key = _registry_cache_key(component, image, local)
-    entries = _load_registry_cache()
-    entries[cache_key] = {
-        "stored_at": time.time(),
-        "state": dict(state.__dict__),
-    }
-    _save_registry_cache(entries)
+    upgrade_cache.store(registry_cache_path(), key(component), image, state)
 
 
 def load_catalog_raw() -> dict:
