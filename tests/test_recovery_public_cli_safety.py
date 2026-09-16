@@ -39,7 +39,6 @@ class RecoveryPublicCliSafetyTests(unittest.TestCase):
         metadata = self._valid_metadata()
         metadata["schema_version"] = True
         with tempfile.TemporaryDirectory() as tmp:
-            records = cli._backup_sets(Path(tmp)) if False else None
             root = Path(tmp)
             self._write_set(root, metadata)
             records = cli._backup_sets(root)
