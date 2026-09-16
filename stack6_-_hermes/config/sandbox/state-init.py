@@ -26,6 +26,8 @@ STATE_DIR = Path(os.environ.get("SANDBOX_STATE_DIR", "/var/lib/hermes-sandbox-st
 DB = STATE_DIR / "state.db"
 MARKER = WORKSPACE / ".sandbox-generation"
 QUARANTINE = WORKSPACE / ".cleanup-quarantine"
+STATE_FILES = (DB, STATE_DIR / "state.db-wal", STATE_DIR / "state.db-shm")
+RESET_HINT = "run 02-cleanup.sh --reset-sandbox"
 
 
 def now_utc() -> str:
@@ -73,16 +75,24 @@ def integrity_ok(conn: sqlite3.Connection) -> bool:
     return bool(row and row[0] == "ok")
 
 
+def metadata_value(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def set_metadata(conn: sqlite3.Connection, **values: str) -> None:
+    conn.executemany(
+        "INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)",
+        values.items(),
+    )
+
+
 def read_marker() -> str:
     if MARKER.is_symlink() or not MARKER.is_file():
-        raise RuntimeError(
-            "sandbox generation marker missing/invalid; run 02-cleanup.sh --reset-sandbox"
-        )
+        raise RuntimeError(f"sandbox generation marker missing/invalid; {RESET_HINT}")
     value = MARKER.read_text(encoding="utf-8").strip()
     if not value:
-        raise RuntimeError(
-            "sandbox generation marker is empty; run 02-cleanup.sh --reset-sandbox"
-        )
+        raise RuntimeError(f"sandbox generation marker is empty; {RESET_HINT}")
     return value
 
 
@@ -98,22 +108,35 @@ def protect(conn: sqlite3.Connection, name: str, inode: int | None, created: str
     )
 
 
+def remove_state_files() -> None:
+    for path in STATE_FILES:
+        path.unlink(missing_ok=True)
+
+
+def protect_workspace_baseline(conn: sqlite3.Connection, created: str) -> None:
+    for entry in WORKSPACE.iterdir():
+        if entry.name.startswith(".sandbox-generation.tmp."):
+            continue
+        protect(conn, entry.name, entry.lstat().st_ino, created)
+    protect(conn, MARKER.name, None, created)
+
+
+def generation_presence() -> tuple[bool, bool]:
+    return DB.exists() or DB.is_symlink(), MARKER.exists() or MARKER.is_symlink()
+
+
 def initialize_new() -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
-    if DB.exists() or MARKER.exists() or MARKER.is_symlink():
-        raise RuntimeError(
-            "sandbox generation is partially initialized; run 02-cleanup.sh --reset-sandbox"
-        )
+    db_present, marker_present = generation_presence()
+    if db_present or marker_present:
+        raise RuntimeError(f"sandbox generation is partially initialized; {RESET_HINT}")
 
-    for stale in (STATE_DIR / "state.db-wal", STATE_DIR / "state.db-shm"):
+    for stale in STATE_FILES[1:]:
         stale.unlink(missing_ok=True)
 
-    leftovers = list(STATE_DIR.iterdir())
-    if leftovers:
-        raise RuntimeError(
-            "sandbox state directory is not empty; run 02-cleanup.sh --reset-sandbox"
-        )
+    if any(STATE_DIR.iterdir()):
+        raise RuntimeError(f"sandbox state directory is not empty; {RESET_HINT}")
 
     QUARANTINE.mkdir(parents=True, exist_ok=True)
 
@@ -125,25 +148,13 @@ def initialize_new() -> None:
         conn = connect()
         try:
             create_schema(conn)
-            conn.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version','1')"
+            set_metadata(
+                conn,
+                schema_version="1",
+                generation_id=generation_id,
+                created_at=created,
             )
-            conn.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES('generation_id',?)",
-                (generation_id,),
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES('created_at',?)",
-                (created,),
-            )
-
-            for entry in WORKSPACE.iterdir():
-                if entry.name.startswith(".sandbox-generation.tmp."):
-                    continue
-                stat = entry.lstat()
-                protect(conn, entry.name, stat.st_ino, created)
-
-            protect(conn, MARKER.name, None, created)
+            protect_workspace_baseline(conn, created)
             conn.commit()
         finally:
             conn.close()
@@ -166,8 +177,7 @@ def initialize_new() -> None:
     except Exception:
         marker_tmp.unlink(missing_ok=True)
         MARKER.unlink(missing_ok=True)
-        for path in (DB, STATE_DIR / "state.db-wal", STATE_DIR / "state.db-shm"):
-            path.unlink(missing_ok=True)
+        remove_state_files()
         raise
 
     print(f"[sandbox-state] initialized generation={generation_id}")
@@ -177,45 +187,28 @@ def validate_existing() -> None:
     marker_generation = read_marker()
 
     if not DB.is_file() or DB.is_symlink():
-        raise RuntimeError(
-            "state.db missing/invalid; run 02-cleanup.sh --reset-sandbox"
-        )
+        raise RuntimeError(f"state.db missing/invalid; {RESET_HINT}")
 
     conn = connect()
     try:
         create_schema(conn)
         if not integrity_ok(conn):
-            raise RuntimeError(
-                "state.db integrity_check failed; run 02-cleanup.sh --reset-sandbox"
-            )
+            raise RuntimeError(f"state.db integrity_check failed; {RESET_HINT}")
 
-        generation = conn.execute(
-            "SELECT value FROM metadata WHERE key='generation_id'"
-        ).fetchone()
-        schema = conn.execute(
-            "SELECT value FROM metadata WHERE key='schema_version'"
-        ).fetchone()
+        generation = metadata_value(conn, "generation_id")
+        schema = metadata_value(conn, "schema_version")
+        if generation is None or schema != "1":
+            raise RuntimeError(f"state.db metadata invalid; {RESET_HINT}")
+        if generation != marker_generation:
+            raise RuntimeError(f"sandbox generation mismatch; {RESET_HINT}")
 
-        if not generation or not schema or schema[0] != "1":
-            raise RuntimeError(
-                "state.db metadata invalid; run 02-cleanup.sh --reset-sandbox"
-            )
-
-        if generation[0] != marker_generation:
-            raise RuntimeError(
-                "sandbox generation mismatch; run 02-cleanup.sh --reset-sandbox"
-            )
-
-        created = conn.execute(
-            "SELECT value FROM metadata WHERE key='created_at'"
-        ).fetchone()
-        created_at = created[0] if created else now_utc()
+        created_at = metadata_value(conn, "created_at") or now_utc()
         protect(conn, MARKER.name, MARKER.lstat().st_ino, created_at)
         if QUARANTINE.exists() and not QUARANTINE.is_symlink():
             protect(conn, QUARANTINE.name, QUARANTINE.lstat().st_ino, created_at)
         conn.commit()
 
-        print(f"[sandbox-state] existing generation={generation[0]}")
+        print(f"[sandbox-state] existing generation={generation}")
     finally:
         conn.close()
 
@@ -226,14 +219,10 @@ def main() -> int:
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
-    db_present = DB.exists() or DB.is_symlink()
-    marker_present = MARKER.exists() or MARKER.is_symlink()
-
+    db_present, marker_present = generation_presence()
     if db_present or marker_present:
         if not (db_present and marker_present):
-            raise RuntimeError(
-                "sandbox generation is incomplete; run 02-cleanup.sh --reset-sandbox"
-            )
+            raise RuntimeError(f"sandbox generation is incomplete; {RESET_HINT}")
         validate_existing()
     else:
         initialize_new()

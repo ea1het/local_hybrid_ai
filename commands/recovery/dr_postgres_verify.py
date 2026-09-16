@@ -77,6 +77,15 @@ class VerificationResult:
         }
 
 
+@dataclass(frozen=True)
+class VerificationContext:
+    source_database: str
+    application_owner: str
+    restore_database: str
+    temp_root: Path
+    dump_path: Path
+
+
 def validate_identifier(value: str, label: str) -> str:
     if not IDENTIFIER_RE.fullmatch(value):
         raise PostgresVerifyError(f"invalid PostgreSQL {label} identifier")
@@ -221,32 +230,116 @@ def pg_restore_database_command(database: str, app_owner: str) -> list[str]:
     ]
 
 
-def verify_stack3_postgres_restore() -> VerificationResult:
+def validate_stack3_contract() -> tuple[dict[int, dict], list[int]]:
     manifests = dr.load_manifests()
     plan = dr.resolve_plan(["3"])
     if plan != [0, 3]:
         raise PostgresVerifyError(f"unexpected Stack3 dependency plan: {plan}")
-
     manifest = manifests.get(STACK_ID)
     if not manifest:
         raise PostgresVerifyError("Stack3 manifest is missing")
     resources = manifest.get("recovery", {}).get("resources", [])
-    matching = [r for r in resources if r.get("id") == RESOURCE_ID and r.get("strategy") == "postgres-custom-dump"]
+    matching = [
+        resource
+        for resource in resources
+        if resource.get("id") == RESOURCE_ID and resource.get("strategy") == "postgres-custom-dump"
+    ]
     if len(matching) != 1:
         raise PostgresVerifyError("Stack3 must declare exactly one LiteLLM postgres-custom-dump resource")
-
-    values = dr.read_dotenv_presence(ROOT / ".env")
-    source_db = validate_identifier(dr.require_env_value(values, "LITELLM_DB_NAME", label="LITELLM_DB_NAME"), "database")
-    app_owner = validate_identifier(dr.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"), "role")
-
     checks = dr.preflight_runtime_sources(manifests, plan)
-    if not any(c.stack_id == 3 and c.resource_id == RESOURCE_ID and c.check == "postgres-source" for c in checks):
+    if not any(
+        check.stack_id == STACK_ID
+        and check.resource_id == RESOURCE_ID
+        and check.check == "postgres-source"
+        for check in checks
+    ):
         raise PostgresVerifyError("Stack3 PostgreSQL runtime preflight did not complete")
+    return manifests, plan
 
+
+def create_verification_context() -> VerificationContext:
+    values = dr.read_dotenv_presence(ROOT / ".env")
+    source_db = validate_identifier(
+        dr.require_env_value(values, "LITELLM_DB_NAME", label="LITELLM_DB_NAME"),
+        "database",
+    )
+    app_owner = validate_identifier(
+        dr.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"),
+        "role",
+    )
     temp_root = Path(tempfile.mkdtemp(prefix="local-hybrid-ai-pg-restore-test-"))
     os.chmod(temp_root, 0o700)
-    dump_path = temp_root / "litellm-database.dump"
-    restore_db = validate_identifier("dr_restore_" + secrets.token_hex(6), "restore database")
+    return VerificationContext(
+        source_database=source_db,
+        application_owner=app_owner,
+        restore_database=validate_identifier("dr_restore_" + secrets.token_hex(6), "restore database"),
+        temp_root=temp_root,
+        dump_path=temp_root / "litellm-database.dump",
+    )
+
+
+def create_dump(context: VerificationContext) -> tuple[str, int, int]:
+    dump_cmd = docker_admin_prefix() + [
+        "pg_dump", "-h", "127.0.0.1", "-U", ADMIN_USER,
+        "-d", context.source_database, "--format=custom", "--no-owner", "--no-acl",
+    ]
+    cp_dump = run_binary_to_file(dump_cmd, context.dump_path)
+    if cp_dump.returncode != 0:
+        fail_command("pg_dump", cp_dump)
+    dump_size = context.dump_path.stat().st_size
+    if dump_size <= 0:
+        raise PostgresVerifyError("pg_dump produced an empty artifact")
+
+    cp_list = run_binary_stdin(pg_restore_list_command(), context.dump_path)
+    if cp_list.returncode != 0:
+        fail_command("pg_restore --list", cp_list)
+    catalog_entries = len([
+        line
+        for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
+        if line and not line.startswith(";")
+    ])
+    if catalog_entries <= 0:
+        raise PostgresVerifyError("custom dump catalog is empty")
+    return sha256_file(context.dump_path), dump_size, catalog_entries
+
+
+def create_restore_database(context: VerificationContext) -> None:
+    if database_exists(context.restore_database):
+        raise PostgresVerifyError("generated restore database name already exists")
+    create_sql = (
+        f"CREATE DATABASE {quote_identifier(context.restore_database)} "
+        f"OWNER {quote_identifier(context.application_owner)};"
+    )
+    cp_create = admin_psql("postgres", create_sql)
+    if cp_create.returncode != 0:
+        fail_command("restore database creation", cp_create)
+
+
+def restore_dump(context: VerificationContext) -> None:
+    cp_restore = run_binary_stdin(
+        pg_restore_database_command(context.restore_database, context.application_owner),
+        context.dump_path,
+    )
+    if cp_restore.returncode != 0:
+        fail_command("pg_restore", cp_restore)
+
+
+def remove_restore_database(database: str) -> None:
+    terminate_sql = (
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+        f"WHERE datname = '{database}' AND pid <> pg_backend_pid();"
+    )
+    cp_terminate = admin_psql("postgres", terminate_sql)
+    if cp_terminate.returncode != 0:
+        fail_command("restore database connection cleanup", cp_terminate)
+    cp_drop = admin_psql("postgres", f"DROP DATABASE {quote_identifier(database)};")
+    if cp_drop.returncode != 0:
+        fail_command("restore database removal", cp_drop)
+
+
+def verify_stack3_postgres_restore() -> VerificationResult:
+    validate_stack3_contract()
+    context = create_verification_context()
     restore_created = False
     dump_hash = ""
     dump_size = 0
@@ -256,78 +349,35 @@ def verify_stack3_postgres_restore() -> VerificationResult:
     restored_nonempty = 0
 
     try:
-        if database_exists(restore_db):
-            raise PostgresVerifyError("generated restore database name already exists")
-
-        source_tables = list_user_tables(source_db)
+        source_tables = list_user_tables(context.source_database)
         if not source_tables:
             raise PostgresVerifyError("source LiteLLM database contains no user tables")
 
-        dump_cmd = docker_admin_prefix() + [
-            "pg_dump", "-h", "127.0.0.1", "-U", ADMIN_USER,
-            "-d", source_db, "--format=custom", "--no-owner", "--no-acl",
-        ]
-        cp_dump = run_binary_to_file(dump_cmd, dump_path)
-        if cp_dump.returncode != 0:
-            fail_command("pg_dump", cp_dump)
-        dump_size = dump_path.stat().st_size
-        if dump_size <= 0:
-            raise PostgresVerifyError("pg_dump produced an empty artifact")
-        dump_hash = sha256_file(dump_path)
-
-        cp_list = run_binary_stdin(pg_restore_list_command(), dump_path)
-        if cp_list.returncode != 0:
-            fail_command("pg_restore --list", cp_list)
-        catalog_entries = len([
-            line for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
-            if line and not line.startswith(";")
-        ])
-        if catalog_entries <= 0:
-            raise PostgresVerifyError("custom dump catalog is empty")
-
-        create_sql = f"CREATE DATABASE {quote_identifier(restore_db)} OWNER {quote_identifier(app_owner)};"
-        cp_create = admin_psql("postgres", create_sql)
-        if cp_create.returncode != 0:
-            fail_command("restore database creation", cp_create)
+        dump_hash, dump_size, catalog_entries = create_dump(context)
+        create_restore_database(context)
         restore_created = True
+        restore_dump(context)
 
-        cp_restore = run_binary_stdin(
-            pg_restore_database_command(restore_db, app_owner),
-            dump_path,
-        )
-        if cp_restore.returncode != 0:
-            fail_command("pg_restore", cp_restore)
-
-        restored_tables = list_user_tables(restore_db)
+        restored_tables = list_user_tables(context.restore_database)
         if restored_tables != source_tables:
             raise PostgresVerifyError("restored table inventory does not match source database")
-        restored_nonempty = count_nonempty_tables(restore_db, restored_tables)
-
+        restored_nonempty = count_nonempty_tables(context.restore_database, restored_tables)
     finally:
         if restore_created:
-            terminate_sql = (
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                f"WHERE datname = '{restore_db}' AND pid <> pg_backend_pid();"
-            )
-            cp_terminate = admin_psql("postgres", terminate_sql)
-            if cp_terminate.returncode != 0:
-                fail_command("restore database connection cleanup", cp_terminate)
-            cp_drop = admin_psql("postgres", f"DROP DATABASE {quote_identifier(restore_db)};")
-            if cp_drop.returncode != 0:
-                fail_command("restore database removal", cp_drop)
-        shutil.rmtree(temp_root, ignore_errors=False)
+            remove_restore_database(context.restore_database)
+        shutil.rmtree(context.temp_root, ignore_errors=False)
 
-    removed = not database_exists(restore_db)
+    removed = not database_exists(context.restore_database)
     if not removed:
         raise PostgresVerifyError("temporary restore database still exists after cleanup")
-    temp_removed = not temp_root.exists()
+    temp_removed = not context.temp_root.exists()
     if not temp_removed:
         raise PostgresVerifyError("temporary dump directory still exists after cleanup")
 
     return VerificationResult(
-        source_database=source_db,
-        restore_database=restore_db,
-        application_owner=app_owner,
+        source_database=context.source_database,
+        restore_database=context.restore_database,
+        application_owner=context.application_owner,
         dump_sha256=dump_hash,
         dump_size_bytes=dump_size,
         dump_catalog_entries=catalog_entries,

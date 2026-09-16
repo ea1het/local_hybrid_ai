@@ -13,21 +13,27 @@ to the executor.
 
 from __future__ import annotations
 
-import json
 import os
-import re
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands import component_inventory, upgrade_policy, upgrade_registry
+from commands import (
+    component_inventory,
+    upgrade_cache,
+    upgrade_catalog,
+    upgrade_inventory,
+    upgrade_plan,
+    upgrade_policy,
+    upgrade_registry,
+    upgrade_runtime,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = "1"
-REGISTRY_CACHE_SCHEMA_VERSION = 1
-REGISTRY_CACHE_DEFAULT_TTL_SECONDS = 300
-REGISTRY_CACHE_MAX_ENTRIES = 64
+REGISTRY_CACHE_SCHEMA_VERSION = upgrade_cache.SCHEMA_VERSION
+REGISTRY_CACHE_DEFAULT_TTL_SECONDS = upgrade_cache.DEFAULT_TTL_SECONDS
+REGISTRY_CACHE_MAX_ENTRIES = upgrade_cache.MAX_ENTRIES
 
 
 class UpgradeError(RuntimeError):
@@ -53,69 +59,34 @@ def runtime_root() -> Path:
 
 
 def plan_path() -> Path:
-    return runtime_root() / "platform" / "upgrade-plan.json"
+    """Compatibility facade for callers that consume the persisted plan path."""
+    return upgrade_plan.path(runtime_root())
 
 
 def registry_cache_path() -> Path:
-    return runtime_root() / "platform" / "registry-discovery-cache.json"
+    return upgrade_cache.path(runtime_root())
 
 
 def registry_cache_ttl_seconds() -> int:
-    raw = os.environ.get("LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS", str(REGISTRY_CACHE_DEFAULT_TTL_SECONDS))
-    try:
-        value = int(raw)
-    except ValueError:
-        return REGISTRY_CACHE_DEFAULT_TTL_SECONDS
-    return max(0, min(value, 86400))
+    return upgrade_cache.ttl_seconds()
 
 
 def _load_registry_cache() -> dict[str, dict]:
-    path = registry_cache_path()
-    if not path.is_file():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if data.get("schema_version") != REGISTRY_CACHE_SCHEMA_VERSION or not isinstance(data.get("entries"), dict):
-        return {}
-    return {
-        key: value
-        for key, value in data["entries"].items()
-        if isinstance(key, str) and isinstance(value, dict)
-    }
+    return upgrade_cache.load(registry_cache_path())
 
 
 def _save_registry_cache(entries: dict[str, dict]) -> None:
-    path = registry_cache_path()
+    cache_path = registry_cache_path()
     ordered = sorted(
         entries.items(),
         key=lambda item: float(item[1].get("stored_at", 0)),
         reverse=True,
     )[:REGISTRY_CACHE_MAX_ENTRIES]
-    payload = {
-        "schema_version": REGISTRY_CACHE_SCHEMA_VERSION,
-        "entries": dict(ordered),
-    }
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
-    except OSError:
-        return
+    upgrade_cache.save(cache_path, dict(ordered))
 
 
 def _registry_cache_key(component: Component, image: str, local_digest: str | None) -> str:
-    return json.dumps(
-        {
-            "component": key(component),
-            "image": image,
-            "local_digest": local_digest,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    return upgrade_cache.key(key(component), image, local_digest)
 
 
 def _cached_registry_state(component: Component, image: str) -> upgrade_registry.RegistryState | None:
@@ -123,8 +94,7 @@ def _cached_registry_state(component: Component, image: str) -> upgrade_registry
     if ttl <= 0:
         return None
     local = upgrade_registry.local_digest(component.container, image) if component.container else None
-    cache_key = _registry_cache_key(component, image, local)
-    entry = _load_registry_cache().get(cache_key)
+    entry = _load_registry_cache().get(_registry_cache_key(component, image, local))
     if not entry:
         return None
     stored_at = entry.get("stored_at")
@@ -142,10 +112,8 @@ def _cached_registry_state(component: Component, image: str) -> upgrade_registry
 def _store_registry_state(component: Component, image: str, state: upgrade_registry.RegistryState) -> None:
     if registry_cache_ttl_seconds() <= 0:
         return
-    local = state.local_digest
-    cache_key = _registry_cache_key(component, image, local)
     entries = _load_registry_cache()
-    entries[cache_key] = {
+    entries[_registry_cache_key(component, image, state.local_digest)] = {
         "stored_at": time.time(),
         "state": dict(state.__dict__),
     }
@@ -164,123 +132,51 @@ def load_catalog_raw() -> dict:
 
 
 def component_records() -> dict[str, dict]:
-    result: dict[str, dict] = {}
-    for stack in load_catalog_raw()["stacks"]:
-        for item in stack["components"]:
-            record = dict(item)
-            record["stack"] = stack["id"]
-            result[f"{stack['id']}/{item['id']}"] = record
-    return result
+    """Compatibility facade for callers consuming manifest component records."""
+    return upgrade_catalog.records(load_catalog_raw())
 
 
 def load_catalog() -> list[Component]:
-    result: list[Component] = []
-    for stack in load_catalog_raw()["stacks"]:
-        for item in stack["components"]:
-            result.append(Component(
-                stack=stack["id"],
-                name=item["id"],
-                service=item.get("service"),
-                container=item.get("container"),
-                compose=item.get("compose"),
-                upstream=item.get("upstream"),
-                selectable=item.get("selectable", True),
-            ))
-    return result
+    """Compatibility facade returning the established Component type."""
+    return upgrade_catalog.components(load_catalog_raw(), Component)
 
 
 def read_env() -> dict[str, str]:
-    result: dict[str, str] = {}
-    path = ROOT / ".env"
-    if not path.is_file():
-        path = ROOT / ".env.template"
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        result[key.strip()] = value.strip().strip('"').strip("'")
-    return result
+    """Compatibility facade for callers that import runtime helpers from upgrade."""
+    return upgrade_runtime.read_env(ROOT)
 
 
 def substitute_env(value: str, env: dict[str, str]) -> str:
-    pattern = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::[-?]([^}]*))?\}")
-
-    def repl(match: re.Match[str]) -> str:
-        key, default = match.group(1), match.group(2)
-        return env.get(key) or (default or match.group(0))
-
-    return pattern.sub(repl, value)
+    """Compatibility facade for the extracted runtime helper."""
+    return upgrade_runtime.substitute_env(value, env)
 
 
 def compose_image(component: Component, env: dict[str, str]) -> str | None:
-    if not component.compose or not component.service:
-        return None
-    path = ROOT / component.compose
-    if not path.is_file():
-        return None
-    current_service: str | None = None
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        service_match = re.match(r"^  ([A-Za-z0-9_.-]+):\s*$", raw)
-        if service_match:
-            current_service = service_match.group(1)
-            continue
-        if current_service == component.service:
-            image_match = re.match(r"^    image:\s*(.+?)\s*$", raw)
-            if image_match:
-                return substitute_env(image_match.group(1).strip('"').strip("'"), env)
-    return None
+    """Return the configured image while preserving the established public API."""
+    return upgrade_runtime.compose_image(ROOT, component, env)
 
 
 def running_image(component: Component) -> str | None:
-    if not component.container:
-        return None
-    try:
-        cp = subprocess.run(
-            ["docker", "inspect", "-f", "{{.Config.Image}}", component.container],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        return None
-    if cp.returncode != 0:
-        return None
-    return cp.stdout.strip() or None
+    """Return the observed container image while preserving the established public API."""
+    return upgrade_runtime.running_image(ROOT, component)
 
 
 def version_from_image(image: str | None) -> str:
-    """Return the installed identity used for status and stale-plan protection."""
-    if not image:
-        return "n/a"
-    if "@sha256:" in image:
-        base, digest = image.split("@sha256:", 1)
-        tag = base.rsplit(":", 1)[1] if ":" in base.rsplit("/", 1)[-1] else None
-        return f"{tag}@{digest[:12]}" if tag else f"sha256:{digest[:12]}"
-    tail = image.rsplit("/", 1)[-1]
-    return tail.rsplit(":", 1)[1] if ":" in tail else "latest"
+    """Compatibility facade for installed image identity parsing."""
+    return upgrade_inventory.version_from_image(image)
 
 
 def load_plan() -> dict:
-    path = plan_path()
-    if not path.is_file():
-        return {"schema_version": 1, "selected": {}}
+    """Compatibility facade for persisted upgrade selections."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise UpgradeError(f"cannot read upgrade plan: {exc}", code="UPGRADE_PLAN_INVALID") from exc
-    if data.get("schema_version") != 1 or not isinstance(data.get("selected"), dict):
-        raise UpgradeError("unsupported upgrade plan schema", code="UPGRADE_PLAN_INVALID")
-    return data
+        return upgrade_plan.load(plan_path())
+    except upgrade_plan.PlanError as exc:
+        raise UpgradeError(str(exc), code="UPGRADE_PLAN_INVALID") from exc
 
 
 def save_plan(plan: dict) -> None:
-    path = plan_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    """Compatibility facade for persisted upgrade selections."""
+    upgrade_plan.save(plan_path(), plan)
 
 
 def key(component: Component) -> str:
@@ -288,27 +184,11 @@ def key(component: Component) -> str:
 
 
 def _execution_metadata(record: dict, component: Component) -> dict:
-    """Return explicit execution metadata while tolerating synthetic legacy records.
-
-    Manifest-derived catalog records always declare execution metadata. Unit tests
-    and private callers may provide reduced synthetic records; those must not make
-    read-only inventory crash. Such records receive conservative metadata only for
-    presentation.
-    """
-    execution = record.get("execution")
-    if isinstance(execution, dict):
-        return dict(execution)
-    if component.selectable:
-        return {"mode": "guarded"}
-    return {"mode": "inventory-only", "blocked_by": "legacy-or-synthetic-record"}
+    """Compatibility facade for inventory execution metadata."""
+    return upgrade_inventory.execution_metadata(record, selectable=component.selectable)
 
 
-def _registry_availability(
-    component: Component,
-    image: str | None,
-    *,
-    online: bool,
-) -> tuple[str, dict | None, str | None]:
+def _registry_availability(component: Component, image: str | None, *, online: bool) -> tuple[str, dict | None, str | None]:
     if not online:
         return "unchecked", None, None
     try:
@@ -322,83 +202,64 @@ def _registry_availability(
             f"registry discovery failed for {key(component)}: {exc}",
             code="UPGRADE_REGISTRY_SOURCE_INVALID",
         ) from exc
-    if state is None:
-        return "n/a", None, None
+    return upgrade_inventory.registry_state(state)
 
-    details = {
-        "image": state.image,
-        "registry": state.registry,
-        "repository": state.repository,
-        "tracking_image": state.tracking_image,
-        "local_digest": state.local_digest,
-        "remote_digest": state.remote_digest,
-        "remote_status": state.remote_status,
-        "tags_status": state.tags_status,
-        "current_version": state.current_version,
-        "available_version": state.available_version,
-        "update_available": state.update_available,
-    }
-    if state.available_version:
-        if state.current_version == state.available_version:
-            return "current", details, state.current_version
-        return state.available_version, details, state.current_version
-    if state.update_available is True:
-        return "update", details, state.current_version
-    if state.update_available is False:
-        return "current", details, state.current_version
-    if state.remote_status == "not_tracked":
-        return "pinned", details, state.current_version
-    return "unknown", details, state.current_version
+
+def _inventory_availability(
+    component: Component,
+    record: dict,
+    observed_image: str | None,
+    desired_image: str | None,
+    *,
+    query_upstream: bool,
+) -> tuple[str, dict | None, str]:
+    actual = version_from_image(observed_image)
+    availability = record.get("availability")
+    if availability in ("local", "n/a"):
+        actual_display = "local" if availability == "local" and observed_image else actual
+        return availability, None, actual_display
+
+    available, registry, discovered_current = _registry_availability(
+        component,
+        observed_image or desired_image,
+        online=query_upstream,
+    )
+    actual_display = (
+        upgrade_registry.display_label(observed_image, discovered_version=discovered_current)
+        if observed_image
+        else actual
+    )
+    return available, registry, actual_display
+
+
+def _selection_status(component_key: str, record: dict, selection: dict | None) -> dict:
+    try:
+        return upgrade_policy.selection_status(runtime_root(), component_key, record, selection)
+    except upgrade_policy.PolicyError as exc:
+        raise UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
 
 
 def inventory(*, query_upstream: bool = True) -> list[dict]:
-    """Return upgrade-decision state without conflating it with installation intent.
-
-    `actual` is observed runtime. `available` is registry discovery. Compatibility
-    policy, executor selectability and operator selection are separate facts.
-    Legacy `current` fields remain in JSON as aliases of actual for schema-1
-    compatibility. Human output labels the observed runtime version INSTALLED.
-    """
+    """Return upgrade-decision state without conflating it with installation intent."""
     env = read_env()
-    plan = load_plan()
-    selected = plan["selected"]
+    selected = load_plan()["selected"]
     records = component_records()
     rows: list[dict] = []
 
     for component in load_catalog():
         component_key = key(component)
-        desired_image = compose_image(component, env)
         observed_image = running_image(component)
-        discovery_image = observed_image or desired_image
-        actual = version_from_image(observed_image)
-        actual_display = actual
         record = records[component_key]
-        registry = None
-        availability = record.get("availability")
-
-        if availability in ("local", "n/a"):
-            available = availability
-            if availability == "local" and observed_image:
-                actual_display = "local"
-        else:
-            available, registry, discovered_current = _registry_availability(
-                component,
-                discovery_image,
-                online=query_upstream,
-            )
-            if observed_image:
-                actual_display = upgrade_registry.display_label(
-                    observed_image,
-                    discovered_version=discovered_current,
-                )
-
-        try:
-            policy_state = upgrade_policy.selection_status(
-                runtime_root(), component_key, record, selected.get(component_key)
-            )
-        except upgrade_policy.PolicyError as exc:
-            raise UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
-
+        selection = selected.get(component_key)
+        available, registry, actual_display = _inventory_availability(
+            component,
+            record,
+            observed_image,
+            compose_image(component, env),
+            query_upstream=query_upstream,
+        )
+        actual = version_from_image(observed_image)
+        policy_state = _selection_status(component_key, record, selection)
         rows.append({
             "stack": component.stack,
             "component": component.name,
@@ -410,7 +271,7 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
             "policy": policy_state["effective_policy"],
             "selectable": component.selectable,
             "execution": _execution_metadata(record, component),
-            "selected": selected.get(component_key, {}).get("version"),
+            "selected": selection.get("version") if selection else None,
             "selection_valid": policy_state["selection_valid"],
             "registry": registry,
         })
@@ -418,25 +279,13 @@ def inventory(*, query_upstream: bool = True) -> list[dict]:
 
 
 def human_stack_id(stack: str) -> str:
-    match = re.fullmatch(r"stack(\d+)", stack)
-    return match.group(1) if match else stack
+    """Compatibility facade for compact stack labels."""
+    return upgrade_inventory.human_stack_id(stack)
 
 
 def _human_available(row: dict) -> str:
-    available = row["available"]
-    registry = row.get("registry")
-    if available == "unknown" and registry:
-        status = registry.get("remote_status")
-        if status == "rate_limited":
-            return "unknown (rate limited)"
-        if status and status not in {"ok", "not_tracked"}:
-            return f"unknown ({status.replace('_', ' ')})"
-        tags_status = registry.get("tags_status")
-        if tags_status == "rate_limited":
-            return "unknown (rate limited)"
-        if tags_status and tags_status not in {"ok", "unchecked"}:
-            return f"unknown ({tags_status.replace('_', ' ')})"
-    return available
+    """Compatibility facade for registry availability presentation."""
+    return upgrade_inventory.human_available(row)
 
 
 def print_table(rows: list[dict]) -> None:
@@ -444,16 +293,9 @@ def print_table(rows: list[dict]) -> None:
     values = [headers]
     for row in rows:
         valid = row["selection_valid"]
-        values.append((
-            human_stack_id(row["stack"]),
-            row["component"],
-            row.get("actual_display", row["actual"]),
-            _human_available(row),
-            row["policy"],
-            "yes" if row["selectable"] else "no",
-            row["selected"] or "-",
-            "-" if valid is None else ("yes" if valid else "no"),
-        ))
+        values.append((human_stack_id(row["stack"]), row["component"], row.get("actual_display", row["actual"]),
+                       _human_available(row), row["policy"], "yes" if row["selectable"] else "no",
+                       row["selected"] or "-", "-" if valid is None else ("yes" if valid else "no")))
     widths = [max(len(str(row[i])) for row in values) for i in range(len(headers))]
     for index, row in enumerate(values):
         print("  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row)))
@@ -467,10 +309,7 @@ def find_component(stack: str, name: str | None) -> Component:
         raise UpgradeError(f"unknown stack: {stack}", code="UPGRADE_STACK_UNKNOWN")
     if name is None:
         if len(matches) != 1:
-            raise UpgradeError(
-                f"{stack} has multiple components; specify one: " + ", ".join(c.name for c in matches),
-                code="UPGRADE_COMPONENT_REQUIRED",
-            )
+            raise UpgradeError(f"{stack} has multiple components; specify one: " + ", ".join(c.name for c in matches), code="UPGRADE_COMPONENT_REQUIRED")
         component = matches[0]
     else:
         component = next((c for c in matches if c.name == name), None)
@@ -479,8 +318,5 @@ def find_component(stack: str, name: str | None) -> Component:
     if not component.selectable:
         record = component_records()[key(component)]
         blocked_by = _execution_metadata(record, component)["blocked_by"]
-        raise UpgradeError(
-            f"component is inventory-only: {key(component)} ({blocked_by})",
-            code="UPGRADE_COMPONENT_NOT_SELECTABLE",
-        )
+        raise UpgradeError(f"component is inventory-only: {key(component)} ({blocked_by})", code="UPGRADE_COMPONENT_NOT_SELECTABLE")
     return component

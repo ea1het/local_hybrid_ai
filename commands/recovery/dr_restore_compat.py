@@ -88,8 +88,7 @@ def _container_state(name: str) -> tuple[str, str]:
     return status, health
 
 
-def wait_required_runtime(stacks_root: Path, selectors: list[int], timeout: int = 240) -> None:
-    lifecycle = _load_lifecycle(stacks_root)["stacks"]
+def _required_containers(lifecycle: dict, selectors: list[int]) -> list[str]:
     required: list[str] = []
     seen: set[str] = set()
     for sid in selectors:
@@ -97,33 +96,57 @@ def wait_required_runtime(stacks_root: Path, selectors: list[int], timeout: int 
         if not isinstance(entry, dict):
             raise RestoreCompatibilityError(f"target lifecycle missing stack{sid}")
         names = entry.get("required_containers")
-        if not isinstance(names, list) or not all(isinstance(v, str) and v for v in names):
+        if not isinstance(names, list) or not all(isinstance(value, str) and value for value in names):
             raise RestoreCompatibilityError(f"stack{sid}: invalid required_containers")
         for name in names:
             if name not in seen:
                 required.append(name)
                 seen.add(name)
+    return required
 
+
+def _runtime_ready(states: dict[str, tuple[str, str]]) -> bool:
+    return all(
+        status == "running" and health in {"", "healthy"}
+        for status, health in states.values()
+    )
+
+
+def _terminal_states(states: dict[str, tuple[str, str]]) -> dict[str, tuple[str, str]]:
+    terminal_statuses = {"absent", "dead", "exited", "removing"}
+    return {
+        name: state
+        for name, state in states.items()
+        if state[0] in terminal_statuses
+    }
+
+
+def _state_summary(states: dict[str, tuple[str, str]]) -> str:
+    return ", ".join(
+        f"{name}={status}/{health or 'none'}"
+        for name, (status, health) in states.items()
+    )
+
+
+def wait_required_runtime(stacks_root: Path, selectors: list[int], timeout: int = 240) -> None:
+    lifecycle = _load_lifecycle(stacks_root)["stacks"]
+    required = _required_containers(lifecycle, selectors)
     deadline = time.monotonic() + timeout
+
     while True:
         states = {name: _container_state(name) for name in required}
-        ready = all(
-            status == "running" and health in {"", "healthy"}
-            for status, health in states.values()
-        )
-        if ready:
+        if _runtime_ready(states):
             return
-        terminal = {
-            name: (status, health)
-            for name, (status, health) in states.items()
-            if status in {"absent", "dead", "exited", "removing"}
-        }
+
+        terminal = _terminal_states(states)
         if terminal:
-            summary = ", ".join(f"{n}={s}/{h or 'none'}" for n, (s, h) in terminal.items())
-            raise RestoreCompatibilityError(f"required runtime entered terminal state: {summary}")
+            raise RestoreCompatibilityError(
+                f"required runtime entered terminal state: {_state_summary(terminal)}"
+            )
         if time.monotonic() >= deadline:
-            summary = ", ".join(f"{n}={s}/{h or 'none'}" for n, (s, h) in states.items())
-            raise RestoreCompatibilityError(f"required runtime readiness timeout: {summary}")
+            raise RestoreCompatibilityError(
+                f"required runtime readiness timeout: {_state_summary(states)}"
+            )
         time.sleep(2)
 
 

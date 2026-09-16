@@ -43,6 +43,7 @@ SUPPORTED_ARTIFACT_STRATEGIES = {
 }
 SUPPORTED_GLOBAL_STRATEGIES = {"file-copy"}
 SUPPORTED_PREREQUISITE_STRATEGIES = {"external-config", "git"}
+ARTIFACT_PHASES = {"pre-prepare", "post-prepare-pre-deploy", "post-deploy"}
 
 
 class RestoreAllError(RuntimeError):
@@ -231,58 +232,115 @@ def git_commit_available(commit: str) -> bool:
 
 def _phase_for_artifact(artifact: dict) -> str:
     phase = artifact.get("restore_phase")
-    if phase not in {"pre-prepare", "post-prepare-pre-deploy", "post-deploy"}:
+    if phase not in ARTIFACT_PHASES:
         raise RestoreAllError(
             f"artifact stack{artifact['stack_id']} {artifact['resource_id']} has unsupported restore phase: {phase}"
         )
     return phase
 
 
-def build_restore_actions(metadata: dict, manifests: dict[int, dict], lifecycle: dict) -> list[RestoreAction]:
-    stacks = tuple(metadata["resolved_stacks"])
+def _validate_lifecycle_correspondence(
+    stacks: tuple[int, ...],
+    manifests: dict[int, dict],
+    lifecycle: dict,
+) -> None:
     entries = lifecycle["stacks"]
     for sid in stacks:
         item = entries.get(str(sid))
         if not isinstance(item, dict) or item.get("directory") != manifests[sid]["directory"]:
             raise RestoreAllError(f"stack{sid}: lifecycle/manifest mismatch")
 
-    actions: list[RestoreAction] = [
-        RestoreAction("global", "source", None, None, "git", f"make recorded source commit {metadata['source_commit']} the target source tree"),
-    ]
-    for global_artifact in metadata.get("global_artifacts", []):
+
+def _artifact_actions(metadata: dict, phase: str) -> list[RestoreAction]:
+    actions: list[RestoreAction] = []
+    for artifact in metadata.get("artifacts", []):
+        if _phase_for_artifact(artifact) != phase:
+            continue
         actions.append(
-            RestoreAction("global", "global-artifact", None, global_artifact["resource_id"], global_artifact["strategy"], global_artifact["relative_path"])
+            RestoreAction(
+                phase,
+                "artifact",
+                artifact["stack_id"],
+                artifact["resource_id"],
+                artifact["strategy"],
+                artifact["relative_path"],
+            )
         )
+    return actions
 
-    for artifact in metadata.get("artifacts", []):
-        if _phase_for_artifact(artifact) == "pre-prepare":
-            actions.append(RestoreAction("pre-prepare", "artifact", artifact["stack_id"], artifact["resource_id"], artifact["strategy"], artifact["relative_path"]))
 
-    for sid in stacks:
-        actions.append(RestoreAction("prepare", "lifecycle", sid, None, None, f"run Stack{sid} PREPARE lifecycle"))
+def _lifecycle_actions(stacks: tuple[int, ...], phase: str) -> list[RestoreAction]:
+    if phase == "prepare":
+        detail = "PREPARE"
+    elif phase == "deploy":
+        detail = "DEPLOY/READY"
+    elif phase == "verify":
+        detail = "VERIFY/readiness"
+    else:
+        raise RestoreAllError(f"unsupported lifecycle restore phase: {phase}")
+    return [
+        RestoreAction(phase, "lifecycle", sid, None, None, f"run Stack{sid} {detail} lifecycle")
+        for sid in stacks
+    ]
 
-    for artifact in metadata.get("artifacts", []):
-        if _phase_for_artifact(artifact) == "post-prepare-pre-deploy":
-            actions.append(RestoreAction("post-prepare-pre-deploy", "artifact", artifact["stack_id"], artifact["resource_id"], artifact["strategy"], artifact["relative_path"]))
 
-    for sid in stacks:
-        actions.append(RestoreAction("deploy", "lifecycle", sid, None, None, f"run Stack{sid} DEPLOY/READY lifecycle"))
-
-    for artifact in metadata.get("artifacts", []):
-        if _phase_for_artifact(artifact) == "post-deploy":
-            actions.append(RestoreAction("post-deploy", "artifact", artifact["stack_id"], artifact["resource_id"], artifact["strategy"], artifact["relative_path"]))
-
+def _prerequisite_actions(metadata: dict) -> list[RestoreAction]:
+    actions: list[RestoreAction] = []
     for prerequisite in metadata.get("prerequisites", []):
         kind = prerequisite["kind"]
         if kind == "EXTERNAL":
-            actions.append(RestoreAction("external", "prerequisite", prerequisite["stack_id"], prerequisite["resource_id"], prerequisite["strategy"], "verify configured externalized recovery source"))
+            phase = "external"
+            detail = "verify configured externalized recovery source"
         elif kind == "REQUIRE":
-            actions.append(RestoreAction("global", "prerequisite", prerequisite["stack_id"], prerequisite["resource_id"], prerequisite["strategy"], "satisfied from restored protected operational environment; verify presence before PREPARE"))
+            phase = "global"
+            detail = "satisfied from restored protected operational environment; verify presence before PREPARE"
         else:
             raise RestoreAllError(f"unsupported prerequisite kind: {kind}")
+        actions.append(
+            RestoreAction(
+                phase,
+                "prerequisite",
+                prerequisite["stack_id"],
+                prerequisite["resource_id"],
+                prerequisite["strategy"],
+                detail,
+            )
+        )
+    return actions
 
-    for sid in stacks:
-        actions.append(RestoreAction("verify", "lifecycle", sid, None, None, f"run Stack{sid} VERIFY/readiness lifecycle"))
+
+def build_restore_actions(metadata: dict, manifests: dict[int, dict], lifecycle: dict) -> list[RestoreAction]:
+    stacks = tuple(metadata["resolved_stacks"])
+    _validate_lifecycle_correspondence(stacks, manifests, lifecycle)
+
+    actions: list[RestoreAction] = [
+        RestoreAction(
+            "global",
+            "source",
+            None,
+            None,
+            "git",
+            f"make recorded source commit {metadata['source_commit']} the target source tree",
+        )
+    ]
+    actions.extend(
+        RestoreAction(
+            "global",
+            "global-artifact",
+            None,
+            artifact["resource_id"],
+            artifact["strategy"],
+            artifact["relative_path"],
+        )
+        for artifact in metadata.get("global_artifacts", [])
+    )
+    actions.extend(_artifact_actions(metadata, "pre-prepare"))
+    actions.extend(_lifecycle_actions(stacks, "prepare"))
+    actions.extend(_artifact_actions(metadata, "post-prepare-pre-deploy"))
+    actions.extend(_lifecycle_actions(stacks, "deploy"))
+    actions.extend(_artifact_actions(metadata, "post-deploy"))
+    actions.extend(_prerequisite_actions(metadata))
+    actions.extend(_lifecycle_actions(stacks, "verify"))
 
     order = {phase: index for index, phase in enumerate(PHASE_ORDER)}
     actions.sort(key=lambda action: order[action.phase])

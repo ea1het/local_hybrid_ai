@@ -3,19 +3,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Isolated filesystem staging for the generic restore-all path.
-
-This module executes only the non-service recovery phases that can be proven
-without touching the live platform:
-
-- materialize the recorded Git source commit into a private target tree;
-- restore the protected operational .env into that staged source tree;
-- verify REQUIRE/external-config prerequisites from the staged .env;
-- restore pre-prepare archive artifacts into an isolated runtime root.
-
-It deliberately does not run stack PREPARE/DEPLOY, PostgreSQL restore, Gitea
-restore, external Git mutation, or any operation against the live runtime.
-"""
+"""Isolated filesystem staging for the generic restore-all path."""
 from __future__ import annotations
 
 import os
@@ -62,6 +50,17 @@ class StageResult:
         }
 
 
+@dataclass(frozen=True)
+class StageContext:
+    backup_set: Path
+    destination: Path
+    source_root: Path
+    runtime_root: Path
+    source_commit: str
+    resolved_stacks: tuple[int, ...]
+    metadata: dict
+
+
 def _ensure_private_empty_destination(destination: Path) -> None:
     if not destination.is_absolute():
         raise RestoreStageError("staging destination must be an absolute path")
@@ -98,10 +97,7 @@ def _safe_symlink_target(member_path: PurePosixPath, target: str) -> None:
     for part in member_path.parent.joinpath(target_path).parts:
         if part == ".":
             continue
-        if part == "..":
-            depth -= 1
-        else:
-            depth += 1
+        depth += -1 if part == ".." else 1
         if depth < 0:
             raise RestoreStageError(f"symlink escapes staging root: {member_path}")
 
@@ -193,66 +189,76 @@ def _copy_private(source: Path, destination: Path) -> None:
     os.chmod(destination, FILE_MODE)
 
 
-def stage_restore_all(backup_set: Path, destination: Path) -> StageResult:
+def _prepare_stage_context(backup_set: Path, destination: Path) -> StageContext:
     plan = dr_restore_all.plan_restore_all(backup_set)
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
     _ensure_private_empty_destination(destination)
-
     source_root = destination / "source"
     runtime_root = destination / "runtime"
     runtime_root.mkdir(mode=DIR_MODE)
     os.chmod(runtime_root, DIR_MODE)
+    return StageContext(backup_set, destination, source_root, runtime_root, plan.source_commit, tuple(plan.resolved_stacks), metadata)
 
+
+def _restore_operational_env(context: StageContext) -> tuple[Path, dict[str, str]]:
+    global_artifact = context.metadata["global_artifacts"][0]
+    staged_env = context.source_root / ".env"
+    _copy_private(context.backup_set / global_artifact["relative_path"], staged_env)
+    return staged_env, dr.read_dotenv_presence(staged_env)
+
+
+def _verify_external_config(context: StageContext, values: dict[str, str]) -> int:
+    manifests = dr.load_manifests()
+    resources = {
+        (sid, resource["id"]): resource
+        for sid in context.resolved_stacks
+        for resource in manifests[sid].get("recovery", {}).get("resources", [])
+    }
+    verified = 0
+    for prereq in context.metadata.get("prerequisites", []):
+        if prereq["kind"] != "REQUIRE" or prereq["strategy"] != "external-config":
+            continue
+        resource = resources[(prereq["stack_id"], prereq["resource_id"])]
+        key = resource["config"]["source"]["key"]
+        dr.require_env_value(values, key, label=f"recovery prerequisite {prereq['resource_id']}")
+        verified += 1
+    return verified
+
+
+def _restore_preprepare_archives(context: StageContext) -> int:
+    restored = 0
+    for artifact in context.metadata.get("artifacts", []):
+        if artifact.get("restore_phase") != "pre-prepare":
+            continue
+        if artifact.get("strategy") != "archive":
+            raise RestoreStageError(f"unsupported pre-prepare staging strategy: {artifact.get('strategy')}")
+        member_count = _extract_tar_safely(
+            context.backup_set / artifact["relative_path"],
+            context.runtime_root / "service_-_platform",
+            expected_root="pki",
+        )
+        if member_count <= 0:
+            raise RestoreStageError("pre-prepare archive restored no members")
+        restored += 1
+    return restored
+
+
+def stage_restore_all(backup_set: Path, destination: Path) -> StageResult:
+    context = _prepare_stage_context(backup_set, destination)
     try:
-        _materialize_source(plan.source_commit, source_root)
-
-        global_artifact = metadata["global_artifacts"][0]
-        env_source = backup_set / global_artifact["relative_path"]
-        staged_env = source_root / ".env"
-        _copy_private(env_source, staged_env)
-
-        values = dr.read_dotenv_presence(staged_env)
-        verified_external_config = 0
-        manifests = dr.load_manifests()
-        resources = {
-            (sid, resource["id"]): resource
-            for sid in plan.resolved_stacks
-            for resource in manifests[sid].get("recovery", {}).get("resources", [])
-        }
-        for prereq in metadata.get("prerequisites", []):
-            if prereq["kind"] != "REQUIRE" or prereq["strategy"] != "external-config":
-                continue
-            resource = resources[(prereq["stack_id"], prereq["resource_id"])]
-            key = resource["config"]["source"]["key"]
-            dr.require_env_value(values, key, label=f"recovery prerequisite {prereq['resource_id']}")
-            verified_external_config += 1
-
-        archives_restored = 0
-        for artifact in metadata.get("artifacts", []):
-            if artifact.get("restore_phase") != "pre-prepare":
-                continue
-            if artifact.get("strategy") != "archive":
-                raise RestoreStageError(
-                    f"unsupported pre-prepare staging strategy: {artifact.get('strategy')}"
-                )
-            archive_path = backup_set / artifact["relative_path"]
-            # v1 archive contract stores Stack0 PKI with root name 'pki'.
-            member_count = _extract_tar_safely(archive_path, runtime_root / "service_-_platform", expected_root="pki")
-            if member_count <= 0:
-                raise RestoreStageError("pre-prepare archive restored no members")
-            archives_restored += 1
-
+        _materialize_source(context.source_commit, context.source_root)
+        staged_env, values = _restore_operational_env(context)
+        verified_external_config = _verify_external_config(context, values)
+        archives_restored = _restore_preprepare_archives(context)
         return StageResult(
-            destination=destination,
-            source_root=source_root,
-            runtime_root=runtime_root,
-            source_commit=plan.source_commit,
+            destination=context.destination,
+            source_root=context.source_root,
+            runtime_root=context.runtime_root,
+            source_commit=context.source_commit,
             env_restored=staged_env.is_file() and stat.S_IMODE(staged_env.stat().st_mode) == FILE_MODE,
             external_config_verified=verified_external_config,
             archives_restored=archives_restored,
         )
     except Exception:
-        # This destination was created/validated empty by this operation. On
-        # failure remove only our isolated staging content, never live runtime.
-        shutil.rmtree(destination, ignore_errors=True)
+        shutil.rmtree(context.destination, ignore_errors=True)
         raise

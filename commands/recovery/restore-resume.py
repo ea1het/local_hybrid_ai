@@ -22,6 +22,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import dr
@@ -33,6 +34,18 @@ import dr_stack4_restore_verify
 
 class ResumeError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class ResumeContext:
+    backup_set: Path
+    bootstrap: Path
+    source_commit: str
+    resolved_stacks: tuple[int, ...]
+    env_artifact: Path
+    values: dict[str, str]
+    stacks_root: Path
+    base_path: Path
 
 
 def sha256(path: Path) -> str:
@@ -105,9 +118,7 @@ def verify_source(backup_set: Path, stacks_root: Path, source_commit: str) -> No
             detail = "..." + detail[-2000:]
         raise ResumeError(f"recorded source lookup failed: {detail or 'no diagnostic output'}")
 
-    expected = cp.stdout
-    actual = target.read_bytes()
-    if hashlib.sha256(actual).digest() != hashlib.sha256(expected).digest():
+    if hashlib.sha256(target.read_bytes()).digest() != hashlib.sha256(cp.stdout).digest():
         raise ResumeError("restored source no longer matches backup source commit")
 
 
@@ -121,7 +132,7 @@ def verify_env(env_artifact: Path, stacks_root: Path) -> None:
         raise ResumeError("restored operational .env mode is not 0600")
 
 
-def verify_prepared(stacks_root: Path, resolved: list[int]) -> None:
+def verify_prepared(stacks_root: Path, resolved: list[int] | tuple[int, ...]) -> None:
     for sid in resolved:
         matches = list(stacks_root.glob(f"stack{sid}_-*/.lock"))
         if len(matches) != 1:
@@ -168,13 +179,20 @@ def verify_memory(base_path: Path, values: dict[str, str]) -> str:
     service = dr.require_env_value(values, "HERMES_MEMORY_SERVICE", label="HERMES_MEMORY_SERVICE")
     branch = dr.require_env_value(values, "GITMEM_BRANCH", label="GITMEM_BRANCH")
     repo = base_path / service / "data"
-    cp = run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "rev-parse", "HEAD"])
-    head = require_ok(cp, "portable memory HEAD")
-    cp2 = run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "status", "--porcelain"])
-    if require_ok(cp2, "portable memory status"):
+    head = require_ok(
+        run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "rev-parse", "HEAD"]),
+        "portable memory HEAD",
+    )
+    if require_ok(
+        run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "status", "--porcelain"]),
+        "portable memory status",
+    ):
         raise ResumeError("portable memory working tree is not clean")
-    cp3 = run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "rev-parse", f"refs/remotes/origin/{branch}"])
-    if require_ok(cp3, "portable memory remote tracking HEAD") != head:
+    remote_head = require_ok(
+        run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), "rev-parse", f"refs/remotes/origin/{branch}"]),
+        "portable memory remote tracking HEAD",
+    )
+    if remote_head != head:
         raise ResumeError("portable memory is not aligned with remote tracking branch")
     return head
 
@@ -247,34 +265,58 @@ def enable_memory_sync(stacks_root: Path, base_path: Path, values: dict[str, str
         raise ResumeError("memory-sync container is not running")
 
 
-def resume(backup_set: Path, bootstrap: Path) -> dict[str, object]:
+def _prepare_resume_context(backup_set: Path, bootstrap: Path) -> ResumeContext:
     plan = dr_restore_all.plan_restore_all(backup_set)
     env_artifact, values = read_env_artifact(backup_set)
-    stacks_root = dr_restore_live._absolute_safe_path(values, "STACKS_ROOT")
-    base_path = dr_restore_live._absolute_safe_path(values, "BASE_PATH")
-    resolved = list(plan.resolved_stacks)
-
-    verify_source(backup_set, stacks_root, plan.source_commit)
-    verify_env(env_artifact, stacks_root)
-    verify_prepared(stacks_root, resolved)
-    pg_tables = postgres_table_count(values)
-    gitea_tables, gitea_repos = gitea_state(base_path)
-    memory_head = verify_memory(base_path, values)
-    verify_bootstrap(bootstrap, base_path, values)
-
-    dr_restore_compat.wait_required_runtime(stacks_root, resolved, timeout=240)
-    dr_restore_compat.install_with_readiness_compat(
-        stacks_root, resolved, reconcile=True, label="final restore READY/VERIFY/reconcile"
-    )
-    enable_memory_sync(stacks_root, base_path, values)
-    dr_restore_compat.install_with_readiness_compat(
-        stacks_root, resolved, reconcile=False, label="post-resume final verification"
+    return ResumeContext(
+        backup_set=backup_set,
+        bootstrap=bootstrap,
+        source_commit=plan.source_commit,
+        resolved_stacks=tuple(plan.resolved_stacks),
+        env_artifact=env_artifact,
+        values=values,
+        stacks_root=dr_restore_live._absolute_safe_path(values, "STACKS_ROOT"),
+        base_path=dr_restore_live._absolute_safe_path(values, "BASE_PATH"),
     )
 
+
+def _verify_reconstructed_target(context: ResumeContext) -> tuple[int, int, int, str]:
+    verify_source(context.backup_set, context.stacks_root, context.source_commit)
+    verify_env(context.env_artifact, context.stacks_root)
+    verify_prepared(context.stacks_root, context.resolved_stacks)
+    pg_tables = postgres_table_count(context.values)
+    gitea_tables, gitea_repos = gitea_state(context.base_path)
+    memory_head = verify_memory(context.base_path, context.values)
+    verify_bootstrap(context.bootstrap, context.base_path, context.values)
+    return pg_tables, gitea_tables, gitea_repos, memory_head
+
+
+def _resume_runtime(context: ResumeContext) -> None:
+    resolved = list(context.resolved_stacks)
+    dr_restore_compat.wait_required_runtime(context.stacks_root, resolved, timeout=240)
+    dr_restore_compat.install_with_readiness_compat(
+        context.stacks_root,
+        resolved,
+        reconcile=True,
+        label="final restore READY/VERIFY/reconcile",
+    )
+    enable_memory_sync(context.stacks_root, context.base_path, context.values)
+    dr_restore_compat.install_with_readiness_compat(
+        context.stacks_root,
+        resolved,
+        reconcile=False,
+        label="post-resume final verification",
+    )
+
+
+def resume(backup_set: Path, bootstrap: Path) -> dict[str, object]:
+    context = _prepare_resume_context(backup_set, bootstrap)
+    pg_tables, gitea_tables, gitea_repos, memory_head = _verify_reconstructed_target(context)
+    _resume_runtime(context)
     return {
-        "backup_set": str(backup_set),
-        "source_commit": plan.source_commit,
-        "resolved_stacks": resolved,
+        "backup_set": str(context.backup_set),
+        "source_commit": context.source_commit,
+        "resolved_stacks": list(context.resolved_stacks),
         "postgres_tables": pg_tables,
         "gitea_tables": gitea_tables,
         "gitea_repositories": gitea_repos,

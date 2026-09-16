@@ -38,32 +38,30 @@ for file in MEMORY.md USER.md; do
   [[ -f "${REPO}/${file}" && ! -L "${REPO}/${file}" ]] || die "${file} missing, non-regular or symlink"
 done
 
-changed_paths="$({
-  "${GIT[@]}" diff --name-only
-  "${GIT[@]}" diff --cached --name-only
-  "${GIT[@]}" ls-files --others --exclude-standard
-} | sort -u | sed '/^$/d')"
+worktree_changes() {
+  {
+    "${GIT[@]}" diff --name-only
+    "${GIT[@]}" diff --cached --name-only
+    "${GIT[@]}" ls-files --others --exclude-standard
+  } | sort -u | sed '/^$/d'
+}
 
-if [[ -n "${changed_paths}" ]]; then
+validate_worktree_changes() {
+  local path
   while IFS= read -r path; do
+    [[ -n "${path}" ]] || continue
     case "${path}" in
       MEMORY.md|USER.md) ;;
       *) die "unauthorized working-tree change: ${path}" ;;
     esac
-  done <<< "${changed_paths}"
-fi
+  done < <(worktree_changes)
+}
 
-dirty=false
-if ! "${GIT[@]}" diff --quiet || \
-   ! "${GIT[@]}" diff --cached --quiet || \
-   [[ -n "$("${GIT[@]}" ls-files --others --exclude-standard)" ]]; then
-  dirty=true
-fi
-
-log "fetch origin/${BRANCH}"
-"${GIT[@]}" fetch --prune origin "${BRANCH}"
-local_head="$("${GIT[@]}" rev-parse HEAD)"
-remote_head="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
+worktree_dirty() {
+  ! "${GIT[@]}" diff --quiet || \
+    ! "${GIT[@]}" diff --cached --quiet || \
+    [[ -n "$("${GIT[@]}" ls-files --others --exclude-standard)" ]]
+}
 
 commit_memory() {
   "${GIT[@]}" add -- MEMORY.md USER.md
@@ -73,35 +71,67 @@ commit_memory() {
     commit -m "Sync Hermes memory $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 }
 
-if [[ "${local_head}" == "${remote_head}" ]]; then
-  if [[ "${dirty}" == true ]]; then
-    log "local and remote aligned; committing memory"
-    commit_memory
-    log "push origin/${BRANCH}"
+reconcile_heads() {
+  local local_head="$1"
+  local remote_head="$2"
+  local dirty="$3"
+
+  if [[ "${local_head}" == "${remote_head}" ]]; then
+    if [[ "${dirty}" == true ]]; then
+      log "local and remote aligned; committing memory"
+      commit_memory
+      log "push origin/${BRANCH}"
+      "${GIT[@]}" push origin "HEAD:${BRANCH}"
+    else
+      log "no changes"
+    fi
+    return
+  fi
+
+  if "${GIT[@]}" merge-base --is-ancestor "${local_head}" "${remote_head}"; then
+    [[ "${dirty}" == false ]] || die "remote is ahead while local memory has changes; refusing automatic merge/rebase"
+    log "remote ahead; fast-forward only"
+    "${GIT[@]}" merge --ff-only "origin/${BRANCH}"
+    return
+  fi
+
+  if "${GIT[@]}" merge-base --is-ancestor "${remote_head}" "${local_head}"; then
+    if [[ "${dirty}" == true ]]; then
+      log "local ahead with new memory changes; committing"
+      commit_memory
+    fi
+    log "local ahead; pushing"
     "${GIT[@]}" push origin "HEAD:${BRANCH}"
-  else
-    log "no changes"
+    return
   fi
-elif "${GIT[@]}" merge-base --is-ancestor "${local_head}" "${remote_head}"; then
-  [[ "${dirty}" == false ]] || die "remote is ahead while local memory has changes; refusing automatic merge/rebase"
-  log "remote ahead; fast-forward only"
-  "${GIT[@]}" merge --ff-only "origin/${BRANCH}"
-elif "${GIT[@]}" merge-base --is-ancestor "${remote_head}" "${local_head}"; then
-  if [[ "${dirty}" == true ]]; then
-    log "local ahead with new memory changes; committing"
-    commit_memory
-  fi
-  log "local ahead; pushing"
-  "${GIT[@]}" push origin "HEAD:${BRANCH}"
-else
+
   die "Git history diverged; manual intervention required"
+}
+
+verify_final_state() {
+  local local_final remote_final
+
+  "${GIT[@]}" fetch origin "${BRANCH}"
+  local_final="$("${GIT[@]}" rev-parse HEAD)"
+  remote_final="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
+  [[ "${local_final}" == "${remote_final}" ]] || die "final verification failed: local and remote differ"
+  [[ -z "$("${GIT[@]}" status --porcelain)" ]] || die "working tree is not clean after sync"
+
+  log "sync completed"
+  log "HEAD=${local_final}"
+}
+
+validate_worktree_changes
+
+dirty=false
+if worktree_dirty; then
+  dirty=true
 fi
 
-"${GIT[@]}" fetch origin "${BRANCH}"
-local_final="$("${GIT[@]}" rev-parse HEAD)"
-remote_final="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
-[[ "${local_final}" == "${remote_final}" ]] || die "final verification failed: local and remote differ"
-[[ -z "$("${GIT[@]}" status --porcelain)" ]] || die "working tree is not clean after sync"
+log "fetch origin/${BRANCH}"
+"${GIT[@]}" fetch --prune origin "${BRANCH}"
+local_head="$("${GIT[@]}" rev-parse HEAD)"
+remote_head="$("${GIT[@]}" rev-parse "origin/${BRANCH}")"
 
-log "sync completed"
-log "HEAD=${local_final}"
+reconcile_heads "${local_head}" "${remote_head}" "${dirty}"
+verify_final_state

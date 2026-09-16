@@ -11,7 +11,6 @@ recovery point when required. Deployment is targeted to selected components,
 followed by READY, RECONCILE, VERIFY and dependent-consumer re-verification.
 Successful selections are cleared only after the runtime proves the target.
 """
-
 from __future__ import annotations
 
 import json
@@ -21,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from commands import upgrade_policy, upgrade_registry
+from commands import upgrade_inventory, upgrade_policy, upgrade_registry, upgrade_runtime
 
 
 class UpgradeExecutionError(RuntimeError):
@@ -32,32 +31,15 @@ class UpgradeExecutionError(RuntimeError):
 
 
 def _run(cmd: list[str], *, cwd: Path, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    cp = subprocess.run(
-        cmd,
-        cwd=cwd,
-        text=True,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
-        check=False,
-    )
+    cp = subprocess.run(cmd, cwd=cwd, text=True, stdout=subprocess.PIPE if capture else None, stderr=subprocess.PIPE if capture else None, check=False)
     if cp.returncode != 0:
         detail = (cp.stderr or cp.stdout or "").strip()
-        raise UpgradeExecutionError(
-            "UPGRADE_COMMAND_FAILED",
-            f"command failed (rc={cp.returncode}): {' '.join(cmd)}" + (f": {detail}" if detail else ""),
-        )
+        raise UpgradeExecutionError("UPGRADE_COMMAND_FAILED", f"command failed (rc={cp.returncode}): {' '.join(cmd)}" + (f": {detail}" if detail else ""))
     return cp
 
 
 def _container_state(root: Path, name: str) -> str:
-    cp = subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}", name],
-        cwd=root,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    cp = subprocess.run(["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}", name], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if cp.returncode != 0:
         return "absent"
     status, _, health = cp.stdout.strip().partition("|")
@@ -65,28 +47,13 @@ def _container_state(root: Path, name: str) -> str:
 
 
 def _running_image(root: Path, container: str) -> str | None:
-    cp = subprocess.run(
-        ["docker", "inspect", "-f", "{{.Config.Image}}", container],
-        cwd=root,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    if cp.returncode != 0:
-        return None
-    return cp.stdout.strip() or None
+    """Compatibility seam delegating runtime image observation to upgrade_runtime."""
+    return upgrade_runtime.running_container_image(root, container)
 
 
 def _version_from_image(image: str | None) -> str:
-    if not image:
-        return "n/a"
-    if "@sha256:" in image:
-        base, digest = image.split("@sha256:", 1)
-        tag = base.rsplit(":", 1)[1] if ":" in base.rsplit("/", 1)[-1] else None
-        return f"{tag}@{digest[:12]}" if tag else f"sha256:{digest[:12]}"
-    tail = image.rsplit("/", 1)[-1]
-    return tail.rsplit(":", 1)[1] if ":" in tail else "latest"
+    """Compatibility seam delegating image-version parsing to upgrade_inventory."""
+    return upgrade_inventory.version_from_image(image)
 
 
 def _healthy(state: str) -> bool:
@@ -104,15 +71,9 @@ def _wait_ready(root: Path, names: list[str], *, timeout_seconds: int = 180) -> 
             return
         terminal = {name: state for name, state in last.items() if state in {"absent", "dead", "exited"} or state.startswith("dead/") or state.startswith("exited/")}
         if terminal:
-            raise UpgradeExecutionError(
-                "UPGRADE_READY_FAILED",
-                "required runtime failed before READY: " + ", ".join(f"{k}={v}" for k, v in terminal.items()),
-            )
+            raise UpgradeExecutionError("UPGRADE_READY_FAILED", "required runtime failed before READY: " + ", ".join(f"{k}={v}" for k, v in terminal.items()))
         if time.monotonic() >= deadline:
-            raise UpgradeExecutionError(
-                "UPGRADE_READY_TIMEOUT",
-                "required runtime did not become READY: " + ", ".join(f"{k}={v}" for k, v in last.items()),
-            )
+            raise UpgradeExecutionError("UPGRADE_READY_TIMEOUT", "required runtime did not become READY: " + ", ".join(f"{k}={v}" for k, v in last.items()))
         time.sleep(2)
 
 
@@ -143,7 +104,6 @@ def _atomic_update_env(path: Path, updates: dict[str, str]) -> None:
         original = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise UpgradeExecutionError("UPGRADE_ENV_READ_FAILED", f"cannot read operational .env: {exc}") from exc
-
     remaining = dict(updates)
     output: list[str] = []
     for raw in original.splitlines(keepends=True):
@@ -155,13 +115,8 @@ def _atomic_update_env(path: Path, updates: dict[str, str]) -> None:
                 output.append(f"{key}={remaining.pop(key)}{newline}")
                 continue
         output.append(raw)
-
     if remaining:
-        raise UpgradeExecutionError(
-            "UPGRADE_ENV_KEY_MISSING",
-            "selected component version keys are missing from operational .env: " + ", ".join(sorted(remaining)),
-        )
-
+        raise UpgradeExecutionError("UPGRADE_ENV_KEY_MISSING", "selected component version keys are missing from operational .env: " + ", ".join(sorted(remaining)))
     tmp = path.with_name(path.name + ".upgrade.tmp")
     try:
         tmp.write_text("".join(output), encoding="utf-8")
@@ -179,75 +134,43 @@ def _target_image_ref(component_key: str, component: dict, selection: dict, env:
     apply = component.get("apply")
     image_env_key = apply.get("image_env_key") if isinstance(apply, dict) else None
     if not isinstance(image_env_key, str) or not image_env_key:
-        raise UpgradeExecutionError(
-            "UPGRADE_INTERNAL_CONFIG",
-            f"component has no image_env_key for target preflight: {component_key}",
-        )
+        raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG", f"component has no image_env_key for target preflight: {component_key}")
     repository = env.get(image_env_key)
     if not repository:
-        raise UpgradeExecutionError(
-            "UPGRADE_ENV_KEY_MISSING",
-            f"target image repository key is missing from operational .env: {image_env_key}",
-        )
+        raise UpgradeExecutionError("UPGRADE_ENV_KEY_MISSING", f"target image repository key is missing from operational .env: {image_env_key}")
     version = selection.get("version")
     if not isinstance(version, str) or not version:
         raise UpgradeExecutionError("UPGRADE_PLAN_INVALID", f"selected target version is invalid: {component_key}")
-    return f"{repository}:{version}"
+    try:
+        return upgrade_registry.parse_reference(repository).with_tag(version)
+    except upgrade_registry.RegistryError as exc:
+        raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG", f"invalid target image repository for {component_key}: {exc}") from exc
 
 
 def _verify_selected_digest(component_key: str, image_ref: str, selection: dict) -> None:
-    selected_ref = selection.get("target_image")
-    selected_digest = selection.get("target_digest")
+    selected_ref, selected_digest = selection.get("target_image"), selection.get("target_digest")
     if not all(isinstance(value, str) and value for value in (selected_ref, selected_digest)):
-        raise UpgradeExecutionError(
-            "UPGRADE_PLAN_STALE",
-            f"selected target has no immutable identity for {component_key}; reselect the target",
-        )
+        raise UpgradeExecutionError("UPGRADE_PLAN_STALE", f"selected target has no immutable identity for {component_key}; reselect the target")
     if selected_ref != image_ref:
-        raise UpgradeExecutionError(
-            "UPGRADE_PLAN_STALE",
-            f"target image reference changed for {component_key}: selected {selected_ref}, now {image_ref}",
-        )
+        raise UpgradeExecutionError("UPGRADE_PLAN_STALE", f"target image reference changed for {component_key}: selected {selected_ref}, now {image_ref}")
     try:
         probe = upgrade_registry.manifest_probe(image_ref)
     except upgrade_registry.RegistryError as exc:
-        raise UpgradeExecutionError(
-            "UPGRADE_TARGET_NOT_AVAILABLE",
-            f"cannot resolve selected target {image_ref}: {exc}",
-        ) from exc
+        raise UpgradeExecutionError("UPGRADE_TARGET_NOT_AVAILABLE", f"cannot resolve selected target {image_ref}: {exc}") from exc
     if probe.status != "ok" or not probe.digest:
-        raise UpgradeExecutionError(
-            "UPGRADE_TARGET_NOT_AVAILABLE",
-            f"selected target is not available: {image_ref} ({probe.status})",
-        )
+        raise UpgradeExecutionError("UPGRADE_TARGET_NOT_AVAILABLE", f"selected target is not available: {image_ref} ({probe.status})")
     if probe.digest != selected_digest:
-        raise UpgradeExecutionError(
-            "UPGRADE_TARGET_MOVED",
-            f"selected target tag moved for {component_key}: {selected_digest} -> {probe.digest}",
-        )
+        raise UpgradeExecutionError("UPGRADE_TARGET_MOVED", f"selected target tag moved for {component_key}: {selected_digest} -> {probe.digest}")
 
 
 def _preflight_target_image(root: Path, image_ref: str) -> None:
     try:
-        cp = subprocess.run(
-            ["docker", "manifest", "inspect", image_ref],
-            cwd=root,
-            text=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+        cp = subprocess.run(["docker", "manifest", "inspect", image_ref], cwd=root, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False)
     except OSError as exc:
-        raise UpgradeExecutionError(
-            "UPGRADE_TARGET_PREFLIGHT_FAILED",
-            f"cannot inspect target image {image_ref}: {exc}",
-        ) from exc
+        raise UpgradeExecutionError("UPGRADE_TARGET_PREFLIGHT_FAILED", f"cannot inspect target image {image_ref}: {exc}") from exc
     if cp.returncode != 0:
         detail = (cp.stderr or "").strip()
-        raise UpgradeExecutionError(
-            "UPGRADE_TARGET_NOT_AVAILABLE",
-            f"target image is not available: {image_ref}" + (f": {detail}" if detail else ""),
-        )
+        raise UpgradeExecutionError("UPGRADE_TARGET_NOT_AVAILABLE", f"target image is not available: {image_ref}" + (f": {detail}" if detail else ""))
 
 
 def _recovery_point(root: Path) -> str:
@@ -290,15 +213,7 @@ def _prepared(root: Path, manifest: dict) -> bool:
     return (root / manifest["directory"] / ".lock").is_file()
 
 
-def execute(
-    *,
-    root: Path,
-    runtime_root: Path,
-    selections: list[dict],
-    components: dict[str, dict],
-    plan_path: Path,
-    quiet: bool = False,
-) -> dict:
+def execute(*, root: Path, runtime_root: Path, selections: list[dict], components: dict[str, dict], plan_path: Path, quiet: bool = False) -> dict:
     if not selections:
         raise UpgradeExecutionError("UPGRADE_NOTHING_SELECTED", "no upgrades are selected")
     if os.geteuid() != 0:
@@ -306,7 +221,6 @@ def execute(
     env_path = root / ".env"
     if not env_path.is_file():
         raise UpgradeExecutionError("UPGRADE_ENV_MISSING", f"missing operational environment: {env_path}")
-
     lifecycle = _load_json(root / "commands" / "install-lifecycle.json")
     manifests = _load_manifests(root)
     env_values = _read_env_values(env_path)
@@ -314,30 +228,22 @@ def execute(
     affected_stacks: set[int] = set()
     recovery_required = False
     target_images: list[str] = []
-
     for selection in selections:
         component_key = f"{selection['stack']}/{selection['component']}"
         component = components.get(component_key)
         if component is None:
             raise UpgradeExecutionError("UPGRADE_COMPONENT_UNKNOWN", f"selected component is not in catalog: {component_key}")
         if not component.get("selectable", True):
-            raise UpgradeExecutionError(
-                "UPGRADE_COMPONENT_NOT_SELECTABLE",
-                f"selected component is not executable by policy: {component_key}",
-            )
+            raise UpgradeExecutionError("UPGRADE_COMPONENT_NOT_SELECTABLE", f"selected component is not executable by policy: {component_key}")
         try:
             effective = upgrade_policy.effective_policy(runtime_root, component_key, component)[2]
         except upgrade_policy.PolicyError as exc:
             raise UpgradeExecutionError("UPGRADE_POLICY_INVALID", str(exc)) from exc
-        current = selection.get("current_at_selection")
-        target = selection.get("version")
+        current, target = selection.get("current_at_selection"), selection.get("version")
         if not isinstance(current, str) or not isinstance(target, str):
             raise UpgradeExecutionError("UPGRADE_PLAN_INVALID", f"selected versions are invalid: {component_key}")
         if not upgrade_policy.target_supported(effective, current, target):
-            raise UpgradeExecutionError(
-                "UPGRADE_TARGET_UNSUPPORTED",
-                f"selected target {target} is not permitted by {effective} policy for {component_key}",
-            )
+            raise UpgradeExecutionError("UPGRADE_TARGET_UNSUPPORTED", f"selected target {target} is not permitted by {effective} policy for {component_key}")
         apply = component.get("apply")
         if not isinstance(apply, dict) or apply.get("type") != "env-version":
             raise UpgradeExecutionError("UPGRADE_COMPONENT_NOT_EXECUTABLE", f"component has no safe executor: {component_key}")
@@ -350,17 +256,11 @@ def execute(
         image_ref = _target_image_ref(component_key, component, selection, env_values)
         _verify_selected_digest(component_key, image_ref, selection)
         target_images.append(image_ref)
-
     for image_ref in target_images:
         _preflight_target_image(root, image_ref)
-
-    recovery_point: str | None = None
-    if recovery_required:
-        recovery_point = _recovery_point(root)
-
+    recovery_point: str | None = _recovery_point(root) if recovery_required else None
     try:
         _atomic_update_env(env_path, env_updates)
-
         for sid in sorted(affected_stacks):
             entry = lifecycle["stacks"][str(sid)]
             selected_for_stack = [s for s in selections if _stack_number(s["stack"]) == sid]
@@ -368,30 +268,20 @@ def execute(
                 component = components[f"{selection['stack']}/{selection['component']}"]
                 deploy = component["apply"].get("deploy")
                 if not isinstance(deploy, list) or not deploy:
-                    raise UpgradeExecutionError(
-                        "UPGRADE_INTERNAL_CONFIG",
-                        f"component has no targeted deploy command: {selection['stack']}/{selection['component']}",
-                    )
+                    raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG", f"component has no targeted deploy command: {selection['stack']}/{selection['component']}")
                 _run_commands(root, entry["directory"], [deploy], quiet=quiet)
-
             _wait_ready(root, entry["required_containers"])
             _run_commands(root, entry["directory"], entry.get("reconcile", []), quiet=quiet)
             _wait_ready(root, entry["required_containers"])
             _run_commands(root, entry["directory"], entry.get("verify", []), quiet=quiet)
-
             for selection in selected_for_stack:
                 component = components[f"{selection['stack']}/{selection['component']}"]
                 actual = _version_from_image(_running_image(root, component["container"]))
                 if actual != selection["version"]:
-                    raise UpgradeExecutionError(
-                        "UPGRADE_TARGET_NOT_RUNNING",
-                        f"{selection['stack']}/{selection['component']} expected {selection['version']} but runtime reports {actual}",
-                    )
-
+                    raise UpgradeExecutionError("UPGRADE_TARGET_NOT_RUNNING", f"{selection['stack']}/{selection['component']} expected {selection['version']} but runtime reports {actual}")
         reverified: list[int] = []
         for provider_sid in sorted(affected_stacks):
-            provider = manifests[provider_sid]
-            provider_caps = set(provider.get("provides", []))
+            provider_caps = set(manifests[provider_sid].get("provides", []))
             for sid, manifest in manifests.items():
                 if sid in affected_stacks or not _prepared(root, manifest):
                     continue
@@ -403,24 +293,15 @@ def execute(
                 _run_commands(root, entry["directory"], entry.get("verify", []), quiet=quiet)
                 if sid not in reverified:
                     reverified.append(sid)
-
         plan = _load_json(plan_path)
         for selection in selections:
             plan["selected"].pop(f"{selection['stack']}/{selection['component']}", None)
         tmp = plan_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(tmp, plan_path)
-
         history_path = runtime_root / "platform" / "upgrade-history.jsonl"
         history_path.parent.mkdir(parents=True, exist_ok=True)
-        event = {
-            "schema_version": 1,
-            "success": True,
-            "recovery_point": recovery_point,
-            "target_images": target_images,
-            "upgraded": selections,
-            "reverified_stacks": sorted(reverified),
-        }
+        event = {"schema_version": 1, "success": True, "recovery_point": recovery_point, "target_images": target_images, "upgraded": selections, "reverified_stacks": sorted(reverified)}
         with history_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, sort_keys=True) + "\n")
         return event

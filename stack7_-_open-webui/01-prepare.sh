@@ -73,12 +73,12 @@ litellm_running="$(docker inspect -f '{{.State.Running}}' litellm)"
 log "LiteLLM disponible"
 
 step "Runtime persistente Open WebUI"
-DATA_DIR="${BASE_PATH%/}/service_-_open-webui/data"
-[[ ! -L "${BASE_PATH%/}/service_-_open-webui" ]] || die "runtime Open WebUI no puede ser symlink"
-[[ ! -e "${BASE_PATH%/}/service_-_open-webui" || -d "${BASE_PATH%/}/service_-_open-webui" ]] || \
-  die "runtime Open WebUI no es un directorio"
+RUNTIME_DIR="${BASE_PATH%/}/service_-_open-webui"
+DATA_DIR="${RUNTIME_DIR}/data"
+[[ ! -L "${RUNTIME_DIR}" ]] || die "runtime Open WebUI no puede ser symlink"
+[[ ! -e "${RUNTIME_DIR}" || -d "${RUNTIME_DIR}" ]] || die "runtime Open WebUI no es un directorio"
 mkdir -p "${DATA_DIR}"
-chmod 0750 "${BASE_PATH%/}/service_-_open-webui" "${DATA_DIR}"
+chmod 0750 "${RUNTIME_DIR}" "${DATA_DIR}"
 log "datos persistentes: ${DATA_DIR}"
 
 step "Validacion de Docker Compose"

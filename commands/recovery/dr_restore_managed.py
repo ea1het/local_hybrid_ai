@@ -3,17 +3,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Isolated managed-state recovery drill for restore-all.
-
-This module consumes a previously created restore staging tree and restores the
-managed Stack3 PostgreSQL and Stack4 Gitea artifacts into disposable, isolated
-Docker containers. It never uses live service container names, never publishes
-ports, never attaches the drill containers to platform networks, and never
-writes under the live BASE_PATH.
-
-The resulting reconstructed files remain under the staging destination for
-inspection. Drill containers are always removed before returning.
-"""
+"""Isolated managed-state recovery drill for restore-all."""
 from __future__ import annotations
 
 import os
@@ -64,6 +54,15 @@ class ManagedRestoreResult:
         }
 
 
+@dataclass(frozen=True)
+class ManagedRestoreContext:
+    backup_set: Path
+    stage: Path
+    source_root: Path
+    values: dict[str, str]
+    metadata: dict
+
+
 def _run(cmd: list[str], *, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(cmd, input=input_bytes, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
@@ -108,13 +107,7 @@ def _stage_source_commit(source: Path) -> str:
 
 
 def _verify_legacy_stage_source(source: Path, commit: str) -> None:
-    cp = subprocess.run(
-        ["git", "show", f"{commit}:install.py"],
-        cwd=dr_restore_all.PROJECT_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    cp = subprocess.run(["git", "show", f"{commit}:install.py"], cwd=dr_restore_all.PROJECT_ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if cp.returncode != 0:
         raise RestoreManagedError("cannot read install.py from recorded source commit")
     if (source / "install.py").read_bytes() != cp.stdout:
@@ -159,46 +152,65 @@ def _validate_identifier(value: str, label: str) -> str:
     return value
 
 
+def _postgres_settings(values: dict[str, str]) -> tuple[str, str]:
+    database = _validate_identifier(dr.require_env_value(values, "LITELLM_DB_NAME", label="LITELLM_DB_NAME"), "database")
+    user = _validate_identifier(dr.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"), "role")
+    return database, user
+
+
+def _start_isolated_postgres(name: str, image: str, data: Path, password: str) -> None:
+    cp = _run([
+        "docker", "run", "-d", "--name", name, "--network", "none",
+        "-e", f"POSTGRES_PASSWORD={password}", "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_DB=postgres",
+        "-v", f"{data}:/var/lib/postgresql/data", image,
+    ])
+    if cp.returncode != 0:
+        raise RestoreManagedError("cannot start isolated PostgreSQL: " + cp.stderr.decode("utf-8", errors="replace").strip()[:1000])
+    _wait_postgres(name)
+
+
+def _restore_postgres_dump(name: str, dump: Path, database: str) -> None:
+    with dump.open("rb") as handle:
+        cp = subprocess.run(
+            ["docker", "exec", "-i", name, "pg_restore", "--no-owner", "--no-privileges", "-U", "postgres", "-d", database],
+            stdin=handle, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+    if cp.returncode != 0:
+        raise RestoreManagedError("isolated PostgreSQL pg_restore failed: " + cp.stderr.decode("utf-8", errors="replace").strip()[:1000])
+
+
+def _postgres_table_stats(name: str, database: str) -> tuple[int, int]:
+    rows = _pg_exec(name, database, "SELECT schemaname||'.'||tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') ORDER BY 1;").splitlines()
+    tables = [row for row in rows if row.strip()]
+    if not tables:
+        raise RestoreManagedError("isolated PostgreSQL restore produced no application tables")
+    nonempty = 0
+    for table in tables:
+        schema, rel = table.split(".", 1)
+        schema = _validate_identifier(schema, "schema")
+        rel = _validate_identifier(rel, "table")
+        if _pg_exec(name, database, f'SELECT EXISTS(SELECT 1 FROM "{schema}"."{rel}" LIMIT 1);') == "t":
+            nonempty += 1
+    return len(tables), nonempty
+
+
 def restore_postgres(backup_set: Path, stage: Path, source_root: Path, values: dict[str, str], metadata: dict) -> tuple[int, int]:
     artifact = _artifact(metadata, strategy="postgres-custom-dump", resource_id="litellm-database")
-    dump = backup_set / artifact["relative_path"]
-    image = _postgres_image(source_root)
-    db_name = _validate_identifier(dr.require_env_value(values, "LITELLM_DB_NAME", label="LITELLM_DB_NAME"), "database")
-    app_user = _validate_identifier(dr.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"), "role")
+    database, app_user = _postgres_settings(values)
     root = stage / "managed" / "postgres"
     data = root / "data"
     data.mkdir(parents=True, exist_ok=False, mode=0o700)
     os.chmod(root, 0o700)
     os.chmod(data, 0o700)
     name = POSTGRES_PREFIX + secrets.token_hex(5)
-    admin_password = secrets.token_urlsafe(32)
-    started = False
     try:
-        cp = _run(["docker", "run", "-d", "--name", name, "--network", "none", "-e", f"POSTGRES_PASSWORD={admin_password}", "-e", "POSTGRES_USER=postgres", "-e", "POSTGRES_DB=postgres", "-v", f"{data}:/var/lib/postgresql/data", image])
-        if cp.returncode != 0:
-            raise RestoreManagedError("cannot start isolated PostgreSQL: " + cp.stderr.decode("utf-8", errors="replace").strip()[:1000])
-        started = True
-        _wait_postgres(name)
+        _start_isolated_postgres(name, _postgres_image(source_root), data, secrets.token_urlsafe(32))
         _pg_exec(name, "postgres", f'CREATE ROLE "{app_user}" LOGIN;')
-        _pg_exec(name, "postgres", f'CREATE DATABASE "{db_name}" OWNER "{app_user}";')
-        with dump.open("rb") as handle:
-            cp = subprocess.run(["docker", "exec", "-i", name, "pg_restore", "--no-owner", "--no-privileges", "-U", "postgres", "-d", db_name], stdin=handle, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        if cp.returncode != 0:
-            raise RestoreManagedError("isolated PostgreSQL pg_restore failed: " + cp.stderr.decode("utf-8", errors="replace").strip()[:1000])
-        rows = _pg_exec(name, db_name, "SELECT schemaname||'.'||tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') ORDER BY 1;").splitlines()
-        tables = [row for row in rows if row.strip()]
-        if not tables:
-            raise RestoreManagedError("isolated PostgreSQL restore produced no application tables")
-        nonempty = 0
-        for table in tables:
-            schema, rel = table.split(".", 1)
-            schema = _validate_identifier(schema, "schema")
-            rel = _validate_identifier(rel, "table")
-            if _pg_exec(name, db_name, f'SELECT EXISTS(SELECT 1 FROM "{schema}"."{rel}" LIMIT 1);') == "t":
-                nonempty += 1
-        return len(tables), nonempty
+        _pg_exec(name, "postgres", f'CREATE DATABASE "{database}" OWNER "{app_user}";')
+        _restore_postgres_dump(name, backup_set / artifact["relative_path"], database)
+        return _postgres_table_stats(name, database)
     finally:
-        if started or _docker_exists(name):
+        if _docker_exists(name):
             _remove_container(name)
 
 
@@ -222,12 +234,8 @@ def _copy_tree_contents(source: Path, destination: Path, *, skip_names: set[str]
 def _render_gitea_config(source_root: Path, values: dict[str, str], target: Path) -> None:
     rendered = (source_root / "stack4_-_gitea" / "config" / "gitea" / "app.ini").read_text(encoding="utf-8")
     replacements = {
-        "GITEA_DOMAIN": dr.require_env_value(values, "GITEA_DOMAIN", label="GITEA_DOMAIN"),
-        "GITEA_ROOT_URL": dr.require_env_value(values, "GITEA_ROOT_URL", label="GITEA_ROOT_URL"),
-        "GITEA_SSH_DOMAIN": dr.require_env_value(values, "GITEA_SSH_DOMAIN", label="GITEA_SSH_DOMAIN"),
-        "GITEA_SSH_PORT": dr.require_env_value(values, "GITEA_SSH_PORT", label="GITEA_SSH_PORT"),
-        "GITEA_INTERNAL_TOKEN": dr.require_env_value(values, "GITEA_INTERNAL_TOKEN", label="GITEA_INTERNAL_TOKEN"),
-        "GITEA_JWT_SECRET": dr.require_env_value(values, "GITEA_JWT_SECRET", label="GITEA_JWT_SECRET"),
+        key: dr.require_env_value(values, key, label=key)
+        for key in ("GITEA_DOMAIN", "GITEA_ROOT_URL", "GITEA_SSH_DOMAIN", "GITEA_SSH_PORT", "GITEA_INTERNAL_TOKEN", "GITEA_JWT_SECRET")
     }
     for key, value in replacements.items():
         rendered = rendered.replace(f"@@{key}@@", value)
@@ -258,9 +266,8 @@ def _wait_gitea(name: str, timeout: int = 120) -> None:
     raise RestoreManagedError("isolated Gitea did not become healthy")
 
 
-def restore_gitea(backup_set: Path, stage: Path, source_root: Path, values: dict[str, str], metadata: dict) -> tuple[int, int, int, bool]:
+def _prepare_gitea_runtime(backup_set: Path, stage: Path, source_root: Path, values: dict[str, str], metadata: dict) -> tuple[Path, Path, int, int, list[Path]]:
     artifact = _artifact(metadata, strategy="gitea-native-dump", resource_id="gitea-state")
-    archive = backup_set / artifact["relative_path"]
     managed = stage / "managed" / "gitea"
     extracted = managed / "dump"
     runtime = managed / "runtime"
@@ -269,46 +276,58 @@ def restore_gitea(backup_set: Path, stage: Path, source_root: Path, values: dict
     extracted.mkdir(parents=True, exist_ok=False, mode=0o700)
     data.mkdir(parents=True, exist_ok=False, mode=0o700)
     config.mkdir(parents=True, exist_ok=False, mode=0o700)
-    dr_stack4_restore_verify.safe_extract_gitea_dump(archive, extracted)
-    dump_data = extracted / "data"
-    dump_repos = extracted / "repos"
+    dr_stack4_restore_verify.safe_extract_gitea_dump(backup_set / artifact["relative_path"], extracted)
+    dump_data, dump_repos = extracted / "data", extracted / "repos"
     if not dump_data.is_dir() or not dump_repos.is_dir():
         raise RestoreManagedError("Gitea native dump is missing data/ or repos/")
     _copy_tree_contents(dump_data, data, skip_names={"gitea.db"})
     repo_target = data / "git" / "repositories"
     repo_target.mkdir(parents=True, exist_ok=True)
     _copy_tree_contents(dump_repos, repo_target)
-    db_path = data / "gitea.db"
-    tables, nonempty = dr_stack4_restore_verify.restore_sqlite(extracted / "gitea-db.sql", db_path)
+    tables, nonempty = dr_stack4_restore_verify.restore_sqlite(extracted / "gitea-db.sql", data / "gitea.db")
     repositories = dr_stack4_restore_verify.find_bare_repositories(repo_target)
     for repo in repositories:
         dr_stack4_restore_verify.verify_repository(repo)
-    app_ini = config / "app.ini"
-    _render_gitea_config(source_root, values, app_ini)
+    _render_gitea_config(source_root, values, config / "app.ini")
     (config / "conf").mkdir(mode=0o750)
     os.symlink("../app.ini", config / "conf" / "app.ini")
-    image = dr.require_env_value(values, "GITEA_IMAGE", label="GITEA_IMAGE")
+    return config, data, tables, nonempty, repositories
+
+
+def _gitea_identity(values: dict[str, str]) -> tuple[int, int]:
     uid = int(dr.require_env_value(values, "GITEA_UID", label="GITEA_UID"))
     gid = int(dr.require_env_value(values, "GITEA_GID", label="GITEA_GID"))
     if uid < 1 or gid < 1:
         raise RestoreManagedError("isolated Gitea UID/GID must be positive")
+    return uid, gid
+
+
+def _start_isolated_gitea(name: str, image: str, uid: int, gid: int, config: Path, data: Path) -> None:
+    cp = _run([
+        "docker", "run", "-d", "--name", name, "--network", "none", "--user", f"{uid}:{gid}",
+        "-e", "GITEA_CUSTOM=/etc/gitea", "-v", f"{config}:/etc/gitea", "-v", f"{data}:/var/lib/gitea",
+        image, "gitea", "web", "--config", "/etc/gitea/app.ini",
+    ])
+    if cp.returncode != 0:
+        raise RestoreManagedError("cannot start isolated Gitea: " + cp.stderr.decode("utf-8", errors="replace").strip()[:1000])
+    _wait_gitea(name)
+
+
+def restore_gitea(backup_set: Path, stage: Path, source_root: Path, values: dict[str, str], metadata: dict) -> tuple[int, int, int, bool]:
+    config, data, tables, nonempty, repositories = _prepare_gitea_runtime(backup_set, stage, source_root, values, metadata)
+    uid, gid = _gitea_identity(values)
     _chown_tree(data, uid, gid)
     _chown_tree(config, uid, gid)
     name = GITEA_PREFIX + secrets.token_hex(5)
-    started = False
     try:
-        cp = _run(["docker", "run", "-d", "--name", name, "--network", "none", "--user", f"{uid}:{gid}", "-e", "GITEA_CUSTOM=/etc/gitea", "-v", f"{config}:/etc/gitea", "-v", f"{data}:/var/lib/gitea", image, "gitea", "web", "--config", "/etc/gitea/app.ini"])
-        if cp.returncode != 0:
-            raise RestoreManagedError("cannot start isolated Gitea: " + cp.stderr.decode("utf-8", errors="replace").strip()[:1000])
-        started = True
-        _wait_gitea(name)
+        _start_isolated_gitea(name, dr.require_env_value(values, "GITEA_IMAGE", label="GITEA_IMAGE"), uid, gid, config, data)
         return tables, nonempty, len(repositories), True
     finally:
-        if started or _docker_exists(name):
+        if _docker_exists(name):
             _remove_container(name)
 
 
-def run_managed_restore(backup_set: Path, stage: Path) -> ManagedRestoreResult:
+def _prepare_managed_context(backup_set: Path, stage: Path) -> ManagedRestoreContext:
     metadata = dr_restore_all.read_completed_backup_set(backup_set)
     plan = dr_restore_all.plan_restore_all(backup_set)
     source_root, _, values = _require_stage(stage)
@@ -322,10 +341,19 @@ def run_managed_restore(backup_set: Path, stage: Path) -> ManagedRestoreResult:
         raise RestoreManagedError("managed restore target already exists; inspect/remove the previous drill explicitly before retrying")
     managed.mkdir(mode=0o700)
     os.chmod(managed, 0o700)
-    pg_tables, pg_nonempty = restore_postgres(backup_set, stage, source_root, values, metadata)
-    g_tables, g_nonempty, repos, health = restore_gitea(backup_set, stage, source_root, values, metadata)
+    return ManagedRestoreContext(backup_set, stage, source_root, values, metadata)
+
+
+def _assert_drill_containers_removed() -> None:
     cp = _run(["docker", "ps", "-a", "--format", "{{.Names}}"])
-    leftovers = [] if cp.returncode != 0 else [name for name in cp.stdout.decode().splitlines() if name.startswith(POSTGRES_PREFIX) or name.startswith(GITEA_PREFIX)]
+    leftovers = [] if cp.returncode != 0 else [name for name in cp.stdout.decode().splitlines() if name.startswith((POSTGRES_PREFIX, GITEA_PREFIX))]
     if leftovers:
         raise RestoreManagedError("drill container cleanup incomplete: " + ", ".join(leftovers))
-    return ManagedRestoreResult(stage, pg_tables, pg_nonempty, g_tables, g_nonempty, repos, health, True)
+
+
+def run_managed_restore(backup_set: Path, stage: Path) -> ManagedRestoreResult:
+    context = _prepare_managed_context(backup_set, stage)
+    pg_tables, pg_nonempty = restore_postgres(context.backup_set, context.stage, context.source_root, context.values, context.metadata)
+    g_tables, g_nonempty, repos, health = restore_gitea(context.backup_set, context.stage, context.source_root, context.values, context.metadata)
+    _assert_drill_containers_removed()
+    return ManagedRestoreResult(context.stage, pg_tables, pg_nonempty, g_tables, g_nonempty, repos, health, True)
