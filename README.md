@@ -110,9 +110,12 @@ Common entry points are:
 ./local-ai start 5
 ./local-ai stop 5
 ./local-ai upgrade
-./local-ai backup
-./local-ai restore plan <backup-set> --dry-run
+./local-ai backup --yes
+./local-ai restore list-backup-sets
+./local-ai restore plan <backup-set>
 ```
+
+Interactive backup asks for confirmation; unattended or JSON execution requires `--yes`. Restore planning is read-only and does not expose the recovery engine's private `--dry-run` implementation flag.
 
 Selective lifecycle is conservative: `stop` refuses to stop a provider while required consumers are running, and `start` refuses to invent or auto-start missing required providers. The complete [CLI reference](docs/user-docs/cli.md), [management-plane architecture](docs/architecture/management-plane.md) and [ADR-0002](docs/devel-docs/adr/0002-single-management-cli.md) describe the boundary at different levels.
 
