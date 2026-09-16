@@ -20,13 +20,16 @@ UPGRADE_ACTIONS = ("adopt", "check", "policy")
 
 
 def _stack_ids() -> list[str]:
-    return [f"stack{sid}" for sid in sorted(install.all_manifests())]
+    return [str(sid) for sid in sorted(install.all_manifests())]
 
 
 def _upgrade_components(stack: str) -> list[str]:
+    if not stack.isdigit():
+        return []
+    internal_stack = f"stack{int(stack)}"
     catalog = component_inventory.compile_upgrade_catalog()
     for record in catalog["stacks"]:
-        if record["id"] == stack:
+        if record["id"] == internal_stack:
             return sorted(item["id"] for item in record["components"])
     return []
 
@@ -55,7 +58,7 @@ def _candidates(before: list[str]) -> list[str]:
             if len(tail) == 2:
                 return _upgrade_components(tail[1])
             if len(tail) == 3:
-                return ["clear", "set", "show"]
+                return ["clear", "set"]
             return []
         stack = tail[0]
         if stack in _stack_ids():
