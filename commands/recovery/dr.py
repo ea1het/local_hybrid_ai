@@ -37,6 +37,7 @@ ARTIFACT_EXTENSIONS = {
     "postgres-custom-dump": ".dump",
     "gitea-native-dump": ".zip",
 }
+DOCKER_RUNTIME_STRATEGIES = {"postgres-custom-dump", "gitea-native-dump"}
 
 
 class RecoveryError(RuntimeError):
@@ -362,6 +363,201 @@ def gitea_help_flags(text: str) -> list[str]:
     return sorted(set(re.findall(r"(?<![A-Za-z0-9-])--[a-z0-9][a-z0-9-]*", text.lower())))
 
 
+def runtime_resources(manifests: dict[int, dict], plan: list[int]):
+    for sid in plan:
+        manifest = manifests[sid]
+        for resource in manifest["recovery"].get("resources", []):
+            yield sid, manifest, resource
+
+
+def ensure_docker_preflight(
+    manifests: dict[int, dict],
+    plan: list[int],
+    docker_available: bool | None,
+) -> None:
+    needs_docker = any(
+        resource["strategy"] in DOCKER_RUNTIME_STRATEGIES
+        for _, _, resource in runtime_resources(manifests, plan)
+    )
+    available = shutil.which("docker") is not None if docker_available is None else docker_available
+    if needs_docker and not available:
+        raise RecoveryError("Docker CLI is required for runtime recovery preflight")
+
+
+def preflight_archive_source(
+    sid: int,
+    rid: str,
+    source: dict,
+    base_path: Path,
+) -> RuntimeCheck:
+    path = expand_runtime_path(source["path"], base_path)
+    if not path.exists():
+        raise RecoveryError(f"stack{sid} {rid}: declared runtime source does not exist: {path}")
+    if path.is_dir():
+        try:
+            nonempty = next(path.iterdir(), None) is not None
+        except OSError as exc:
+            raise RecoveryError(f"stack{sid} {rid}: cannot inspect runtime source: {exc}") from exc
+        if not nonempty:
+            raise RecoveryError(f"stack{sid} {rid}: declared runtime source directory is empty")
+    elif path.stat().st_size == 0:
+        raise RecoveryError(f"stack{sid} {rid}: declared runtime source file is empty")
+    return RuntimeCheck(
+        sid,
+        rid,
+        "runtime-source",
+        "OK",
+        True,
+        f"runtime path exists and is non-empty: {path}",
+    )
+
+
+def preflight_external_config_source(
+    sid: int,
+    rid: str,
+    source: dict,
+    values: dict[str, str],
+) -> RuntimeCheck:
+    if not values.get(source["key"], "").strip():
+        raise RecoveryError(f"stack{sid} {rid}: required protected configuration is missing or empty")
+    return RuntimeCheck(
+        sid,
+        rid,
+        "external-config",
+        "OK",
+        True,
+        "required protected value is present; value not displayed",
+    )
+
+
+def preflight_git_source(
+    sid: int,
+    rid: str,
+    source: dict,
+    values: dict[str, str],
+) -> RuntimeCheck:
+    repository_env = source.get("repository_env")
+    if repository_env:
+        if not values.get(repository_env, "").strip():
+            raise RecoveryError(f"stack{sid} {rid}: declared Git repository configuration is missing")
+        return RuntimeCheck(
+            sid,
+            rid,
+            "externalized-git",
+            "OK",
+            True,
+            "declared Git repository configuration is present; value not displayed",
+        )
+    return RuntimeCheck(
+        sid,
+        rid,
+        "externalized-git",
+        "DECLARED",
+        False,
+        "externalized Git source declared without repository_env; contract presence only",
+    )
+
+
+def preflight_docker_service(
+    sid: int,
+    rid: str,
+    manifest: dict,
+    source: dict,
+    runner: CommandRunner,
+) -> RuntimeCheck:
+    service = source["service"]
+    if not owned_container(manifest, service):
+        raise RecoveryError(
+            f"stack{sid} {rid}: source service {service} is not declared as stack-owned container"
+        )
+    state = docker_state(service, runner)
+    if state is None:
+        raise RecoveryError(f"stack{sid} {rid}: declared Docker service is absent: {service}")
+    if not state.startswith("running"):
+        raise RecoveryError(f"stack{sid} {rid}: declared Docker service is not running: {service} ({state})")
+    return RuntimeCheck(sid, rid, "docker-service", "OK", True, f"{service}={state}")
+
+
+def preflight_postgres_source(
+    sid: int,
+    rid: str,
+    source: dict,
+    values: dict[str, str],
+    runner: CommandRunner,
+) -> RuntimeCheck:
+    db = require_env_value(values, source["database_env"], label="database configuration")
+    user_env = source.get("user_env")
+    user = require_env_value(values, user_env, label="database user configuration") if user_env else "postgres"
+    cp = runner(["docker", "exec", source["service"], "pg_isready", "-d", db, "-U", user])
+    if cp.returncode != 0:
+        raise RecoveryError(f"stack{sid} {rid}: PostgreSQL source did not pass pg_isready")
+    return RuntimeCheck(
+        sid,
+        rid,
+        "postgres-source",
+        "OK",
+        True,
+        "configured database/user resolved and PostgreSQL accepts connections",
+    )
+
+
+def preflight_gitea_source(
+    sid: int,
+    rid: str,
+    source: dict,
+    runner: CommandRunner,
+) -> RuntimeCheck:
+    service = source["service"]
+    version_cp = runner(["docker", "exec", service, "gitea", "--version"])
+    if version_cp.returncode != 0 or not version_cp.stdout.strip():
+        raise RecoveryError(f"stack{sid} {rid}: cannot determine Gitea version")
+    help_cp = runner(["docker", "exec", service, "gitea", "dump", "--help"])
+    if help_cp.returncode != 0:
+        raise RecoveryError(f"stack{sid} {rid}: gitea dump --help is unavailable")
+    flags = gitea_help_flags(help_cp.stdout + "\n" + help_cp.stderr)
+    version = version_cp.stdout.strip().splitlines()[0]
+    return RuntimeCheck(
+        sid,
+        rid,
+        "gitea-native-dump",
+        "OK",
+        True,
+        f"version={version}; dump help available; flags={','.join(flags) if flags else '(none parsed)'}",
+    )
+
+
+def preflight_runtime_resource(
+    sid: int,
+    manifest: dict,
+    resource: dict,
+    *,
+    values: dict[str, str],
+    base_path: Path,
+    runner: CommandRunner,
+) -> list[RuntimeCheck]:
+    rid = resource["id"]
+    strategy = resource["strategy"]
+    source = resource["config"]["source"]
+
+    if strategy == "archive":
+        return [preflight_archive_source(sid, rid, source, base_path)]
+    if strategy == "external-config":
+        return [preflight_external_config_source(sid, rid, source, values)]
+    if strategy == "git":
+        return [preflight_git_source(sid, rid, source, values)]
+    if strategy == "postgres-custom-dump":
+        return [
+            preflight_docker_service(sid, rid, manifest, source, runner),
+            preflight_postgres_source(sid, rid, source, values, runner),
+        ]
+    if strategy == "gitea-native-dump":
+        return [
+            preflight_docker_service(sid, rid, manifest, source, runner),
+            preflight_gitea_source(sid, rid, source, runner),
+        ]
+    return []
+
+
 def preflight_runtime_sources(
     manifests: dict[int, dict],
     plan: list[int],
@@ -377,132 +573,18 @@ def preflight_runtime_sources(
         RuntimeCheck(None, None, "base-path", "OK", True, f"resolved to {base_path}"),
     ]
 
-    needs_docker = False
-    for sid in plan:
-        for resource in manifests[sid]["recovery"].get("resources", []):
-            if resource["strategy"] in {"postgres-custom-dump", "gitea-native-dump"}:
-                needs_docker = True
-                break
-
-    if docker_available is None:
-        docker_available = shutil.which("docker") is not None
-    if needs_docker and not docker_available:
-        raise RecoveryError("Docker CLI is required for runtime recovery preflight")
-
-    for sid in plan:
-        manifest = manifests[sid]
-        for resource in manifest["recovery"].get("resources", []):
-            rid = resource["id"]
-            strategy = resource["strategy"]
-            source = resource["config"]["source"]
-
-            if strategy == "archive":
-                path = expand_runtime_path(source["path"], base_path)
-                if not path.exists():
-                    raise RecoveryError(f"stack{sid} {rid}: declared runtime source does not exist: {path}")
-                if path.is_dir():
-                    try:
-                        nonempty = next(path.iterdir(), None) is not None
-                    except OSError as exc:
-                        raise RecoveryError(f"stack{sid} {rid}: cannot inspect runtime source: {exc}") from exc
-                    if not nonempty:
-                        raise RecoveryError(f"stack{sid} {rid}: declared runtime source directory is empty")
-                    detail = f"runtime path exists and is non-empty: {path}"
-                else:
-                    if path.stat().st_size == 0:
-                        raise RecoveryError(f"stack{sid} {rid}: declared runtime source file is empty")
-                    detail = f"runtime path exists and is non-empty: {path}"
-                checks.append(RuntimeCheck(sid, rid, "runtime-source", "OK", True, detail))
-                continue
-
-            if strategy == "external-config":
-                key = source["key"]
-                present = bool(values.get(key, "").strip())
-                if not present:
-                    raise RecoveryError(f"stack{sid} {rid}: required protected configuration is missing or empty")
-                checks.append(
-                    RuntimeCheck(
-                        sid,
-                        rid,
-                        "external-config",
-                        "OK",
-                        True,
-                        "required protected value is present; value not displayed",
-                    )
-                )
-                continue
-
-            if strategy == "git":
-                repository_env = source.get("repository_env")
-                if repository_env:
-                    if not values.get(repository_env, "").strip():
-                        raise RecoveryError(f"stack{sid} {rid}: declared Git repository configuration is missing")
-                    detail = "declared Git repository configuration is present; value not displayed"
-                    status = "OK"
-                    blocking = True
-                else:
-                    detail = "externalized Git source declared without repository_env; contract presence only"
-                    status = "DECLARED"
-                    blocking = False
-                checks.append(RuntimeCheck(sid, rid, "externalized-git", status, blocking, detail))
-                continue
-
-            if strategy in {"postgres-custom-dump", "gitea-native-dump"}:
-                service = source["service"]
-                if not owned_container(manifest, service):
-                    raise RecoveryError(
-                        f"stack{sid} {rid}: source service {service} is not declared as stack-owned container"
-                    )
-                state = docker_state(service, runner)
-                if state is None:
-                    raise RecoveryError(f"stack{sid} {rid}: declared Docker service is absent: {service}")
-                if not state.startswith("running"):
-                    raise RecoveryError(f"stack{sid} {rid}: declared Docker service is not running: {service} ({state})")
-                checks.append(
-                    RuntimeCheck(sid, rid, "docker-service", "OK", True, f"{service}={state}")
-                )
-
-            if strategy == "postgres-custom-dump":
-                db = require_env_value(values, source["database_env"], label="database configuration")
-                user_env = source.get("user_env")
-                user = require_env_value(values, user_env, label="database user configuration") if user_env else "postgres"
-                cp = runner(["docker", "exec", source["service"], "pg_isready", "-d", db, "-U", user])
-                if cp.returncode != 0:
-                    raise RecoveryError(f"stack{sid} {rid}: PostgreSQL source did not pass pg_isready")
-                checks.append(
-                    RuntimeCheck(
-                        sid,
-                        rid,
-                        "postgres-source",
-                        "OK",
-                        True,
-                        "configured database/user resolved and PostgreSQL accepts connections",
-                    )
-                )
-                continue
-
-            if strategy == "gitea-native-dump":
-                service = source["service"]
-                version_cp = runner(["docker", "exec", service, "gitea", "--version"])
-                if version_cp.returncode != 0 or not version_cp.stdout.strip():
-                    raise RecoveryError(f"stack{sid} {rid}: cannot determine Gitea version")
-                help_cp = runner(["docker", "exec", service, "gitea", "dump", "--help"])
-                if help_cp.returncode != 0:
-                    raise RecoveryError(f"stack{sid} {rid}: gitea dump --help is unavailable")
-                flags = gitea_help_flags(help_cp.stdout + "\n" + help_cp.stderr)
-                version = version_cp.stdout.strip().splitlines()[0]
-                checks.append(
-                    RuntimeCheck(
-                        sid,
-                        rid,
-                        "gitea-native-dump",
-                        "OK",
-                        True,
-                        f"version={version}; dump help available; flags={','.join(flags) if flags else '(none parsed)'}",
-                    )
-                )
-                continue
-
+    ensure_docker_preflight(manifests, plan, docker_available)
+    for sid, manifest, resource in runtime_resources(manifests, plan):
+        checks.extend(
+            preflight_runtime_resource(
+                sid,
+                manifest,
+                resource,
+                values=values,
+                base_path=base_path,
+                runner=runner,
+            )
+        )
     return checks
 
 
