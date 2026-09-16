@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -45,7 +46,6 @@ def _stack_selector_error(token: str, *, json_output: bool, command: str) -> int
 
 
 def _upgrade_public_args(args: list[str]) -> tuple[list[str] | None, str | None]:
-    """Translate the numeric public stack selector to the internal manifest id."""
     if not args or args[0] in {"--offline", "--yes", "check", "adopt"}:
         return list(args), None
     translated = list(args)
@@ -113,11 +113,27 @@ def _backup_root(override: str | None = None) -> Path:
     return Path(raw).expanduser().resolve()
 
 
+def _recovery_archive_module():
+    recovery_path = str(RECOVERY)
+    added = recovery_path not in sys.path
+    if added:
+        sys.path.insert(0, recovery_path)
+    try:
+        return importlib.import_module("dr_archive")
+    finally:
+        if added:
+            try:
+                sys.path.remove(recovery_path)
+            except ValueError:
+                pass
+
+
 def _backup_sets(root: Path) -> list[dict[str, object]]:
     if not root.exists():
         return []
     if not root.is_dir():
         raise OSError(f"backup root is not a directory: {root}")
+    archive = _recovery_archive_module()
     records: list[dict[str, object]] = []
     for path in root.iterdir():
         if not path.is_dir() or path.is_symlink() or not BACKUP_SET_RE.fullmatch(path.name):
@@ -128,16 +144,11 @@ def _backup_sets(root: Path) -> list[dict[str, object]]:
         if metadata_path.is_file() and not metadata_path.is_symlink() and checksums_path.is_file() and not checksums_path.is_symlink():
             try:
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-                valid = (
-                    isinstance(metadata, dict)
-                    and metadata.get("schema_version") == 1
-                    and metadata.get("kind") == "local-hybrid-ai-backup-set"
-                    and isinstance(metadata.get("source_commit"), str)
-                    and isinstance(metadata.get("resolved_stacks"), list)
-                )
-                if valid:
-                    record.update({"status": "completed", "created_at": metadata.get("created_at"), "source_commit": metadata.get("source_commit"), "resolved_stacks": metadata.get("resolved_stacks", [])})
-            except (OSError, json.JSONDecodeError):
+                if not isinstance(metadata, dict):
+                    raise archive.ArchiveBackupError("backup metadata must be an object")
+                archive.validate_completed_metadata(metadata)
+                record.update({"status": "completed", "created_at": metadata["created_at"], "source_commit": metadata["source_commit"], "resolved_stacks": metadata["resolved_stacks"]})
+            except (OSError, json.JSONDecodeError, archive.ArchiveBackupError, KeyError, TypeError):
                 pass
         records.append(record)
     return sorted(records, key=lambda item: str(item["name"]), reverse=True)
@@ -147,7 +158,7 @@ def list_backup_sets(backup_root: str | None, *, json_output: bool) -> int:
     root = _backup_root(backup_root)
     try:
         records = _backup_sets(root)
-    except OSError as exc:
+    except (OSError, ImportError) as exc:
         if json_output:
             _json_error("BACKUP_ROOT_INVALID", str(exc), command="restore.list-backup-sets")
         else:
@@ -207,6 +218,10 @@ def restore_command(args: list[str], json_output: bool) -> int:
     elif action == "drill":
         script, internal = RECOVERY / "restore-drill.py", [ns.backup_set, "--destination", ns.destination]
     elif action == "apply":
+        if ns.execute and not ns.confirm_clean_target:
+            parser.error("restore apply --execute requires --confirm-clean-target")
+        if ns.check_clean_target and ns.confirm_clean_target:
+            parser.error("--confirm-clean-target is valid only with --execute")
         script, internal = RECOVERY / "restore-live.py", [ns.backup_set]
         internal.append("--check-clean-target" if ns.check_clean_target else "--execute")
         if ns.confirm_clean_target:
