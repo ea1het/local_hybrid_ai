@@ -125,11 +125,12 @@ A selectable component returns to inventory-only when a newly discovered upstrea
 
 ## Blocker vocabulary
 
-Blocker reasons describe missing qualification rather than implementation history:
+Blocker reasons describe current component/executor state rather than implementation chronology:
 
 - `executor-not-qualified`: mutation/readiness/verification procedure is not yet fully qualified.
 - `migration-policy-required`: migration/compatibility/recovery semantics remain unresolved.
-- `local-build`: normal registry-version selection is not applicable.
+- `local-build`: the component is produced locally and normal registry-version selection is not applicable.
+- `local-managed`: the component lifecycle is managed locally and has no independent registry-version upgrade path.
 - `non-versioned-component`: the component does not have a meaningful versioned upgrade path.
 
 Source-layout accidents such as Compose pinning are not permanent blockers. Source representation and executor qualification are separate concerns.
