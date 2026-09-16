@@ -21,10 +21,12 @@ Every public command that identifies a stack uses the numeric stack id shown by 
 ├── install <installer arguments...>
 ├── start <0..7>
 ├── stop <0..7>
-├── backup [--destination PATH]
-├── restore plan BACKUP_SET --dry-run
+├── backup [--destination PATH] [--yes]
+├── restore list-backup-sets [--backup-root PATH]
+├── restore plan BACKUP_SET
 ├── restore drill BACKUP_SET --destination PATH
-├── restore apply BACKUP_SET <clean-target mode/options>
+├── restore apply BACKUP_SET --check-clean-target
+├── restore apply BACKUP_SET --execute --confirm-clean-target [--memory-sync-ssh-bootstrap PATH]
 ├── restore resume BACKUP_SET --memory-sync-ssh-bootstrap PATH
 ├── inventory rescan
 ├── status
@@ -65,15 +67,24 @@ sudo ./local-ai start 5
 ## `backup` / `restore`
 
 ```bash
-./local-ai backup
-./local-ai backup --destination /path/to/backup-root
-./local-ai restore plan /path/to/backup-set --dry-run
+./local-ai backup --yes
+./local-ai backup --destination /path/to/backup-root --yes
+./local-ai restore list-backup-sets
+./local-ai restore list-backup-sets --backup-root /path/to/backup-root
+./local-ai restore plan /path/to/backup-set
 ./local-ai restore drill /path/to/backup-set --destination /isolated/path
 ./local-ai restore apply /path/to/backup-set --check-clean-target
+./local-ai restore apply /path/to/backup-set --execute --confirm-clean-target
 ./local-ai restore resume /path/to/backup-set --memory-sync-ssh-bootstrap /secure/bootstrap
 ```
 
-Backup creates one manifest-driven recovery point. The protected operational `.env` is sensitive global state. Managed resources use their declared recovery strategy; reconstructable resources are not promoted to backup artifacts merely because runtime files exist. Restore validation and clean-target gates belong to the recovery engine and the CLI never manufactures destructive consent. [DR documentation](../dr/README.md) describes the recovery phases.
+Backup creates one manifest-driven recovery point. In an interactive terminal, omitting `--yes` produces a confirmation prompt before creation. Non-interactive and JSON execution require `--yes`; lack of confirmation fails closed. `--destination` selects a backup root without changing the recovery-set publication semantics.
+
+`restore list-backup-sets` lists candidate recovery points under `DR_BACKUP_ROOT`, the default backup root, or an explicit `--backup-root`. A set is reported as `COMPLETED` only when its publication structure exists and `backup.json` passes the recovery engine's authoritative completed-metadata schema validation. The listing does not replace artifact checksum verification performed by recovery operations.
+
+`restore plan` is the public read-only planning command. The private recovery engine may implement that operation through a dry-run flag, but that flag is deliberately not part of the public CLI grammar. `restore apply --execute` requires the explicit `--confirm-clean-target` consent flag at the public boundary. Conversely, `--confirm-clean-target` is rejected with the read-only `--check-clean-target` mode.
+
+The protected operational `.env` is sensitive global state. Managed resources use their declared recovery strategy; reconstructable resources are not promoted to backup artifacts merely because runtime files exist. Restore validation and clean-target gates belong to the recovery engine and the CLI never manufactures destructive consent. [DR documentation](../dr/README.md) describes the recovery phases.
 
 ## `inventory rescan`
 
