@@ -66,8 +66,10 @@ def _candidates(before: list[str]) -> list[str]:
         return ["rescan"] if not tail else []
     if command == "upgrade":
         if not tail:
-            return ["--offline", "--yes", *UPGRADE_ACTIONS, *_stack_ids()]
-        if tail[0] in {"--offline", "--yes", "check", "adopt"}:
+            return [*_stack_ids(), "adopt", "check", "--offline", "policy", "--yes"]
+        if tail[0] == "adopt":
+            return _stack_ids() if len(tail) == 1 else []
+        if tail[0] in {"--offline", "--yes", "check"}:
             return []
         if tail[0] == "policy":
             if len(tail) == 1:
@@ -93,7 +95,7 @@ def complete(words: list[str]) -> list[str]:
     """Return newline-safe candidates for argv words including current prefix."""
     prefix = words[-1] if words else ""
     before = words[:-1] if words else []
-    return sorted(value for value in _candidates(before) if value.startswith(prefix))
+    return [value for value in _candidates(before) if value.startswith(prefix)]
 
 
 def shell_script(shell: str) -> str:
