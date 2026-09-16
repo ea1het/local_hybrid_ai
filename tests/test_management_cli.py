@@ -49,6 +49,9 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertEqual(completion.complete(["start", ""]), [str(i) for i in range(8)])
         self.assertEqual(completion.complete(["stop", ""]), [str(i) for i in range(8)])
 
+    def test_completion_backup_exposes_confirmation_and_destination(self):
+        self.assertEqual(completion.complete(["backup", ""]), ["--destination", "--yes"])
+
     def test_completion_restore_actions_include_backup_listing(self):
         self.assertEqual(completion.complete(["restore", ""]), ["apply", "drill", "list-backup-sets", "plan", "resume"])
 
@@ -70,6 +73,63 @@ class ManagementCliContractTests(unittest.TestCase):
     def test_completion_rejects_unknown_shell(self):
         cp = self.run_cli("completion", "fish")
         self.assertNotEqual(cp.returncode, 0)
+
+    def test_backup_help_is_owned_by_local_ai(self):
+        cp = self.run_cli("backup", "--help")
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertIn("usage: local-ai backup", cp.stdout.lower())
+        self.assertIn("--destination", cp.stdout)
+        self.assertIn("--yes", cp.stdout)
+        self.assertNotIn("backup-all.py", cp.stdout + cp.stderr)
+
+    def test_noninteractive_backup_requires_yes(self):
+        cp = self.run_cli("backup")
+        self.assertEqual(cp.returncode, 2)
+        self.assertIn("CONFIRMATION_REQUIRED", cp.stderr)
+
+    def test_json_backup_requires_yes_and_returns_json_error(self):
+        cp = self.run_cli("--json", "backup")
+        self.assertEqual(cp.returncode, 2)
+        payload = json.loads(cp.stdout)
+        self.assertEqual(payload["command"], "backup")
+        self.assertEqual(payload["error"]["code"], "CONFIRMATION_REQUIRED")
+        self.assertEqual(cp.stderr, "")
+
+    def test_backup_yes_dispatches_to_recovery_subpackage(self):
+        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.main(["backup", "--yes"])
+        self.assertEqual(rc, 0)
+        path, args = run.call_args.args
+        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
+        self.assertEqual(args, [])
+
+    def test_backup_destination_and_yes_pass_through_public_cli(self):
+        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.main(["backup", "--destination", "/mnt/backup/local-ai", "--yes"])
+        self.assertEqual(rc, 0)
+        path, args = run.call_args.args
+        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
+        self.assertEqual(args, ["--destination", "/mnt/backup/local-ai"])
+
+    def test_json_backup_yes_preserves_destination_and_adds_json_flag(self):
+        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.main(["--json", "backup", "--destination", "/mnt/backup/local-ai", "--yes"])
+        self.assertEqual(rc, 0)
+        path, args = run.call_args.args
+        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
+        self.assertEqual(args, ["--destination", "/mnt/backup/local-ai", "--json"])
+
+    def test_interactive_backup_accepts_explicit_yes(self):
+        with mock.patch.object(sys.stdin, "isatty", return_value=True), mock.patch("builtins.input", return_value="yes"), mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.backup_command([], json_output=False)
+        self.assertEqual(rc, 0)
+        run.assert_called_once()
+
+    def test_interactive_backup_decline_does_not_execute(self):
+        with mock.patch.object(sys.stdin, "isatty", return_value=True), mock.patch("builtins.input", return_value="n"), mock.patch.object(cli, "_run_internal", return_value=0) as run:
+            rc = cli.backup_command([], json_output=False)
+        self.assertEqual(rc, 1)
+        run.assert_not_called()
 
     def test_restore_dispatches_public_grammar_to_private_engines(self):
         cases = {
@@ -136,30 +196,6 @@ class ManagementCliContractTests(unittest.TestCase):
         self.assertEqual(payload["command"], "restore.list-backup-sets")
         self.assertTrue(payload["success"])
         self.assertEqual(payload["backup_sets"], [])
-
-    def test_backup_dispatch_uses_recovery_subpackage(self):
-        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
-            rc = cli.main(["backup"])
-        self.assertEqual(rc, 0)
-        path, args = run.call_args.args
-        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
-        self.assertEqual(args, [])
-
-    def test_backup_destination_option_passes_through_public_cli(self):
-        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
-            rc = cli.main(["backup", "--destination", "/mnt/backup/local-ai"])
-        self.assertEqual(rc, 0)
-        path, args = run.call_args.args
-        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
-        self.assertEqual(args, ["--destination", "/mnt/backup/local-ai"])
-
-    def test_json_backup_preserves_destination_and_adds_json_flag(self):
-        with mock.patch.object(cli, "_run_internal", return_value=0) as run:
-            rc = cli.main(["--json", "backup", "--destination", "/mnt/backup/local-ai"])
-        self.assertEqual(rc, 0)
-        path, args = run.call_args.args
-        self.assertEqual(path, ROOT / "commands" / "recovery" / "backup-all.py")
-        self.assertEqual(args, ["--destination", "/mnt/backup/local-ai", "--json"])
 
 
 if __name__ == "__main__":
