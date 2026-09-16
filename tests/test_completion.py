@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Contracts for Bash/Zsh completion generation and installation."""
 from __future__ import annotations
-import contextlib,io,tempfile,unittest
+import contextlib,io,json,tempfile,unittest
 from pathlib import Path
 from unittest import mock
 from commands import cli,completion
@@ -41,4 +41,14 @@ class CompletionTests(unittest.TestCase):
   output=io.StringIO()
   with contextlib.redirect_stdout(output):rc=cli.main(["completion","bash"])
   self.assertEqual(rc,0);self.assertIn("__complete",output.getvalue())
+ def test_completion_install_fails_closed_without_global_yes(self):
+  with mock.patch("commands.completion.install_completion") as install:rc=cli.main(["completion","install"])
+  self.assertEqual(rc,2);install.assert_not_called()
+ def test_completion_install_uses_global_yes(self):
+  with mock.patch("commands.completion.install_completion",return_value=("bash",Path("/tmp/local-ai"))) as install,mock.patch("commands.cli.render.render_cli"):rc=cli.main(["completion","install","--yes"])
+  self.assertEqual(rc,0);install.assert_called_once_with()
+ def test_completion_json_is_pure_public_payload(self):
+  out=io.StringIO()
+  with contextlib.redirect_stdout(out):rc=cli.main(["completion","bash","--json"])
+  self.assertEqual(rc,0);payload=json.loads(out.getvalue());self.assertEqual(payload["command"],"completion.script");self.assertEqual(payload["shell"],"bash")
 if __name__=="__main__":unittest.main()
