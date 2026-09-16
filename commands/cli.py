@@ -32,6 +32,16 @@ def _upgrade_public_args(args):
  token=translated[pos]
  if not token.isdigit():return None,token
  translated[pos]=f"stack{int(token)}";return translated,None
+def _upgrade_mutates(args):return "select" in args or (bool(args) and args[-1]=="clear") or (bool(args) and args[0]=="policy" and "set" in args)
+def _confirm_upgrade_mutation(args,context):
+ if not _upgrade_mutates(args) or context.assume_yes:return True,0
+ message="upgrade mutation requires --yes when input is non-interactive"
+ if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command="upgrade");return False,2
+ if not sys.stdin.isatty():print(f"UPGRADE ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr);return False,2
+ try:answer=input("Apply this upgrade plan/policy mutation? [y/N] ")
+ except EOFError:return False,1
+ if answer.strip().lower() not in {"y","yes"}:print("Upgrade mutation cancelled.");return False,1
+ return True,0
 def _run_internal_json(path,args,*,command):
  cp=subprocess.run([sys.executable,str(path),*args,"--json"],cwd=ROOT,text=True,capture_output=True,check=False)
  if cp.returncode!=0:_json_error("INTERNAL_COMMAND_FAILED",(cp.stderr or cp.stdout or f"{command} failed").strip(),command=command);return cp.returncode
@@ -164,8 +174,10 @@ def main(argv=None):
   if len(raw)>=2 and raw[1]=="adopt":return _upgrade_adopt(raw[2:],context=context)
   args,invalid=_upgrade_public_args(raw[1:])
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
-  if context.assume_yes:args=[*(args or []),"--yes"]
-  payload,rc=upgrade_entry.build_payload(args or []);return _render_upgrade(payload,rc,context)
+  args=args or [];allowed,rc=_confirm_upgrade_mutation(args,context)
+  if not allowed:return rc
+  if context.assume_yes and not args:args=["--yes"]
+  payload,rc=upgrade_entry.build_payload(args);return _render_upgrade(payload,rc,context)
  p=build_parser();ns=p.parse_args(raw)
  if ns.command is None:p.print_help();return 0
  if ns.command=="status":payload=status.json_payload();render.render_json(payload) if context.json_output else render.render_cli(status.cli_text(payload));return 0 if payload["success"] else 1
