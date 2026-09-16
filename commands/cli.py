@@ -4,7 +4,7 @@
 """Public command dispatcher behind the root ``./local-ai`` entry point."""
 from __future__ import annotations
 import argparse,importlib,json,os,re,subprocess,sys
-from dataclasses import dataclass
+from dataclasses import dataclass,replace
 from pathlib import Path
 from commands import completion,doctor,install_entry,inventory,render,runtime_lifecycle,status,upgrade_adopt,upgrade_entry
 ROOT=Path(__file__).resolve().parents[1];RECOVERY=ROOT/"commands"/"recovery";SCHEMA_VERSION="1";DEFAULT_BACKUP_ROOT=Path("/opt/local-hybrid-ai-backups");BACKUP_ROOT_ENV="DR_BACKUP_ROOT";BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$")
@@ -16,6 +16,35 @@ class CLIContext:json_output:bool=False;assume_yes:bool=False
 def _extract_global_options(argv):return [x for x in argv if x not in {"--json","--yes"}],CLIContext("--json" in argv,"--yes" in argv)
 def _add_global_help(parser):
  parser.add_argument("--json",action="store_true",help="emit one machine-readable JSON document; valid before or after any public command");parser.add_argument("--yes",action="store_true",help="grant non-interactive consent for operations that require it; accepted as a no-op by read-only commands");return parser
+def _leaf_parser(prog,description):return _add_global_help(PublicArgumentParser(prog=prog,description=description))
+def _upgrade_help(path):
+ if len(path)==1:upgrade_entry.public_parser().print_help();return
+ leaf=path[1:]
+ if leaf[0]=="check":
+  p=_leaf_parser("local-ai upgrade check","Inspect installed and available component versions");p.add_argument("--offline",action="store_true",help="do not query upstream registries");p.print_help();return
+ if leaf[0]=="adopt":_leaf_parser("local-ai upgrade adopt","Inspect the observed runtime baseline; use --yes to persist missing version-authority keys").print_help();return
+ if leaf[0]=="policy":
+  p=_leaf_parser("local-ai upgrade policy","Show or mutate the upgrade policy for one public stack/component");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.add_argument("component",nargs="?",metavar="COMPONENT",help="required when the stack has multiple components");p.add_argument("policy_action",nargs="?",metavar="ACTION",help="set POLICY or clear; omit to show policy");p.add_argument("policy",nargs="?",metavar="POLICY",choices=("patch-series","minor-series","major-series"),help="policy for ACTION=set: patch-series, minor-series or major-series");p.print_help();return
+ if leaf[0].isdigit():
+  p=_leaf_parser("local-ai upgrade STACK [COMPONENT]","Stage or clear a component upgrade selection");p.add_argument("action",choices=("select","clear"),help="stage a VERSION or clear the staged selection");p.add_argument("version",nargs="?",metavar="VERSION",help="required by select");p.add_argument("--force",action="store_true",help="accept administrator risk for a supported forced inventory-only recipe");p.print_help();return
+ upgrade_entry.public_parser().print_help()
+def _public_help(argv):
+ semantic=[arg for arg in argv if arg not in {"--json","--yes"}]
+ if not semantic or semantic[-1] not in {"-h","--help"}:return False
+ path=semantic[:-1]
+ if not path:build_parser().print_help();return True
+ if path[0]=="install":install_entry.parser().print_help();return True
+ if path[0]=="backup":build_backup_parser().print_help();return True
+ if path[0]=="restore":build_restore_parser().parse_args([*path[1:],"--help"]);return True
+ if path[0] in {"status","doctor"}:_leaf_parser(f"local-ai {path[0]}","Show operational status" if path[0]=="status" else "Diagnose management prerequisites and environment consistency").print_help();return True
+ if path[0] in {"start","stop"}:
+  p=_leaf_parser(f"local-ai {path[0]}",f"{path[0].capitalize()} one prepared stack runtime");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.print_help();return True
+ if path[0]=="inventory":
+  p=_leaf_parser("local-ai inventory","Validate and rescan manifest-declared component topology");p.add_argument("action",nargs="?",choices=("rescan",),help="rescan manifest-declared topology and persist the derived runtime snapshot");p.print_help();return True
+ if path[0]=="completion":
+  p=_leaf_parser("local-ai completion","Generate, install or inspect shell completion integration");p.add_argument("action",nargs="?",choices=("bash","zsh","install","status"));p.print_help();return True
+ if path[0]=="upgrade":_upgrade_help(path);return True
+ return False
 def _run_internal(path,args):return subprocess.run([sys.executable,str(path),*args],cwd=ROOT).returncode
 def _json_error(code,message,*,command=None):
  payload={"schema_version":SCHEMA_VERSION,"success":False,"error":{"code":code,"message":message}}
@@ -25,17 +54,22 @@ def _usage_error(message,*,context,command=None):
  if context.json_output:_json_error("CLI_USAGE",message,command=command)
  else:print(f"ERROR [CLI_USAGE]: {message}",file=sys.stderr)
  return 2
+def _confirmation_required(message,*,context,command):
+ if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command=command)
+ else:print(f"ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr)
+ return 2
 def _stack_selector_error(token,*,context,command):
- message=f"stack selector must be a numeric id such as 7, not {token!r}"
+ message=f"stack selector must be a numeric id from 0 through 7, not {token!r}"
  if context.json_output:_json_error("STACK_SELECTOR_INVALID",message,command=command)
  else:print(f"ERROR [STACK_SELECTOR_INVALID]: {message}",file=sys.stderr)
  return 2
+def _public_stack_id(token):return token.isdigit() and 0<=int(token)<=7
 def _upgrade_public_args(args):
  if not args or args[0] in {"--offline","check","adopt"}:return list(args),None
  translated=list(args);pos=1 if translated[0]=="policy" else 0
  if len(translated)<=pos:return translated,None
  token=translated[pos]
- if not token.isdigit():return None,token
+ if not _public_stack_id(token):return None,token
  translated[pos]=f"stack{int(token)}";return translated,None
 def _run_internal_json(path,args,*,command):
  cp=subprocess.run([sys.executable,str(path),*args,"--json"],cwd=ROOT,text=True,capture_output=True,check=False)
@@ -49,8 +83,8 @@ def backup_command(args,context):
  try:ns=build_backup_parser().parse_args(args)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="backup")
  if not context.assume_yes:
-  if context.json_output:_json_error("CONFIRMATION_REQUIRED","backup creation requires --yes in JSON/non-interactive mode",command="backup");return 2
-  if not sys.stdin.isatty():print("ERROR [CONFIRMATION_REQUIRED]: backup creation requires --yes when input is not interactive",file=sys.stderr);return 2
+  if context.json_output:return _confirmation_required("backup creation requires --yes in JSON/non-interactive mode",context=context,command="backup")
+  if not sys.stdin.isatty():return _confirmation_required("backup creation requires --yes when input is not interactive",context=context,command="backup")
   destination=ns.destination or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)
   try:answer=input(f"Create a new atomic DR backup set under {destination}? [y/N] ")
   except EOFError:print("Backup cancelled.");return 1
@@ -165,29 +199,40 @@ def _confirm_upgrade_mutation(args,context):
  try:answer=input("Modify the persisted upgrade selection/policy state? [y/N] ")
  except EOFError:return False
  return answer.strip().lower() in {"y","yes"}
+def _interactive_consent(raw,context):
+ if context.assume_yes or context.json_output or not sys.stdin.isatty():return context
+ prompt=None
+ if raw[:2]==["completion","install"]:prompt="Install shell completion integration? [y/N] "
+ elif raw[:2]==["inventory","rescan"]:prompt="Persist the derived component inventory snapshot? [y/N] "
+ elif raw and raw[0]=="install" and not any(flag in raw[1:] for flag in ("--plan","--dry-run")):prompt="Execute the resolved stack installation/reconciliation plan? [y/N] "
+ if prompt is None:return context
+ try:answer=input(prompt)
+ except EOFError:return context
+ return replace(context,assume_yes=True) if answer.strip().lower() in {"y","yes"} else context
 def main(argv=None):
  original=list(sys.argv[1:] if argv is None else argv)
  if original and original[0]=="__complete":
   try:print("\n".join(completion.complete(original[1:])));return 0
   except Exception:return 0
- raw,context=_extract_global_options(original)
+ if _public_help(original):return 0
+ raw,context=_extract_global_options(original);context=_interactive_consent(raw,context)
  if raw and raw[0]=="completion":return _completion_command(raw[1:],context)
  if raw and raw[0]=="install":
   args=[*raw[1:],*( ["--yes"] if context.assume_yes else [])];payload,rc=install_entry.json_payload(args)
   if context.json_output:render.render_json(payload)
-  elif payload["success"]:render.render_cli(f"INSTALL: {'PASS' if rc==0 else 'FAIL'}\n- mode: {payload['mode']}\n- resolved stacks: {', '.join(payload['resolved_stacks'])}\n- executed: {'yes' if payload['executed'] else 'no'}")
+  elif payload["success"]:render.render_cli(install_entry.cli_text(payload))
   else:print(f"INSTALL ERROR [{payload['error']['code']}]: {payload['error']['message']}",file=sys.stderr)
   return rc
  if raw and raw[0]=="backup":return backup_command(raw[1:],context)
  if raw and raw[0]=="restore":return restore_command(raw[1:],context)
  if raw and raw[0]=="inventory":
+  if raw[1:]==["rescan"] and not context.assume_yes:return _confirmation_required("inventory rescan writes the derived runtime snapshot and requires --yes",context=context,command="inventory.rescan")
   payload=inventory.json_payload(raw[1:]);render.render_json(payload) if context.json_output else render.render_cli(inventory.cli_text(payload));return 0 if payload["success"] else 1
  if raw and raw[0]=="upgrade":
   if len(raw)>=2 and raw[1]=="adopt":return _upgrade_adopt(raw[2:],context=context)
   args,invalid=_upgrade_public_args(raw[1:])
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
   if not _confirm_upgrade_mutation(args or [],context):return 2
-  if context.assume_yes and not args:args=["--yes"]
   payload,rc=upgrade_entry.build_payload(args or []);return _render_upgrade(payload,rc,context)
  p=build_parser()
  try:ns=p.parse_args(raw)
@@ -196,6 +241,6 @@ def main(argv=None):
  if ns.command=="status":payload=status.json_payload();render.render_json(payload) if context.json_output else render.render_cli(status.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command=="doctor":payload=doctor.json_payload();render.render_json(payload) if context.json_output else render.render_cli(doctor.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command in {"start","stop"}:
-  if not ns.stack.isdigit():return _stack_selector_error(ns.stack,context=context,command=ns.command)
+  if not _public_stack_id(ns.stack):return _stack_selector_error(ns.stack,context=context,command=ns.command)
   payload=runtime_lifecycle.json_payload(ns.command,ns.stack);render.render_json(payload) if context.json_output else render.render_cli(runtime_lifecycle.cli_text(payload));return 0 if payload["success"] else 1
  return _usage_error("unsupported command",context=context)
