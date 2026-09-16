@@ -6,9 +6,11 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Disaster recovery
 
-The DR rule is simple: preserve only state whose loss would prevent a correct rebuild. A Docker volume or bind mount is not a backup target unless a manifest declares it.
+[← DR index](README.md) · [Documentation map](../TOC.md) · [Management plane](../architecture/management-plane.md)
 
-`./local-ai` is the supported operator and integration boundary. DR implementation lives under `commands/recovery/`; external automation must not couple to its direct Python/script contracts.
+The DR rule preserves only state whose loss would prevent a correct rebuild. A Docker volume or bind mount is not a backup target unless a manifest declares it.
+
+`./local-ai` is the supported operator and integration boundary. DR implementation lives under `commands/recovery/`; external automation does not couple to its direct Python/script contracts.
 
 ```mermaid
 flowchart LR
@@ -36,38 +38,34 @@ flowchart LR
 
 Schemas are implementation-owned by [`../../commands/recovery/`](../../commands/recovery/): [`recovery.schema.json`](../../commands/recovery/recovery.schema.json) and [`backup-set.schema.json`](../../commands/recovery/backup-set.schema.json).
 
+## Recovery phases
+
+```mermaid
+flowchart LR
+    P["Plan"] --> PF["Preflight"] --> B["Backup / recovery point"] --> V["Validate"] --> S["Stage"] --> M["Managed"] --> L["Live"] --> R["Resume"] --> Q["READY / VERIFY"]
+```
+
+Planning and preflight are read-only. Preflight validates the destination and required runtime sources before backup execution; equal, descendant and ancestor overlap with protected source/runtime roots is rejected. Backup publication and restore application are explicit mutating phases. Staging and managed/live restore remain separate because they carry different safety and resumability properties.
+
 ## Backup
 
-Supported operator entry point:
+The supported operator entry point is:
 
 ```bash
 ./local-ai backup
 ```
 
-For machine consumers, use the JSON contract where supported:
+A machine consumer uses the JSON contract where supported:
 
 ```bash
 ./local-ai --json backup
 ```
 
-A real backup validates source/runtime prerequisites, stages sensitive data privately, performs integrity checks, writes `backup.json` and `checksums.sha256`, then atomically publishes one immutable `backup-*` directory. The operational `.env` is a sensitive global artifact; its contents never belong in logs or metadata. See [ADR-0001](../devel-docs/adr/0001-backup-operational-env.md) and [SDR-0001](../devel-docs/sdr/0001-protected-operational-config-in-backups.md).
+A real backup preflights source/runtime prerequisites, stages sensitive data privately, performs integrity checks, writes `backup.json` and `checksums.sha256`, then atomically publishes one immutable `backup-*` directory. The operational `.env` is a sensitive global artifact; its contents never belong in logs or metadata. [ADR-0001](../devel-docs/adr/0001-backup-operational-env.md) and [SDR-0001](../devel-docs/sdr/0001-protected-operational-config-in-backups.md) define the rationale.
 
 ## Restore
 
-```mermaid
-flowchart LR
-    CLI["./local-ai restore"] --> Validate["Validate backup + checksums"]
-    Validate --> Source["Materialize recorded source"]
-    Source --> Config["Restore protected config"]
-    Config --> Pre["Pre-prepare archives"]
-    Pre --> Prepare["PREPARE"]
-    Prepare --> Managed["Managed state restore"]
-    Managed --> Deploy["DEPLOY"]
-    Deploy --> Ready["READY / VERIFY"]
-    Ready --> External["External prerequisite convergence"]
-```
-
-Supported management forms are exposed through `./local-ai restore ...`; the underlying modules under `commands/recovery/` remain private implementation details.
+Supported management forms are exposed through `./local-ai restore ...`; the underlying modules under `commands/recovery/` remain private implementation details. A restore validates the recorded recovery point before materializing source/configuration, stages artifacts before live mutation, restores managed state in its declared phase, converges runtime and finally re-establishes READY/VERIFY and external prerequisites.
 
 Historical recovery compatibility may recognize source commits that still contain `installer/install.py` or the older root `install.py`. That is a restore-compatibility rule only; it does not make those historical paths supported management interfaces.
 
@@ -77,7 +75,7 @@ The generic restore path has passed destructive clean-target qualification for s
 
 - Stacks 0–6: destructive clean-target recovery has been qualified.
 - Stack7: application-data recovery has been qualified using an isolated restore from a complete recovery point.
-- Backup-set integrity and atomic publication are part of the qualified recovery contract.
+- Backup-set integrity, destination-overlap rejection and atomic publication are part of the qualified recovery contract.
 
 Concrete backup-set names, timestamps, host paths and deployment-specific inventory belong in operational records or Git history, not in canonical project documentation.
 
@@ -87,4 +85,4 @@ Raw PostgreSQL PGDATA, containers, images, logs, queues, caches, `.lock`, migrat
 
 ## Remaining hardening
 
-Encryption-at-rest, retention generations, off-host replication, external Stack6 SSH prerequisite packaging, overlap/type/schema validation hardening and resumable-recovery improvements remain active work. See [../pending.md](../pending.md).
+Encryption-at-rest, retention generations, off-host replication, external Stack6 SSH prerequisite packaging, malformed type/schema validation hardening and bounded/resumable-recovery improvements remain active work. Destination-overlap protection is already implemented and qualified rather than pending. [Pending work](../pending.md) contains the remaining active items.
