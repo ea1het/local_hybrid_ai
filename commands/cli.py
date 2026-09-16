@@ -233,6 +233,7 @@ def main(argv=None):
   args,invalid=_upgrade_public_args(raw[1:])
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
   if not _confirm_upgrade_mutation(args or [],context):return 2
+  if context.assume_yes and not args:args=["--yes"]
   payload,rc=upgrade_entry.build_payload(args or []);return _render_upgrade(payload,rc,context)
  p=build_parser()
  try:ns=p.parse_args(raw)
