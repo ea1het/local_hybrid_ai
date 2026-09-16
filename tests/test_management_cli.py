@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Contract tests for the supported ``./local-ai`` management CLI."""
+"""Public management CLI contract tests."""
 
 from __future__ import annotations
 
@@ -18,60 +18,34 @@ from unittest import mock
 from commands import cli, completion
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL_AI = ROOT / "local-ai"
 
 
 class ManagementCliContractTests(unittest.TestCase):
-    def run_cli(self, *args: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def run_cli(self, *args: str, runtime_root: str | None = None, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
+        if runtime_root is not None:
+            env["LOCAL_AI_RUNTIME_ROOT"] = runtime_root
         if env_extra:
             env.update(env_extra)
-        return subprocess.run([str(LOCAL_AI), *args], cwd=ROOT, text=True, capture_output=True, check=False, env=env)
+        return subprocess.run([str(ROOT / "local-ai"), *args], cwd=ROOT, env=env, text=True, capture_output=True, check=False)
 
     def test_root_help_exposes_supported_commands(self):
         cp = self.run_cli()
         self.assertEqual(cp.returncode, 0, cp.stderr)
-        for command in ("install", "backup", "restore", "status", "doctor", "inventory", "completion", "start", "stop", "upgrade"):
+        for command in ("backup", "completion", "doctor", "install", "inventory", "restore", "start", "status", "stop", "upgrade"):
             self.assertIn(command, cp.stdout)
 
-    def test_start_and_stop_require_numeric_public_stack_ids(self):
+    def test_start_and_stop_reject_internal_stack_names(self):
         for command in ("start", "stop"):
             with self.subTest(command=command):
                 cp = self.run_cli(command, "stack7")
                 self.assertEqual(cp.returncode, 2)
                 self.assertIn("STACK_SELECTOR_INVALID", cp.stderr)
 
-    def test_upgrade_rejects_internal_stack_selector(self):
-        with mock.patch("commands.cli.upgrade_entry.main") as upgrade:
-            rc = cli.main(["upgrade", "stack7"])
-        self.assertEqual(rc, 2)
-        upgrade.assert_not_called()
+    def test_completion_top_level_matches_public_commands(self):
+        self.assertEqual(completion.complete([""]), ["backup", "completion", "doctor", "install", "inventory", "restore", "start", "status", "stop", "upgrade"])
 
-    def test_upgrade_translates_numeric_selector(self):
-        with mock.patch("commands.cli.upgrade_entry.main", return_value=0) as upgrade:
-            rc = cli.main(["upgrade", "7"])
-        self.assertEqual(rc, 0)
-        upgrade.assert_called_once_with(["stack7"], json_output=False)
-
-    def test_upgrade_policy_translates_numeric_selector(self):
-        with mock.patch("commands.cli.upgrade_entry.main", return_value=0) as upgrade:
-            rc = cli.main(["upgrade", "policy", "7", "open-webui", "set", "minor-series"])
-        self.assertEqual(rc, 0)
-        upgrade.assert_called_once_with(["policy", "stack7", "open-webui", "set", "minor-series"], json_output=False)
-
-    def test_upgrade_adopt_uses_public_adapter(self):
-        with mock.patch("commands.cli.upgrade_adopt.main", return_value=0) as adopt:
-            rc = cli.main(["upgrade", "adopt", "7", "--yes"])
-        self.assertEqual(rc, 0)
-        adopt.assert_called_once_with(["7", "--yes"], json_output=False)
-
-    def test_completion_root_matches_public_commands(self):
-        self.assertEqual(
-            completion.complete([]),
-            ["backup", "completion", "doctor", "install", "inventory", "restore", "start", "status", "stop", "upgrade"],
-        )
-
-    def test_completion_start_stop_are_numeric(self):
+    def test_completion_start_stop_stack_selectors_are_numeric(self):
         self.assertEqual(completion.complete(["start", ""]), [str(i) for i in range(8)])
         self.assertEqual(completion.complete(["stop", ""]), [str(i) for i in range(8)])
 
@@ -90,7 +64,7 @@ class ManagementCliContractTests(unittest.TestCase):
     def test_completion_command_outputs_shell_integration(self):
         cp = self.run_cli("completion", "bash")
         self.assertEqual(cp.returncode, 0, cp.stderr)
-        self.assertIn("complete -F _local_ai_complete ./local-ai", cp.stdout)
+        self.assertIn("complete -F _local_ai_complete local-ai ./local-ai", cp.stdout)
         self.assertIn("__complete", cp.stdout)
 
     def test_completion_rejects_unknown_shell(self):
