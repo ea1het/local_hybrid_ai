@@ -76,14 +76,16 @@ sequenceDiagram
     CLI->>Selection: reject stale or invalid intent
     CLI->>Registry: revalidate immutable target
     CLI->>Executor: apply selected target
-    Executor->>Runtime: establish recovery point
+    opt selected component requires recovery
+        Executor->>Runtime: establish recovery point
+    end
     Executor->>Runtime: mutate deployment
     Executor->>Runtime: READY / reconcile / VERIFY
     Runtime-->>CLI: verified result
     CLI-->>Operator: UPGRADE: PASS or fail closed
 ```
 
-The current implementation reflects those responsibilities across focused modules: entry/command orchestration, selection policy, inventory/catalog/plan/cache state, runtime observation, OCI registry handling and the guarded mutation executor. The separation is intended to make consent and failure boundaries auditable rather than to expose those modules as supported integration points.
+The current implementation reflects those responsibilities across focused modules: entry/command orchestration, selection policy, inventory/catalog/plan/cache state, runtime observation, OCI registry handling and the guarded mutation executor. The separation is intended to make consent and failure boundaries auditable rather than to expose those modules as supported integration points. A recovery point is created only when at least one selected component declares `recovery_required=true`; reconstructable upgrades can execute without manufacturing an unnecessary backup.
 
 ## Recovery control flow
 
