@@ -137,13 +137,19 @@ def _render_upgrade(payload,rc,context):
  elif payload.get("success"):render.render_cli(upgrade_entry.cli_text(payload))
  else:print(upgrade_entry.cli_text(payload),file=sys.stderr)
  return rc
+def _completion_command(args,context):
+ payload,rc=completion.json_payload(args,assume_yes=context.assume_yes)
+ if context.json_output:render.render_json(payload)
+ elif payload.get("success"):render.render_cli(completion.cli_text(payload))
+ else:print(completion.cli_text(payload),file=sys.stderr)
+ return rc
 def main(argv=None):
  original=list(sys.argv[1:] if argv is None else argv)
  if original and original[0]=="__complete":
   try:print("\n".join(completion.complete(original[1:])));return 0
   except Exception:return 0
  raw,context=_extract_global_options(original)
- if raw and raw[0]=="completion":return completion.main(raw[1:])
+ if raw and raw[0]=="completion":return _completion_command(raw[1:],context)
  if raw and raw[0]=="install":
   args=[*raw[1:],*( ["--yes"] if context.assume_yes else [])];payload,rc=install_entry.json_payload(args)
   if context.json_output:render.render_json(payload)
