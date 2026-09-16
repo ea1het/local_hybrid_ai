@@ -16,7 +16,7 @@ flowchart LR
     LiteLLM --> Hermes[Stack6 Hermes]
     LiteLLM --> WebUI[Stack7 Open WebUI]
     LiteLLM --> PG[(Stack3 PostgreSQL)]
-    LiteLLM -. MCP gateway .-> MCP[Configured MCP servers]
+    LiteLLM -.->|MCP gateway| MCP[Configured MCP servers]
 ```
 
 ## Contract
