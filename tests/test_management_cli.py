@@ -2,14 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""End-to-end contract tests for the sole supported ``./local-ai`` boundary.
-
-These tests invoke or dispatch through the public CLI to protect option
-passthrough, stable JSON schemas/error codes, numeric human stack display,
-stable machine stack identity, explicit upgrade selection, policy shorthand,
-selectability gates and recovery-subpackage routing. They intentionally avoid
-making private implementation paths part of the operator contract.
-"""
+"""End-to-end contract tests for the sole supported ``./local-ai`` boundary."""
 
 from __future__ import annotations
 
@@ -28,14 +21,13 @@ CLI = ROOT / "local-ai"
 
 
 class ManagementCliContractTests(unittest.TestCase):
-    def run_cli(self, *args: str, runtime_root: str | None = None):
+    def run_cli(self, *args: str, runtime_root: str | None = None, env_extra: dict[str, str] | None = None):
         env = os.environ.copy()
         if runtime_root is not None:
             env["LOCAL_AI_RUNTIME_ROOT"] = runtime_root
-        return subprocess.run(
-            [str(CLI), *args], cwd=ROOT, env=env, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        )
+        if env_extra:
+            env.update(env_extra)
+        return subprocess.run([str(CLI), *args], cwd=ROOT, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
     def test_install_plan_options_pass_through_public_cli(self):
         cp = self.run_cli("install", "--plan", "7")
@@ -104,10 +96,7 @@ class ManagementCliContractTests(unittest.TestCase):
 
     def test_single_component_stack_policy_shorthand_persists_override(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cp = self.run_cli(
-                "upgrade", "policy", "7", "set", "major-series",
-                runtime_root=tmp,
-            )
+            cp = self.run_cli("upgrade", "policy", "7", "set", "major-series", runtime_root=tmp)
             self.assertEqual(cp.returncode, 0, cp.stderr)
             policy = json.loads((Path(tmp) / "platform" / "upgrade-policy.json").read_text())
         self.assertEqual(policy["overrides"]["stack7/open-webui"], "major-series")
@@ -141,18 +130,7 @@ class ManagementCliContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             plan_path = Path(tmp) / "platform" / "upgrade-plan.json"
             plan_path.parent.mkdir(parents=True, exist_ok=True)
-            plan_path.write_text(json.dumps({
-                "schema_version": 1,
-                "selected": {
-                    "stack7/open-webui": {
-                        "stack": "stack7",
-                        "component": "open-webui",
-                        "current_at_selection": "definitely-not-current",
-                        "version": "v0.11.4",
-                        "policy_at_selection": "minor-series",
-                    }
-                },
-            }), encoding="utf-8")
+            plan_path.write_text(json.dumps({"schema_version": 1, "selected": {"stack7/open-webui": {"stack": "stack7", "component": "open-webui", "current_at_selection": "definitely-not-current", "version": "v0.11.4", "policy_at_selection": "minor-series"}}}), encoding="utf-8")
             cp = self.run_cli("upgrade", "--yes", runtime_root=tmp)
         self.assertNotEqual(cp.returncode, 0)
         self.assertIn("UPGRADE_PLAN_STALE", cp.stderr)
@@ -164,28 +142,61 @@ class ManagementCliContractTests(unittest.TestCase):
         payload = json.loads(cp.stdout)
         self.assertEqual(payload["error"]["code"], "UPGRADE_NOTHING_SELECTED")
 
-    def test_restore_actions_dispatch_only_to_recovery_subpackage(self):
-        expected = {
-            "plan": "restore-all.py",
-            "drill": "restore-drill.py",
-            "apply": "restore-live.py",
-            "resume": "restore-resume.py",
+    def test_restore_actions_translate_public_grammar_to_private_implementations(self):
+        cases = {
+            "plan": (["plan", "/backup/set"], "restore-all.py", ["/backup/set", "--dry-run"]),
+            "drill": (["drill", "/backup/set", "--destination", "/tmp/drill"], "restore-drill.py", ["/backup/set", "--destination", "/tmp/drill"]),
+            "apply": (["apply", "/backup/set", "--check-clean-target"], "restore-live.py", ["/backup/set", "--check-clean-target"]),
+            "resume": (["resume", "/backup/set", "--memory-sync-ssh-bootstrap", "/ssh"], "restore-resume.py", ["/backup/set", "--memory-sync-ssh-bootstrap", "/ssh"]),
         }
-        for action, filename in expected.items():
+        for action, (public_args, filename, internal_args) in cases.items():
             with self.subTest(action=action), mock.patch.object(cli, "_run_internal", return_value=0) as run:
-                rc = cli.restore_command([action, "arg"], json_output=False)
+                rc = cli.restore_command(public_args, json_output=False)
                 self.assertEqual(rc, 0)
                 path, args = run.call_args.args
                 self.assertEqual(path, ROOT / "commands" / "recovery" / filename)
-                self.assertEqual(args, ["arg"])
+                self.assertEqual(args, internal_args)
 
-    def test_restore_entrypoints_start_through_public_cli(self):
-        for action in ("plan", "drill", "apply", "resume"):
+    def test_restore_help_is_owned_by_local_ai_and_hides_private_scripts(self):
+        for action in ("plan", "drill", "apply", "resume", "list-backup-sets"):
             with self.subTest(action=action):
                 cp = self.run_cli("restore", action, "--help")
                 self.assertEqual(cp.returncode, 0, cp.stderr)
-                self.assertNotIn("Traceback", cp.stderr)
-                self.assertIn("usage:", cp.stdout.lower())
+                self.assertIn(f"usage: local-ai restore {action}", cp.stdout.lower())
+                for private in ("restore-all.py", "restore-drill.py", "restore-live.py", "restore-resume.py"):
+                    self.assertNotIn(private, cp.stdout + cp.stderr)
+
+    def test_restore_without_action_shows_public_restore_help(self):
+        cp = self.run_cli("restore")
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertIn("list-backup-sets", cp.stdout)
+        self.assertIn("plan", cp.stdout)
+        self.assertIn("drill", cp.stdout)
+        self.assertIn("apply", cp.stdout)
+        self.assertIn("resume", cp.stdout)
+        self.assertNotIn("restore-all.py", cp.stdout + cp.stderr)
+
+    def test_list_backup_sets_discovers_completed_recovery_points(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backup = root / "backup-20260916T120000Z"
+            backup.mkdir()
+            (backup / "checksums.sha256").write_text("x\n", encoding="utf-8")
+            (backup / "backup.json").write_text(json.dumps({"kind": "local-hybrid-ai-backup-set", "completed": True, "created_at": "2026-09-16T12:00:00Z", "source_commit": "a" * 40, "resolved_stacks": [0, 3, 6]}), encoding="utf-8")
+            cp = self.run_cli("restore", "list-backup-sets", env_extra={"DR_BACKUP_ROOT": tmp})
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        self.assertIn("backup-20260916T120000Z", cp.stdout)
+        self.assertIn("COMPLETED", cp.stdout)
+        self.assertIn("0,3,6", cp.stdout)
+
+    def test_json_list_backup_sets_has_public_versioned_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cp = self.run_cli("--json", "restore", "list-backup-sets", env_extra={"DR_BACKUP_ROOT": tmp})
+        self.assertEqual(cp.returncode, 0, cp.stderr)
+        payload = json.loads(cp.stdout)
+        self.assertEqual(payload["command"], "restore.list-backup-sets")
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["backup_sets"], [])
 
     def test_backup_dispatch_uses_recovery_subpackage(self):
         with mock.patch.object(cli, "_run_internal", return_value=0) as run:
