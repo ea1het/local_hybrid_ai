@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from commands import completion,doctor,install_entry,inventory,render,runtime_lifecycle,status,upgrade_adopt,upgrade_entry
 ROOT=Path(__file__).resolve().parents[1];RECOVERY=ROOT/"commands"/"recovery";SCHEMA_VERSION="1";DEFAULT_BACKUP_ROOT=Path("/opt/local-hybrid-ai-backups");BACKUP_ROOT_ENV="DR_BACKUP_ROOT";BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$")
+class CLIUsageError(Exception):pass
+class PublicArgumentParser(argparse.ArgumentParser):
+ def error(self,message):raise CLIUsageError(message)
 @dataclass(frozen=True)
 class CLIContext:json_output:bool=False;assume_yes:bool=False
 def _extract_global_options(argv):return [x for x in argv if x not in {"--json","--yes"}],CLIContext("--json" in argv,"--yes" in argv)
@@ -20,6 +23,10 @@ def _json_error(code,message,*,command=None):
  payload={"schema_version":SCHEMA_VERSION,"success":False,"error":{"code":code,"message":message}}
  if command:payload["command"]=command
  render.render_json(payload)
+def _usage_error(message,*,context,command=None):
+ if context.json_output:_json_error("CLI_USAGE",message,command=command)
+ else:print(f"ERROR [CLI_USAGE]: {message}",file=sys.stderr)
+ return 2
 def _stack_selector_error(token,*,context,command):
  message=f"stack selector must be a numeric id such as 7, not {token!r}"
  if context.json_output:_json_error("STACK_SELECTOR_INVALID",message,command=command)
@@ -32,16 +39,6 @@ def _upgrade_public_args(args):
  token=translated[pos]
  if not token.isdigit():return None,token
  translated[pos]=f"stack{int(token)}";return translated,None
-def _upgrade_mutates(args):return "select" in args or (bool(args) and args[-1]=="clear") or (bool(args) and args[0]=="policy" and "set" in args)
-def _confirm_upgrade_mutation(args,context):
- if not _upgrade_mutates(args) or context.assume_yes:return True,0
- message="upgrade mutation requires --yes when input is non-interactive"
- if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command="upgrade");return False,2
- if not sys.stdin.isatty():print(f"UPGRADE ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr);return False,2
- try:answer=input("Apply this upgrade plan/policy mutation? [y/N] ")
- except EOFError:return False,1
- if answer.strip().lower() not in {"y","yes"}:print("Upgrade mutation cancelled.");return False,1
- return True,0
 def _run_internal_json(path,args,*,command):
  cp=subprocess.run([sys.executable,str(path),*args,"--json"],cwd=ROOT,text=True,capture_output=True,check=False)
  if cp.returncode!=0:_json_error("INTERNAL_COMMAND_FAILED",(cp.stderr or cp.stdout or f"{command} failed").strip(),command=command);return cp.returncode
@@ -49,9 +46,10 @@ def _run_internal_json(path,args,*,command):
  except json.JSONDecodeError:_json_error("INTERNAL_JSON_INVALID",f"{command} did not return a valid machine response",command=command);return 1
  render.render_json({"schema_version":SCHEMA_VERSION,"command":command,"success":True,"result":result});return 0
 def build_backup_parser():
- p=_add_global_help(argparse.ArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set"));p.add_argument("--destination",help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}");return p
+ p=_add_global_help(PublicArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set"));p.add_argument("--destination",help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}");return p
 def backup_command(args,context):
- ns=build_backup_parser().parse_args(args)
+ try:ns=build_backup_parser().parse_args(args)
+ except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="backup")
  if not context.assume_yes:
   if context.json_output:_json_error("CONFIRMATION_REQUIRED","backup creation requires --yes in JSON/non-interactive mode",command="backup");return 2
   if not sys.stdin.isatty():print("ERROR [CONFIRMATION_REQUIRED]: backup creation requires --yes when input is not interactive",file=sys.stderr);return 2
@@ -103,11 +101,13 @@ def _backup_sets_cli(payload):
 def list_backup_sets(backup_root,*,context):
  payload=backup_sets_payload(backup_root);render.render_json(payload) if context.json_output else render.render_cli(_backup_sets_cli(payload));return 0 if payload["success"] else 1
 def build_restore_parser():
- p=_add_global_help(argparse.ArgumentParser(prog="local-ai restore",description="Disaster-recovery operations for Local Hybrid AI"));a=p.add_subparsers(dest="restore_action",metavar="ACTION")
+ p=_add_global_help(PublicArgumentParser(prog="local-ai restore",description="Disaster-recovery operations for Local Hybrid AI"));a=p.add_subparsers(dest="restore_action",metavar="ACTION",parser_class=PublicArgumentParser)
  def action(name,**kwargs):return _add_global_help(a.add_parser(name,**kwargs))
  listing=action("list-backup-sets",help="list available recovery points");listing.add_argument("--backup-root");plan=action("plan",help="validate a recovery point and show restore ordering");plan.add_argument("backup_set");drill=action("drill",help="restore into an isolated destination and verify it");drill.add_argument("backup_set");drill.add_argument("--destination",required=True);apply=action("apply",help="preflight or execute a clean-target restore");apply.add_argument("backup_set");mode=apply.add_mutually_exclusive_group(required=True);mode.add_argument("--check-clean-target",action="store_true");mode.add_argument("--execute",action="store_true");apply.add_argument("--confirm-clean-target",action="store_true");apply.add_argument("--memory-sync-ssh-bootstrap");resume=action("resume",help="resume and verify an interrupted reconstructed target");resume.add_argument("backup_set");resume.add_argument("--memory-sync-ssh-bootstrap",required=True);return p
 def restore_command(args,context):
- p=build_restore_parser();ns=p.parse_args(args)
+ p=build_restore_parser()
+ try:ns=p.parse_args(args)
+ except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="restore")
  if ns.restore_action is None:p.print_help();return 0
  if ns.restore_action=="list-backup-sets":return list_backup_sets(ns.backup_root,context=context)
  action=ns.restore_action
@@ -117,8 +117,8 @@ def restore_command(args,context):
   if ns.execute and not ns.confirm_clean_target:
    msg="restore apply --execute requires --confirm-clean-target"
    if context.json_output:_json_error("CONFIRMATION_REQUIRED",msg,command="restore.apply");return 2
-   p.error(msg)
-  if ns.check_clean_target and ns.confirm_clean_target:p.error("--confirm-clean-target is valid only with --execute")
+   return _usage_error(msg,context=context,command="restore.apply")
+  if ns.check_clean_target and ns.confirm_clean_target:return _usage_error("--confirm-clean-target is valid only with --execute",context=context,command="restore.apply")
   if ns.execute and not context.assume_yes:
    msg="restore execution requires --yes"
    if context.json_output:_json_error("CONFIRMATION_REQUIRED",msg,command="restore.apply");return 2
@@ -130,7 +130,7 @@ def restore_command(args,context):
  else:script,internal=RECOVERY/"restore-resume.py",[ns.backup_set,"--memory-sync-ssh-bootstrap",ns.memory_sync_ssh_bootstrap]
  return _run_internal_json(script,internal,command=f"restore.{action}") if context.json_output else _run_internal(script,internal)
 def build_parser():
- p=_add_global_help(argparse.ArgumentParser(prog="local-ai",description="Supported management CLI for the Local Hybrid AI installation"));sub=p.add_subparsers(dest="command")
+ p=_add_global_help(PublicArgumentParser(prog="local-ai",description="Supported management CLI for the Local Hybrid AI installation"));sub=p.add_subparsers(dest="command",parser_class=PublicArgumentParser)
  for name,text in (("install","install or reconcile stacks"),("backup","create a recovery point"),("restore","list, plan, drill, apply or resume disaster recovery"),("status","show operational stack state, runtime health and drift"),("doctor","diagnose management prerequisites and environment consistency"),("inventory","validate and rescan manifest-declared component topology"),("completion","emit Bash or Zsh completion integration"),("upgrade","inspect versions and manage component upgrades")):_add_global_help(sub.add_parser(name,help=text))
  for action_name in ("start","stop"):
   r=_add_global_help(sub.add_parser(action_name,help=f"{action_name} one prepared stack runtime"));r.add_argument("stack")
@@ -153,6 +153,19 @@ def _completion_command(args,context):
  elif payload.get("success"):render.render_cli(completion.cli_text(payload))
  else:print(completion.cli_text(payload),file=sys.stderr)
  return rc
+def _upgrade_mutates(args):
+ if not args:return False
+ if args[0]=="policy":return "set" in args or args[-1:]==["clear"]
+ return "select" in args or args[-1:]==["clear"]
+def _confirm_upgrade_mutation(args,context):
+ if not _upgrade_mutates(args):return True
+ if context.assume_yes:return True
+ message="upgrade state mutation requires --yes in JSON/non-interactive mode"
+ if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command="upgrade");return False
+ if not sys.stdin.isatty():print(f"ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr);return False
+ try:answer=input("Modify the persisted upgrade selection/policy state? [y/N] ")
+ except EOFError:return False
+ return answer.strip().lower() in {"y","yes"}
 def main(argv=None):
  original=list(sys.argv[1:] if argv is None else argv)
  if original and original[0]=="__complete":
@@ -174,15 +187,16 @@ def main(argv=None):
   if len(raw)>=2 and raw[1]=="adopt":return _upgrade_adopt(raw[2:],context=context)
   args,invalid=_upgrade_public_args(raw[1:])
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
-  args=args or [];allowed,rc=_confirm_upgrade_mutation(args,context)
-  if not allowed:return rc
+  if not _confirm_upgrade_mutation(args or [],context):return 2
   if context.assume_yes and not args:args=["--yes"]
-  payload,rc=upgrade_entry.build_payload(args);return _render_upgrade(payload,rc,context)
- p=build_parser();ns=p.parse_args(raw)
+  payload,rc=upgrade_entry.build_payload(args or []);return _render_upgrade(payload,rc,context)
+ p=build_parser()
+ try:ns=p.parse_args(raw)
+ except CLIUsageError as exc:return _usage_error(str(exc),context=context)
  if ns.command is None:p.print_help();return 0
  if ns.command=="status":payload=status.json_payload();render.render_json(payload) if context.json_output else render.render_cli(status.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command=="doctor":payload=doctor.json_payload();render.render_json(payload) if context.json_output else render.render_cli(doctor.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command in {"start","stop"}:
   if not ns.stack.isdigit():return _stack_selector_error(ns.stack,context=context,command=ns.command)
   payload=runtime_lifecycle.json_payload(ns.command,ns.stack);render.render_json(payload) if context.json_output else render.render_cli(runtime_lifecycle.cli_text(payload));return 0 if payload["success"] else 1
- p.error("unsupported command");return 2
+ return _usage_error("unsupported command",context=context)
