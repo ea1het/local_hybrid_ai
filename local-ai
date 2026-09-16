@@ -2,77 +2,50 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
 """Sole supported management entry point for local_hybrid_ai."""
-import argparse
-import sys
-
-# The supported management CLI must not mutate the Git checkout merely by
-# importing its private Python implementation.
-sys.dont_write_bytecode = True
-
-from commands import install_entry, upgrade_entry
-from commands.cli import main
+import argparse,sys
+sys.dont_write_bytecode=True
+from commands import install_entry,upgrade_entry
+from commands.cli import build_parser,build_restore_parser,main
 from commands.upgrade_guard import run_guarded
 
+def _globals(parser):
+ parser.add_argument("--json",action="store_true",help="emit one machine-readable JSON document")
+ parser.add_argument("--yes",action="store_true",help="grant mutation consent; accepted as a no-op by read-only commands")
+ return parser
+def _leaf_parser(prog,description):return _globals(argparse.ArgumentParser(prog=prog,description=description))
+def _facade_help(argv):
+ semantic=[arg for arg in argv if arg not in {"--json","--yes"}]
+ if not semantic or semantic[-1] not in {"-h","--help"}:return False
+ path=semantic[:-1]
+ if not path:build_parser().print_help();return True
+ if path[0]=="install":install_entry.parser().print_help();return True
+ if path[0]=="restore":
+  build_restore_parser().parse_args([*path[1:],"--help"]);return True
+ if path[0] in {"status","doctor"}:
+  _leaf_parser(f"local-ai {path[0]}","Show operational status" if path[0]=="status" else "Diagnose management prerequisites and environment consistency").print_help();return True
+ if path[0] in {"start","stop"}:
+  p=_leaf_parser(f"local-ai {path[0]}",f"{path[0].capitalize()} one prepared stack runtime");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.print_help();return True
+ if path[0]=="inventory":
+  p=_leaf_parser("local-ai inventory", "Validate and rescan manifest-declared component topology");p.add_argument("action",nargs="?",choices=("rescan",),help="rescan manifest-declared topology");p.print_help();return True
+ if path[0]=="completion":
+  p=_leaf_parser("local-ai completion","Generate, install or inspect shell completion integration");p.add_argument("action",nargs="?",choices=("bash","zsh","install","status"));p.print_help();return True
+ if path[0]=="upgrade":
+  upgrade_entry.public_parser().print_help();return True
+ return False
 
-def _facade_help(argv: list[str]) -> bool:
-    """Render help for facade-backed commands before their execution path."""
-    semantic = [arg for arg in argv if arg not in {"--json", "--yes"}]
-    if len(semantic) < 2 or semantic[-1] not in {"-h", "--help"}:
-        return False
-    command = semantic[0]
-    if command == "install":
-        install_entry.parser().print_help()
-        return True
-    if command == "upgrade":
-        upgrade_entry.public_parser().print_help()
-        return True
-    if command == "completion":
-        parser = argparse.ArgumentParser(
-            prog="local-ai completion",
-            description="Generate, install or inspect shell completion integration",
-        )
-        parser.add_argument("action", nargs="?", choices=("bash", "zsh", "install", "status"))
-        parser.add_argument("--json", action="store_true", help="emit one machine-readable JSON document")
-        parser.add_argument("--yes", action="store_true", help="grant consent when installing completion")
-        parser.print_help()
-        return True
-    return False
-
-
-def _interactive_facade_consent(argv: list[str]) -> list[str]:
-    """Translate an interactive operator confirmation into global ``--yes``.
-
-    JSON and non-interactive invocations never prompt; the structured facade
-    then fails closed if consent is required.
-    """
-    if "--yes" in argv or "--json" in argv or not sys.stdin.isatty():
-        return argv
-    semantic = [arg for arg in argv if arg not in {"--json", "--yes"}]
-    if not semantic:
-        return argv
-    command = semantic[0]
-    mutation = False
-    prompt = ""
-    if command == "completion" and semantic[1:] == ["install"]:
-        mutation = True
-        prompt = "Install shell completion integration? [y/N] "
-    elif command == "install" and not any(flag in semantic[1:] for flag in ("--plan", "--dry-run")):
-        mutation = True
-        prompt = "Execute the resolved stack installation/reconciliation plan? [y/N] "
-    if not mutation:
-        return argv
-    try:
-        answer = input(prompt)
-    except EOFError:
-        return argv
-    return [*argv, "--yes"] if answer.strip().lower() in {"y", "yes"} else argv
-
-
-if __name__ == "__main__":
-    args = sys.argv[1:]
-    if _facade_help(args):
-        raise SystemExit(0)
-    args = _interactive_facade_consent(args)
-    raise SystemExit(run_guarded(args, main))
+def _interactive_facade_consent(argv):
+ if "--yes" in argv or "--json" in argv or not sys.stdin.isatty():return argv
+ semantic=[arg for arg in argv if arg not in {"--json","--yes"}]
+ if not semantic:return argv
+ command=semantic[0];mutation=False;prompt=""
+ if command=="completion" and semantic[1:]==["install"]:mutation=True;prompt="Install shell completion integration? [y/N] "
+ elif command=="install" and not any(flag in semantic[1:] for flag in ("--plan","--dry-run")):mutation=True;prompt="Execute the resolved stack installation/reconciliation plan? [y/N] "
+ if not mutation:return argv
+ try:answer=input(prompt)
+ except EOFError:return argv
+ return [*argv,"--yes"] if answer.strip().lower() in {"y","yes"} else argv
+if __name__=="__main__":
+ args=sys.argv[1:]
+ if _facade_help(args):raise SystemExit(0)
+ args=_interactive_facade_consent(args);raise SystemExit(run_guarded(args,main))
