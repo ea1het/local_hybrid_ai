@@ -34,6 +34,32 @@ def _json_error(code: str, message: str, *, command: str | None = None) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _stack_selector_error(token: str, *, json_output: bool, command: str) -> int:
+    message = f"stack selector must be a numeric id such as 7, not {token!r}"
+    if json_output:
+        _json_error("STACK_SELECTOR_INVALID", message, command=command)
+    else:
+        print(f"ERROR [STACK_SELECTOR_INVALID]: {message}", file=sys.stderr)
+    return 2
+
+
+def _upgrade_public_args(args: list[str]) -> tuple[list[str] | None, str | None]:
+    """Translate the numeric public stack selector to the internal manifest id."""
+    if not args or args[0] in {"--offline", "--yes", "check", "adopt"}:
+        return list(args), None
+
+    translated = list(args)
+    stack_pos = 1 if translated[0] == "policy" else 0
+    if len(translated) <= stack_pos:
+        return translated, None
+
+    token = translated[stack_pos]
+    if not token.isdigit():
+        return None, token
+    translated[stack_pos] = f"stack{int(token)}"
+    return translated, None
+
+
 def _run_internal_json(path: Path, args: list[str], *, command: str) -> int:
     cp = subprocess.run(
         [sys.executable, str(path), *args, "--json"],
@@ -86,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     for action in ("start", "stop"):
         runtime = sub.add_parser(action, help=f"{action} one prepared stack runtime")
-        runtime.add_argument("stack", help="stack id, stackN name, or manifest directory")
+        runtime.add_argument("stack", help="numeric stack id, for example 7")
 
     sub.add_parser("upgrade", help="inspect versions and manage component upgrades")
 
@@ -178,7 +204,10 @@ def main(argv: list[str] | None = None) -> int:
     if raw and raw[0] == "upgrade":
         if len(raw) >= 2 and raw[1] == "adopt":
             return _upgrade_adopt(raw[2:], json_output=json_output)
-        return upgrade_entry.main(raw[1:], json_output=json_output)
+        upgrade_args, invalid = _upgrade_public_args(raw[1:])
+        if invalid is not None:
+            return _stack_selector_error(invalid, json_output=json_output, command="upgrade")
+        return upgrade_entry.main(upgrade_args or [], json_output=json_output)
 
     parser = build_parser()
     ns = parser.parse_args(raw)
@@ -205,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         return inventory.main([], json_output=json_output)
 
     if ns.command in {"start", "stop"}:
+        if not ns.stack.isdigit():
+            return _stack_selector_error(ns.stack, json_output=json_output, command=ns.command)
         return runtime_lifecycle.main(ns.command, ns.stack, json_output=json_output)
 
     parser.error("unsupported command")
