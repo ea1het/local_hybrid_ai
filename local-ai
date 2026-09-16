@@ -4,14 +4,49 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Sole supported management entry point for local_hybrid_ai."""
+import argparse
 import sys
 
 # The supported management CLI must not mutate the Git checkout merely by
 # importing its private Python implementation.
 sys.dont_write_bytecode = True
 
+from commands import install_entry, upgrade_entry
 from commands.cli import main
 from commands.upgrade_guard import run_guarded
 
+
+def _facade_help(argv: list[str]) -> bool:
+    """Render help for facade-backed commands before their execution path.
+
+    The facades remain structured domain adapters.  This entry point owns the
+    public presentation boundary, including help for commands that do not use
+    the root argparse dispatcher during normal execution.
+    """
+    semantic = [arg for arg in argv if arg not in {"--json", "--yes"}]
+    if len(semantic) < 2 or semantic[-1] not in {"-h", "--help"}:
+        return False
+    command = semantic[0]
+    if command == "install":
+        install_entry.parser().print_help()
+        return True
+    if command == "upgrade":
+        upgrade_entry.public_parser().print_help()
+        return True
+    if command == "completion":
+        parser = argparse.ArgumentParser(
+            prog="local-ai completion",
+            description="Generate, install or inspect shell completion integration",
+        )
+        parser.add_argument("action", nargs="?", choices=("bash", "zsh", "install", "status"))
+        parser.add_argument("--json", action="store_true", help="emit one machine-readable JSON document")
+        parser.add_argument("--yes", action="store_true", help="grant consent when installing completion")
+        parser.print_help()
+        return True
+    return False
+
+
 if __name__ == "__main__":
+    if _facade_help(sys.argv[1:]):
+        raise SystemExit(0)
     raise SystemExit(run_guarded(sys.argv[1:], main))
