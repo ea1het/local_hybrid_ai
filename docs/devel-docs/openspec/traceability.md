@@ -6,9 +6,17 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # OpenSpec traceability
 
-[← OpenSpec index](README.md) · [Documentation map](../../TOC.md)
+[← OpenSpec index](README.md) · [Documentation map](../../TOC.md) · [Management plane](../../architecture/management-plane.md)
 
 Every tagged behavioural contract needs automated or qualified evidence. Contract tags are stable behaviour identifiers; implementation files and individual test names may evolve as long as equivalent evidence remains. Runtime qualification complements automated tests when a rule depends on real Docker, registry or application interaction.
+
+```mermaid
+flowchart LR
+    SPEC["OpenSpec tag"] --> IMPL["Implementation responsibility"]
+    IMPL --> TEST["Deterministic tests"]
+    TEST --> QUAL["Runtime qualification when required"]
+    QUAL --> DOC["Current documented contract"]
+```
 
 ## Platform and installation
 
@@ -18,11 +26,13 @@ Every tagged behavioural contract needs automated or qualified evidence. Contrac
 - `INSTALL-LIFECYCLE-001` — OpenSpec contract tests plus `tests/test_stack6_reconcile_ready.py` and representative runtime qualification.
 - `INSTALL-LOCK-001` — installer tests and stack PREPARE contracts.
 
+General manifest graph/capability semantics are implemented in `stack0_-_platform/manifests.py`; Recovery-specific manifest validation is separated into `stack0_-_platform/manifest_recovery.py`. The behavioural contract remains manifest-driven rather than file-name-driven.
+
 ## Disaster recovery
 
-- `DR-BACKUP-001` — OpenSpec contract test plus `tests/disaster_recovery/test_dr_backup_all.py` and qualified global backup.
-- `DR-BACKUP-002` — backup-all overlap tests plus runtime rejection of equal/descendant/ancestor protected paths.
-- `DR-RESTORE-001` — restore-all/live/compat tests plus qualified clean-target recovery.
+- `DR-BACKUP-001` — OpenSpec contract test plus `tests/disaster_recovery/test_dr_backup_all.py` and qualified global backup. Planning/orchestration is owned by `commands/recovery/dr.py`; source/destination preflight is owned by `commands/recovery/dr_preflight.py`.
+- `DR-BACKUP-002` — backup destination/preflight overlap tests plus runtime rejection of equal/descendant/ancestor protected paths.
+- `DR-RESTORE-001` — restore planning/staging/managed/live/resume tests plus qualified clean-target recovery.
 - `DR-STACK7-001` — OpenSpec contract test plus [DR status](../../dr/status.md).
 
 ## Stack contracts
@@ -71,17 +81,19 @@ Every tagged behavioural contract needs automated or qualified evidence. Contrac
 
 ### Registry discovery semantics
 
-- `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 and proves failure remains `available=unknown`, never `current`; positive registry families are separately runtime-qualified.
-- `CLI-REGISTRY-002` — `tests/test_registry_discovery_cache.py` verifies TTL reuse/expiry, local-digest invalidation and bounded cache size.
+- `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 and proves failure remains `available=unknown`, never `current`; positive registry families are separately runtime-qualified. OCI parsing/probing belongs to `commands/upgrade_registry.py`.
+- `CLI-REGISTRY-002` — `tests/test_registry_discovery_cache.py` verifies TTL reuse/expiry, local-digest invalidation and bounded cache size; cache ownership remains separate from registry HTTP semantics.
 
 ### Upgrade execution
+
+The refactored implementation separates orchestration (`upgrade_entry`), selection/stale-plan policy (`upgrade_selection`), runtime observation (`upgrade_runtime`), inventory/catalog/plan/cache state, OCI identity (`upgrade_registry`) and guarded mutation (`upgrade_executor`). Compatibility wrappers preserve existing public and tested seams while these responsibilities remain internal.
 
 - `CLI-UPGRADE-001` — management CLI/version-authority tests; human output uses Installed while JSON retains stable runtime fields.
 - `CLI-UPGRADE-002` — selection-policy/version-authority tests; plan stores runtime baseline and immutable target digest.
 - `CLI-UPGRADE-003` — management CLI proves `--yes` never auto-selects available versions.
-- `CLI-UPGRADE-004` — stale plan fails before execution with `UPGRADE_PLAN_STALE`.
+- `CLI-UPGRADE-004` — selection/stale-plan tests fail before execution with `UPGRADE_PLAN_STALE`.
 - `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted guarded deployment, with runtime qualification required before promotion.
-- `CLI-UPGRADE-006` — executor/selection tests prove digest capture and moved-tag rejection.
+- `CLI-UPGRADE-006` — executor/selection/registry tests prove digest capture and moved-tag rejection.
 - `CLI-UPGRADE-007` — execution-metadata tests distinguish guarded from inventory-only components.
 - `CLI-UPGRADE-008` — [upgrade qualification](../upgrade-qualification.md), execution metadata and representative runtime qualification establish selectability as proven executor support.
 - `CLI-UPGRADE-009` — executor failure tests and human apply contract prove `UPGRADE: PASS` only on successful guarded completion.
@@ -102,8 +114,8 @@ Every tagged behavioural contract needs automated or qualified evidence. Contrac
 
 - `CLI-STATUS-001` — `tests/test_status.py` verifies stack-oriented human output (`STACK`, `NAME`, `STATE`, `HEALTH`, `DRIFT`).
 - `CLI-STATUS-002` — status schema 3/tests preserve detailed component diagnostics and drift vocabulary `yes`/`no`/`n/a`.
-- `CLI-STATUS-003` — status tests exercise shared component identity semantics; `commands/component_state.py` owns read-only identity/drift interpretation.
+- `CLI-STATUS-003` — status tests exercise shared component identity semantics; read-only identity/drift interpretation remains a shared state responsibility rather than being duplicated by each presentation path.
 
 ## Traceability maintenance
 
-A new tagged scenario must be added here in the same change and must name real evidence. A test rename may update the evidence reference without renaming the behavioural tag. A removed behaviour must state whether it was superseded or retired; silently deleting its traceability entry is not sufficient.
+A new tagged scenario is added here in the same change and names real evidence. A test rename may update the evidence reference without renaming the behavioural tag. A removed behaviour states whether it was superseded or retired; silently deleting its traceability entry is insufficient. Implementation paths may change during refactoring without changing a tag when the observable contract and equivalent evidence remain intact.
