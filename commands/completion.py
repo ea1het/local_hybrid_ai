@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from commands import component_inventory, install
@@ -15,12 +16,24 @@ TOP_LEVEL = (
     "backup", "completion", "doctor", "install", "inventory", "restore",
     "start", "status", "stop", "upgrade",
 )
-RESTORE_ACTIONS = ("apply", "drill", "plan", "resume")
+RESTORE_ACTIONS = ("apply", "drill", "list-backup-sets", "plan", "resume")
 UPGRADE_ACTIONS = ("adopt", "check", "policy")
+BACKUP_SET_RE = re.compile(r"^backup-\d{8}T\d{6}Z$")
 
 
 def _stack_ids() -> list[str]:
     return [str(sid) for sid in sorted(install.all_manifests())]
+
+
+def _backup_sets() -> list[str]:
+    root = Path(os.environ.get("DR_BACKUP_ROOT", "/opt/local-hybrid-ai-backups")).expanduser()
+    try:
+        return sorted(
+            (str(path) for path in root.iterdir() if path.is_dir() and not path.is_symlink() and BACKUP_SET_RE.fullmatch(path.name)),
+            reverse=True,
+        )
+    except OSError:
+        return []
 
 
 def _upgrade_components(stack: str) -> list[str]:
@@ -44,7 +57,11 @@ def _candidates(before: list[str]) -> list[str]:
     if command in {"start", "stop"}:
         return _stack_ids() if not tail else []
     if command == "restore":
-        return list(RESTORE_ACTIONS) if not tail else []
+        if not tail:
+            return list(RESTORE_ACTIONS)
+        if len(tail) == 1 and tail[0] in {"apply", "drill", "plan", "resume"}:
+            return _backup_sets()
+        return []
     if command == "inventory":
         return ["rescan"] if not tail else []
     if command == "upgrade":
