@@ -33,11 +33,20 @@ class ManagementCliContractTests(unittest.TestCase):
  def test_completion_restore_actions_include_backup_listing(self):
   values=completion.complete(["restore",""])
   for item in ("apply","drill","list-backup-sets","plan","resume"):self.assertIn(item,values)
+ def test_completion_upgrade_stack_selector_is_numeric(self):
+  values=completion.complete(["upgrade",""])
+  for item in [str(i) for i in range(8)]+["adopt","check","--offline","policy","--yes","--json"]:self.assertIn(item,values)
+ def test_completion_upgrade_policy_stack_selector_is_numeric(self):
+  values=completion.complete(["upgrade","policy",""])
+  for i in range(8):self.assertIn(str(i),values)
+ def test_completion_upgrade_adopt_stack_selector_is_numeric(self):
+  values=completion.complete(["upgrade","adopt",""])
+  for i in range(8):self.assertIn(str(i),values)
  def test_completion_command_outputs_shell_integration(self):
   cp=self.run_cli("completion","bash");self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("complete -F _local_ai_complete local-ai ./local-ai",cp.stdout);self.assertIn("__complete",cp.stdout)
  def test_completion_rejects_unknown_shell(self):self.assertNotEqual(self.run_cli("completion","fish").returncode,0)
  def test_backup_help_is_owned_by_local_ai(self):
-  cp=self.run_cli("backup","--help");self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("usage: local-ai backup",cp.stdout.lower());self.assertIn("--destination",cp.stdout);self.assertNotIn("backup-all.py",cp.stdout+cp.stderr)
+  cp=self.run_cli("backup","--help");self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("usage: local-ai backup",cp.stdout.lower());self.assertIn("--destination",cp.stdout);self.assertIn("--yes",cp.stdout);self.assertNotIn("backup-all.py",cp.stdout+cp.stderr)
  def test_noninteractive_backup_requires_yes(self):
   cp=self.run_cli("backup");self.assertEqual(cp.returncode,2);self.assertIn("CONFIRMATION_REQUIRED",cp.stderr)
  def test_json_backup_requires_yes_and_returns_json_error(self):
@@ -69,6 +78,10 @@ class ManagementCliContractTests(unittest.TestCase):
  def test_restore_without_action_shows_public_restore_help(self):
   cp=self.run_cli("restore");self.assertEqual(cp.returncode,0,cp.stderr)
   for item in ("list-backup-sets","plan","drill","apply","resume"):self.assertIn(item,cp.stdout)
+ def test_list_backup_sets_discovers_completed_recovery_points(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);backup=root/"backup-20260916T120000Z";backup.mkdir();(backup/"checksums.sha256").write_text("x\n",encoding="utf-8");metadata={"schema_version":1,"kind":"local-hybrid-ai-backup-set","created_at":"2026-09-16T12:00:00Z","source_commit":"a"*40,"requested":["all"],"resolved_stacks":[0,3,6],"artifacts":[],"prerequisites":[]};(backup/"backup.json").write_text(json.dumps(metadata),encoding="utf-8");cp=self.run_cli("restore","list-backup-sets",env_extra={"DR_BACKUP_ROOT":tmp})
+  self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("backup-20260916T120000Z",cp.stdout);self.assertIn("COMPLETED",cp.stdout);self.assertIn("0,3,6",cp.stdout)
  def test_json_list_backup_sets_has_public_versioned_contract(self):
   with tempfile.TemporaryDirectory() as tmp:cp=self.run_cli("restore","list-backup-sets","--json",env_extra={"DR_BACKUP_ROOT":tmp})
   self.assertEqual(cp.returncode,0,cp.stderr);payload=json.loads(cp.stdout);self.assertEqual(payload["command"],"restore.list-backup-sets");self.assertTrue(payload["success"]);self.assertEqual(payload["backup_sets"],[])
