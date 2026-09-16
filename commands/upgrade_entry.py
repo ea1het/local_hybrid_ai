@@ -3,9 +3,16 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Structured upgrade orchestration consumed by the public ``local-ai`` CLI."""
 from __future__ import annotations
-import json
+import argparse,json
 from commands import upgrade,upgrade_executor,upgrade_policy,upgrade_registry,upgrade_selection
 _component_record=upgrade_selection.component_record;_effective_policy=upgrade_selection.effective_policy;_resolve_component=upgrade_selection.resolve_component;_current_runtime_version=upgrade_selection.current_runtime_version;_target_reference=upgrade_selection.target_reference;_validate_target=upgrade_selection.validate_target;_validate_immutable_target=upgrade_selection.validate_immutable_target;validate_selected_baselines=upgrade_selection.validate_selected_baselines;_execution_records_for=upgrade_selection.execution_records_for
+def public_parser():
+ p=argparse.ArgumentParser(prog="local-ai upgrade",description="Inspect versions, stage component upgrades, manage policy and apply a staged plan")
+ p.add_argument("--json",action="store_true",help="emit one machine-readable JSON document")
+ p.add_argument("--yes",action="store_true",help="grant consent for state mutation or apply the current staged plan when no action is given")
+ p.add_argument("--offline",action="store_true",help="inspect installed state without querying upstream registries")
+ p.add_argument("arguments",nargs="*",metavar="ARG",help="check | STACK [COMPONENT] <select VERSION|clear> | policy STACK [COMPONENT] [set POLICY|clear] | adopt")
+ return p
 def _force_metadata(component):
  record=_component_record(component);execution=record.get("execution") or {};apply=record.get("apply") or {};capable=execution.get("mode")=="inventory-only" and apply.get("type")=="env-version" and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in ("env_key","image_env_key")) and isinstance(apply.get("deploy"),list) and bool(apply.get("deploy"));return capable,execution.get("blocked_by")
 def _require_selection_permission(component,*,force):
@@ -74,6 +81,12 @@ def policy_payload(args):
 def cli_text(payload):
  command=payload.get("command")
  if not payload.get("success"):return f"UPGRADE ERROR [{payload['error']['code']}]: {payload['error']['message']}"
+ if command=="upgrade.check":
+  rows=payload.get("components",[]);headers=("STACK","COMPONENT","CURRENT","AVAILABLE","POLICY","DRIFT");values=[headers]
+  for row in rows:values.append((upgrade.human_stack_id(row.get("stack","")),row.get("component","-"),row.get("current") or "-",row.get("available") or "-",row.get("effective_policy") or row.get("policy") or "-",row.get("drift") or "-"))
+  widths=[max(len(str(r[i])) for r in values) for i in range(len(headers))];lines=[]
+  for idx,row in enumerate(values):lines.append("  ".join(str(v).ljust(widths[i]) for i,v in enumerate(row)));lines.extend(["  ".join("-"*w for w in widths)] if idx==0 else [])
+  return "\n".join(lines)
  if command=="upgrade.select":
   s=payload["selection"];marker=f", FORCED: {s.get('qualification_bypassed')}" if s.get("forced") else "";return f"Selected {s['stack']}/{s['component']}: {s['current_at_selection']} -> {s['version']} ({s['policy_at_selection']}, {s['target_digest']}{marker})"
  if command=="upgrade.clear":return f"Cleared {payload['stack']}/{payload['component']}"
