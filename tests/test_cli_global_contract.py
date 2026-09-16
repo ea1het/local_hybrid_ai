@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Cross-command contract for public local-ai automation flags and rendering."""
 from __future__ import annotations
-import io,json,unittest
+import contextlib,io,json,unittest
 from contextlib import redirect_stdout
 from unittest import mock
 from commands import cli,completion,render
@@ -17,6 +17,17 @@ class GlobalCliContractTests(unittest.TestCase):
   for words in branches:
    with self.subTest(words=words):
     values=completion.complete(words);self.assertIn("--json",values);self.assertIn("--yes",values)
+ def test_root_and_public_parser_help_document_global_flags(self):
+  parsers=[cli.build_parser(),cli.build_backup_parser(),cli.build_restore_parser()]
+  for parser in parsers:
+   with self.subTest(prog=parser.prog):
+    text=parser.format_help();self.assertIn("--json",text);self.assertIn("--yes",text)
+ def test_restore_leaf_help_documents_global_flags(self):
+  for action in ("list-backup-sets","plan","drill","apply","resume"):
+   out=io.StringIO()
+   with self.subTest(action=action),contextlib.redirect_stdout(out):
+    with self.assertRaises(SystemExit) as raised:cli.build_restore_parser().parse_args([action,"--help"])
+   self.assertEqual(raised.exception.code,0);self.assertIn("--json",out.getvalue());self.assertIn("--yes",out.getvalue())
  def test_render_json_emits_only_json(self):
   out=io.StringIO()
   with redirect_stdout(out):render.render_json({"success":True,"value":7})
