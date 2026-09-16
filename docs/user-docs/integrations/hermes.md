@@ -17,8 +17,8 @@ flowchart LR
     H["Hermes"] --> M["Stack3 LiteLLM\nmodel inference"]
     H --> S["SSH sandbox\narbitrary commands"]
     H --> MCP["Stack3 LiteLLM\nMCP gateway"]
-    H -. "optional" .-> W["Stack2\nweb.search / web.extract"]
-    H -. "optional" .-> MSG["Messaging channels"]
+    H -.->|optional| W["Stack2\nweb.search / web.extract"]
+    H -.->|optional| MSG["Messaging channels"]
     H <--> MEM["Git-backed memory"]
 ```
 
