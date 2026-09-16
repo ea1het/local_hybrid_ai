@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 from commands import cli,completion,render
 ROOT=Path(__file__).resolve().parents[1]
-PUBLIC_HELP_PATHS=((),("install",),("backup",),("restore",),("restore","list-backup-sets"),("restore","plan"),("restore","drill"),("restore","apply"),("restore","resume"),("status",),("doctor",),("inventory",),("inventory","rescan"),("completion",),("completion","bash"),("completion","zsh"),("completion","install"),("completion","status"),("upgrade",),("upgrade","check"),("upgrade","adopt"),("upgrade","policy"),("start",),("stop",))
+PUBLIC_HELP_PATHS=((),("install",),("backup",),("restore",),("restore","list-backup-sets"),("restore","plan"),("restore","drill"),("restore","apply"),("restore","resume"),("status",),("doctor",),("inventory",),("inventory","rescan"),("completion",),("completion","bash"),("completion","zsh"),("completion","install"),("completion","status"),("upgrade",),("upgrade","check"),("upgrade","adopt"),("upgrade","policy"),("upgrade","7","open-webui","select"),("upgrade","7","open-webui","clear"),("start",),("stop",))
 class GlobalCliContractTests(unittest.TestCase):
  def test_global_flags_are_position_independent(self):
   cases=[(["--json","--yes","status"],["status","--json","--yes"]),(["--yes","doctor","--json"],["doctor","--yes","--json"]),(["--json","--yes","inventory","rescan"],["inventory","rescan","--yes","--json"])]
@@ -25,6 +25,10 @@ class GlobalCliContractTests(unittest.TestCase):
     cp=subprocess.run([str(ROOT/"local-ai"),*path,"--help"],cwd=ROOT,text=True,capture_output=True,check=False)
     self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("--json",cp.stdout);self.assertIn("--yes",cp.stdout)
     for token in private:self.assertNotIn(token,cp.stdout+cp.stderr)
+ def test_upgrade_leaf_help_is_specific(self):
+  check=subprocess.run([str(ROOT/"local-ai"),"upgrade","check","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("--offline",check.stdout)
+  policy=subprocess.run([str(ROOT/"local-ai"),"upgrade","policy","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("patch-series",policy.stdout);self.assertIn("major-series",policy.stdout)
+  select=subprocess.run([str(ROOT/"local-ai"),"upgrade","7","open-webui","select","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("--force",select.stdout);self.assertIn("VERSION",select.stdout)
  def test_restore_leaf_help_documents_global_flags(self):
   for action in ("list-backup-sets","plan","drill","apply","resume"):
    out=io.StringIO()
