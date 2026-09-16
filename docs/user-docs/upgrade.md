@@ -95,7 +95,7 @@ If `UPGRADE: PASS` is absent, the operator does not treat the operation as succe
 ./local-ai upgrade
 ```
 
-A failed apply is journaled. Local Hybrid AI deliberately does not perform destructive automatic rollback. Depending on the failure, the operator may correct the cause and retry, restore from the reported recovery point, or investigate a component-specific readiness/migration failure.
+The guarded executor does **not** append a successful history event or clear the selection when execution fails. A recovery point is attached to the reported failure when one was created before mutation. Local Hybrid AI deliberately does not perform destructive automatic rollback. Depending on the failure, the operator may correct the cause and retry, restore from the reported recovery point, or investigate a component-specific readiness/migration failure. The current executor therefore preserves the failed selection and explicit error/recovery context rather than claiming a separate persistent failure-history journal.
 
 Compatibility policy is inspected or overridden independently:
 
