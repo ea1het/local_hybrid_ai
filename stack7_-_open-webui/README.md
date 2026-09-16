@@ -14,9 +14,9 @@ Stack7 is the curated user chat surface. It consumes the Stack3 AI gateway, can 
 flowchart LR
     User[User] --> WebUI[Stack7 Open WebUI]
     WebUI --> LiteLLM[Stack3 LiteLLM]
-    WebUI -. web.search .-> SearXNG[Stack2 SearXNG]
-    WebUI -. web.extract .-> Firecrawl[Stack2 Firecrawl]
-    HAProxy[Stack1 HAProxy] -. optional ingress .-> WebUI
+    WebUI -.->|web.search| SearXNG[Stack2 SearXNG]
+    WebUI -.->|web.extract| Firecrawl[Stack2 Firecrawl]
+    HAProxy[Stack1 HAProxy] -.->|optional ingress| WebUI
     Policy[Stack7 model policy] --> WebUI
 ```
 
