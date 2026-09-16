@@ -4,15 +4,17 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# DR filesystem execution contract
+# DR filesystem qualification history
 
-This document defines the filesystem-publication milestone that precedes real disaster-recovery adapters.
+> **Historical qualification record — not a current operator procedure.**
 
-The helper is `dr_filesystem.py`. It does **not** run `tar`, `pg_dump`, `gitea dump`, checksum generation, restore logic, or any Docker operation. Its only persistent change is preparation of the configured backup root.
+[← DR index](README.md) · [Current DR workflow](howto.md) · [Documentation map](../TOC.md)
 
-## Destination
+This document records the filesystem milestone that established the backup-root safety and publication assumptions used by later recovery adapters. The current operator entry point is `./local-ai backup`; `dr_filesystem.py` is a private implementation helper rather than a public management command.
 
-Destination precedence matches `dr.py`:
+## Destination contract
+
+The recovery implementation resolves a backup destination with this precedence:
 
 ```text
 --destination
@@ -20,90 +22,44 @@ Destination precedence matches `dr.py`:
 > /opt/local-hybrid-ai-backups
 ```
 
-Execution requires explicit opt-in:
+A destination is absolute, cannot be `/`, and is preflighted against protected source/runtime roots before backup execution. Equal, descendant and ancestor overlap with those protected roots is rejected.
 
-```bash
-sudo python3 dr_filesystem.py --prepare
-sudo python3 dr_filesystem.py --prepare --destination /opt/local-hybrid-ai-backups
-DR_BACKUP_ROOT=/mnt/backup/local-hybrid-ai sudo -E python3 dr_filesystem.py --prepare
-```
-
-The destination must be absolute and cannot be `/`.
-
-## Persistent root contract
-
-If the backup root does not exist, the helper creates it with a process umask of `077` and validates the resulting root as:
-
-```text
-owner = executing uid
-mode  = 0700
-writable/executable by executing uid
-```
-
-If the root already exists, the helper does not silently `chmod` or `chown` it. A root with a different owner or mode fails closed so the operator can inspect the situation explicitly.
-
-For the current default this means:
+The persistent backup root is private and owned by the executing identity. The established default contract is:
 
 ```text
 /opt/local-hybrid-ai-backups/    0700
 ```
 
-## Future backup-set contract
+An existing root with incompatible ownership or permissions fails closed rather than being silently changed.
 
-A real backup set will be built in a private temporary directory under the same backup root and then published with a same-parent rename only after every artifact and integrity record succeeds.
+## Publication properties established by the milestone
 
-Intended permissions:
+The milestone proved the same-parent filesystem operations required by the later backup-set creator. Current completed backup publication uses private staging below the selected backup root and publishes only after artifact and integrity validation.
+
+The resulting permission model is:
 
 ```text
 backup root                0700
 backup-set directory       0700
-artifact/metadata files    0600 when private/sensitive
+private artifact/metadata  0600
 ```
 
-The final directory name remains:
+Completed sets use the stable pattern:
 
 ```text
 backup-YYYYMMDDTHHMMSSZ
 ```
 
-A final name must never be silently overwritten. Collision handling will be implemented with the executing backup-set creator, not by weakening the naming contract.
+An existing final name is never silently replaced.
 
-## Atomicity probe
+## Historical atomicity probe
 
-`dr_filesystem.py --prepare` performs a transient non-secret probe inside the configured root:
+The private filesystem helper originally qualified same-parent rename semantics with a transient non-secret marker/directory probe. That probe was not a backup and never represented a recovery point. Its purpose was to establish filesystem suitability before real adapters were enabled.
 
-1. create a private temporary directory (`0700`);
-2. create and fsync a private marker file (`0600`);
-3. fsync the temporary directory;
-4. publish the directory with `os.replace()` to a different hidden name in the same parent;
-5. fsync the backup root;
-6. verify that the published directory preserved the same inode and contains the marker;
-7. remove only the known probe marker/directory and fsync the root again.
-
-The probe never recursively deletes arbitrary paths. A successful run leaves the backup root empty unless files already existed there before the probe.
-
-The atomicity probe is evidence that the selected filesystem supports the same-parent rename primitive that the future completed backup-set publication will use. It is not a backup and must never be represented as one.
-
-## Output guarantees
-
-A successful result explicitly reports:
-
-```text
-root created or reused
-root mode
-executing owner uid
-probe temporary-directory mode
-probe file mode
-same-parent atomic rename PASS
-probe cleanup PASS
-final backup set created: no
-backup artifact created: no
-```
-
-JSON output carries the same facts and always marks `final_backup_set_created` and `backup_artifact_created` false for this milestone.
+The full backup implementation now owns the actual staging, integrity and atomic no-replace publication path. The early “future backup-set” language and “no backup artifact created” limitation are therefore retired milestone statements, not current platform behaviour.
 
 ## Safety boundary
 
-This helper does not inspect or modify `/opt/docker/runtime`, `.env`, containers, databases, Gitea, LiteLLM, PKI contents, or application services. It prepares only the backup destination and validates filesystem semantics.
+Filesystem preparation does not inspect secret values or mutate application data. Current destination/source preflight is additionally separated into the read-only recovery-preflight responsibility before backup mutation begins.
 
-After this contract is validated on the real host, the next milestone is adapter execution one strategy at a time, beginning with the bounded Stack0 PKI archive, while retaining fail-closed publication and no-overwrite semantics.
+Current recovery phases and operator commands are documented in [the DR workflow](howto.md); qualified runtime evidence is summarized in [DR status](status.md).
