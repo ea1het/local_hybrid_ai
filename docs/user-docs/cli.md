@@ -3,25 +3,28 @@ This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
-
 # `local-ai` command-line interface
-
 [← User documentation](README.md) · [Documentation map](../TOC.md) · [Management plane](../architecture/management-plane.md)
 
-`./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Python modules under `commands/`, shell scripts, Compose files and direct stack lifecycle commands are implementation details.
+`./local-ai` is the sole supported management interface. Python modules, shell scripts, Compose files and stack-local lifecycle commands are implementation details.
+
+## Global interface contract
+Every public command accepts the transversal automation options `--json` and `--yes`. They belong to `local-ai`, not to individual stack engines, and may be placed before or after the command/action. For example, `./local-ai --json --yes status` and `./local-ai status --yes --json` have the same public meaning.
+
+`--json` selects the machine presentation. Domain/stack modules return JSON-compatible Python objects and do not serialize them; the public CLI owns serialization through its JSON renderer. JSON stdout contains one JSON document and no banner, human heading, prompt or diagnostic prose. `--yes` represents non-interactive operator consent. Read-only commands accept it as a semantic no-op. A mutation that requires consent fails closed when non-interactive consent is absent. Command-specific safety assertions can remain additional requirements; for example, restore execution requires both global `--yes` and the DR-specific `--confirm-clean-target` assertion.
+
+Human output is owned by the CLI renderer. It can prepend a configurable text banner/header without changing domain logic. Machine output never receives that decoration.
 
 ## Stack selector contract
+Every public command identifying a stack uses the numeric id shown by `status` and `upgrade`, currently `0` through `7`. An operator supplies `7`, not `stack7` or a stack directory name. Machine data may retain identities such as `stack7`.
 
-Every public command that identifies a stack uses the numeric stack id shown by `status` and `upgrade`: `0` through `7`. An operator supplies `7`, not `stack7` and not `stack7_-_open-webui`. Internal manifests and machine JSON may retain stable identities such as `stack7`; those are data identities, not alternate CLI selectors.
-
-## Command map
-
+## Public command map
 ```text
-./local-ai
-├── install <installer arguments...>
+./local-ai [--json] [--yes] COMMAND ...
+├── install <stack...> [--plan|--dry-run] [--target] [--reconcile]
 ├── start <0..7>
 ├── stop <0..7>
-├── backup [--destination PATH] [--yes]
+├── backup [--destination PATH]
 ├── restore list-backup-sets [--backup-root PATH]
 ├── restore plan BACKUP_SET
 ├── restore drill BACKUP_SET --destination PATH
@@ -37,170 +40,40 @@ Every public command that identifies a stack uses the numeric stack id shown by 
     ├── policy [0..7 [component] [set POLICY|clear]]
     ├── 0..7 [component] select VERSION [--force]
     ├── 0..7 [component] clear
-    ├── adopt [--yes]
-    └── --yes
+    └── adopt
 ```
 
-Global `--json` may be placed before the command. It is supported only by management commands that expose a machine contract.
+## Lifecycle and recovery
+`install` is the public facade over `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. Planning and dry-run are read-only; real execution requires global consent. `start` and `stop` operate one already-prepared numeric stack and preserve dependency gates.
 
-## `install`
+`backup` creates one atomic recovery point. Interactive human use may confirm at a prompt; non-interactive and JSON execution require `--yes`. `restore list-backup-sets` reports a set as completed only after authoritative completed-metadata validation. `restore plan` is read-only. `restore apply --execute` requires both `--confirm-clean-target` and global consent; the former asserts the DR precondition while the latter authorizes non-interactive mutation.
 
-```bash
-./local-ai install --plan all
-./local-ai install --dry-run 7
-./local-ai install 7 --yes
-./local-ai install 7 --reconcile --yes
-./local-ai --json install 7 --plan
-```
+## Operational views
+`inventory rescan` validates manifest-declared topology and updates the diagnostic snapshot. `status` returns stack operational state and detailed component state in its machine payload. `doctor` checks management prerequisites and metadata consistency. These read-only commands accept `--yes` without changing behavior.
 
-`install` is the public facade over the manifest-driven lifecycle engine. The lifecycle is `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. A stack `.lock` proves PREPARED only. Real execution requires root and `--yes`; planning and dry-run are read-only. Dependencies are resolved from manifests.
+## Completion
+Shell completion follows the same public grammar. Every branch exposes `--json` and `--yes`, numeric stack selectors remain numeric, and private Python/script names are never completion candidates. `completion bash|zsh` emits adapters; `completion install` installs the appropriate adapter and `completion status` verifies it.
 
-## `start` / `stop`
+## Upgrade
+`upgrade` remains the guarded version-management workflow. Check, policy display and selection inspection are structured domain results rendered by `local-ai`. Selection and policy mutations produce structured results before presentation. Applying selected upgrades requires global `--yes`; it revalidates baseline, policy, target identity/digest, executor eligibility, recovery requirements, READY, VERIFY and dependent consumers. Administrator `--force` remains a selection-specific risk acknowledgement and does not replace global execution consent.
 
-```bash
-sudo ./local-ai stop 5
-sudo ./local-ai start 5
-```
-
-`stop` performs controlled `docker compose stop`; it does not remove networks or volumes and fails closed when an active required consumer would be broken. `start` starts an already prepared/deployed stack; it does not prepare or recreate it and requires hard providers to be running. Generic READY is checked after start. Non-numeric selectors are rejected at the public CLI boundary.
-
-## `backup` / `restore`
-
-```bash
-./local-ai backup --yes
-./local-ai backup --destination /path/to/backup-root --yes
-./local-ai restore list-backup-sets
-./local-ai restore list-backup-sets --backup-root /path/to/backup-root
-./local-ai restore plan /path/to/backup-set
-./local-ai restore drill /path/to/backup-set --destination /isolated/path
-./local-ai restore apply /path/to/backup-set --check-clean-target
-./local-ai restore apply /path/to/backup-set --execute --confirm-clean-target
-./local-ai restore resume /path/to/backup-set --memory-sync-ssh-bootstrap /secure/bootstrap
-```
-
-Backup creates one manifest-driven recovery point. In an interactive terminal, omitting `--yes` produces a confirmation prompt before creation. Non-interactive and JSON execution require `--yes`; lack of confirmation fails closed. `--destination` selects a backup root without changing the recovery-set publication semantics.
-
-`restore list-backup-sets` lists candidate recovery points under `DR_BACKUP_ROOT`, the default backup root, or an explicit `--backup-root`. A set is reported as `COMPLETED` only when its publication structure exists and `backup.json` passes the recovery engine's authoritative completed-metadata schema validation. The listing does not replace artifact checksum verification performed by recovery operations.
-
-`restore plan` is the public read-only planning command. The private recovery engine may implement that operation through a dry-run flag, but that flag is deliberately not part of the public CLI grammar. `restore apply --execute` requires the explicit `--confirm-clean-target` consent flag at the public boundary. Conversely, `--confirm-clean-target` is rejected with the read-only `--check-clean-target` mode.
-
-The protected operational `.env` is sensitive global state. Managed resources use their declared recovery strategy; reconstructable resources are not promoted to backup artifacts merely because runtime files exist. Restore validation and clean-target gates belong to the recovery engine and the CLI never manufactures destructive consent. [DR documentation](../dr/README.md) describes the recovery phases.
-
-## `inventory rescan`
-
-```bash
-./local-ai inventory rescan
-./local-ai --json inventory rescan
-```
-
-Stack `manifest.json` files are the semantic source of component topology. Every owned container is classified as `versioned`, `local`, `helper` or `platform`; Compose is the implementation binding. Normal management compiles current manifests directly and does not depend on a generated static component catalog.
-
-`inventory rescan` validates ownership/service bindings, calculates a source fingerprint and compares current topology with the previous derived snapshot. The snapshot is diagnostic history only. Rescan does not prepare/deploy/remove stacks, change `.env`, select upgrades or query registries. A removed component is reported, not implicitly authorized for runtime deletion.
-
-## `status`
-
-```bash
-./local-ai status
-./local-ai --json status
-```
-
-`status` answers whether the platform is operational and coherent. Human output is stack-oriented:
-
-```text
-STACK  NAME                  STATE     HEALTH    DRIFT
-0      platform              prepared  ready     no
-1      haproxy-web           running   ready     no
-...
-```
-
-`STATE` describes lifecycle/runtime state, `HEALTH` is generic readiness from required container observations, and `DRIFT` aggregates component installation drift as `yes`, `no` or `n/a`. Application-specific VERIFY remains stack-owned.
-
-The JSON diagnostic contract retains stack records plus detailed component `desired`, `deployed`, `actual` and `drift` dimensions for automation/troubleshooting. Human `status` deliberately does not duplicate the version table shown by `upgrade`.
-
-## `doctor`
-
-```bash
-./local-ai doctor
-./local-ai --json doctor
-```
-
-`doctor` is read-only and checks management prerequisites and installation metadata: entry point, manifests/lifecycle consistency, protected `.env` permissions, Docker, Compose, runtime-root prerequisites and component-inventory coherence. Human output uses `PASS`, `WARN` and `FAIL`; warnings do not make the command fail. It is not the runtime-status or version-maintenance view.
-
-## `completion`
-
-```bash
-./local-ai completion install
-./local-ai completion status
-./local-ai completion bash
-./local-ai completion zsh
-```
-
-`completion bash|zsh` prints a side-effect-free adapter. `completion install` detects supported Bash/Zsh from the operator environment and writes the generated adapter to the selected conventional target; `completion status` verifies that target against current generated content. The installer does not edit shell startup files. Completion follows the same numeric stack-selector grammar as the public CLI. [Shell completion](completion.md) contains the detailed contract.
-
-## `upgrade`
-
-The complete workflow is documented in [Upgrading Local Hybrid AI components](upgrade.md). The normal human version view is:
-
-```bash
-./local-ai upgrade
-```
-
-`./local-ai upgrade check` remains a compatibility alias. `--offline` skips remote registry discovery.
-
-```text
-STACK  COMPONENT  INSTALLED  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
-```
-
-`INSTALLED` is concrete installed/running identity. `AVAILABLE` is registry discovery and never creates consent. `SELECTABLE=yes` means the project has qualified the guarded executor for that component. `SELECTED` is explicit operator intent and `VALID` says whether the stored selection still passes its gates.
-
-A normal supported sequence is:
-
+Typical flow:
 ```bash
 ./local-ai upgrade
 ./local-ai upgrade 2 redis select 8.10.1-alpine3.23
-./local-ai upgrade
 sudo ./local-ai upgrade --yes
 ```
-
-`select VERSION` validates and stores explicit upgrade intent without changing runtime. `clear` removes that stored selection without changing runtime:
-
-```bash
-./local-ai upgrade 2 redis clear
-```
-
-`upgrade --yes` applies only already-selected targets. Before mutation it revalidates runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and dependent-consumer checks remain part of the guarded executor contract. Success ends with `UPGRADE: PASS`; absence of PASS is not success merely because a container exists.
-
-### Administrator-forced upgrade
-
-For `SELECTABLE=no`, an administrator can bypass project qualification only when a deterministic mutation recipe already exists:
-
-```bash
-./local-ai upgrade 5 dockhand select v1.0.48 --force
-sudo ./local-ai upgrade --yes
-```
-
-Forced consent is stored in the selection. It does not bypass target existence/digest checks, stale-plan detection, compatibility policy, known mutation scope, recovery requirements, READY, VERIFY or consumer checks. If no deterministic recipe exists, selection fails with `UPGRADE_FORCE_UNAVAILABLE`. [Administrator-forced upgrades](forced-upgrades.md) describes the risk boundary.
-
-### Selection and policy
-
-```bash
-./local-ai upgrade policy
-./local-ai upgrade policy 2 redis
-./local-ai upgrade policy 2 redis set major-series
-./local-ai upgrade policy 2 redis clear
-```
-
-A policy command with no trailing action shows the effective policy. `set` writes the installation override. `policy ... clear` removes only that override and restores the manifest default; it does not remove a selected target. There is no public `show` action. Compatibility policy and support qualification are independent, so a policy override cannot make an unqualified component `SELECTABLE=yes`.
-
-### `upgrade adopt`
-
-```bash
-./local-ai upgrade adopt
-sudo ./local-ai upgrade adopt --yes
-```
-
-`adopt` is a migration utility for installations that predate installation-owned exact version authority. It records already-running identities without pulling images, running Compose, selecting an update or restarting services.
 
 ## Human and JSON contracts
+The presentation boundary is intentionally one-way:
 
-The public human stack selector is numeric (`0` through `7`). Machine contracts preserve stable identities such as `stack7`. Machine responses include schema version, command identifier where applicable, structured success data and stable error objects. JSON-contract versioning is independent from private implementation details.
+```mermaid
+flowchart LR
+    D[Stack/domain module] -->|JSON-compatible object| C[local-ai]
+    C --> H[Human renderer]
+    C --> J[JSON renderer]
+    H --> O[Human stdout]
+    J --> M[Machine stdout]
+```
+
+Domain modules own facts and operations. They do not own terminal formatting or JSON serialization. The CLI owns both renderers, global automation flags, public error envelopes, help and completion. This keeps the machine contract independent from private implementation paths and allows the human renderer to add a configurable banner/header without contaminating automation output.
