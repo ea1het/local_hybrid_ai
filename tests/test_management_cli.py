@@ -27,7 +27,15 @@ class ManagementCliContractTests(unittest.TestCase):
             env["LOCAL_AI_RUNTIME_ROOT"] = runtime_root
         if env_extra:
             env.update(env_extra)
-        return subprocess.run([str(ROOT / "local-ai"), *args], cwd=ROOT, env=env, text=True, capture_output=True, check=False)
+        return subprocess.run(
+            [str(ROOT / "local-ai"), *args],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            check=False,
+        )
 
     def test_root_help_exposes_supported_commands(self):
         cp = self.run_cli()
