@@ -5,13 +5,27 @@
 
 """Validate stack manifests and resolve dependency/capability plans."""
 import argparse
+import importlib.util
 import json
 import re
 from pathlib import Path
 
-from manifest_recovery import load_recovery_schema, validate_recovery
-
 STACK_DIR_RE = re.compile(r"^stack(?P<id>[0-9]+)_-_.+$")
+
+
+def _load_recovery_validator():
+    module_path = Path(__file__).with_name("manifest_recovery.py")
+    spec = importlib.util.spec_from_file_location("local_ai_manifest_recovery", module_path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"ERROR: cannot load recovery validator: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_RECOVERY = _load_recovery_validator()
+load_recovery_schema = _RECOVERY.load_recovery_schema
+validate_recovery = _RECOVERY.validate_recovery
 
 
 def fail(message: str) -> None:
@@ -84,6 +98,7 @@ def validate_graph(manifests: dict[int, dict], target: bool) -> None:
                 fail(f"stack{stack_id}: unknown optional stack{dep}")
     visiting: set[int] = set()
     visited: set[int] = set()
+
     def visit(stack_id: int) -> None:
         if stack_id in visited:
             return
@@ -94,18 +109,21 @@ def validate_graph(manifests: dict[int, dict], target: bool) -> None:
             visit(dep)
         visiting.remove(stack_id)
         visited.add(stack_id)
+
     for stack_id in sorted(manifests):
         visit(stack_id)
 
 
 def dependency_closure(manifests: dict[int, dict], roots: list[int], target: bool) -> set[int]:
     closure: set[int] = set()
+
     def add(stack_id: int) -> None:
         if stack_id in closure:
             return
         closure.add(stack_id)
         for dep in dependencies(manifests[stack_id], target):
             add(dep)
+
     for stack_id in roots:
         add(stack_id)
     return closure
@@ -163,6 +181,7 @@ def resolve_token(token: str, manifests: dict[int, dict]) -> int:
 def plan(requested: list[int], manifests: dict[int, dict], target: bool) -> list[int]:
     ordered: list[int] = []
     seen: set[int] = set()
+
     def add(stack_id: int) -> None:
         if stack_id in seen:
             return
@@ -170,6 +189,7 @@ def plan(requested: list[int], manifests: dict[int, dict], target: bool) -> list
             add(dep)
         seen.add(stack_id)
         ordered.append(stack_id)
+
     for stack_id in requested:
         add(stack_id)
     return ordered
