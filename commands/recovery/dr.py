@@ -13,34 +13,34 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from commands.recovery.dr_preflight import (
-    BACKUP_ROOT_ENV,
-    BACKUP_SET_NAME_PATTERN,
-    DEFAULT_BACKUP_ROOT,
-    DestinationPreflight,
-    RecoveryError,
-    RuntimeCheck,
-    docker_state,
-    ensure_docker_preflight,
-    expand_runtime_path,
-    gitea_help_flags,
-    nearest_existing_parent,
-    owned_container,
-    preflight_archive_source,
-    preflight_backup_destination,
-    preflight_docker_service,
-    preflight_external_config_source,
-    preflight_git_source,
-    preflight_gitea_source,
-    preflight_postgres_source,
-    preflight_runtime_resource,
-    preflight_runtime_sources,
-    read_dotenv_presence,
-    require_env_value,
-    resolve_backup_root,
-    resolve_base_path,
-    runtime_resources,
-)
+import dr_preflight
+
+BACKUP_ROOT_ENV = dr_preflight.BACKUP_ROOT_ENV
+BACKUP_SET_NAME_PATTERN = dr_preflight.BACKUP_SET_NAME_PATTERN
+DEFAULT_BACKUP_ROOT = dr_preflight.DEFAULT_BACKUP_ROOT
+DestinationPreflight = dr_preflight.DestinationPreflight
+RecoveryError = dr_preflight.RecoveryError
+RuntimeCheck = dr_preflight.RuntimeCheck
+docker_state = dr_preflight.docker_state
+ensure_docker_preflight = dr_preflight.ensure_docker_preflight
+expand_runtime_path = dr_preflight.expand_runtime_path
+gitea_help_flags = dr_preflight.gitea_help_flags
+nearest_existing_parent = dr_preflight.nearest_existing_parent
+owned_container = dr_preflight.owned_container
+preflight_archive_source = dr_preflight.preflight_archive_source
+preflight_backup_destination = dr_preflight.preflight_backup_destination
+preflight_docker_service = dr_preflight.preflight_docker_service
+preflight_external_config_source = dr_preflight.preflight_external_config_source
+preflight_git_source = dr_preflight.preflight_git_source
+preflight_gitea_source = dr_preflight.preflight_gitea_source
+preflight_postgres_source = dr_preflight.preflight_postgres_source
+preflight_runtime_resource = dr_preflight.preflight_runtime_resource
+preflight_runtime_sources = dr_preflight.preflight_runtime_sources
+read_dotenv_presence = dr_preflight.read_dotenv_presence
+require_env_value = dr_preflight.require_env_value
+resolve_backup_root = dr_preflight.resolve_backup_root
+resolve_base_path = dr_preflight.resolve_base_path
+runtime_resources = dr_preflight.runtime_resources
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"

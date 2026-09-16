@@ -179,6 +179,14 @@ class ManagementCliContractTests(unittest.TestCase):
                 self.assertEqual(path, ROOT / "commands" / "recovery" / filename)
                 self.assertEqual(args, ["arg"])
 
+    def test_restore_entrypoints_start_through_public_cli(self):
+        for action in ("plan", "drill", "apply", "resume"):
+            with self.subTest(action=action):
+                cp = self.run_cli("restore", action, "--help")
+                self.assertEqual(cp.returncode, 0, cp.stderr)
+                self.assertNotIn("Traceback", cp.stderr)
+                self.assertIn("usage:", cp.stdout.lower())
+
     def test_backup_dispatch_uses_recovery_subpackage(self):
         with mock.patch.object(cli, "_run_internal", return_value=0) as run:
             rc = cli.main(["backup"])
