@@ -52,6 +52,8 @@ def _candidates(before: list[str]) -> list[str]:
         return list(TOP_LEVEL)
     command = before[0]
     tail = before[1:]
+    if command == "backup":
+        return ["--destination", "--yes"]
     if command == "completion":
         return ["bash", "install", "status", "zsh"] if not tail else []
     if command in {"start", "stop"}:
