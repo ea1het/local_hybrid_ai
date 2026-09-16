@@ -11,7 +11,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ## Global interface contract
 Every public command accepts the transversal automation options `--json` and `--yes`. They belong to `local-ai`, not to individual stack engines, and may be placed before or after the command/action. For example, `./local-ai --json --yes status` and `./local-ai status --yes --json` have the same public meaning.
 
-`--json` selects the machine presentation. Domain/stack modules return JSON-compatible Python objects and do not serialize them; the public CLI owns serialization through its JSON renderer. JSON stdout contains one JSON document and no banner, human heading, prompt or diagnostic prose. `--yes` represents non-interactive operator consent. Read-only commands accept it as a semantic no-op. A mutation that requires consent fails closed when non-interactive consent is absent. Command-specific safety assertions can remain additional requirements; for example, restore execution requires both global `--yes` and the DR-specific `--confirm-clean-target` assertion.
+`--json` selects the machine presentation. Domain/stack modules return JSON-compatible Python objects and do not serialize them; the public CLI owns serialization through its JSON renderer. JSON stdout contains one JSON document and no banner, human heading, prompt or diagnostic prose. `--yes` represents non-interactive operator consent. Read-only commands accept it as a semantic no-op. A mutation that requires consent prompts on an interactive terminal and fails closed when non-interactive consent is absent. Command-specific safety assertions can remain additional requirements; for example, restore execution requires both global `--yes` and the DR-specific `--confirm-clean-target` assertion.
 
 Human output is owned by the CLI renderer. It can prepend a configurable text banner/header without changing domain logic. Machine output never receives that decoration.
 
@@ -44,7 +44,7 @@ Every public command identifying a stack uses the numeric id shown by `status` a
 ```
 
 ## Lifecycle and recovery
-`install` is the public facade over `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. Planning and dry-run are read-only; real execution requires global consent. `start` and `stop` operate one already-prepared numeric stack and preserve dependency gates.
+`install` is the public facade over `PREPARE -> DEPLOY -> READY -> RECONCILE -> VERIFY`. Planning and dry-run are read-only; real execution requires operator consent. Interactive use prompts; automation supplies global `--yes`. `start` and `stop` operate one already-prepared numeric stack and preserve dependency gates.
 
 `backup` creates one atomic recovery point. Interactive human use may confirm at a prompt; non-interactive and JSON execution require `--yes`. `restore list-backup-sets` reports a set as completed only after authoritative completed-metadata validation. `restore plan` is read-only. `restore apply --execute` requires both `--confirm-clean-target` and global consent; the former asserts the DR precondition while the latter authorizes non-interactive mutation.
 
@@ -52,15 +52,15 @@ Every public command identifying a stack uses the numeric id shown by `status` a
 `inventory rescan` validates manifest-declared topology and updates the diagnostic snapshot. `status` returns stack operational state and detailed component state in its machine payload. `doctor` checks management prerequisites and metadata consistency. These read-only commands accept `--yes` without changing behavior.
 
 ## Completion
-Shell completion follows the same public grammar. Every branch exposes `--json` and `--yes`, numeric stack selectors remain numeric, and private Python/script names are never completion candidates. `completion bash|zsh` emits adapters; `completion install` installs the appropriate adapter and `completion status` verifies it.
+Shell completion follows the same public grammar. Every branch exposes `--json` and `--yes`, numeric stack selectors remain numeric, and private Python/script names are never completion candidates. `completion bash|zsh` emits adapters; `completion install` installs the appropriate adapter after operator consent and `completion status` verifies it.
 
 ## Upgrade
-`upgrade` remains the guarded version-management workflow. Check, policy display and selection inspection are structured domain results rendered by `local-ai`. Selection and policy mutations produce structured results before presentation. Applying selected upgrades requires global `--yes`; it revalidates baseline, policy, target identity/digest, executor eligibility, recovery requirements, READY, VERIFY and dependent consumers. Administrator `--force` remains a selection-specific risk acknowledgement and does not replace global execution consent.
+`upgrade` remains the guarded version-management workflow. Check and policy display are read-only structured domain results rendered by `local-ai`. Selection, selection clearing and policy changes mutate persisted management state and therefore require operator consent: interactive use prompts, while automation supplies `--yes`. Applying selected upgrades also requires global `--yes`; it revalidates baseline, policy, target identity/digest, executor eligibility, recovery requirements, READY, VERIFY and dependent consumers. Administrator `--force` remains a selection-specific risk acknowledgement and does not replace global consent.
 
-Typical flow:
+Typical automated flow:
 ```bash
 ./local-ai upgrade
-./local-ai upgrade 2 redis select 8.10.1-alpine3.23
+./local-ai upgrade 2 redis select 8.10.1-alpine3.23 --yes
 sudo ./local-ai upgrade --yes
 ```
 
@@ -76,4 +76,4 @@ flowchart LR
     J --> M[Machine stdout]
 ```
 
-Domain modules own facts and operations. They do not own terminal formatting or JSON serialization. The CLI owns both renderers, global automation flags, public error envelopes, help and completion. This keeps the machine contract independent from private implementation paths and allows the human renderer to add a configurable banner/header without contaminating automation output.
+Domain modules own facts and operations. Each stack exposes a small stack-owned `json_payload()` contract that returns JSON-compatible state and never serializes or prints it; management operations consume that boundary where stack-specific runtime state is returned. The CLI owns both renderers, global automation flags, public error envelopes, help and completion. This keeps the machine contract independent from private implementation paths and allows the human renderer to add a configurable banner/header without contaminating automation output.
