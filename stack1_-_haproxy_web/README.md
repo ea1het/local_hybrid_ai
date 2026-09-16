@@ -14,7 +14,7 @@ Stack1 owns the platform HTTP/HTTPS ingress and the small static landing page. A
 flowchart LR
     Client[Client] -->|HTTP / HTTPS| HAProxy[Stack1 HAProxy]
     HAProxy --> Static[Stack1 static web]
-    HAProxy -. optional routes .-> Apps[Application stacks on redlocal]
+    HAProxy -.->|optional routes| Apps[Application stacks on redlocal]
     PKI[Stack0 PKI] -->|read-only mount| HAProxy
     Network[Stack0 redlocal] --- HAProxy
 ```

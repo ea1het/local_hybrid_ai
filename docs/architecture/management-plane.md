@@ -113,7 +113,7 @@ The common stack lifecycle remains:
 ```mermaid
 flowchart LR
     P["PREPARE"] --> D["DEPLOY"] --> R["READY"] --> C["RECONCILE"] --> V["VERIFY"]
-    C -.->|"runtime changed"| R
+    C -.->|runtime changed| R
 ```
 
 PREPARE establishes prerequisites and installation-owned structure. DEPLOY changes runtime. READY proves required runtime health. RECONCILE applies capability-dependent policy. VERIFY proves the resulting contract. A `.lock` records PREPARED state only.

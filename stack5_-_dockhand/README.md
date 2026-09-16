@@ -14,7 +14,7 @@ Stack5 provides the Dockhand container-management UI. It is an operational conve
 flowchart LR
     Operator[Operator] --> Dockhand[Stack5 Dockhand]
     Dockhand --> Docker[Docker management surface]
-    Ingress[Stack1 HAProxy] -. optional publication .-> Dockhand
+    Ingress[Stack1 HAProxy] -.->|optional publication| Dockhand
     Network[Stack0 redlocal] --- Dockhand
 ```
 

@@ -20,7 +20,7 @@ flowchart LR
     LiteLLM["Stack3 logical DB dump"] --> Recovery
     Gitea["Stack4 native dump"] --> Recovery
     WebUI["Stack7 data archive"] --> Recovery
-    Memory["Stack6 Git memory"] -. "external prerequisite" .-> Recovery
+    Memory["Stack6 Git memory"] -.->|external prerequisite| Recovery
 ```
 
 ## Recovery policy

@@ -15,9 +15,9 @@ flowchart LR
     User["Human / configured channel"] --> Hermes["Stack6 Hermes"]
     Hermes --> LiteLLM["Stack3 LiteLLM"]
     Hermes --> Sandbox["Isolated SSH sandbox"]
-    Hermes -. "optional web.search / web.extract" .-> Web["Stack2"]
+    Hermes -.->|optional web.search / web.extract| Web["Stack2"]
     Memory["MEMORY.md + USER.md"] <--> Sync["Memory sync"]
-    Sync -. "optional git.remote" .-> Git["Configured Git remote / Stack4"]
+    Sync -.->|optional git.remote| Git["Configured Git remote / Stack4"]
     Cleaner["Sandbox cleanup sidecar"] --> Sandbox
 ```
 

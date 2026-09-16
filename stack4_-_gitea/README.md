@@ -15,7 +15,7 @@ flowchart LR
     Users[Users / Git clients] -->|HTTPS via Stack1| Gitea[Stack4 Gitea]
     Users -->|SSH configured host port| Gitea
     Runner[Stack4 Actions runner] -->|internal HTTP| Gitea
-    HermesMemory[Stack6 memory sync] -. optional git.remote .-> Gitea
+    HermesMemory[Stack6 memory sync] -.->|optional git.remote| Gitea
     Gitea --> Repos[(Repositories and app state)]
 ```
 
