@@ -4,7 +4,7 @@
 """Stable JSON contracts for the public management boundary."""
 from __future__ import annotations
 import io,json,subprocess,unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout,redirect_stderr
 from unittest import mock
 from commands import cli,install_entry
 class ManagementJsonContractTests(unittest.TestCase):
@@ -24,4 +24,14 @@ class ManagementJsonContractTests(unittest.TestCase):
   completed=subprocess.CompletedProcess(args=["python"],returncode=1,stdout="",stderr="restore failed");out=io.StringIO()
   with mock.patch("commands.cli.subprocess.run",return_value=completed),redirect_stdout(out):rc=cli.restore_command(["plan","/backup"],cli.CLIContext(json_output=True))
   self.assertEqual(rc,1);payload=json.loads(out.getvalue());self.assertFalse(payload["success"]);self.assertEqual(payload["error"]["code"],"INTERNAL_COMMAND_FAILED")
+ def test_json_parser_errors_are_one_machine_document_and_silent_on_stderr(self):
+  cases=(["--json","backup","--bogus"],["restore","apply","/backup","--json"],["--json","restore","drill","/backup"] ,["--json","start"])
+  for argv in cases:
+   out,err=io.StringIO(),io.StringIO()
+   with self.subTest(argv=argv),redirect_stdout(out),redirect_stderr(err):rc=cli.main(list(argv))
+   self.assertEqual(rc,2);self.assertEqual(err.getvalue(),"");payload=json.loads(out.getvalue());self.assertFalse(payload["success"]);self.assertEqual(payload["error"]["code"],"CLI_USAGE")
+ def test_restore_semantic_usage_error_is_json_safe(self):
+  out,err=io.StringIO(),io.StringIO()
+  with redirect_stdout(out),redirect_stderr(err):rc=cli.main(["restore","apply","/backup","--check-clean-target","--confirm-clean-target","--json"])
+  self.assertEqual(rc,2);self.assertEqual(err.getvalue(),"");self.assertEqual(json.loads(out.getvalue())["error"]["code"],"CLI_USAGE")
 if __name__=="__main__":unittest.main()
