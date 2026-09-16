@@ -192,9 +192,9 @@ Feature: Single management CLI anticorruption boundary
     Scenario: Absence of PASS is not a successful upgrade
       When guarded upgrade execution fails at any required preflight, mutation, READY, reconciliation or VERIFY step
       Then "UPGRADE: PASS" is not emitted
-      And the failure is journaled
-      And a reported recovery point remains available when one was created
+      And a recovery point is reported when one was created before the failure
       And the operator must not infer success merely because a container is running
+      And successful upgrade history is not appended unless the guarded operation completes
 
     @CLI-UPGRADE-010
     Scenario: An administrator may explicitly accept an unqualified upgrade path
