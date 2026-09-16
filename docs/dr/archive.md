@@ -4,21 +4,17 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# DR archive adapter — first executing backup milestone
+# DR archive adapter qualification history
 
-This milestone introduces the first real disaster-recovery artifact writer while deliberately keeping PostgreSQL, Gitea and multi-stack backup execution disabled.
+> **Historical qualification record — not a current operator procedure.**
 
-The executable is:
+[← DR index](README.md) · [Current DR workflow](howto.md) · [Documentation map](../TOC.md)
 
-```bash
-python3 dr_archive.py 0 --destination /opt/local-hybrid-ai-backups
-```
+This document records the milestone that first qualified the bounded `archive` recovery strategy using Stack0 PKI. The current operator backup boundary is `./local-ai backup`, which executes the manifest-driven full backup path. The private `dr_archive.py` helper remains an implementation component and is not a supported public command.
 
-It resolves the normal manifest dependency plan and currently fails closed unless that plan is exactly Stack0. This is a temporary milestone gate: the implementation proves one strategy end-to-end before additional adapters are enabled.
+## Qualified resource
 
-## Scope
-
-The only executing recovery resource is the Stack0 manifest resource:
+The milestone exercised the Stack0 manifest resource:
 
 ```text
 resource_id   platform-pki
@@ -28,104 +24,42 @@ restore       pre-prepare
 sensitive     true
 ```
 
-The source is read-only. The adapter does not modify PKI files, restart containers, invoke Docker, dump PostgreSQL, or invoke Gitea.
+The source is read-only. Archive creation does not modify PKI files or require application-state mutation.
 
-## Preconditions
+## Publication contract established by the milestone
 
-Before artifact creation the command reuses the existing DR contracts:
-
-1. resolve manifests and dependency plan;
-2. resolve destination using `--destination > DR_BACKUP_ROOT > /opt/local-hybrid-ai-backups`;
-3. run destination preflight;
-4. run runtime/source preflight;
-5. validate or create the private backup root using the filesystem contract.
-
-The backup root must therefore satisfy the already-validated `0700`, same-owner filesystem contract.
-
-## Backup-set publication
-
-A successful run creates a private temporary sibling directory below the backup root:
-
-```text
-.backup-YYYYMMDDTHHMMSSZ.tmp-<random>/
-```
-
-and builds:
-
-```text
-backup.json
-checksums.sha256
-artifacts/
-└── stack0/
-    └── platform-pki.tar
-```
-
-Directory mode is `0700`. Archive, metadata and checksum files are `0600`.
-
-The archive contains the bounded PKI source using its source basename as archive root (`pki/...`). Absolute archive member names are not used. Regular files, directories and symbolic links are supported; special files such as sockets/devices/FIFOs fail closed.
-
-## Integrity and metadata
-
-After the archive is fsynced the adapter calculates its real SHA-256 and byte size. `backup.json` is then generated and validated against the checked-in `backup-set.schema.json` contract before publication.
-
-`checksums.sha256` records:
-
-```text
-SHA256  artifacts/stack0/platform-pki.tar
-SHA256  backup.json
-```
-
-No secret values or PKI contents are copied into metadata.
-
-## Atomic publication and collision safety
-
-The temporary backup set is fsynced before publication. Final publication uses Linux `renameat2(..., RENAME_NOREPLACE)` into:
+The milestone established the private same-filesystem staging/publication pattern now reused by the full backup engine:
 
 ```text
 backup-YYYYMMDDTHHMMSSZ/
+├── backup.json
+├── checksums.sha256
+└── artifacts/
+    └── stack0/
+        └── platform-pki.tar
 ```
 
-This provides two required properties at the publication boundary:
+The completed set uses private directory/file permissions, bounded relative archive members, SHA-256 integrity metadata and no secret material in metadata. Publication is no-replace and atomic at the final backup-set boundary; an existing completed set is never overwritten.
 
-- same-filesystem atomic rename;
-- an existing final backup-set name is never replaced.
+Regular files, directories and symbolic links are supported by the archive contract. Special files such as sockets, devices and FIFOs fail closed.
 
-If `renameat2` is unavailable, execution fails closed rather than falling back to overwrite-capable semantics.
+## Current relationship to the full backup path
 
-After publication the backup root is fsynced and the published archive checksum is read back and compared with the recorded hash.
+The early milestone intentionally allowed only Stack0 while PostgreSQL, Gitea and multi-stack execution were still being developed. Those restrictions are **retired**. Stack3 PostgreSQL, Stack4 Gitea and the full manifest-driven backup path are now implemented and qualified. `commands/recovery/backup-all.py` is the private execution entry used by the public `./local-ai backup` command.
 
-On a pre-publication error, only the uniquely-created hidden temporary directory is removed. An already-existing final backup set is never removed or modified.
+The archive adapter continues to provide the bounded archive strategy within that larger pipeline. Its historical standalone invocation is retained only as implementation/qualification context and is not an operator interface.
 
-## Current execution boundary
+## Evidence retained
 
-This milestone intentionally does **not** enable:
+The milestone established evidence that remains relevant to the current contract:
 
-```text
-postgres-custom-dump
-gitea-native-dump
-multi-stack real backup
-dr.py backup without --dry-run
-restore execution
-```
+- source PKI remains unchanged by backup;
+- completed backup sets use private permissions;
+- TAR members are bounded relative paths;
+- artifact size and SHA-256 match metadata;
+- `checksums.sha256` verifies artifacts and metadata;
+- `backup.json` satisfies the checked-in schema;
+- temporary staging directories are removed on failure/success as applicable;
+- backup creation does not restart unrelated application containers.
 
-`dr.py backup ... --dry-run` remains the general planner/preflight interface. `dr_archive.py` is the explicit first executing adapter while the execution pipeline is validated on the real host.
-
-## Host validation goals
-
-The first real Stack0 backup should prove:
-
-```text
-source PKI inode/mode/hash unchanged before vs after
-+ completed timestamped backup-set exists
-+ final directory mode 0700
-+ artifact/metadata/checksum mode 0600
-+ TAR contains only bounded relative PKI tree
-+ artifact SHA-256 equals backup.json
-+ artifact size equals backup.json
-+ checksums.sha256 verifies artifact and backup.json
-+ backup.json satisfies backup-set.schema.json contract
-+ no hidden temporary backup directories remain
-+ no container restart or application mutation occurred
-```
-
-After this passes, the next milestone is a restore test of the archive into a temporary isolated directory. Only after proving restore should implementation move to the Stack3 `postgres-custom-dump` adapter.
+Current end-to-end qualification scope is summarized in [DR status](status.md).
