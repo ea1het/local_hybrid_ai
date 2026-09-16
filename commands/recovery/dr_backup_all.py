@@ -37,50 +37,83 @@ ENV_SOURCE = ROOT / ".env"
 ENV_RELATIVE_PATH = "artifacts/global/operational.env"
 
 
-class BackupAllError(RuntimeError): pass
+class BackupAllError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
 class CompletedBackupAll:
-    path: Path; artifact_count: int; prerequisite_count: int; deployed_stacks: tuple[int, ...]
+    path: Path
+    artifact_count: int
+    prerequisite_count: int
+    deployed_stacks: tuple[int, ...]
+
     def as_dict(self):
-        return {"backup_set": str(self.path), "artifact_count": self.artifact_count,
-                "prerequisite_count": self.prerequisite_count,
-                "deployed_stacks": list(self.deployed_stacks), "published_atomically": True}
+        return {
+            "backup_set": str(self.path),
+            "artifact_count": self.artifact_count,
+            "prerequisite_count": self.prerequisite_count,
+            "deployed_stacks": list(self.deployed_stacks),
+            "published_atomically": True,
+        }
 
 
 def load_lifecycle() -> dict:
-    try: data = json.loads(LIFECYCLE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc: raise BackupAllError(f"cannot read installer lifecycle: {exc}") from exc
+    try:
+        data = json.loads(LIFECYCLE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BackupAllError(f"cannot read installer lifecycle: {exc}") from exc
     if data.get("schema_version") != 1 or not isinstance(data.get("stacks"), dict):
         raise BackupAllError("unsupported installer lifecycle contract")
     return data
+
+
+def _owned_containers(manifest: dict) -> set[str]:
+    return {
+        value.split(":", 1)[1]
+        for value in manifest.get("owns", [])
+        if value.startswith("container:")
+    }
+
+
+def _required_containers(sid: int, manifest: dict, lifecycle: dict) -> list[str]:
+    entry = lifecycle.get(str(sid))
+    if not isinstance(entry, dict) or entry.get("directory") != manifest["directory"]:
+        raise BackupAllError(f"stack{sid}: lifecycle/manifest mismatch")
+    required = entry.get("required_containers")
+    if not isinstance(required, list) or not required:
+        raise BackupAllError(f"stack{sid}: cannot determine deployment without required containers")
+    if not set(required).issubset(_owned_containers(manifest)):
+        raise BackupAllError(f"stack{sid}: lifecycle required containers are not manifest-owned")
+    return required
+
+
+def _any_container_exists(required: list[str], runner) -> bool:
+    for name in required:
+        cp = runner(["docker", "inspect", "-f", "{{.State.Status}}", name])
+        if cp.returncode == 0:
+            return True
+    return False
 
 
 def detect_deployed_stacks(manifests: dict[int, dict], runner=dr.run_command) -> list[int]:
     lifecycle = load_lifecycle()["stacks"]
     deployed = [0]
     for sid in sorted(manifests):
-        if sid == 0: continue
-        entry = lifecycle.get(str(sid))
-        if not isinstance(entry, dict) or entry.get("directory") != manifests[sid]["directory"]:
-            raise BackupAllError(f"stack{sid}: lifecycle/manifest mismatch")
-        required = entry.get("required_containers")
-        if not isinstance(required, list) or not required:
-            raise BackupAllError(f"stack{sid}: cannot determine deployment without required containers")
-        owned = {v.split(":",1)[1] for v in manifests[sid].get("owns",[]) if v.startswith("container:")}
-        if not set(required).issubset(owned):
-            raise BackupAllError(f"stack{sid}: lifecycle required containers are not manifest-owned")
-        exists = False
-        for name in required:
-            cp = runner(["docker","inspect","-f","{{.State.Status}}",name])
-            if cp.returncode == 0: exists = True; break
-        if exists: deployed.append(sid)
+        if sid == 0:
+            continue
+        required = _required_containers(sid, manifests[sid], lifecycle)
+        if _any_container_exists(required, runner):
+            deployed.append(sid)
     return deployed
 
 
 def _resource_map(manifests, plan):
-    return {(sid,r["id"]):r for sid in plan for r in manifests[sid]["recovery"].get("resources",[])}
+    return {
+        (sid, resource["id"]): resource
+        for sid in plan
+        for resource in manifests[sid]["recovery"].get("resources", [])
+    }
 
 
 def _paths_overlap(first: Path, second: Path) -> bool:
@@ -106,21 +139,34 @@ def validate_backup_destination(backup_root: Path, stacks_root: Path, base_path:
 
 
 def _copy_private(source: Path, destination: Path):
-    if not source.is_file() or source.is_symlink(): raise BackupAllError("operational .env must resolve to a regular file")
-    if source.stat().st_size <= 0: raise BackupAllError("operational .env is empty")
-    fd=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    if not source.is_file() or source.is_symlink():
+        raise BackupAllError("operational .env must resolve to a regular file")
+    if source.stat().st_size <= 0:
+        raise BackupAllError("operational .env is empty")
+    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        with source.open("rb") as src, os.fdopen(fd,"wb",closefd=False) as dst:
-            shutil.copyfileobj(src,dst,1024*1024); dst.flush(); os.fsync(dst.fileno())
-    finally: os.close(fd)
-    os.chmod(destination,0o600)
-    if dr_archive.mode_of(destination)!=0o600: raise BackupAllError("operational .env backup is not mode 0600")
+        with source.open("rb") as src, os.fdopen(fd, "wb", closefd=False) as dst:
+            shutil.copyfileobj(src, dst, 1024 * 1024)
+            dst.flush()
+            os.fsync(dst.fileno())
+    finally:
+        os.close(fd)
+    os.chmod(destination, 0o600)
+    if dr_archive.mode_of(destination) != 0o600:
+        raise BackupAllError("operational .env backup is not mode 0600")
 
 
-def _artifact_metadata(a,path):
-    return {"stack_id":a.stack_id,"resource_id":a.resource_id,"strategy":a.strategy,"sensitive":a.sensitive,
-            "restore_phase":a.restore_phase,"relative_path":a.relative_path,"sha256":dr_archive.sha256_file(path),
-            "size_bytes":path.stat().st_size}
+def _artifact_metadata(artifact, path):
+    return {
+        "stack_id": artifact.stack_id,
+        "resource_id": artifact.resource_id,
+        "strategy": artifact.strategy,
+        "sensitive": artifact.sensitive,
+        "restore_phase": artifact.restore_phase,
+        "relative_path": artifact.relative_path,
+        "sha256": dr_archive.sha256_file(path),
+        "size_bytes": path.stat().st_size,
+    }
 
 
 def _docker_output(command: list[str], label: str) -> str:
@@ -135,7 +181,13 @@ def _wait_container_ready(container: str, timeout: int = 120) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         state = _docker_output(
-            ["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", container],
+            [
+                "docker",
+                "inspect",
+                "-f",
+                "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
+                container,
+            ],
             f"container state for {container}",
         )
         try:
@@ -152,18 +204,22 @@ def _wait_container_ready(container: str, timeout: int = 120) -> None:
 
 def _create_archive_artifact(resource: dict, manifest: dict, base_path: Path, destination: Path) -> None:
     config = resource["config"]
-    source = config["source"]
-    source_path = dr.expand_runtime_path(source["path"], base_path)
+    source_path = dr.expand_runtime_path(config["source"]["path"], base_path)
     quiesce = config.get("quiesce_container")
     if not quiesce:
         dr_archive.create_tar_archive(source_path, destination)
         return
 
-    owned = {value.split(":", 1)[1] for value in manifest.get("owns", []) if value.startswith("container:")}
-    if quiesce not in owned:
+    if quiesce not in _owned_containers(manifest):
         raise BackupAllError(f"archive quiesce container is not owned by stack{manifest['id']}: {quiesce}")
 
-    running = _docker_output(["docker", "inspect", "-f", "{{.State.Running}}", quiesce], f"inspect {quiesce}") == "true"
+    running = (
+        _docker_output(
+            ["docker", "inspect", "-f", "{{.State.Running}}", quiesce],
+            f"inspect {quiesce}",
+        )
+        == "true"
+    )
     stopped_by_backup = False
     archive_error: Exception | None = None
     restart_error: Exception | None = None
@@ -185,73 +241,163 @@ def _create_archive_artifact(resource: dict, manifest: dict, base_path: Path, de
             restart_error = exc
 
     if archive_error is not None and restart_error is not None:
-        raise BackupAllError(f"archive failed and {quiesce} could not be restored: {restart_error}") from archive_error
+        raise BackupAllError(
+            f"archive failed and {quiesce} could not be restored: {restart_error}"
+        ) from archive_error
     if restart_error is not None:
         raise restart_error
     if archive_error is not None:
         raise archive_error
 
 
-def _create_manifest_artifact(a,resource,manifest,values,base_path,destination):
-    destination.parent.mkdir(mode=0o700,parents=True,exist_ok=True); os.chmod(destination.parent,0o700)
-    source=resource["config"]["source"]
-    if a.strategy=="archive":
-        _create_archive_artifact(resource,manifest,base_path,destination); return
-    if a.strategy=="postgres-custom-dump":
-        database=dr_postgres_verify.validate_identifier(dr.require_env_value(values,source["database_env"],label="database configuration"),"database")
-        dr_stack3_backup.create_postgres_dump(database,destination); return
-    if a.strategy=="gitea-native-dump":
-        members,stopped,restarted=dr_stack4_backup.create_gitea_dump_offline(destination)
-        if not stopped or not restarted: raise BackupAllError("Gitea controlled-offline adapter did not complete stop/restart safely")
-        if not members: raise BackupAllError("Gitea native dump contains no members")
+def _create_manifest_artifact(artifact, resource, manifest, values, base_path, destination):
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(destination.parent, 0o700)
+    source = resource["config"]["source"]
+
+    if artifact.strategy == "archive":
+        _create_archive_artifact(resource, manifest, base_path, destination)
         return
-    raise BackupAllError(f"no executing adapter registered for recovery strategy: {a.strategy}")
+    if artifact.strategy == "postgres-custom-dump":
+        database = dr_postgres_verify.validate_identifier(
+            dr.require_env_value(values, source["database_env"], label="database configuration"),
+            "database",
+        )
+        dr_stack3_backup.create_postgres_dump(database, destination)
+        return
+    if artifact.strategy == "gitea-native-dump":
+        members, stopped, restarted = dr_stack4_backup.create_gitea_dump_offline(destination)
+        if not stopped or not restarted:
+            raise BackupAllError("Gitea controlled-offline adapter did not complete stop/restart safely")
+        if not members:
+            raise BackupAllError("Gitea native dump contains no members")
+        return
+    raise BackupAllError(f"no executing adapter registered for recovery strategy: {artifact.strategy}")
+
+
+def _prepare_backup_plan():
+    manifests = dr.load_manifests()
+    deployed = detect_deployed_stacks(manifests)
+    selectors = [str(sid) for sid in deployed]
+    plan = dr.resolve_plan(selectors)
+    entries = dr.build_plan_entries(plan, manifests)
+    artifacts, prerequisites = dr.build_backup_plan(entries)
+    resources = _resource_map(manifests, plan)
+    dr.preflight_runtime_sources(manifests, plan)
+    return manifests, deployed, plan, artifacts, prerequisites, resources
+
+
+def _prepare_backup_destination(backup_root: Path):
+    values = dr.read_dotenv_presence(ENV_SOURCE)
+    base_path = dr.resolve_base_path(values)
+    stacks_root = Path(dr.require_env_value(values, "STACKS_ROOT", label="STACKS_ROOT"))
+    destination = validate_backup_destination(backup_root, stacks_root, base_path)
+    dr_filesystem.validate_existing_root(destination)
+    return values, base_path, destination
 
 
 def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
-    manifests=dr.load_manifests()
-    deployed=detect_deployed_stacks(manifests)
-    selectors=[str(sid) for sid in deployed]
-    plan=dr.resolve_plan(selectors)
-    entries=dr.build_plan_entries(plan,manifests)
-    artifacts,prerequisites=dr.build_backup_plan(entries)
-    resources=_resource_map(manifests,plan)
-    dr.preflight_runtime_sources(manifests,plan)
-    values=dr.read_dotenv_presence(ENV_SOURCE)
-    base_path=dr.resolve_base_path(values)
-    stacks_root=Path(dr.require_env_value(values,"STACKS_ROOT",label="STACKS_ROOT"))
-    backup_root=validate_backup_destination(backup_root,stacks_root,base_path)
-    dr_filesystem.validate_existing_root(backup_root)
-    created_at,final_name=dr_archive.timestamp_parts(dr_archive.utc_now()); final=backup_root/final_name
-    if final.exists(): raise BackupAllError(f"final backup-set name already exists: {final}")
-    temp=backup_root/f".{final_name}.tmp-{secrets.token_hex(8)}"; old_umask=os.umask(0o077)
+    manifests, deployed, plan, artifacts, prerequisites, resources = _prepare_backup_plan()
+    values, base_path, backup_root = _prepare_backup_destination(backup_root)
+
+    created_at, final_name = dr_archive.timestamp_parts(dr_archive.utc_now())
+    final = backup_root / final_name
+    if final.exists():
+        raise BackupAllError(f"final backup-set name already exists: {final}")
+
+    temp = backup_root / f".{final_name}.tmp-{secrets.token_hex(8)}"
+    old_umask = os.umask(0o077)
     try:
-        dr_archive.mkdir_private(temp); dr_archive.mkdir_private(temp/"artifacts"); dr_archive.mkdir_private(temp/"artifacts"/"global")
-        env_path=temp/ENV_RELATIVE_PATH; _copy_private(ENV_SOURCE,env_path)
-        completed=[]
+        dr_archive.mkdir_private(temp)
+        dr_archive.mkdir_private(temp / "artifacts")
+        dr_archive.mkdir_private(temp / "artifacts" / "global")
+
+        env_path = temp / ENV_RELATIVE_PATH
+        _copy_private(ENV_SOURCE, env_path)
+        completed = []
         for artifact in artifacts:
-            resource=resources.get((artifact.stack_id,artifact.resource_id))
-            if resource is None: raise BackupAllError(f"manifest resource disappeared: stack{artifact.stack_id} {artifact.resource_id}")
-            path=temp/artifact.relative_path; _create_manifest_artifact(artifact,resource,manifests[artifact.stack_id],values,base_path,path)
-            if not path.is_file() or path.stat().st_size<=0: raise BackupAllError(f"backup adapter produced missing/empty artifact: {artifact.relative_path}")
-            completed.append(_artifact_metadata(artifact,path))
-        globals_=[{"resource_id":"operational-env","strategy":"file-copy","sensitive":True,"restore_phase":"pre-prepare",
-                   "relative_path":ENV_RELATIVE_PATH,"sha256":dr_archive.sha256_file(env_path),"size_bytes":env_path.stat().st_size}]
-        prereq=[item.as_dict() for item in prerequisites]
-        base={"schema_version":1,"kind":"local-hybrid-ai-backup-set","created_at":created_at,"source_commit":dr.git_head(),
-              "requested":["all"],"resolved_stacks":plan,"artifacts":completed,"prerequisites":prereq}
+            resource = resources.get((artifact.stack_id, artifact.resource_id))
+            if resource is None:
+                raise BackupAllError(
+                    f"manifest resource disappeared: stack{artifact.stack_id} {artifact.resource_id}"
+                )
+            path = temp / artifact.relative_path
+            _create_manifest_artifact(
+                artifact,
+                resource,
+                manifests[artifact.stack_id],
+                values,
+                base_path,
+                path,
+            )
+            if not path.is_file() or path.stat().st_size <= 0:
+                raise BackupAllError(
+                    f"backup adapter produced missing/empty artifact: {artifact.relative_path}"
+                )
+            completed.append(_artifact_metadata(artifact, path))
+
+        globals_ = [
+            {
+                "resource_id": "operational-env",
+                "strategy": "file-copy",
+                "sensitive": True,
+                "restore_phase": "pre-prepare",
+                "relative_path": ENV_RELATIVE_PATH,
+                "sha256": dr_archive.sha256_file(env_path),
+                "size_bytes": env_path.stat().st_size,
+            }
+        ]
+        prereq = [item.as_dict() for item in prerequisites]
+        base = {
+            "schema_version": 1,
+            "kind": "local-hybrid-ai-backup-set",
+            "created_at": created_at,
+            "source_commit": dr.git_head(),
+            "requested": ["all"],
+            "resolved_stacks": plan,
+            "artifacts": completed,
+            "prerequisites": prereq,
+        }
         dr_archive.validate_completed_metadata(base)
-        metadata=dict(base); metadata["global_artifacts"]=globals_; metadata["deployed_stacks"]=deployed
+        metadata = dict(base)
+        metadata["global_artifacts"] = globals_
+        metadata["deployed_stacks"] = deployed
         metadata.pop("deployed_stacks")
-        metadata_path=temp/"backup.json"; dr_archive.write_private(metadata_path,(json.dumps(metadata,indent=2,sort_keys=True)+"\n").encode())
-        items=[(ENV_RELATIVE_PATH,dr_archive.sha256_file(env_path))]+[(str(a["relative_path"]),str(a["sha256"])) for a in completed]
-        items.append(("backup.json",dr_archive.sha256_file(metadata_path)))
-        dr_archive.write_private(temp/"checksums.sha256","".join(f"{h}  {p}\n" for p,h in items).encode())
-        for relative,expected in items:
-            if dr_archive.sha256_file(temp/relative)!=expected: raise BackupAllError(f"pre-publication checksum mismatch: {relative}")
-        for directory in sorted([p for p in temp.rglob("*") if p.is_dir()],key=lambda p:len(p.parts),reverse=True): dr_archive.fsync_directory(directory)
-        dr_archive.fsync_directory(temp); dr_archive.rename_noreplace(temp,final); dr_archive.fsync_directory(backup_root)
-        return CompletedBackupAll(final,len(completed)+1,len(prerequisites),tuple(deployed))
+
+        metadata_path = temp / "backup.json"
+        dr_archive.write_private(
+            metadata_path,
+            (json.dumps(metadata, indent=2, sort_keys=True) + "\n").encode(),
+        )
+        items = [(ENV_RELATIVE_PATH, dr_archive.sha256_file(env_path))] + [
+            (str(artifact["relative_path"]), str(artifact["sha256"]))
+            for artifact in completed
+        ]
+        items.append(("backup.json", dr_archive.sha256_file(metadata_path)))
+        dr_archive.write_private(
+            temp / "checksums.sha256",
+            "".join(f"{digest}  {path}\n" for path, digest in items).encode(),
+        )
+        for relative, expected in items:
+            if dr_archive.sha256_file(temp / relative) != expected:
+                raise BackupAllError(f"pre-publication checksum mismatch: {relative}")
+        for directory in sorted(
+            [path for path in temp.rglob("*") if path.is_dir()],
+            key=lambda path: len(path.parts),
+            reverse=True,
+        ):
+            dr_archive.fsync_directory(directory)
+        dr_archive.fsync_directory(temp)
+        dr_archive.rename_noreplace(temp, final)
+        dr_archive.fsync_directory(backup_root)
+        return CompletedBackupAll(
+            final,
+            len(completed) + 1,
+            len(prerequisites),
+            tuple(deployed),
+        )
     except Exception:
-        dr_archive.cleanup_temp(temp); raise
-    finally: os.umask(old_umask)
+        dr_archive.cleanup_temp(temp)
+        raise
+    finally:
+        os.umask(old_umask)
