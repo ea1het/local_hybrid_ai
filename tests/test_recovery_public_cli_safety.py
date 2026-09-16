@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Focused safety regressions for the public backup/restore boundary."""
 from __future__ import annotations
-import json,tempfile,unittest
+import contextlib,io,json,tempfile,unittest
 from pathlib import Path
 from unittest import mock
 from commands import cli
@@ -24,11 +24,13 @@ class RecoveryPublicCliSafetyTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp:self._write_set(Path(tmp),metadata);records=cli._backup_sets(Path(tmp))
   self.assertEqual(records[0]["status"],"invalid")
  def test_restore_execute_requires_clean_target_confirmation(self):
-  with self.assertRaises(SystemExit) as raised,mock.patch.object(cli,"_run_internal") as run:cli.restore_command(["apply","/backup/set","--execute"],cli.CLIContext(assume_yes=True))
-  self.assertEqual(raised.exception.code,2);run.assert_not_called()
+  err=io.StringIO()
+  with contextlib.redirect_stderr(err),mock.patch.object(cli,"_run_internal") as run:rc=cli.restore_command(["apply","/backup/set","--execute"],cli.CLIContext(assume_yes=True))
+  self.assertEqual(rc,2);self.assertIn("CLI_USAGE",err.getvalue());run.assert_not_called()
  def test_restore_preflight_rejects_execution_confirmation(self):
-  with self.assertRaises(SystemExit) as raised,mock.patch.object(cli,"_run_internal") as run:cli.restore_command(["apply","/backup/set","--check-clean-target","--confirm-clean-target"],cli.CLIContext())
-  self.assertEqual(raised.exception.code,2);run.assert_not_called()
+  err=io.StringIO()
+  with contextlib.redirect_stderr(err),mock.patch.object(cli,"_run_internal") as run:rc=cli.restore_command(["apply","/backup/set","--check-clean-target","--confirm-clean-target"],cli.CLIContext())
+  self.assertEqual(rc,2);self.assertIn("CLI_USAGE",err.getvalue());run.assert_not_called()
  def test_restore_execute_requires_global_yes_noninteractive(self):
   with mock.patch.object(cli.sys.stdin,"isatty",return_value=False),mock.patch.object(cli,"_run_internal") as run:rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext())
   self.assertEqual(rc,2);run.assert_not_called()
