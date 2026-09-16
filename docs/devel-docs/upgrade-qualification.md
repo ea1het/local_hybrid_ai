@@ -62,7 +62,7 @@ A component with unresolved migration semantics remains blocked by `migration-po
 
 Failure consequences are understood. Components whose state can be damaged or made incompatible by the upgrade require a proven recovery point before mutation. Reconstructable state may use a lighter contract when loss does not violate project recovery requirements.
 
-Automatic destructive rollback is not assumed safe. Failure leaves a diagnosable journal and, where applicable, a usable recovery point.
+Automatic destructive rollback is not assumed safe. A failure preserves the selection and exposes the error plus any recovery point created before mutation. The current executor appends upgrade history only after successful completion; qualification must not rely on a persistent failure-history event that the implementation does not write.
 
 ### 7. READY
 
@@ -78,7 +78,7 @@ Required providers, consumers and capability relationships are known. Prepared c
 
 ### 10. Automated tests
 
-At minimum, evidence covers allowed-target selection, current/disallowed target rejection, stale runtime baseline, immutable target movement, registry/auth/rate-limit failures where applicable, exact mutation scope, READY/VERIFY failure propagation, required recovery-point behaviour, and successful history recording/selection clearing.
+At minimum, evidence covers allowed-target selection, current/disallowed target rejection, stale runtime baseline, immutable target movement, registry/auth/rate-limit failures where applicable, exact mutation scope, READY/VERIFY failure propagation, required recovery-point behaviour, failure preservation of the selection, and successful history recording/selection clearing.
 
 Tests exercise the supported `./local-ai` contract where public behaviour is involved; private-module tests supplement rather than replace that evidence.
 
@@ -94,7 +94,7 @@ This override does not change manifest-declared support status, does not set `SE
 
 The forced path still preserves every protection the implementation can enforce: version policy, target availability, immutable digest, stale-plan detection, exact mutation scope, declared recovery behaviour, READY/RECONCILE/VERIFY and dependency re-verification. A component with no deterministic mutation recipe cannot be made executable merely by supplying `--force`.
 
-Successful forced upgrades retain the forced marker in history so operational evidence cannot be mistaken for a normally supported upgrade.
+Successful forced upgrades retain the forced marker in successful history so operational evidence cannot be mistaken for a normally supported upgrade.
 
 ## Promotion sequence
 
