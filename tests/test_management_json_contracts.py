@@ -37,11 +37,7 @@ class ManagementJsonContractTests(unittest.TestCase):
         self.assertEqual(payload["command"], "install")
         self.assertEqual(payload["mode"], "plan")
         self.assertEqual(payload["resolved_stacks"], ["stack7"])
-        self.assertEqual(payload["actions"], [{
-            "stack": "stack7",
-            "phase": "verify",
-            "reason": "validate stack-owned contract",
-        }])
+        self.assertEqual(payload["actions"], [{"stack": "stack7", "phase": "verify", "reason": "validate stack-owned contract"}])
         self.assertNotIn("command_line", payload["actions"][0])
 
     def test_install_execute_requires_explicit_yes_in_json_mode(self):
@@ -59,15 +55,9 @@ class ManagementJsonContractTests(unittest.TestCase):
         self.assertEqual(payload["error"]["code"], "INSTALL_CONFIRMATION_REQUIRED")
 
     def test_restore_json_wraps_private_result_in_stable_public_envelope(self):
-        completed = subprocess.CompletedProcess(
-            args=["python"],
-            returncode=0,
-            stdout=json.dumps({"resolved_stacks": [0, 1]}),
-            stderr="",
-        )
-        with mock.patch("commands.cli.subprocess.run", return_value=completed), \
-             mock.patch("builtins.print") as output:
-            rc = cli.restore_command(["plan", "/backup", "--dry-run"], True)
+        completed = subprocess.CompletedProcess(args=["python"], returncode=0, stdout=json.dumps({"resolved_stacks": [0, 1]}), stderr="")
+        with mock.patch("commands.cli.subprocess.run", return_value=completed), mock.patch("builtins.print") as output:
+            rc = cli.restore_command(["plan", "/backup"], True)
         self.assertEqual(rc, 0)
         payload = json.loads(output.call_args.args[0])
         self.assertEqual(payload["schema_version"], "1")
@@ -76,15 +66,9 @@ class ManagementJsonContractTests(unittest.TestCase):
         self.assertEqual(payload["result"]["resolved_stacks"], [0, 1])
 
     def test_restore_json_failure_does_not_leak_human_stderr_outside_json(self):
-        completed = subprocess.CompletedProcess(
-            args=["python"],
-            returncode=1,
-            stdout="",
-            stderr="restore failed",
-        )
-        with mock.patch("commands.cli.subprocess.run", return_value=completed), \
-             mock.patch("builtins.print") as output:
-            rc = cli.restore_command(["plan", "/backup", "--dry-run"], True)
+        completed = subprocess.CompletedProcess(args=["python"], returncode=1, stdout="", stderr="restore failed")
+        with mock.patch("commands.cli.subprocess.run", return_value=completed), mock.patch("builtins.print") as output:
+            rc = cli.restore_command(["plan", "/backup"], True)
         self.assertEqual(rc, 1)
         payload = json.loads(output.call_args.args[0])
         self.assertFalse(payload["success"])
