@@ -49,7 +49,7 @@ Every public command identifying a stack uses the numeric id shown by `status` a
 `backup` creates one atomic recovery point. Interactive human use may confirm at a prompt; non-interactive and JSON execution require `--yes`. `restore list-backup-sets` reports a set as completed only after authoritative completed-metadata validation. `restore plan` is read-only. `restore apply --execute` requires both `--confirm-clean-target` and global consent; the former asserts the DR precondition while the latter authorizes non-interactive mutation.
 
 ## Operational views
-`inventory rescan` validates manifest-declared topology and updates the diagnostic snapshot. `status` returns stack operational state and detailed component state in its machine payload. `doctor` checks management prerequisites and metadata consistency. These read-only commands accept `--yes` without changing behavior.
+`inventory rescan` validates manifest-declared topology **and writes** the derived diagnostic snapshot under the runtime root. It is therefore a mutation: interactive use prompts and automation must supply `--yes`. The snapshot is derived metadata, not runtime authority. `status` returns stack operational state and detailed component state in its machine payload, while `doctor` checks management prerequisites and metadata consistency; these read-only commands accept `--yes` as a semantic no-op.
 
 ## Completion
 Shell completion follows the same public grammar. Every branch exposes `--json` and `--yes`, numeric stack selectors remain numeric, and private Python/script names are never completion candidates. `completion bash|zsh` emits adapters; `completion install` installs the appropriate adapter after operator consent and `completion status` verifies it.
@@ -76,4 +76,4 @@ flowchart LR
     J --> M[Machine stdout]
 ```
 
-Domain modules own facts and operations. Each stack exposes a small stack-owned `json_payload()` contract that returns JSON-compatible state and never serializes or prints it; management operations consume that boundary where stack-specific runtime state is returned. The CLI owns both renderers, global automation flags, public error envelopes, help and completion. This keeps the machine contract independent from private implementation paths and allows the human renderer to add a configurable banner/header without contaminating automation output.
+Domain modules own facts and operations. Each stack exposes a small stack-owned `json_payload()` contract that returns JSON-compatible state and never serializes or prints it; management operations consume that boundary where stack-specific runtime state is returned. The CLI owns both renderers, global automation flags, public error envelopes, help, consent and completion. This keeps the machine contract independent from private implementation paths and allows the human renderer to add a configurable banner/header without contaminating automation output.
