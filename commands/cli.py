@@ -11,6 +11,10 @@ ROOT=Path(__file__).resolve().parents[1];RECOVERY=ROOT/"commands"/"recovery";SCH
 @dataclass(frozen=True)
 class CLIContext:json_output:bool=False;assume_yes:bool=False
 def _extract_global_options(argv):return [x for x in argv if x not in {"--json","--yes"}],CLIContext("--json" in argv,"--yes" in argv)
+def _add_global_help(parser):
+ parser.add_argument("--json",action="store_true",help="emit one machine-readable JSON document; valid before or after any public command")
+ parser.add_argument("--yes",action="store_true",help="grant non-interactive consent for operations that require it; accepted as a no-op by read-only commands")
+ return parser
 def _run_internal(path,args):return subprocess.run([sys.executable,str(path),*args],cwd=ROOT).returncode
 def _json_error(code,message,*,command=None):
  payload={"schema_version":SCHEMA_VERSION,"success":False,"error":{"code":code,"message":message}}
@@ -35,7 +39,7 @@ def _run_internal_json(path,args,*,command):
  except json.JSONDecodeError:_json_error("INTERNAL_JSON_INVALID",f"{command} did not return a valid machine response",command=command);return 1
  render.render_json({"schema_version":SCHEMA_VERSION,"command":command,"success":True,"result":result});return 0
 def build_backup_parser():
- p=argparse.ArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set");p.add_argument("--destination",help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}");return p
+ p=_add_global_help(argparse.ArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set"));p.add_argument("--destination",help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}");return p
 def backup_command(args,context):
  ns=build_backup_parser().parse_args(args)
  if not context.assume_yes:
@@ -89,7 +93,9 @@ def _backup_sets_cli(payload):
 def list_backup_sets(backup_root,*,context):
  payload=backup_sets_payload(backup_root);render.render_json(payload) if context.json_output else render.render_cli(_backup_sets_cli(payload));return 0 if payload["success"] else 1
 def build_restore_parser():
- p=argparse.ArgumentParser(prog="local-ai restore",description="Disaster-recovery operations for Local Hybrid AI");a=p.add_subparsers(dest="restore_action",metavar="ACTION");listing=a.add_parser("list-backup-sets",help="list available recovery points");listing.add_argument("--backup-root");plan=a.add_parser("plan",help="validate a recovery point and show restore ordering");plan.add_argument("backup_set");drill=a.add_parser("drill",help="restore into an isolated destination and verify it");drill.add_argument("backup_set");drill.add_argument("--destination",required=True);apply=a.add_parser("apply",help="preflight or execute a clean-target restore");apply.add_argument("backup_set");mode=apply.add_mutually_exclusive_group(required=True);mode.add_argument("--check-clean-target",action="store_true");mode.add_argument("--execute",action="store_true");apply.add_argument("--confirm-clean-target",action="store_true");apply.add_argument("--memory-sync-ssh-bootstrap");resume=a.add_parser("resume",help="resume and verify an interrupted reconstructed target");resume.add_argument("backup_set");resume.add_argument("--memory-sync-ssh-bootstrap",required=True);return p
+ p=_add_global_help(argparse.ArgumentParser(prog="local-ai restore",description="Disaster-recovery operations for Local Hybrid AI"));a=p.add_subparsers(dest="restore_action",metavar="ACTION")
+ def action(name,**kwargs):return _add_global_help(a.add_parser(name,**kwargs))
+ listing=action("list-backup-sets",help="list available recovery points");listing.add_argument("--backup-root");plan=action("plan",help="validate a recovery point and show restore ordering");plan.add_argument("backup_set");drill=action("drill",help="restore into an isolated destination and verify it");drill.add_argument("backup_set");drill.add_argument("--destination",required=True);apply=action("apply",help="preflight or execute a clean-target restore");apply.add_argument("backup_set");mode=apply.add_mutually_exclusive_group(required=True);mode.add_argument("--check-clean-target",action="store_true");mode.add_argument("--execute",action="store_true");apply.add_argument("--confirm-clean-target",action="store_true");apply.add_argument("--memory-sync-ssh-bootstrap");resume=action("resume",help="resume and verify an interrupted reconstructed target");resume.add_argument("backup_set");resume.add_argument("--memory-sync-ssh-bootstrap",required=True);return p
 def restore_command(args,context):
  p=build_restore_parser();ns=p.parse_args(args)
  if ns.restore_action is None:p.print_help();return 0
@@ -114,9 +120,10 @@ def restore_command(args,context):
  else:script,internal=RECOVERY/"restore-resume.py",[ns.backup_set,"--memory-sync-ssh-bootstrap",ns.memory_sync_ssh_bootstrap]
  return _run_internal_json(script,internal,command=f"restore.{action}") if context.json_output else _run_internal(script,internal)
 def build_parser():
- p=argparse.ArgumentParser(prog="local-ai",description="Supported management CLI for the Local Hybrid AI installation");sub=p.add_subparsers(dest="command")
- for name,text in (("install","install or reconcile stacks"),("backup","create a recovery point"),("restore","list, plan, drill, apply or resume disaster recovery"),("status","show operational stack state, runtime health and drift"),("doctor","diagnose management prerequisites and environment consistency"),("inventory","validate and rescan manifest-declared component topology"),("completion","emit Bash or Zsh completion integration"),("upgrade","inspect versions and manage component upgrades")):sub.add_parser(name,help=text)
- for action in ("start","stop"):r=sub.add_parser(action,help=f"{action} one prepared stack runtime");r.add_argument("stack")
+ p=_add_global_help(argparse.ArgumentParser(prog="local-ai",description="Supported management CLI for the Local Hybrid AI installation"));sub=p.add_subparsers(dest="command")
+ for name,text in (("install","install or reconcile stacks"),("backup","create a recovery point"),("restore","list, plan, drill, apply or resume disaster recovery"),("status","show operational stack state, runtime health and drift"),("doctor","diagnose management prerequisites and environment consistency"),("inventory","validate and rescan manifest-declared component topology"),("completion","emit Bash or Zsh completion integration"),("upgrade","inspect versions and manage component upgrades")):_add_global_help(sub.add_parser(name,help=text))
+ for action_name in ("start","stop"):
+  r=_add_global_help(sub.add_parser(action_name,help=f"{action_name} one prepared stack runtime"));r.add_argument("stack")
  return p
 def _upgrade_adopt(args,*,context):
  try:return upgrade_adopt.main([*args,*( ["--yes"] if context.assume_yes else [])],json_output=context.json_output)
