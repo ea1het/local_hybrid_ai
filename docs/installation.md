@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Installation
 
+[← Documentation map](TOC.md) · [Operator CLI](user-docs/cli.md) · [Management plane](architecture/management-plane.md)
+
 `./local-ai` is the supported management interface. The lifecycle registry, stack scripts, Compose files and Python modules are implementation details rather than integration contracts.
 
 ```mermaid
@@ -13,19 +15,19 @@ flowchart LR
     CLI["./local-ai install"] --> Plan["Plan"] --> Prepare["Prepare"] --> Deploy["Deploy"] --> Ready["Ready"] --> Reconcile["Reconcile"] --> Verify["Verify"]
 ```
 
-## 1. Prepare protected configuration
+## 1. Protected configuration
 
-Copy `.env.template` to the operational root `.env` and set real values. The operational `.env` is ignored by Git and is not a stack-owned generated file. PREPARE must not silently replace an existing operational file.
+An operator creates the operational root `.env` from `.env.template` and supplies real values before installation. The operational `.env` is ignored by Git and is not a stack-owned generated file. PREPARE does not silently replace an existing operational file.
 
-## 2. Inspect the plan
+## 2. Plan inspection
 
 ```bash
 ./local-ai install --plan all
 ```
 
-Planning is read-only. For one application, request its numeric stack id; required dependencies are resolved from manifests.
+Planning is read-only. For one application, the operator supplies its numeric stack id; required dependencies are resolved from manifests.
 
-## 3. Install
+## 3. Installation
 
 ```bash
 ./local-ai install 0 1 2 3 4 5 6 7 --yes
@@ -47,9 +49,9 @@ Some credential/bootstrap operations remain explicitly gated because they issue 
 
 ## 5. Machine integration
 
-External automation must not import `commands/` modules or invoke individual stack scripts. Use `./local-ai --json ...` where the command exposes a stable JSON contract. Machine schema versions are independent from private implementation versions.
+External automation uses `./local-ai --json ...` where a command exposes a stable JSON contract. It does not import `commands/` modules or invoke individual stack scripts. Machine schema versions are independent from private implementation versions.
 
-## 6. Validate development changes
+## 6. Development validation
 
 The canonical full repository gate is:
 
@@ -63,7 +65,7 @@ Tests are a development interface, not an operator management interface.
 
 Project source and mutable installation state are separate. Each stack manifest declares owned resources and semantic components. `components[]` is the operational component inventory; Compose supplies implementation bindings. The retired static `commands/upgrade-components.json` catalog is not part of the current architecture.
 
-`./local-ai inventory rescan` validates current manifest/Compose topology and writes a diagnostic snapshot. Normal management reads compile current manifests directly; the snapshot is not version authority and is not required before `status` or `upgrade`.
+`./local-ai inventory rescan` validates current manifest/Compose topology and writes a diagnostic snapshot. Normal management compiles current manifests directly; the snapshot is not version authority and is not required before `status` or `upgrade`.
 
 ## Operational version authority
 
@@ -86,22 +88,22 @@ Adoption does not pull, recreate or restart containers.
 
 ## Compatibility policy and explicit selection
 
-Inspect or change compatibility policy with:
+The public CLI always uses numeric stack selectors. Policy inspection and overrides therefore use forms such as:
 
 ```bash
 ./local-ai upgrade policy
-./local-ai upgrade policy stack2 redis
-./local-ai upgrade policy stack2 redis set major-series
-./local-ai upgrade policy stack2 redis clear
+./local-ai upgrade policy 2 redis
+./local-ai upgrade policy 2 redis set major-series
+./local-ai upgrade policy 2 redis clear
 ```
 
 The compatibility modes are `minor-series`, `major-series` and `manual`. Policy is independent from project qualification: changing policy cannot turn an inventory-only component into a normally selectable component.
 
-Select a real published target explicitly before apply:
+An operator selects a real published target explicitly before apply:
 
 ```bash
-./local-ai upgrade stack2 redis select <published-version>
-./local-ai upgrade stack7 open-webui select <published-version>
+./local-ai upgrade 2 redis select <published-version>
+./local-ai upgrade 7 open-webui select <published-version>
 ```
 
 For a stack with exactly one upgrade-visible component, the CLI may resolve the component when omitted; documentation names the component explicitly because it remains unambiguous if a stack later gains more components.
@@ -118,7 +120,7 @@ An administrator may use `select ... --force` only when an inventory-only compon
 
 On late failure the executor does not perform a destructive automatic rollback. It preserves explicit state/evidence and reports a recovery point where applicable so recovery remains an operator decision.
 
-See [upgrade workflow](user-docs/upgrade.md), [version authority](user-docs/version-authority.md), [upgrade policy](upgrade-policy.md) and [disaster recovery](dr/README.md).
+The detailed flow is documented in [upgrade workflow](user-docs/upgrade.md), [version authority](user-docs/version-authority.md), [upgrade policy](upgrade-policy.md) and [disaster recovery](dr/README.md).
 
 ## Shell completion
 
@@ -129,4 +131,4 @@ Bash/Zsh completion can be installed persistently after checkout/install without
 ./local-ai completion status
 ```
 
-The completion installer is explicit, idempotent and separate from `./local-ai install` because it changes the operator shell environment rather than platform runtime. See [shell completion](user-docs/completion.md).
+The completion installer is explicit, idempotent and separate from `./local-ai install` because it changes the operator shell environment rather than platform runtime. [Shell completion](user-docs/completion.md) describes that contract.
