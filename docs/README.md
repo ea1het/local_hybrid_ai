@@ -6,46 +6,54 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Local Hybrid AI documentation
 
-[← Project README](../README.md) · [Full documentation map](TOC.md)
+[← Project README](../README.md) · [Canonical documentation map](TOC.md)
 
-This directory contains operator guidance, architecture and decision records, disaster-recovery material, behavioural contracts and development guidance. The canonical navigation entry is [`TOC.md`](TOC.md); every documentation folder links back to it. For a compact statement of what is implemented now and what has been retired, read [current implementation state](current-state.md).
+This directory contains operator guidance, architecture and decision records, disaster-recovery material, behavioural contracts and development guidance. [`TOC.md`](TOC.md) is the canonical navigation entry and opens with a diagram showing how the documentation layers relate. Folder `README.md` files are local indexes and link back toward that map.
 
-## Choose your path
+## Reader paths
 
-| If you want to… | Start here |
+| Reader need | Entry point |
 |---|---|
-| Understand what exists now | [Current implementation state](current-state.md) |
-| Understand the system | [Architecture](architecture/README.md) and [stack map](stacks/README.md) |
-| Install or reconcile it | [Installation](installation.md) |
-| Operate it | [User documentation](user-docs/README.md) |
-| Configure secrets | [Configuration](configuration/README.md) |
-| Back up or recover it | [Disaster recovery](dr/README.md) |
-| Understand upgrade rules | [Upgrade policy](upgrade-policy.md) |
-| Change the architecture | [Developer docs](devel-docs/README.md) and [ADRs](devel-docs/adr/README.md) |
-| Review security choices | [SDRs](devel-docs/sdr/README.md) |
-| Review behavioural contracts | [OpenSpec](devel-docs/openspec/README.md) |
-| Run or extend tests | [Testing](devel-docs/testing.md) |
-| See unfinished work | [Pending work](pending.md) |
+| Current deployed design and retired surfaces | [Current implementation state](current-state.md) |
+| Management/control architecture | [Management-plane architecture](architecture/management-plane.md) |
+| Runtime topology and stack relationships | [Stack architecture](stacks/README.md) |
+| Installation and reconciliation | [Installation](installation.md) |
+| Normal operation | [User documentation](user-docs/README.md) |
+| Secrets and configuration | [Configuration](configuration/README.md) |
+| Backup or recovery | [Disaster recovery](dr/README.md) |
+| Upgrade compatibility | [Upgrade policy](upgrade-policy.md) |
+| Architectural rationale | [ADRs](devel-docs/adr/README.md) |
+| Security rationale | [SDRs](devel-docs/sdr/README.md) |
+| Observable behavioural contracts | [OpenSpec](devel-docs/openspec/README.md) |
+| Contract-to-evidence mapping | [OpenSpec traceability](devel-docs/openspec/traceability.md) |
+| Test strategy | [Testing](devel-docs/testing.md) |
+| Active unfinished work | [Pending work](pending.md) |
+| AI-assisted maintenance context | [Agent-oriented continuity reference](a2aknowledge.md) |
 
 ## Documentation model
 
 ```mermaid
 flowchart TD
-    Root["Project README"] --> TOC["docs/TOC.md"]
-    TOC --> Current["Current implementation state"]
+    Root["Project README"] --> TOC["Canonical TOC"]
+    TOC --> Current["Current state"]
     TOC --> Ops["Operator docs"]
     TOC --> Arch["Architecture"]
-    TOC --> Dev["Developer docs"]
     TOC --> DR["Disaster recovery"]
-    Arch --> Stacks["Cross-stack map"]
+    TOC --> Dev["Developer docs"]
+    Arch --> MP["Management plane"]
+    Arch --> Stacks["Stack/runtime plane"]
     Dev --> ADR["Architecture decisions"]
     Dev --> SDR["Security decisions"]
-    Dev --> Spec["Gherkin / OpenSpec"]
-    Spec --> Trace["Traceability to code + tests"]
+    Dev --> Spec["OpenSpec"]
+    Spec --> Trace["Traceability"]
 ```
 
 Folder READMEs are indexes, not competing sources of truth. Machine-readable ownership, component topology, dependency, capability and recovery facts remain authoritative in stack manifests. Architectural rationale belongs in ADRs, security rationale in SDRs, observable behaviour in OpenSpec/Gherkin, and implementation verification in tests.
 
-## Language and legacy policy
+## Language and audience policy
 
-Canonical project documentation is maintained in English so that code, contracts and documentation use one working language. Obsolete Spanish per-stack documentation and other migrated legacy duplicates have already been removed. Historical implementation names remain only where they are necessary to explain an accepted decision, a compatibility contract, or recovery of an older recorded source revision; they must not be presented as current operator interfaces or current repository layout.
+Canonical project documentation is maintained in English. Human-facing prose is written in third-person, role-oriented language so operator and maintainer responsibilities remain explicit. Literal commands, code, configuration, machine output and Gherkin retain the syntax required by their interfaces.
+
+The documentation is human-first. Material intended primarily to help AI agents continue maintenance work is explicitly marked as agent-oriented and does not replace operator, architecture or specification documentation.
+
+Historical implementation names remain only where they explain an accepted decision, a compatibility contract, or recovery of an older recorded source revision. They are not presented as current operator interfaces or current repository layout. The retained architecture research PDF is background material rather than a live source of truth.

@@ -6,11 +6,13 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # `local-ai` command-line interface
 
+[← User documentation](README.md) · [Documentation map](../TOC.md) · [Management plane](../architecture/management-plane.md)
+
 `./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Python modules under `commands/`, shell scripts, Compose files and direct stack lifecycle commands are implementation details.
 
 ## Stack selector contract
 
-Every public command that asks the operator to identify a stack uses the numeric stack id shown by `status` and `upgrade`: `0` through `7`. Use `7`, not `stack7` and not `stack7_-_open-webui`. Internal manifests and machine JSON may retain stable identities such as `stack7`; those are data identities, not alternate CLI selectors.
+Every public command that identifies a stack uses the numeric stack id shown by `status` and `upgrade`: `0` through `7`. An operator supplies `7`, not `stack7` and not `stack7_-_open-webui`. Internal manifests and machine JSON may retain stable identities such as `stack7`; those are data identities, not alternate CLI selectors.
 
 ## Command map
 
@@ -71,7 +73,7 @@ sudo ./local-ai start 5
 ./local-ai restore resume /path/to/backup-set --memory-sync-ssh-bootstrap /secure/bootstrap
 ```
 
-Backup creates one manifest-driven recovery point. The protected operational `.env` is sensitive global state. Managed resources use their declared recovery strategy; reconstructable resources are not promoted to backup artifacts merely because runtime files exist. Restore validation and clean-target gates belong to the recovery engine and the CLI never manufactures destructive consent. See [DR documentation](../dr/README.md).
+Backup creates one manifest-driven recovery point. The protected operational `.env` is sensitive global state. Managed resources use their declared recovery strategy; reconstructable resources are not promoted to backup artifacts merely because runtime files exist. Restore validation and clean-target gates belong to the recovery engine and the CLI never manufactures destructive consent. [DR documentation](../dr/README.md) describes the recovery phases.
 
 ## `inventory rescan`
 
@@ -122,7 +124,7 @@ The JSON diagnostic contract retains stack records plus detailed component `desi
 ./local-ai completion zsh
 ```
 
-`completion bash|zsh` prints a side-effect-free adapter. `completion install` detects supported Bash/Zsh from the operator environment and writes the generated adapter to the selected conventional target; `completion status` verifies that target against current generated content. The installer does not edit shell startup files. Completion follows the same numeric stack-selector grammar as the public CLI. See [Shell completion](completion.md).
+`completion bash|zsh` prints a side-effect-free adapter. `completion install` detects supported Bash/Zsh from the operator environment and writes the generated adapter to the selected conventional target; `completion status` verifies that target against current generated content. The installer does not edit shell startup files. Completion follows the same numeric stack-selector grammar as the public CLI. [Shell completion](completion.md) contains the detailed contract.
 
 ## `upgrade`
 
@@ -140,7 +142,7 @@ STACK  COMPONENT  INSTALLED  AVAILABLE  POLICY  SELECTABLE  SELECTED  VALID
 
 `INSTALLED` is concrete installed/running identity. `AVAILABLE` is registry discovery and never creates consent. `SELECTABLE=yes` means the project has qualified the guarded executor for that component. `SELECTED` is explicit operator intent and `VALID` says whether the stored selection still passes its gates.
 
-A supported flow is:
+A normal supported sequence is:
 
 ```bash
 ./local-ai upgrade
@@ -155,7 +157,7 @@ sudo ./local-ai upgrade --yes
 ./local-ai upgrade 2 redis clear
 ```
 
-`upgrade --yes` applies only already-selected targets. Before mutation it revalidates runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and dependent-consumer checks remain part of the guarded executor contract. Success ends with `UPGRADE: PASS`; absence of PASS must not be interpreted as success merely because a container exists.
+`upgrade --yes` applies only already-selected targets. Before mutation it revalidates runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and dependent-consumer checks remain part of the guarded executor contract. Success ends with `UPGRADE: PASS`; absence of PASS is not success merely because a container exists.
 
 ### Administrator-forced upgrade
 
@@ -166,7 +168,7 @@ For `SELECTABLE=no`, an administrator can bypass project qualification only when
 sudo ./local-ai upgrade --yes
 ```
 
-Forced consent is stored in the selection. It does not bypass target existence/digest checks, stale-plan detection, compatibility policy, known mutation scope, recovery requirements, READY, VERIFY or consumer checks. If no deterministic recipe exists, selection fails with `UPGRADE_FORCE_UNAVAILABLE`. See [Administrator-forced upgrades](forced-upgrades.md).
+Forced consent is stored in the selection. It does not bypass target existence/digest checks, stale-plan detection, compatibility policy, known mutation scope, recovery requirements, READY, VERIFY or consumer checks. If no deterministic recipe exists, selection fails with `UPGRADE_FORCE_UNAVAILABLE`. [Administrator-forced upgrades](forced-upgrades.md) describes the risk boundary.
 
 ### Selection and policy
 
