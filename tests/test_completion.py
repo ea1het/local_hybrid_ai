@@ -14,6 +14,18 @@ class CompletionTests(unittest.TestCase):
  def test_stack_completion_is_manifest_driven_and_numeric(self):
   with mock.patch("commands.completion.install.all_manifests",return_value={0:{},2:{},7:{}}):
    self.assertEqual([v for v in completion.complete(["start",""]) if not v.startswith("--")],["0","2","7"]);self.assertEqual([v for v in completion.complete(["stop",""]) if not v.startswith("--")],["0","2","7"]);self.assertEqual(completion.complete(["start","stack"]),[])
+ def test_install_completion_exposes_numeric_stacks_and_all_public_options(self):
+  with mock.patch("commands.completion.install.all_manifests",return_value={0:{},7:{}}):values=completion.complete(["install",""])
+  for value in ("0","7","--plan","--dry-run","--target","--reconcile","--json","--yes"):self.assertIn(value,values)
+ def test_restore_leaf_completion_exposes_public_options(self):
+  cases={
+   ("restore","list-backup-sets",""):{"--backup-root"},
+   ("restore","drill","/backup",""):{"--destination"},
+   ("restore","apply","/backup",""):{"--check-clean-target","--execute","--confirm-clean-target","--memory-sync-ssh-bootstrap"},
+   ("restore","resume","/backup",""):{"--memory-sync-ssh-bootstrap"},
+  }
+  for words,expected in cases.items():
+   with self.subTest(words=words):self.assertTrue(expected.issubset(set(completion.complete(list(words)))))
  def test_upgrade_components_are_manifest_driven_with_numeric_public_stack(self):
   compiled={"schema_version":1,"stacks":[{"id":"stack2","components":[{"id":"redis"},{"id":"searxng"}]}]}
   with mock.patch("commands.completion.component_inventory.compile_upgrade_catalog",return_value=compiled),mock.patch("commands.completion.install.all_manifests",return_value={2:{}}):
