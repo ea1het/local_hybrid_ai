@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 A **local-first, hybrid AI platform** assembled from independent Docker stacks. Local services are the default execution path; cloud services can be used deliberately when a workload or policy requires them. The repository is designed so that infrastructure ownership, security boundaries, persistence, recovery and upgrades remain explicit rather than hidden inside one monolithic Compose project.
 
-> New to the project? Read this page first, then use the [documentation map](docs/TOC.md).
+A new reader begins with this page and then follows the [documentation map](docs/TOC.md), whose opening diagram routes operators, maintainers and contributors to the appropriate documentation layer.
 
 ## What problem this project solves
 
@@ -74,7 +74,7 @@ The repository is declarative project source. Mutable installation state lives o
 /opt/docker/runtime   installation-owned runtime, secrets and management state
 ```
 
-This separation is a core invariant. Stack preparation must not silently regenerate the protected root `.env`, and a stack `.lock` means **PREPARED only** — never “deployed”, “ready” or “healthy”. See [configuration](docs/configuration/README.md) and [ADR-0001](docs/devel-docs/adr/0001-backup-operational-env.md).
+This separation is a core invariant. Stack preparation does not silently regenerate the protected root `.env`, and a stack `.lock` means **PREPARED only** — never “deployed”, “ready” or “healthy”. [Configuration](docs/configuration/README.md) and [ADR-0001](docs/devel-docs/adr/0001-backup-operational-env.md) describe the corresponding contracts.
 
 ## Lifecycle
 
@@ -86,7 +86,7 @@ flowchart LR
     C -.->|runtime changed| R
 ```
 
-Preparation establishes prerequisites and declarative/runtime structure. Deployment starts or updates runtime. READY proves required runtime health. Reconciliation applies capability-dependent policy. VERIFY checks the resulting contract. See [installation](docs/installation.md).
+Preparation establishes prerequisites and declarative/runtime structure. Deployment starts or updates runtime. READY proves required runtime health. Reconciliation applies capability-dependent policy. VERIFY checks the resulting contract. [Installation](docs/installation.md) describes the operator workflow.
 
 ## One supported management interface
 
@@ -101,7 +101,7 @@ flowchart LR
     CLI --> DR["backup / restore"]
 ```
 
-Common entry points:
+Common entry points are:
 
 ```bash
 ./local-ai install --plan all
@@ -114,17 +114,17 @@ Common entry points:
 ./local-ai restore plan <backup-set> --dry-run
 ```
 
-Selective lifecycle is conservative: `stop` refuses to stop a provider while required consumers are running, and `start` refuses to invent or auto-start missing required providers. See the complete [CLI reference](docs/user-docs/cli.md) and [ADR-0002](docs/devel-docs/adr/0002-single-management-cli.md).
+Selective lifecycle is conservative: `stop` refuses to stop a provider while required consumers are running, and `start` refuses to invent or auto-start missing required providers. The complete [CLI reference](docs/user-docs/cli.md), [management-plane architecture](docs/architecture/management-plane.md) and [ADR-0002](docs/devel-docs/adr/0002-single-management-cli.md) describe the boundary at different levels.
 
 ## Security boundaries
 
-Security decisions are recorded explicitly rather than buried in Compose files. Important examples include: Hermes runs without the Docker socket; AI consumers use least-privilege LiteLLM credentials; service networking stays internal unless intentionally published; and Open WebUI model access is explicit. See the [SDR index](docs/devel-docs/sdr/README.md).
+Security decisions are recorded explicitly rather than buried in Compose files. Important examples include: Hermes runs without the Docker socket; AI consumers use least-privilege LiteLLM credentials; service networking stays internal unless intentionally published; and Open WebUI model access is explicit. The [SDR index](docs/devel-docs/sdr/README.md) records the rationale.
 
 ## Upgrades and recovery
 
-The normal upgrade workflow is **installed → available → selectable → selected → verified PASS**. Registry availability is discovery, not consent, and a component is selectable only after its executor has been qualified. Start with the [upgrade guide](docs/user-docs/upgrade.md); compatibility rules are documented separately in [upgrade policy](docs/upgrade-policy.md).
+The normal upgrade workflow is **installed → available → selectable → selected → verified PASS**. Registry availability is discovery, not consent, and a component is selectable only after its executor has been qualified. The [upgrade guide](docs/user-docs/upgrade.md) is the operator entry point; compatibility rules are documented separately in [upgrade policy](docs/upgrade-policy.md).
 
-Disaster recovery is manifest-driven. Stateful resources are backed up according to their recovery strategy; reconstructable resources are rebuilt. Backup publication and restore validation fail closed. Start with the [DR guide](docs/dr/README.md).
+Disaster recovery is manifest-driven. Stateful resources are backed up according to their recovery strategy; reconstructable resources are rebuilt. Backup publication and restore validation fail closed. The [DR guide](docs/dr/README.md) is the recovery entry point.
 
 ## Repository map
 
@@ -137,7 +137,7 @@ docs/                    documentation and decision records
 tests/                   automated verification
 ```
 
-For the complete documentation structure, use [`docs/TOC.md`](docs/TOC.md). For behavioural traceability from requirements to implementation and tests, use [OpenSpec traceability](docs/devel-docs/openspec/traceability.md).
+The complete documentation structure is in [`docs/TOC.md`](docs/TOC.md). Behavioural traceability from requirements to implementation and tests is in [OpenSpec traceability](docs/devel-docs/openspec/traceability.md).
 
 ## Development gate
 
@@ -147,4 +147,4 @@ The repository validation gate is:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Testing conventions and qualification evidence are documented in [docs/devel-docs/testing.md](docs/devel-docs/testing.md).
+Testing conventions and qualification evidence are documented in [testing strategy](docs/devel-docs/testing.md).
