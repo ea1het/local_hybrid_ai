@@ -19,19 +19,25 @@ def _upgrade_components(stack):
  return []
 def _with_globals(values):return [*values,*GLOBAL_OPTIONS]
 def _candidates(before):
- semantic=[x for x in before if x not in GLOBAL_OPTIONS]
- if not semantic:return _with_globals(list(TOP_LEVEL))
- command=semantic[0];tail=semantic[1:]
+ semantic=[x for x in before if x not in GLOBAL_OPTIONS];command=semantic[0] if semantic else None;tail=semantic[1:]
+ if command is None:return _with_globals(list(TOP_LEVEL))
  if command=="backup":return _with_globals(["--destination"])
  if command=="completion":return _with_globals(["bash","install","status","zsh"] if not tail else [])
  if command in {"doctor","status"}:return _with_globals([])
  if command in {"start","stop"}:return _with_globals(_stack_ids() if not tail else [])
  if command=="restore":
   if not tail:return _with_globals(list(RESTORE_ACTIONS))
-  if len(tail)==1 and tail[0] in {"apply","drill","plan","resume"}:return _with_globals(_backup_sets())
+  action=tail[0]
+  if action=="list-backup-sets":return _with_globals(["--backup-root"])
+  if len(tail)==1 and action in {"apply","drill","plan","resume"}:return _with_globals(_backup_sets())
+  if action=="drill" and len(tail)>=2:return _with_globals(["--destination"])
+  if action=="apply" and len(tail)>=2:return _with_globals(["--check-clean-target","--execute","--confirm-clean-target","--memory-sync-ssh-bootstrap"])
+  if action=="resume" and len(tail)>=2:return _with_globals(["--memory-sync-ssh-bootstrap"])
   return _with_globals([])
  if command=="inventory":return _with_globals(["rescan"] if not tail else [])
- if command=="install":return _with_globals([])
+ if command=="install":
+  options=["--plan","--dry-run","--target","--reconcile"]
+  return _with_globals([*_stack_ids(),*options])
  if command=="upgrade":
   if not tail:return _with_globals([*_stack_ids(),"adopt","check","--offline","policy"])
   if tail[0]=="adopt":return _with_globals(_stack_ids() if len(tail)==1 else [])
@@ -40,12 +46,13 @@ def _candidates(before):
    if len(tail)==1:return _with_globals(_stack_ids())
    if len(tail)==2:return _with_globals(_upgrade_components(tail[1]))
    if len(tail)==3:return _with_globals(["clear","set"])
+   if len(tail)>=4 and tail[-2]=="set":return _with_globals(["patch-series","minor-series","major-series"])
    return _with_globals([])
   stack=tail[0]
   if stack in _stack_ids():
    if len(tail)==1:return _with_globals(_upgrade_components(stack))
    if len(tail)==2:return _with_globals(["clear","select"])
-   if len(tail)==4 and tail[2]=="select":return _with_globals(["--force"])
+   if len(tail)>=3 and "select" in tail:return _with_globals(["--force"])
  return _with_globals([])
 def complete(words):
  prefix=words[-1] if words else "";before=words[:-1] if words else [];seen=set();out=[]
