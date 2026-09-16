@@ -74,6 +74,40 @@ def _run_internal_json(path: Path, args: list[str], *, command: str) -> int:
     return 0
 
 
+def build_backup_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="local-ai backup", description="Create one atomic disaster-recovery backup set")
+    parser.add_argument("--destination", help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}")
+    parser.add_argument("--yes", action="store_true", help="confirm backup creation without an interactive prompt")
+    return parser
+
+
+def backup_command(args: list[str], json_output: bool) -> int:
+    parser = build_backup_parser()
+    ns = parser.parse_args(args)
+    if not ns.yes:
+        if json_output:
+            _json_error("CONFIRMATION_REQUIRED", "backup creation requires --yes in JSON/non-interactive mode", command="backup")
+            return 2
+        if not sys.stdin.isatty():
+            print("ERROR [CONFIRMATION_REQUIRED]: backup creation requires --yes when input is not interactive", file=sys.stderr)
+            return 2
+        destination = ns.destination or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)
+        try:
+            answer = input(f"Create a new atomic DR backup set under {destination}? [y/N] ")
+        except EOFError:
+            print("Backup cancelled.")
+            return 1
+        if answer.strip().lower() not in {"y", "yes"}:
+            print("Backup cancelled.")
+            return 1
+    internal: list[str] = []
+    if ns.destination:
+        internal.extend(["--destination", ns.destination])
+    if json_output:
+        internal.append("--json")
+    return _run_internal(RECOVERY / "backup-all.py", internal)
+
+
 def _backup_root(override: str | None = None) -> Path:
     raw = override or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)
     return Path(raw).expanduser().resolve()
@@ -190,8 +224,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="local-ai", description="Supported management CLI for the Local Hybrid AI installation")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("install", help="install or reconcile stacks")
-    backup = sub.add_parser("backup", help="create a recovery point")
-    backup.add_argument("args", nargs=argparse.REMAINDER)
+    sub.add_parser("backup", help="create a recovery point")
     sub.add_parser("restore", help="list, plan, drill, apply or resume disaster recovery")
     sub.add_parser("status", help="show operational stack state, runtime health and drift")
     sub.add_parser("doctor", help="diagnose management prerequisites and environment consistency")
@@ -232,10 +265,7 @@ def main(argv: list[str] | None = None) -> int:
             return install_entry.main(raw[1:])
         return _run_internal(ROOT / "commands" / "install.py", raw[1:])
     if raw and raw[0] == "backup":
-        args = list(raw[1:])
-        if json_output and "--json" not in args:
-            args.append("--json")
-        return _run_internal(RECOVERY / "backup-all.py", args)
+        return backup_command(raw[1:], json_output)
     if raw and raw[0] == "restore":
         return restore_command(raw[1:], json_output)
     if raw and raw[0] == "inventory":
