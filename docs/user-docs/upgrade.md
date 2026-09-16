@@ -117,6 +117,7 @@ With no action after the component, `policy` shows the effective policy. `set` c
 | `migration-policy-required` | Updating may involve data/schema/application migrations whose compatibility and recovery rules are not yet fully qualified. |
 | `executor-not-qualified` | Version discovery works, but the component-specific mutation/readiness/verification procedure has not passed the qualification gate. |
 | `local-build` | The component is produced locally rather than upgraded from a normal registry version stream. |
+| `local-managed` | The component lifecycle is managed locally and does not expose an independent registry-version upgrade path. |
 | `non-versioned-component` | A versioned package upgrade does not meaningfully apply to this component. |
 
 A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. Knowing that an update exists and project support qualification are separate facts.
