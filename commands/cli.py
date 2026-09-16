@@ -15,9 +15,7 @@ class PublicArgumentParser(argparse.ArgumentParser):
 class CLIContext:json_output:bool=False;assume_yes:bool=False
 def _extract_global_options(argv):return [x for x in argv if x not in {"--json","--yes"}],CLIContext("--json" in argv,"--yes" in argv)
 def _add_global_help(parser):
- parser.add_argument("--json",action="store_true",help="emit one machine-readable JSON document; valid before or after any public command")
- parser.add_argument("--yes",action="store_true",help="grant non-interactive consent for operations that require it; accepted as a no-op by read-only commands")
- return parser
+ parser.add_argument("--json",action="store_true",help="emit one machine-readable JSON document; valid before or after any public command");parser.add_argument("--yes",action="store_true",help="grant non-interactive consent for operations that require it; accepted as a no-op by read-only commands");return parser
 def _run_internal(path,args):return subprocess.run([sys.executable,str(path),*args],cwd=ROOT).returncode
 def _json_error(code,message,*,command=None):
  payload={"schema_version":SCHEMA_VERSION,"success":False,"error":{"code":code,"message":message}}
@@ -136,7 +134,8 @@ def build_parser():
   r=_add_global_help(sub.add_parser(action_name,help=f"{action_name} one prepared stack runtime"));r.add_argument("stack")
  return p
 def _upgrade_adopt(args,*,context):
- try:return upgrade_adopt.main([*args,*( ["--yes"] if context.assume_yes else [])],json_output=context.json_output)
+ try:
+  payload=upgrade_adopt.json_payload([*args,*( ["--yes"] if context.assume_yes else [])]);render.render_json(payload) if context.json_output else render.render_cli(upgrade_adopt.cli_text(payload));return 0
  except upgrade_adopt.AdoptionError as exc:
   payload={"schema_version":upgrade_adopt.SCHEMA_VERSION,"command":"upgrade.adopt","success":False,"error":{"code":exc.code,"message":str(exc)}}
   if context.json_output:render.render_json(payload)
