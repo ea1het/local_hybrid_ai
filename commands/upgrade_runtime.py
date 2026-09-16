@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Runtime and Compose image discovery for upgrade inventory."""
+"""Runtime and Compose image discovery for upgrade inventory and execution."""
 
 from __future__ import annotations
 
@@ -72,13 +72,13 @@ def compose_image(root: Path, component: ComponentLike, env: dict[str, str]) -> 
     return None
 
 
-def running_image(root: Path, component: ComponentLike) -> str | None:
-    """Return the image configured on the running container, when observable."""
-    if not component.container:
+def running_container_image(root: Path, container: str | None) -> str | None:
+    """Return the image configured on one running container, when observable."""
+    if not container:
         return None
     try:
         result = subprocess.run(
-            ["docker", "inspect", "-f", "{{.Config.Image}}", component.container],
+            ["docker", "inspect", "-f", "{{.Config.Image}}", container],
             cwd=root,
             text=True,
             capture_output=True,
@@ -89,3 +89,8 @@ def running_image(root: Path, component: ComponentLike) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
+
+
+def running_image(root: Path, component: ComponentLike) -> str | None:
+    """Return the image configured on the running container, when observable."""
+    return running_container_image(root, component.container)
