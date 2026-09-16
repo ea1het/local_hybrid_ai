@@ -39,9 +39,10 @@ class ManagementCliContractTests(unittest.TestCase):
  def test_completion_upgrade_policy_stack_selector_is_numeric(self):
   values=completion.complete(["upgrade","policy",""])
   for i in range(8):self.assertIn(str(i),values)
- def test_completion_upgrade_adopt_stack_selector_is_numeric(self):
+ def test_completion_upgrade_adopt_has_no_stack_argument(self):
   values=completion.complete(["upgrade","adopt",""])
-  for i in range(8):self.assertIn(str(i),values)
+  self.assertEqual([value for value in values if not value.startswith("--")],[])
+  self.assertIn("--json",values);self.assertIn("--yes",values)
  def test_completion_command_outputs_shell_integration(self):
   cp=self.run_cli("completion","bash");self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("complete -F _local_ai_complete local-ai ./local-ai",cp.stdout);self.assertIn("__complete",cp.stdout)
  def test_completion_rejects_unknown_shell(self):self.assertNotEqual(self.run_cli("completion","fish").returncode,0)
