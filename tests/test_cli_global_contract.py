@@ -3,10 +3,12 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Cross-command contract for public local-ai automation flags and rendering."""
 from __future__ import annotations
-import contextlib,io,json,unittest
+import contextlib,io,json,subprocess,unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest import mock
 from commands import cli,completion,render
+ROOT=Path(__file__).resolve().parents[1]
 class GlobalCliContractTests(unittest.TestCase):
  def test_global_flags_are_position_independent(self):
   cases=[(["--json","--yes","status"],["status","--json","--yes"]),(["--yes","doctor","--json"],["doctor","--yes","--json"]),(["--json","--yes","inventory","rescan"],["inventory","rescan","--yes","--json"])]
@@ -22,6 +24,11 @@ class GlobalCliContractTests(unittest.TestCase):
   for parser in parsers:
    with self.subTest(prog=parser.prog):
     text=parser.format_help();self.assertIn("--json",text);self.assertIn("--yes",text)
+ def test_facade_help_is_self_documenting_at_public_executable(self):
+  for command in ("install","upgrade","completion"):
+   with self.subTest(command=command):
+    cp=subprocess.run([str(ROOT/"local-ai"),command,"--help"],cwd=ROOT,text=True,capture_output=True,check=False)
+    self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("--json",cp.stdout);self.assertIn("--yes",cp.stdout);self.assertNotIn("commands/",cp.stdout)
  def test_restore_leaf_help_documents_global_flags(self):
   for action in ("list-backup-sets","plan","drill","apply","resume"):
    out=io.StringIO()
