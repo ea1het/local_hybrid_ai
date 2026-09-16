@@ -17,12 +17,7 @@ from commands.upgrade_guard import run_guarded
 
 
 def _facade_help(argv: list[str]) -> bool:
-    """Render help for facade-backed commands before their execution path.
-
-    The facades remain structured domain adapters.  This entry point owns the
-    public presentation boundary, including help for commands that do not use
-    the root argparse dispatcher during normal execution.
-    """
+    """Render help for facade-backed commands before their execution path."""
     semantic = [arg for arg in argv if arg not in {"--json", "--yes"}]
     if len(semantic) < 2 or semantic[-1] not in {"-h", "--help"}:
         return False
@@ -46,7 +41,38 @@ def _facade_help(argv: list[str]) -> bool:
     return False
 
 
+def _interactive_facade_consent(argv: list[str]) -> list[str]:
+    """Translate an interactive operator confirmation into global ``--yes``.
+
+    JSON and non-interactive invocations never prompt; the structured facade
+    then fails closed if consent is required.
+    """
+    if "--yes" in argv or "--json" in argv or not sys.stdin.isatty():
+        return argv
+    semantic = [arg for arg in argv if arg not in {"--json", "--yes"}]
+    if not semantic:
+        return argv
+    command = semantic[0]
+    mutation = False
+    prompt = ""
+    if command == "completion" and semantic[1:] == ["install"]:
+        mutation = True
+        prompt = "Install shell completion integration? [y/N] "
+    elif command == "install" and not any(flag in semantic[1:] for flag in ("--plan", "--dry-run")):
+        mutation = True
+        prompt = "Execute the resolved stack installation/reconciliation plan? [y/N] "
+    if not mutation:
+        return argv
+    try:
+        answer = input(prompt)
+    except EOFError:
+        return argv
+    return [*argv, "--yes"] if answer.strip().lower() in {"y", "yes"} else argv
+
+
 if __name__ == "__main__":
-    if _facade_help(sys.argv[1:]):
+    args = sys.argv[1:]
+    if _facade_help(args):
         raise SystemExit(0)
-    raise SystemExit(run_guarded(sys.argv[1:], main))
+    args = _interactive_facade_consent(args)
+    raise SystemExit(run_guarded(args, main))
