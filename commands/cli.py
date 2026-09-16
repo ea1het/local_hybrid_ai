@@ -94,14 +94,16 @@ def _backup_sets(root: Path) -> list[dict[str, object]]:
         if metadata_path.is_file() and not metadata_path.is_symlink() and checksums_path.is_file() and not checksums_path.is_symlink():
             try:
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-                if metadata.get("kind") == "local-hybrid-ai-backup-set" and metadata.get("completed") is True:
-                    record.update({
-                        "status": "completed",
-                        "created_at": metadata.get("created_at"),
-                        "source_commit": metadata.get("source_commit"),
-                        "resolved_stacks": metadata.get("resolved_stacks", []),
-                    })
-            except (OSError, json.JSONDecodeError, AttributeError):
+                valid = (
+                    isinstance(metadata, dict)
+                    and metadata.get("schema_version") == 1
+                    and metadata.get("kind") == "local-hybrid-ai-backup-set"
+                    and isinstance(metadata.get("source_commit"), str)
+                    and isinstance(metadata.get("resolved_stacks"), list)
+                )
+                if valid:
+                    record.update({"status": "completed", "created_at": metadata.get("created_at"), "source_commit": metadata.get("source_commit"), "resolved_stacks": metadata.get("resolved_stacks", [])})
+            except (OSError, json.JSONDecodeError):
                 pass
         records.append(record)
     return sorted(records, key=lambda item: str(item["name"]), reverse=True)
@@ -137,17 +139,13 @@ def list_backup_sets(backup_root: str | None, *, json_output: bool) -> int:
 def build_restore_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="local-ai restore", description="Disaster-recovery operations for Local Hybrid AI")
     actions = parser.add_subparsers(dest="restore_action", metavar="ACTION")
-
     listing = actions.add_parser("list-backup-sets", help="list available recovery points")
     listing.add_argument("--backup-root", help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}")
-
     plan = actions.add_parser("plan", help="validate a recovery point and show restore ordering")
     plan.add_argument("backup_set", help="completed backup-set directory")
-
     drill = actions.add_parser("drill", help="restore into an isolated destination and verify it")
     drill.add_argument("backup_set", help="completed backup-set directory")
     drill.add_argument("--destination", required=True, help="isolated drill destination")
-
     apply = actions.add_parser("apply", help="preflight or execute a clean-target restore")
     apply.add_argument("backup_set", help="completed backup-set directory")
     mode = apply.add_mutually_exclusive_group(required=True)
@@ -155,7 +153,6 @@ def build_restore_parser() -> argparse.ArgumentParser:
     mode.add_argument("--execute", action="store_true", help="execute the restore")
     apply.add_argument("--confirm-clean-target", action="store_true", help="mandatory with --execute")
     apply.add_argument("--memory-sync-ssh-bootstrap", help="external Stack6 memory-sync SSH bootstrap directory")
-
     resume = actions.add_parser("resume", help="resume and verify an interrupted reconstructed target")
     resume.add_argument("backup_set", help="completed backup-set directory")
     resume.add_argument("--memory-sync-ssh-bootstrap", required=True, help="external Stack6 memory-sync SSH bootstrap directory")
@@ -170,7 +167,6 @@ def restore_command(args: list[str], json_output: bool) -> int:
         return 0
     if ns.restore_action == "list-backup-sets":
         return list_backup_sets(ns.backup_root, json_output=json_output)
-
     action = ns.restore_action
     if action == "plan":
         script, internal = RECOVERY / "restore-all.py", [ns.backup_set, "--dry-run"]
@@ -185,7 +181,6 @@ def restore_command(args: list[str], json_output: bool) -> int:
             internal.extend(["--memory-sync-ssh-bootstrap", ns.memory_sync_ssh_bootstrap])
     else:
         script, internal = RECOVERY / "restore-resume.py", [ns.backup_set, "--memory-sync-ssh-bootstrap", ns.memory_sync_ssh_bootstrap]
-
     if json_output:
         return _run_internal_json(script, internal, command=f"restore.{action}")
     return _run_internal(script, internal)
@@ -224,7 +219,6 @@ def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     json_output = "--json" in raw
     raw = [arg for arg in raw if arg != "--json"]
-
     if raw and raw[0] == "__complete":
         try:
             print("\n".join(completion.complete(raw[1:])))
@@ -253,7 +247,6 @@ def main(argv: list[str] | None = None) -> int:
         if invalid is not None:
             return _stack_selector_error(invalid, json_output=json_output, command="upgrade")
         return upgrade_entry.main(upgrade_args or [], json_output=json_output)
-
     parser = build_parser()
     ns = parser.parse_args(raw)
     if ns.command is None:
