@@ -48,13 +48,15 @@ The lifecycle is `PREPARE → DEPLOY → READY → RECONCILE → VERIFY`. A stac
 
 ## Shell completion
 
-TAB completion is manifest-aware and source-local. Candidate calculation does not query Docker or registries. Bash/Zsh adapters can be generated without mutation. `completion install` detects the shell from `$SHELL`, chooses the implemented root/user target, writes the generated adapter idempotently and does not rewrite shell startup files. `completion status` verifies the target file/content. Actual loading still depends on the shell's own completion configuration (`bash-completion` for the Bash user directory; `fpath`/completion initialization for Zsh), so installed-file state is not claimed as proof that every interactive shell loads it. Candidate-grammar discrepancies, when present, are tracked in [pending work](pending.md) rather than being presented as completed behaviour.
+Bash/Zsh completion is manifest-aware and source-local. Candidate calculation does not query Docker or registries. Bash/Zsh adapters can be generated without mutation. `completion install` detects the shell from `$SHELL`, chooses the implemented root/user target, writes the generated adapter idempotently and does not rewrite shell startup files. `completion status` verifies the target file/content. Actual loading still depends on the shell's own completion configuration (`bash-completion` for the Bash user directory; `fpath`/completion initialization for Zsh), so installed-file state is not claimed as proof that every interactive shell loads it.
+
+Completion follows the same public grammar as the CLI: lifecycle and upgrade stack candidates are numeric `0` through `7`; upgrade target actions are `select`/`clear`; policy mutation actions are `set`/`clear`, while policy inspection is action-less.
 
 ## Disaster recovery
 
 Recovery is manifest-driven. The protected operational `.env` is a sensitive global artifact. Stack0 PKI, Stack3 logical database state, Stack4 native Gitea state and Stack7 Open WebUI data are managed recovery artifacts. Stack6 runtime is reconstructable; durable user memory is Git-backed. Stack4 runner runtime/registration is reconstructable and is not a managed recovery resource.
 
-Recovery planning/orchestration and read-only destination/runtime-source preflight are now separate implementation responsibilities. Backup execution, restore staging, managed-state restore, live-state application and resume verification remain explicit phases because they have different mutation and safety properties. Backup destinations equal to, inside, or ancestors of protected source/runtime roots are rejected. Restore planning, drills, clean-target apply and resumable recovery are explicit operations rather than lifecycle side effects.
+Recovery planning/orchestration and read-only destination/runtime-source preflight are separate implementation responsibilities. Backup execution, restore staging, managed-state restore, live-state application and resume verification remain explicit phases because they have different mutation and safety properties. Backup destinations equal to, inside, or ancestors of protected source/runtime roots are rejected. Restore planning, drills, clean-target apply and resumable recovery are explicit operations rather than lifecycle side effects.
 
 ## Retired implementation surfaces
 
