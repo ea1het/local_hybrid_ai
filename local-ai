@@ -3,59 +3,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Sole supported management entry point for local_hybrid_ai."""
-import argparse,sys
-sys.dont_write_bytecode=True
-from commands import install_entry,upgrade_entry
-from commands.cli import build_parser,build_restore_parser,main
+import sys
+sys.dont_write_bytecode = True
+from commands.cli import main
 from commands.upgrade_guard import run_guarded
 
-def _globals(parser):
- parser.add_argument("--json",action="store_true",help="emit one machine-readable JSON document")
- parser.add_argument("--yes",action="store_true",help="grant mutation consent; accepted as a no-op by read-only commands")
- return parser
-def _leaf_parser(prog,description):return _globals(argparse.ArgumentParser(prog=prog,description=description))
-def _upgrade_help(path):
- if len(path)==1:upgrade_entry.public_parser().print_help();return
- leaf=path[1:]
- if leaf[0]=="check":
-  p=_leaf_parser("local-ai upgrade check","Inspect installed and available component versions");p.add_argument("--offline",action="store_true",help="do not query upstream registries");p.print_help();return
- if leaf[0]=="adopt":
-  _leaf_parser("local-ai upgrade adopt","Inspect the observed runtime baseline; use --yes to persist missing version-authority keys").print_help();return
- if leaf[0]=="policy":
-  p=_leaf_parser("local-ai upgrade policy","Show or mutate the upgrade policy for one public stack/component");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.add_argument("component",nargs="?",metavar="COMPONENT",help="required when the stack has multiple components");p.add_argument("policy_action",nargs="?",metavar="ACTION",help="set POLICY or clear; omit to show policy");p.add_argument("policy",nargs="?",metavar="POLICY",choices=("patch-series","minor-series","major-series"),help="policy for ACTION=set: patch-series, minor-series or major-series");p.print_help();return
- if leaf[0].isdigit():
-  prog="local-ai upgrade STACK [COMPONENT]";p=_leaf_parser(prog,"Stage or clear a component upgrade selection");p.add_argument("action",choices=("select","clear"),help="stage a VERSION or clear the staged selection");p.add_argument("version",nargs="?",metavar="VERSION",help="required by select");p.add_argument("--force",action="store_true",help="accept administrator risk for a supported forced inventory-only recipe");p.print_help();return
- upgrade_entry.public_parser().print_help()
-def _facade_help(argv):
- semantic=[arg for arg in argv if arg not in {"--json","--yes"}]
- if not semantic or semantic[-1] not in {"-h","--help"}:return False
- path=semantic[:-1]
- if not path:build_parser().print_help();return True
- if path[0]=="install":install_entry.parser().print_help();return True
- if path[0]=="restore":build_restore_parser().parse_args([*path[1:],"--help"]);return True
- if path[0] in {"status","doctor"}:
-  _leaf_parser(f"local-ai {path[0]}","Show operational status" if path[0]=="status" else "Diagnose management prerequisites and environment consistency").print_help();return True
- if path[0] in {"start","stop"}:
-  p=_leaf_parser(f"local-ai {path[0]}",f"{path[0].capitalize()} one prepared stack runtime");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.print_help();return True
- if path[0]=="inventory":
-  p=_leaf_parser("local-ai inventory","Validate and rescan manifest-declared component topology");p.add_argument("action",nargs="?",choices=("rescan",),help="rescan manifest-declared topology");p.print_help();return True
- if path[0]=="completion":
-  p=_leaf_parser("local-ai completion","Generate, install or inspect shell completion integration");p.add_argument("action",nargs="?",choices=("bash","zsh","install","status"));p.print_help();return True
- if path[0]=="upgrade":_upgrade_help(path);return True
- return False
-
-def _interactive_facade_consent(argv):
- if "--yes" in argv or "--json" in argv or not sys.stdin.isatty():return argv
- semantic=[arg for arg in argv if arg not in {"--json","--yes"}]
- if not semantic:return argv
- command=semantic[0];mutation=False;prompt=""
- if command=="completion" and semantic[1:]==["install"]:mutation=True;prompt="Install shell completion integration? [y/N] "
- elif command=="install" and not any(flag in semantic[1:] for flag in ("--plan","--dry-run")):mutation=True;prompt="Execute the resolved stack installation/reconciliation plan? [y/N] "
- if not mutation:return argv
- try:answer=input(prompt)
- except EOFError:return argv
- return [*argv,"--yes"] if answer.strip().lower() in {"y","yes"} else argv
-if __name__=="__main__":
- args=sys.argv[1:]
- if _facade_help(args):raise SystemExit(0)
- args=_interactive_facade_consent(args);raise SystemExit(run_guarded(args,main))
+if __name__ == "__main__":
+    raise SystemExit(run_guarded(sys.argv[1:], main))
