@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Cross-command contract for public local-ai automation flags, help and rendering."""
 from __future__ import annotations
-import contextlib,io,json,subprocess,unittest
+import contextlib,io,json,re,subprocess,unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -27,7 +27,7 @@ class GlobalCliContractTests(unittest.TestCase):
     for token in private:self.assertNotIn(token,cp.stdout+cp.stderr)
  def test_upgrade_leaf_help_is_specific(self):
   check=subprocess.run([str(ROOT/"local-ai"),"upgrade","check","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("--offline",check.stdout)
-  policy=subprocess.run([str(ROOT/"local-ai"),"upgrade","policy","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("patch-series",policy.stdout);self.assertIn("major-series",policy.stdout)
+  policy=subprocess.run([str(ROOT/"local-ai"),"upgrade","policy","--help"],cwd=ROOT,text=True,capture_output=True,check=False);normalized=re.sub(r"\s*-\s*\n\s*", "-", policy.stdout);self.assertIn("patch-series",normalized);self.assertIn("minor-series",normalized);self.assertIn("major-series",normalized)
   select=subprocess.run([str(ROOT/"local-ai"),"upgrade","7","open-webui","select","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("--force",select.stdout);self.assertIn("VERSION",select.stdout)
  def test_restore_leaf_help_documents_global_flags(self):
   for action in ("list-backup-sets","plan","drill","apply","resume"):
