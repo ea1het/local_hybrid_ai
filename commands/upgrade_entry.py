@@ -2,11 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Operator-facing orchestration behind ``./local-ai upgrade``.
-
-Selection identity and stale-plan validation live in upgrade_selection; this
-module owns command parsing, policy presentation and execution delegation.
-"""
+"""Operator-facing orchestration behind ``./local-ai upgrade``."""
 from __future__ import annotations
 
 import json
@@ -14,13 +10,9 @@ import sys
 
 from commands import upgrade, upgrade_executor, upgrade_policy, upgrade_registry, upgrade_selection
 
-# Compatibility surface retained for callers/tests while implementation lives at
-# the selection boundary.
 _component_record = upgrade_selection.component_record
 _effective_policy = upgrade_selection.effective_policy
 _resolve_component = upgrade_selection.resolve_component
-_force_metadata = upgrade_selection.force_metadata
-_require_selection_permission = upgrade_selection.require_selection_permission
 _current_runtime_version = upgrade_selection.current_runtime_version
 _target_reference = upgrade_selection.target_reference
 _validate_target = upgrade_selection.validate_target
@@ -29,26 +21,49 @@ validate_selected_baselines = upgrade_selection.validate_selected_baselines
 _execution_records_for = upgrade_selection.execution_records_for
 
 
+def _force_metadata(component) -> tuple[bool, str | None]:
+    """Compatibility-aware force metadata using this module's record seam."""
+    record = _component_record(component)
+    execution = record.get("execution") or {}
+    apply = record.get("apply") or {}
+    capable = (
+        execution.get("mode") == "inventory-only"
+        and apply.get("type") == "env-version"
+        and all(isinstance(apply.get(key), str) and bool(apply.get(key)) for key in ("env_key", "image_env_key"))
+        and isinstance(apply.get("deploy"), list)
+        and bool(apply.get("deploy"))
+    )
+    return capable, execution.get("blocked_by")
+
+
+def _require_selection_permission(component, *, force: bool) -> tuple[bool, str | None]:
+    if component.selectable:
+        return False, None
+    capable, blocked_by = _force_metadata(component)
+    if not force:
+        hint = "; use --force to accept administrator risk" if capable else ""
+        raise upgrade.UpgradeError(
+            f"component is inventory-only: {upgrade.key(component)} ({blocked_by}){hint}",
+            code="UPGRADE_COMPONENT_NOT_SELECTABLE",
+        )
+    if not capable:
+        raise upgrade.UpgradeError(
+            f"component has no deterministic forced-upgrade recipe: {upgrade.key(component)} ({blocked_by})",
+            code="UPGRADE_FORCE_UNAVAILABLE",
+        )
+    return True, blocked_by
+
+
 def select(stack: str, component_name: str | None, version: str, *, force: bool = False) -> int:
     component = _resolve_component(stack, component_name)
     forced, blocked_by = _require_selection_permission(component, force=force)
     env = upgrade.read_env()
     current = _current_runtime_version(component, env)
     if current == version:
-        raise upgrade.UpgradeError(
-            f"{component.stack}/{component.name} is already at {version}", code="UPGRADE_ALREADY_CURRENT"
-        )
+        raise upgrade.UpgradeError(f"{component.stack}/{component.name} is already at {version}", code="UPGRADE_ALREADY_CURRENT")
     effective, target_ref, target_digest = _validate_target(component, current, version, env)
     plan = upgrade.load_plan()
-    selection = {
-        "stack": component.stack,
-        "component": component.name,
-        "current_at_selection": current,
-        "version": version,
-        "policy_at_selection": effective,
-        "target_image": target_ref,
-        "target_digest": target_digest,
-    }
+    selection = {"stack": component.stack, "component": component.name, "current_at_selection": current, "version": version, "policy_at_selection": effective, "target_image": target_ref, "target_digest": target_digest}
     if forced:
         selection.update(forced=True, qualification_bypassed=blocked_by)
     plan["selected"][upgrade.key(component)] = selection
@@ -77,24 +92,10 @@ def execute_selected(*, json_output: bool) -> int:
         raise upgrade.UpgradeError("no upgrades are selected", code="UPGRADE_NOTHING_SELECTED")
     validate_selected_baselines(selections)
     try:
-        result = upgrade_executor.execute(
-            root=upgrade.ROOT,
-            runtime_root=upgrade.runtime_root(),
-            selections=selections,
-            components=_execution_records_for(selections),
-            plan_path=upgrade.plan_path(),
-            quiet=json_output,
-        )
+        result = upgrade_executor.execute(root=upgrade.ROOT, runtime_root=upgrade.runtime_root(), selections=selections, components=_execution_records_for(selections), plan_path=upgrade.plan_path(), quiet=json_output)
     except upgrade_executor.UpgradeExecutionError as exc:
         raise upgrade.UpgradeError(str(exc), code=exc.code, recovery_point=exc.recovery_point) from exc
-    payload = {
-        "schema_version": upgrade.SCHEMA_VERSION,
-        "command": "upgrade.apply",
-        "success": True,
-        "recovery_point": result.get("recovery_point"),
-        "upgraded": result.get("upgraded", []),
-        "reverified_stacks": [f"stack{sid}" for sid in result.get("reverified_stacks", [])],
-    }
+    payload = {"schema_version": upgrade.SCHEMA_VERSION, "command": "upgrade.apply", "success": True, "recovery_point": result.get("recovery_point"), "upgraded": result.get("upgraded", []), "reverified_stacks": [f"stack{sid}" for sid in result.get("reverified_stacks", [])]}
     if json_output:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -120,10 +121,7 @@ def _policy_record(stack: str, component_name: str | None) -> tuple[str, dict]:
         raise upgrade.UpgradeError(f"unknown stack: {stack}", code="UPGRADE_STACK_UNKNOWN")
     if component_name is None:
         if len(matches) != 1:
-            raise upgrade.UpgradeError(
-                f"{stack} has multiple components; specify one: " + ", ".join(v["id"] for _, v in matches),
-                code="UPGRADE_COMPONENT_REQUIRED",
-            )
+            raise upgrade.UpgradeError(f"{stack} has multiple components; specify one: " + ", ".join(v["id"] for _, v in matches), code="UPGRADE_COMPONENT_REQUIRED")
         return matches[0]
     for component_key, record in matches:
         if record.get("id") == component_name:
@@ -133,16 +131,10 @@ def _policy_record(stack: str, component_name: str | None) -> tuple[str, dict]:
 
 def _policy_row(component_key: str, record: dict, plan: dict) -> dict:
     try:
-        state = upgrade_policy.selection_status(
-            upgrade.runtime_root(), component_key, record, plan["selected"].get(component_key)
-        )
+        state = upgrade_policy.selection_status(upgrade.runtime_root(), component_key, record, plan["selected"].get(component_key))
     except upgrade_policy.PolicyError as exc:
         raise upgrade.UpgradeError(str(exc), code="UPGRADE_POLICY_INVALID") from exc
-    return {
-        "stack": record["stack"], "component": record["id"], **state,
-        "selectable": record.get("selectable", True),
-        "selected": plan["selected"].get(component_key, {}).get("version"),
-    }
+    return {"stack": record["stack"], "component": record["id"], **state, "selectable": record.get("selectable", True), "selected": plan["selected"].get(component_key, {}).get("version")}
 
 
 def _print_policy_rows(rows: list[dict]) -> None:
@@ -150,12 +142,7 @@ def _print_policy_rows(rows: list[dict]) -> None:
     values = [headers]
     for row in rows:
         valid = row["selection_valid"]
-        values.append((
-            upgrade.human_stack_id(row["stack"]), row["component"], row["default_policy"],
-            row["override_policy"] or "-", row["effective_policy"],
-            "yes" if row["selectable"] else "no", row["selected"] or "-",
-            "-" if valid is None else ("yes" if valid else "no"),
-        ))
+        values.append((upgrade.human_stack_id(row["stack"]), row["component"], row["default_policy"], row["override_policy"] or "-", row["effective_policy"], "yes" if row["selectable"] else "no", row["selected"] or "-", "-" if valid is None else ("yes" if valid else "no")))
     widths = [max(len(str(row[i])) for row in values) for i in range(len(headers))]
     for index, row in enumerate(values):
         print("  ".join(str(value).ljust(widths[i]) for i, value in enumerate(row)))
@@ -236,8 +223,9 @@ def main(args: list[str], *, json_output: bool = False) -> int:
     try:
         if not args or args == ["check"]:
             rows = upgrade.inventory(query_upstream=True)
-            print(json.dumps(json_payload(rows), indent=2) if json_output else "", end="" if json_output else "")
-            if not json_output:
+            if json_output:
+                print(json.dumps(json_payload(rows), indent=2))
+            else:
                 upgrade.print_table(rows)
             return 0
         if args in (["--offline"], ["check", "--offline"], ["--offline", "check"]):
