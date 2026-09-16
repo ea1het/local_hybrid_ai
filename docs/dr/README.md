@@ -31,20 +31,22 @@ Planning and preflight establish whether a requested operation is safe before du
 
 The normal reading path is:
 
-1. [Backup and restore operation](howto.md) — supported commands, durable-state policy and recovery flow.
-2. [Current qualification status](status.md) — which recovery behaviours have runtime evidence.
-3. Resource-specific design documents below — implementation and diagnosis detail for maintainers.
+1. [Backup and restore operation](howto.md) — current supported commands, durable-state policy and recovery flow.
+2. [Current qualification status](status.md) — recovery behaviours with runtime evidence.
+3. Resource/strategy records below — implementation and historical qualification detail for maintainers.
 
-## Resource strategies
+## Strategy and qualification records
 
-- [Filesystem resources](filesystem.md)
-- [Archive resources](archive.md)
-- [PostgreSQL resources](postgres.md)
-- [Gitea](gitea.md)
+- [Filesystem qualification history](filesystem.md) — backup-root and publication assumptions established before full backup execution.
+- [Archive qualification history](archive.md) — bounded archive strategy first qualified with Stack0 PKI.
+- [PostgreSQL qualification](postgres.md) — Stack3 logical database dump and isolated restore verification.
+- [Gitea qualification](gitea.md) — controlled-offline native dump and isolated reconstruction proof.
+
+These documents retain useful strategy evidence, but their historical standalone helper commands and milestone restrictions are not current operator interfaces. `./local-ai backup` is the public full-backup boundary.
 
 ## Implementation boundaries
 
-`commands/recovery/dr.py` owns recovery planning/orchestration. `commands/recovery/dr_preflight.py` owns destination and runtime-source preflight. Backup execution, staging, managed restore, live restore and resume remain separate phases because their mutation and failure properties differ. These modules are private implementation boundaries rather than supported integration APIs.
+`commands/recovery/dr.py` owns recovery planning/orchestration and intentionally keeps its direct backup subcommand dry-run-only. `commands/recovery/dr_preflight.py` owns destination and runtime-source preflight. The public `./local-ai backup` command dispatches to the private full-backup execution entry. Backup execution, staging, managed restore, live restore and resume remain separate phases because their mutation and failure properties differ. These modules are private implementation boundaries rather than supported integration APIs.
 
 Schemas remain implementation-owned under `commands/recovery/`; manifests declare which resources participate in recovery. The architecture is summarized in [Management-plane architecture](../architecture/management-plane.md).
 
