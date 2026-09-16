@@ -22,25 +22,39 @@ set -a
 source "${ENV_FILE}"
 set +a
 
-required=(BASE_PATH HERMES_UID HERMES_GID MEMORY_SYNC_SERVICE SANDBOX_SERVICE)
-for key in "${required[@]}"; do
-  [[ -n "${!key:-}" ]] || die "missing ${key} in .env"
-done
+validate_environment() {
+  local key
+  local required=(BASE_PATH HERMES_UID HERMES_GID MEMORY_SYNC_SERVICE SANDBOX_SERVICE)
+
+  for key in "${required[@]}"; do
+    [[ -n "${!key:-}" ]] || die "missing ${key} in .env"
+  done
+}
+
+validate_environment
 
 MEMORY_SYNC_ROOT="${BASE_PATH}/${MEMORY_SYNC_SERVICE}"
 MEMORY_SYNC_SSH="${MEMORY_SYNC_ROOT}/ssh"
 SANDBOX_STATE="${BASE_PATH}/${SANDBOX_SERVICE}/data/state"
 
-install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_ROOT}"
-install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_SSH}"
-install -d -m 0700 -o 0 -g 0 "${SANDBOX_STATE}"
+prepare_runtime_directories() {
+  install -d -m 0750 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_ROOT}"
+  install -d -m 0700 -o "${HERMES_UID}" -g "${HERMES_GID}" "${MEMORY_SYNC_SSH}"
+  install -d -m 0700 -o 0 -g 0 "${SANDBOX_STATE}"
+}
 
-# The memory-sync sidecar owns a dedicated, already-authorized SSH identity.
-# Preparation never creates, copies or replaces credentials implicitly.
-for file in ssh_config id_ed25519 known_hosts; do
-  [[ -s "${MEMORY_SYNC_SSH}/${file}" ]] || \
-    die "missing dedicated memory-sync SSH material: ${MEMORY_SYNC_SSH}/${file}"
-done
+validate_memory_sync_identity() {
+  local file
+  # The memory-sync sidecar owns a dedicated, already-authorized SSH identity.
+  # Preparation never creates, copies or replaces credentials implicitly.
+  for file in ssh_config id_ed25519 known_hosts; do
+    [[ -s "${MEMORY_SYNC_SSH}/${file}" ]] || \
+      die "missing dedicated memory-sync SSH material: ${MEMORY_SYNC_SSH}/${file}"
+  done
+}
+
+prepare_runtime_directories
+validate_memory_sync_identity
 
 log "memory-sync runtime: ${MEMORY_SYNC_ROOT}"
 log "sandbox lifecycle state: ${SANDBOX_STATE}"
