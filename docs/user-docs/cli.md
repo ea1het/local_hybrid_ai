@@ -8,13 +8,17 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 `./local-ai` is the sole supported management interface for the project. Human-readable output is the default. `--json` requests the stable machine contract where that command supports one. Python modules under `commands/`, shell scripts, Compose files and direct stack lifecycle commands are implementation details.
 
+## Stack selector contract
+
+Every public command that asks the operator to identify a stack uses the numeric stack id shown by `status` and `upgrade`: `0` through `7`. Use `7`, not `stack7` and not `stack7_-_open-webui`. Internal manifests and machine JSON may retain stable identities such as `stack7`; those are data identities, not alternate CLI selectors.
+
 ## Command map
 
 ```text
 ./local-ai
 ├── install <installer arguments...>
-├── start <stack>
-├── stop <stack>
+├── start <0..7>
+├── stop <0..7>
 ├── backup [--destination PATH]
 ├── restore plan BACKUP_SET --dry-run
 ├── restore drill BACKUP_SET --destination PATH
@@ -26,9 +30,9 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ├── completion bash|zsh|install|status
 └── upgrade
     ├── [check] [--offline]
-    ├── policy [stack [component] [set POLICY|clear]]
-    ├── stack [component] select VERSION [--force]
-    ├── stack [component] clear
+    ├── policy [0..7 [component] [set POLICY|clear]]
+    ├── 0..7 [component] select VERSION [--force]
+    ├── 0..7 [component] clear
     ├── adopt [--yes]
     └── --yes
 ```
@@ -54,7 +58,7 @@ sudo ./local-ai stop 5
 sudo ./local-ai start 5
 ```
 
-`stop` performs controlled `docker compose stop`; it does not remove networks or volumes and fails closed when an active required consumer would be broken. `start` starts an already prepared/deployed stack; it does not prepare or recreate it and requires hard providers to be running. Generic READY is checked after start.
+`stop` performs controlled `docker compose stop`; it does not remove networks or volumes and fails closed when an active required consumer would be broken. `start` starts an already prepared/deployed stack; it does not prepare or recreate it and requires hard providers to be running. Generic READY is checked after start. Non-numeric selectors are rejected at the public CLI boundary.
 
 ## `backup` / `restore`
 
@@ -118,7 +122,7 @@ The JSON diagnostic contract retains stack records plus detailed component `desi
 ./local-ai completion zsh
 ```
 
-`completion bash|zsh` prints a side-effect-free adapter. `completion install` detects supported Bash/Zsh from the operator environment and writes the generated adapter to the selected conventional target; `completion status` verifies that target against current generated content. The installer does not edit shell startup files. Shell-specific prerequisites and currently tracked grammar discrepancies are documented in [Shell completion](completion.md).
+`completion bash|zsh` prints a side-effect-free adapter. `completion install` detects supported Bash/Zsh from the operator environment and writes the generated adapter to the selected conventional target; `completion status` verifies that target against current generated content. The installer does not edit shell startup files. Completion follows the same numeric stack-selector grammar as the public CLI. See [Shell completion](completion.md).
 
 ## `upgrade`
 
@@ -140,9 +144,15 @@ A supported flow is:
 
 ```bash
 ./local-ai upgrade
-./local-ai upgrade stack2 redis select 8.10.1-alpine3.23
+./local-ai upgrade 2 redis select 8.10.1-alpine3.23
 ./local-ai upgrade
 sudo ./local-ai upgrade --yes
+```
+
+`select VERSION` validates and stores explicit upgrade intent without changing runtime. `clear` removes that stored selection without changing runtime:
+
+```bash
+./local-ai upgrade 2 redis clear
 ```
 
 `upgrade --yes` applies only already-selected targets. Before mutation it revalidates runtime baseline, policy, target existence, immutable digest and executor eligibility. Required recovery, READY, reconciliation, VERIFY and dependent-consumer checks remain part of the guarded executor contract. Success ends with `UPGRADE: PASS`; absence of PASS must not be interpreted as success merely because a container exists.
@@ -152,7 +162,7 @@ sudo ./local-ai upgrade --yes
 For `SELECTABLE=no`, an administrator can bypass project qualification only when a deterministic mutation recipe already exists:
 
 ```bash
-./local-ai upgrade stack5 dockhand select v1.0.48 --force
+./local-ai upgrade 5 dockhand select v1.0.48 --force
 sudo ./local-ai upgrade --yes
 ```
 
@@ -161,14 +171,13 @@ Forced consent is stored in the selection. It does not bypass target existence/d
 ### Selection and policy
 
 ```bash
-./local-ai upgrade stack2 redis clear
 ./local-ai upgrade policy
-./local-ai upgrade policy stack2 redis
-./local-ai upgrade policy stack2 redis set major-series
-./local-ai upgrade policy stack2 redis clear
+./local-ai upgrade policy 2 redis
+./local-ai upgrade policy 2 redis set major-series
+./local-ai upgrade policy 2 redis clear
 ```
 
-Compatibility policy and support qualification are independent. A policy override cannot make an unqualified component `SELECTABLE=yes`.
+A policy command with no trailing action shows the effective policy. `set` writes the installation override. `policy ... clear` removes only that override and restores the manifest default; it does not remove a selected target. There is no public `show` action. Compatibility policy and support qualification are independent, so a policy override cannot make an unqualified component `SELECTABLE=yes`.
 
 ### `upgrade adopt`
 
@@ -181,4 +190,4 @@ sudo ./local-ai upgrade adopt --yes
 
 ## Human and JSON contracts
 
-The primary human stack identifiers are numeric (`0` through `7`). Machine contracts preserve stable identities such as `stack7`. Machine responses include schema version, command identifier where applicable, structured success data and stable error objects. JSON-contract versioning is independent from private implementation details.
+The public human stack selector is numeric (`0` through `7`). Machine contracts preserve stable identities such as `stack7`. Machine responses include schema version, command identifier where applicable, structured success data and stable error objects. JSON-contract versioning is independent from private implementation details.

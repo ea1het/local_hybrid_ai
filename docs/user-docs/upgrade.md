@@ -16,13 +16,11 @@ flowchart TD
     B --> C{"Newer version available?"}
     C -- No --> Z["Nothing to do"]
     C -- Yes --> D{"SELECTABLE?"}
-
     D -- No --> N["NO SELECTABLE"]
     N --> N1["Project support qualification is absent"]
     N1 --> N2{"Known deterministic mutation recipe?"}
     N2 -- No --> N3["Do not automate this component yet"]
     N2 -- Yes --> N4["Administrator may explicitly accept risk with --force"]
-
     D -- Yes --> S["SELECTABLE"]
     S --> S1["Select an exact target version"]
     N4 --> S2["local-ai validates policy, registry identity and immutable digest"]
@@ -41,7 +39,9 @@ Start with:
 ./local-ai upgrade
 ```
 
-This is the primary human version view. `./local-ai upgrade check` remains a compatibility alias. The useful concepts are:
+This is the primary human version view. `./local-ai upgrade check` remains a compatibility alias. Stack selectors in the public CLI are always numeric: use `7`, never the internal manifest identity `stack7` and never a manifest directory name. The same numeric convention is used by selective lifecycle commands such as `./local-ai start 7` and `./local-ai stop 7`.
+
+The useful concepts are:
 
 | Field | Meaning |
 |---|---|
@@ -52,7 +52,7 @@ This is the primary human version view. `./local-ai upgrade check` remains a com
 | `SELECTED` | The exact target explicitly chosen by the operator. |
 | `VALID` | Whether an existing normal or explicitly forced selection still passes its applicable policy/baseline gates. |
 
-Component topology and upgrade semantics are declared by each owning stack's `manifest.json` and compiled by the management CLI. There is no separate central component catalog to keep synchronized when a stack changes. The internal desired-state/version-authority model is intentionally not part of the normal operator workflow. It exists so registry tags and source defaults cannot silently move an installation. Operators normally need to reason about **installed**, **available**, and **selectable**.
+Component topology and upgrade semantics are declared by each owning stack's `manifest.json` and compiled by the management CLI. Internal machine data may retain identities such as `stack7`; that representation is not an alternate operator selector. There is no separate central component catalog to keep synchronized when a stack changes.
 
 ## SELECTABLE
 
@@ -62,12 +62,18 @@ A typical flow is:
 
 ```bash
 ./local-ai upgrade
-./local-ai upgrade stack2 redis select 8.10.1-alpine3.23
+./local-ai upgrade 2 redis select 8.10.1-alpine3.23
 ./local-ai upgrade
 sudo ./local-ai upgrade --yes
 ```
 
-Selection does not modify the running service. It records explicit operator intent and validates that the target exists in the configured registry, is permitted by policy, is newer where comparison is meaningful, and resolves to an immutable digest. If that tag later moves to another digest, apply fails instead of following it silently.
+`select VERSION` validates and records an exact target as explicit operator intent. It does not modify the running service. The target must exist in the configured registry, satisfy the effective compatibility policy and resolve to an immutable digest; where versions are comparable, downgrade protection also applies. If the selected tag later moves to another digest, apply fails instead of following it silently.
+
+`clear` removes the previously selected upgrade target from the local upgrade plan without changing the running service or its installed version:
+
+```bash
+./local-ai upgrade 2 redis clear
+```
 
 `sudo ./local-ai upgrade --yes` means **apply exactly the targets already selected**. It never means "upgrade everything" and discovery never creates a selection automatically.
 
@@ -75,39 +81,31 @@ Before mutation, local-ai revalidates the runtime baseline, policy, target exist
 
 ### What `UPGRADE: PASS` means
 
-`UPGRADE: PASS` is the success boundary for the supported operation. It does **not** merely mean that Docker started a container.
-
-It means that the guarded upgrade procedure finished without a failing condition and completed the post-change checks required by the executor, including target-version verification and any required READY/reconciliation/consumer verification for that component.
+`UPGRADE: PASS` is the success boundary for the supported operation. It does **not** merely mean that Docker started a container. It means that the guarded upgrade procedure finished without a failing condition and completed the post-change checks required by the executor, including target-version verification and any required READY/reconciliation/consumer verification for that component.
 
 If `UPGRADE: PASS` is printed, the selected upgrade is recorded in upgrade history and the successful selection is cleared.
 
 ### If you do not receive `UPGRADE: PASS`
 
-Do not assume the upgrade completed successfully, even if a container is running.
-
-Read the stable error code and any reported recovery point. Then inspect the installation with:
+Do not assume the upgrade completed successfully, even if a container is running. Read the stable error code and any reported recovery point. Then inspect the installation with:
 
 ```bash
 ./local-ai status
 ./local-ai upgrade
 ```
 
-A failed apply is journaled. Local Hybrid AI deliberately does not perform destructive automatic rollback. Depending on the failure, the correct action may be to correct the cause and retry, restore from the reported recovery point, or investigate a component-specific readiness/migration failure. The error is part of the result; absence of `UPGRADE: PASS` is not a cosmetic difference.
-
-Selections can be removed without changing the runtime:
-
-```bash
-./local-ai upgrade stack2 redis clear
-```
+A failed apply is journaled. Local Hybrid AI deliberately does not perform destructive automatic rollback. Depending on the failure, the correct action may be to correct the cause and retry, restore from the reported recovery point, or investigate a component-specific readiness/migration failure.
 
 Compatibility policy can be inspected or overridden independently:
 
 ```bash
 ./local-ai upgrade policy
-./local-ai upgrade policy stack2 redis
+./local-ai upgrade policy 2 redis
+./local-ai upgrade policy 2 redis set minor-series
+./local-ai upgrade policy 2 redis clear
 ```
 
-Changing policy never makes an unqualified component selectable.
+With no action after the component, `policy` shows the effective policy. `set` creates or replaces the installation-local override. `policy ... clear` removes only that override and returns the effective policy to the manifest default; it does **not** clear an upgrade selection. There is no public `show` action. Changing policy never makes an unqualified component selectable.
 
 ## NO SELECTABLE
 
@@ -127,7 +125,7 @@ A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. That is 
 When the owning stack manifest already defines a deterministic version-authority mutation and targeted deployment recipe, an administrator may explicitly accept the missing project qualification:
 
 ```bash
-./local-ai upgrade stack5 dockhand select v1.0.48 --force
+./local-ai upgrade 5 dockhand select v1.0.48 --force
 ./local-ai upgrade --yes
 ```
 
@@ -150,8 +148,6 @@ Promotion is an engineering qualification, not a manifest toggle and not a side 
 11. The procedure has been qualified against a real runtime before the project marks it guarded/selectable.
 
 Only after those gates are satisfied should the owning manifest declare `execution.mode=guarded` and expose `SELECTABLE=yes`.
-
-This distinction has operational consequences. Once a component is selectable, the project is asserting that `./local-ai upgrade ...` is a supported mutation path with defined success and failure semantics. Before qualification, normal selection remains blocked; administrative `--force` is an explicit risk-acceptance path only where local-ai already knows the deterministic mutation procedure.
 
 For the engineering qualification contract, see [Upgrade executor qualification](../devel-docs/upgrade-qualification.md).
 
