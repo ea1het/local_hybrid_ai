@@ -1,17 +1,32 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
-"""Regression contracts for the complete runtime version-authority catalog."""
+"""Regression contracts for the runtime version-authority catalog."""
 from __future__ import annotations
 
 import unittest
 
-from commands import upgrade, upgrade_adopt
+from commands import component_inventory, upgrade_adopt
 
 
 class UpgradeAdoptCatalogContractTests(unittest.TestCase):
-    def test_every_catalog_component_has_adoption_authority(self):
-        catalog = {upgrade.key(component) for component in upgrade.load_catalog()}
-        self.assertEqual(set(upgrade_adopt.AUTHORITIES), catalog)
+    def test_every_versioned_catalog_component_has_adoption_authority(self):
+        components = component_inventory.compile_components()
+        versioned = {
+            f"{component['stack']}/{component['id']}"
+            for component in components
+            if component["management"]["type"] == "versioned"
+        }
+        self.assertEqual(set(upgrade_adopt.AUTHORITIES), versioned)
+
+    def test_non_versioned_components_do_not_get_image_authority(self):
+        components = component_inventory.compile_components()
+        non_versioned = {
+            f"{component['stack']}/{component['id']}"
+            for component in components
+            if component["management"]["type"] != "versioned"
+        }
+        self.assertTrue({"stack0/platform-foundation", "stack4/runner", "stack6/sandbox"} <= non_versioned)
+        self.assertTrue(set(upgrade_adopt.AUTHORITIES).isdisjoint(non_versioned))
 
     def test_conflict_validation_is_pure(self):
         current = {"HAPROXY_VERSION": "3.0.25"}
