@@ -9,6 +9,7 @@ class UpgradePackageBoundaryTests(unittest.TestCase):
         forbidden = (
             "commands._upgrade_legacy",
             "commands.upgrade_entry",
+            "commands.upgrade_registry",
             "from commands import upgrade",
             "from commands import component_inventory",
         )
@@ -24,6 +25,13 @@ class UpgradePackageBoundaryTests(unittest.TestCase):
         from commands.upgrade import api
         self.assertEqual("commands.upgrade.api", api.__name__)
         self.assertTrue(callable(api.build_payload))
+
+    def test_registry_is_package_owned(self):
+        from commands.upgrade import registry
+        self.assertEqual("commands.upgrade.registry", registry.__name__)
+        self.assertTrue(callable(registry.parse_reference))
+        self.assertTrue(callable(registry.local_digest))
+        self.assertTrue(hasattr(registry, "RegistryError"))
 
     def test_core_root_is_repository_root(self):
         from commands.upgrade import core
