@@ -1,5 +1,6 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0.
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Contracts for the structured recovery API used by the public CLI."""
 from __future__ import annotations
 
@@ -19,6 +20,15 @@ class RecoveryStructuredApiTests(unittest.TestCase):
             payload = public_api.plan_payload("/backup/set")
         self.assertEqual(payload["command"], "restore.plan"); self.assertTrue(payload["success"])
         self.assertFalse(payload["result"]["changes_made"])
+
+    def test_plan_failure_is_stable_public_envelope(self):
+        engine = mock.Mock(); engine.plan_restore_all.side_effect = ValueError("bad recovery point")
+        with mock.patch.object(public_api, "_load", return_value=engine):
+            payload = public_api.plan_payload("/backup/set")
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["command"], "restore.plan")
+        self.assertEqual(payload["error"]["code"], "RESTORE_PLAN_FAILED")
+        self.assertEqual(payload["error"]["message"], "bad recovery point")
 
     def test_drill_returns_serializable_public_envelope_without_rendering(self):
         result = mock.Mock(); result.as_dict.return_value = {"destination": "/tmp/drill", "live_runtime_modified": False, "ports_published": False, "platform_network_attached": False}
@@ -42,12 +52,23 @@ class RecoveryStructuredApiTests(unittest.TestCase):
         self.assertEqual(payload["command"], "restore.apply")
         entry._execute_with_optional_bootstrap.assert_called_once()
 
+    def test_live_apply_failure_is_stable_public_envelope(self):
+        entry = mock.Mock(); entry._execute_with_optional_bootstrap.side_effect = OSError("restore failed")
+        with mock.patch.object(public_api, "_load_script", return_value=entry):
+            payload = public_api.apply_payload("/backup/set")
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["error"]["code"], "RESTORE_APPLY_FAILED")
+
     def test_resume_is_structured(self):
         entry = mock.Mock(); entry.resume.return_value = {"status": "PASS", "memory_sync_enabled": True}
         with mock.patch.object(public_api, "_load_script", return_value=entry):
             payload = public_api.resume_payload("/backup/set", "/operator/ssh")
         self.assertEqual(payload["command"], "restore.resume")
         self.assertTrue(payload["result"]["memory_sync_enabled"])
+
+    def test_failed_payload_has_human_error_text(self):
+        text = public_api.cli_text({"schema_version": "1", "command": "restore.resume", "success": False, "error": {"code": "RESTORE_RESUME_FAILED", "message": "broken"}})
+        self.assertEqual(text, "RESTORE ERROR [RESTORE_RESUME_FAILED]: broken")
 
     def test_plan_public_dispatch_does_not_spawn_private_script(self):
         payload = {"schema_version": "1", "command": "restore.plan", "success": True, "result": {"changes_made": False}}
