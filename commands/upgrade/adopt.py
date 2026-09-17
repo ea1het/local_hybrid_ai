@@ -3,7 +3,9 @@
 """Adopt observed component image identities into the protected operational env."""
 from __future__ import annotations
 import os,re
-from commands import component_state,upgrade,upgrade_registry
+from . import component_state
+from . import core as upgrade
+from . import registry as upgrade_registry
 SCHEMA_VERSION="1"
 AUTHORITIES={"stack1/haproxy":{"type":"split","image_key":"HAPROXY_IMAGE","version_key":"HAPROXY_VERSION"},"stack2/searxng":{"type":"ref","ref_key":"SEARXNG_IMAGE"},"stack2/firecrawl":{"type":"ref","ref_key":"FIRECRAWL_IMAGE"},"stack2/firecrawl-playwright":{"type":"ref","ref_key":"FIRECRAWL_PLAYWRIGHT_IMAGE"},"stack2/redis":{"type":"split","image_key":"FIRECRAWL_REDIS_IMAGE","version_key":"FIRECRAWL_REDIS_VERSION"},"stack2/rabbitmq":{"type":"split","image_key":"FIRECRAWL_RABBITMQ_IMAGE","version_key":"FIRECRAWL_RABBITMQ_VERSION"},"stack2/nuq-postgres":{"type":"ref","ref_key":"FIRECRAWL_POSTGRES_IMAGE"},"stack3/postgresql":{"type":"ref","ref_key":"LITELLM_POSTGRES_IMAGE"},"stack3/litellm":{"type":"split","image_key":"LITELLM_IMAGE","version_key":"LITELLM_VERSION"},"stack4/gitea":{"type":"ref","ref_key":"GITEA_IMAGE"},"stack5/dockhand":{"type":"split","image_key":"DOCKHAND_REPOSITORY","version_key":"DOCKHAND_VERSION"},"stack6/hermes":{"type":"split","image_key":"HERMES_IMAGE","version_key":"HERMES_VERSION"},"stack7/open-webui":{"type":"split","image_key":"OPENWEBUI_IMAGE","version_key":"OPENWEBUI_VERSION"}}
 class AdoptionError(RuntimeError):
@@ -19,14 +21,11 @@ def _read_operational_env(path):
  return values
 def _repository_text(reference):
  repository=reference.repository
- if reference.registry=="docker.io":
-  if repository.startswith("library/"):repository=repository[len("library/"):]
-  return repository
- return f"{reference.registry}/{repository}"
+ if reference.registry=="docker.io" and repository.startswith("library/"):repository=repository[len("library/"):]
+ return repository if reference.registry=="docker.io" else f"{reference.registry}/{repository}"
 def _tracking_tag(tag):
  if not tag:return True
- match=re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:-[0-9A-Za-z][0-9A-Za-z._-]*)?",tag)
- return match is None or len(match.group(1).split("."))<3
+ match=re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:-[0-9A-Za-z][0-9A-Za-z._-]*)?",tag);return match is None or len(match.group(1).split("."))<3
 def _split_identity(component,running):
  reference=upgrade_registry.parse_reference(running);version=reference.tag
  if _tracking_tag(version):
