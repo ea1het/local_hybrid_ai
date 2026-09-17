@@ -1,13 +1,12 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+# License, v. 2.0.
 """Adopt observed component image identities into the protected operational env."""
 from __future__ import annotations
 import os,re
 from pathlib import Path
 from commands import component_state,upgrade,upgrade_registry
 SCHEMA_VERSION="1"
-AUTHORITIES={"stack1/haproxy":{"type":"split","image_key":"HAPROXY_IMAGE","version_key":"HAPROXY_VERSION"},"stack2/searxng":{"type":"ref","ref_key":"SEARXNG_IMAGE"},"stack2/firecrawl":{"type":"ref","ref_key":"FIRECRAWL_IMAGE"},"stack2/firecrawl-playwright":{"type":"ref","ref_key":"FIRECRAWL_PLAYWRIGHT_IMAGE"},"stack2/redis":{"type":"split","image_key":"FIRECRAWL_REDIS_IMAGE","version_key":"FIRECRAWL_REDIS_VERSION"},"stack2/rabbitmq":{"type":"split","image_key":"FIRECRAWL_RABBITMQ_IMAGE","version_key":"FIRECRAWL_RABBITMQ_VERSION"},"stack2/nuq-postgres":{"type":"ref","ref_key":"FIRECRAWL_POSTGRES_IMAGE"},"stack3/postgresql":{"type":"ref","ref_key":"LITELLM_POSTGRES_IMAGE"},"stack3/litellm":{"type":"split","image_key":"LITELLM_IMAGE","version_key":"LITELLM_VERSION"},"stack4/gitea":{"type":"ref","ref_key":"GITEA_IMAGE"},"stack5/dockhand":{"type":"split","image_key":"DOCKHAND_REPOSITORY","version_key":"DOCKHAND_VERSION"},"stack6/hermes":{"type":"split","image_key":"HERMES_IMAGE","version_key":"HERMES_VERSION"},"stack7/open-webui":{"type":"split","image_key":"OPENWEBUI_IMAGE","version_key":"OPENWEBUI_VERSION"}}
+AUTHORITIES={"stack1/haproxy":{"type":"split","image_key":"HAPROXY_IMAGE","version_key":"HAPROXY_VERSION"},"stack2/searxng":{"type":"ref","ref_key":"SEARXNG_IMAGE"},"stack2/firecrawl":{"type":"ref","ref_key":"FIRECRAWL_IMAGE"},"stack2/firecrawl-playwright":{"type":"ref","ref_key":"FIRECRAWL_PLAYWRIGHT_IMAGE"},"stack2/redis":{"type":"split","image_key":"FIRECRAWL_REDIS_IMAGE","version_key":"FIRECRAWL_REDIS_VERSION"},"stack4/gitea":{"type":"ref","ref_key":"GITEA_IMAGE"},"stack5/dockhand":{"type":"split","image_key":"DOCKHAND_REPOSITORY","version_key":"DOCKHAND_VERSION"},"stack6/hermes":{"type":"split","image_key":"HERMES_IMAGE","version_key":"HERMES_VERSION"},"stack7/open-webui":{"type":"split","image_key":"OPENWEBUI_IMAGE","version_key":"OPENWEBUI_VERSION"}}
 class AdoptionError(RuntimeError):
  def __init__(self,message,*,code="UPGRADE_ADOPTION_ERROR"):super().__init__(message);self.code=code
 def _read_operational_env(path):
@@ -52,13 +51,13 @@ def desired_updates():
   else:
    updates[authority["ref_key"]]=running;adopted.append({"component":component_key,"image":running,"version":component_state.version_from_image(running),"running_image":running})
  return updates,adopted
+def _validate_conflicts(current,expected):
+ conflicts=sorted(key for key,value in expected.items() if key in current and current[key]!=value)
+ if conflicts:raise AdoptionError("operational version authority conflicts with observed runtime: "+", ".join(conflicts),code="UPGRADE_ADOPTION_CONFLICT")
 def _apply_missing(path,expected):
- current=_read_operational_env(path);conflicts={key:(current[key],value) for key,value in expected.items() if key in current and current[key]!=value}
- if conflicts:
-  detail=", ".join(f"{key}={actual} (runtime requires {wanted})" for key,(actual,wanted) in sorted(conflicts.items()));raise AdoptionError("operational version authority conflicts with the running installation: "+detail,code="UPGRADE_ADOPTION_CONFLICT")
- missing={key:value for key,value in expected.items() if key not in current}
+ current=_read_operational_env(path);_validate_conflicts(current,expected);missing={key:value for key,value in expected.items() if key not in current}
  if not missing:return []
- tmp=path.with_name(path.name+".adopt.tmp")
+ tmp=path.with_name(f".{path.name}.adopt-{os.getpid()}")
  try:
   original=path.read_text(encoding="utf-8");suffix="" if original.endswith("\n") else "\n";block=[suffix,"\n# Managed component image authority (adopted by ./local-ai upgrade adopt)\n"];block.extend(f"{key}={value}\n" for key,value in sorted(missing.items()));tmp.write_text(original+"".join(block),encoding="utf-8");os.chmod(tmp,path.stat().st_mode);os.replace(tmp,path)
  except OSError as exc:
@@ -72,9 +71,7 @@ def json_payload(args):
  if execute and os.geteuid()!=0:raise AdoptionError("version adoption requires root",code="UPGRADE_ROOT_REQUIRED")
  env_path=upgrade.ROOT/".env"
  if not env_path.is_file():raise AdoptionError(f"missing operational environment: {env_path}",code="UPGRADE_ENV_MISSING")
- expected,components=desired_updates();current=_read_operational_env(env_path);conflicts=[key for key,value in expected.items() if key in current and current[key]!=value];missing=sorted(key for key in expected if key not in current)
- if conflicts:_apply_missing(env_path,expected)
- written=_apply_missing(env_path,expected) if execute else []
+ expected,components=desired_updates();current=_read_operational_env(env_path);_validate_conflicts(current,expected);missing=sorted(key for key in expected if key not in current);written=_apply_missing(env_path,expected) if execute else []
  return {"schema_version":SCHEMA_VERSION,"command":"upgrade.adopt","success":True,"executed":execute,"missing_keys":missing,"written_keys":written,"components":components}
 def cli_text(payload):
  lines=["VERSION AUTHORITY ADOPTION: "+("PASS" if payload["executed"] else "PLAN")]
