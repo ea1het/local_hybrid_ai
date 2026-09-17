@@ -3,7 +3,7 @@
 """Read-only operational status data for the Local Hybrid AI installation."""
 from __future__ import annotations
 import json
-from commands import install,stack_contracts
+from commands import installer,stack_contracts
 SCHEMA_VERSION="4"
 class StatusError(RuntimeError):pass
 def _stack_name(directory):
@@ -12,19 +12,19 @@ def _runtime_summary(entry,state):
  if not state["prepared"]:return "unprepared","-"
  required=entry["required_containers"]
  if not required:return "prepared","ready"
- states=[state["containers"].get(n,"absent") for n in required];running=[install.is_running(v) for v in states];healthy=[install.is_runtime_healthy(v) for v in states]
+ states=[state["containers"].get(n,"absent") for n in required];running=[installer.is_running(v) for v in states];healthy=[installer.is_runtime_healthy(v) for v in states]
  if all(running):return "running","ready" if all(healthy) else "degraded"
  if not any(running):return "stopped","-"
  return "partial","degraded"
 def stack_inventory():
- manifests=install.all_manifests();lifecycle=install.load_lifecycle();install.validate_registry(manifests,lifecycle);rows=[]
+ manifests=installer.all_manifests();lifecycle=installer.load_lifecycle();installer.validate_registry(manifests,lifecycle);rows=[]
  for sid in sorted(manifests):
-  manifest=manifests[sid];entry=lifecycle["stacks"][str(sid)];runtime=install.stack_state(manifest);state,health=_runtime_summary(entry,runtime)
+  manifest=manifests[sid];entry=lifecycle["stacks"][str(sid)];runtime=installer.stack_state(manifest);state,health=_runtime_summary(entry,runtime)
   rows.append(stack_contracts.json_payload(sid,manifest["directory"],name=_stack_name(manifest["directory"]),state=state,health=health))
  return rows
 def json_payload():
  try:return {"schema_version":SCHEMA_VERSION,"command":"status","success":True,"stacks":stack_inventory()}
- except (install.InstallerError,stack_contracts.StackContractError,StatusError,OSError,json.JSONDecodeError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"status","success":False,"error":{"code":"STATUS_STATE_INVALID","message":str(exc)}}
+ except (installer.InstallerError,stack_contracts.StackContractError,StatusError,OSError,json.JSONDecodeError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"status","success":False,"error":{"code":"STATUS_STATE_INVALID","message":str(exc)}}
 def _human_stack_id(stack):return str(stack).removeprefix("stack")
 def cli_text(payload):
  if not payload["success"]:return f"STATUS ERROR [STATUS_STATE_INVALID]: {payload['error']['message']}"

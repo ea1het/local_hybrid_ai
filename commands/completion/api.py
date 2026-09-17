@@ -4,9 +4,9 @@
 from __future__ import annotations
 import os,re
 from pathlib import Path
-from commands import component_inventory,install
+from commands import component_inventory,installer
 TOP_LEVEL=("backup","completion","doctor","install","inventory","restore","start","status","stop","upgrade");GLOBAL_OPTIONS=("--json","--yes");RESTORE_ACTIONS=("apply","drill","list-backup-sets","plan","resume");BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$");SCHEMA_VERSION="1"
-def _stack_ids():return [str(sid) for sid in sorted(install.all_manifests())]
+def _stack_ids():return [str(sid) for sid in sorted(installer.all_manifests())]
 def _backup_sets():
  root=Path(os.environ.get("DR_BACKUP_ROOT","/opt/local-hybrid-ai-backups")).expanduser()
  try:return sorted((str(p) for p in root.iterdir() if p.is_dir() and not p.is_symlink() and BACKUP_SET_RE.fullmatch(p.name)),reverse=True)
