@@ -1,5 +1,6 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
+"""Package-boundary tests for the backup command package."""
 from pathlib import Path
 import unittest
 
