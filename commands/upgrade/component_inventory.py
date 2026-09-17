@@ -1,21 +1,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
-"""Compile and validate component topology from stack manifests.
-
-Stack ``manifest.json`` files are the semantic source of truth. Compose binds a
-component to an implementation, while this module validates that every owned
-container has exactly one declared component and that every declared service
-exists in the stack Compose file. The compiled upgrade view is derived on every
-read; the optional runtime snapshot exists only to report structural changes
-across rescans and is never an authority for management commands.
-"""
+# License, v. 2.0.
+"""Compile and validate Upgrade component topology from stack manifests."""
 from __future__ import annotations
 import hashlib,json,os,re
 from pathlib import Path
-from commands import installer
-ROOT=Path(__file__).resolve().parents[1];SCHEMA_VERSION=1;MANAGEMENT_TYPES={"versioned","local","helper","platform"};EXECUTION_MODES={"guarded","inventory-only","not-applicable"}
+from . import manifests
+ROOT=Path(__file__).resolve().parents[2];SCHEMA_VERSION=1;MANAGEMENT_TYPES={"versioned","local","helper","platform"};EXECUTION_MODES={"guarded","inventory-only","not-applicable"}
 class InventoryError(RuntimeError):pass
 def runtime_root():return Path(os.environ.get("LOCAL_AI_RUNTIME_ROOT","/opt/docker/runtime"))
 def snapshot_path():return runtime_root()/"platform"/"component-inventory.json"
@@ -43,11 +33,11 @@ def _validate_upgrade(stack_key,component,upgrade):
  elif execution["mode"]=="guarded" or not isinstance(blocked_by,str) or not blocked_by:raise InventoryError(f"{stack_key}/{component['id']}: non-selectable components require a blocker")
  return dict(upgrade)
 def compile_components():
- try:manifests=installer.all_manifests()
- except installer.InstallerError as exc:raise InventoryError(str(exc)) from exc
+ try:all_manifests=manifests.all_manifests()
+ except manifests.ManifestError as exc:raise InventoryError(str(exc)) from exc
  result=[];seen_keys=set()
- for sid in sorted(manifests):
-  manifest=manifests[sid];stack_key=f"stack{sid}";components=manifest.get("components")
+ for sid in sorted(all_manifests):
+  manifest=all_manifests[sid];stack_key=f"stack{sid}";components=manifest.get("components")
   if not isinstance(components,list) or not components:raise InventoryError(f"{stack_key}: manifest components must be a non-empty list")
   owned_containers={value.split(":",1)[1] for value in manifest.get("owns",[]) if isinstance(value,str) and value.startswith("container:")};declared_containers=set();compose=ROOT/manifest["directory"]/"docker-compose.yml";services=_compose_services(compose)
   for index,raw in enumerate(components):
@@ -86,10 +76,10 @@ def compile_upgrade_catalog():
  return {"schema_version":1,"stacks":[{"id":stack,"components":components} for stack,components in sorted(stacks.items(),key=lambda item:int(item[0][5:]))]}
 def source_fingerprint():
  digest=hashlib.sha256()
- try:manifests=installer.all_manifests()
- except installer.InstallerError as exc:raise InventoryError(str(exc)) from exc
- for sid in sorted(manifests):
-  directory=ROOT/manifests[sid]["directory"]
+ try:all_manifests=manifests.all_manifests()
+ except manifests.ManifestError as exc:raise InventoryError(str(exc)) from exc
+ for sid in sorted(all_manifests):
+  directory=ROOT/all_manifests[sid]["directory"]
   for name in ("manifest.json","docker-compose.yml"):
    path=directory/name;digest.update(f"stack{sid}/{name}\0".encode())
    if path.is_file():digest.update(path.read_bytes())
