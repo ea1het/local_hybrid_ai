@@ -34,7 +34,8 @@ def _public_help(argv):
  if not semantic or semantic[-1] not in {"-h","--help"}:return False
  path=semantic[:-1]
  if not path:build_parser().print_help();return True
- if path[0]=="install":install_entry.parser().print_help();return True
+ if path[0]=="install":
+  p=install_entry.parser();_add_global_help(p).print_help();return True
  if path[0]=="backup":build_backup_parser().print_help();return True
  if path[0]=="restore":build_restore_parser().parse_args([*path[1:],"--help"]);return True
  if path[0] in {"status","doctor"}:_leaf_parser(f"local-ai {path[0]}","Show operational status" if path[0]=="status" else "Diagnose management prerequisites and environment consistency").print_help();return True
@@ -161,8 +162,9 @@ def build_parser():
   r=_add_global_help(sub.add_parser(action_name,help=f"{action_name} one prepared stack runtime"));r.add_argument("stack")
  return p
 def _upgrade_adopt(args,*,context):
+ if args:return _usage_error("upgrade adopt takes no command-specific arguments",context=context,command="upgrade.adopt")
  try:
-  payload=upgrade_adopt.json_payload([*args,*( ["--yes"] if context.assume_yes else [])]);render.render_json(payload) if context.json_output else render.render_cli(upgrade_adopt.cli_text(payload));return 0
+  payload=upgrade_adopt.json_payload(assume_yes=context.assume_yes);render.render_json(payload) if context.json_output else render.render_cli(upgrade_adopt.cli_text(payload));return 0
  except upgrade_adopt.AdoptionError as exc:
   payload={"schema_version":upgrade_adopt.SCHEMA_VERSION,"command":"upgrade.adopt","success":False,"error":{"code":exc.code,"message":str(exc)}}
   if context.json_output:render.render_json(payload)
@@ -195,7 +197,7 @@ def main(argv=None):
  raw,context=_extract_global_options(original)
  if raw and raw[0]=="completion":return _completion_command(raw[1:],context)
  if raw and raw[0]=="install":
-  args=[*raw[1:],*( ["--yes"] if context.assume_yes else [])];payload,rc=install_entry.json_payload(args)
+  payload,rc=install_entry.json_payload(raw[1:],assume_yes=context.assume_yes)
   if context.json_output:render.render_json(payload)
   elif payload["success"]:render.render_cli(install_entry.cli_text(payload))
   else:print(f"INSTALL ERROR [{payload['error']['code']}]: {payload['error']['message']}",file=sys.stderr)
@@ -210,8 +212,7 @@ def main(argv=None):
   args,invalid=_upgrade_public_args(raw[1:])
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
   if not _confirm_upgrade_mutation(args,context):return 2
-  if context.assume_yes and not args:args=["--yes"]
-  payload,rc=upgrade_entry.build_payload(args);return _render_upgrade(payload,rc,context)
+  payload,rc=upgrade_entry.build_payload(args,apply_selected=context.assume_yes and not args);return _render_upgrade(payload,rc,context)
  try:ns=build_parser().parse_args(raw)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context)
  if ns.command is None:p=build_parser();p.print_help();return 0
