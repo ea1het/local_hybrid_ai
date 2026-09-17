@@ -47,6 +47,11 @@ class GlobalCliContractTests(unittest.TestCase):
   with mock.patch("commands.status.json_payload",return_value={"success":True,"stacks":[],"components":[]}),mock.patch("commands.status.cli_text",return_value="ok"),mock.patch("commands.render.render_cli"):self.assertEqual(cli.main(["status","--yes"]),0)
   with mock.patch("commands.doctor.json_payload",return_value={"success":True,"checks":[]}),mock.patch("commands.doctor.cli_text",return_value="ok"),mock.patch("commands.render.render_cli"):self.assertEqual(cli.main(["doctor","--yes"]),0)
  def test_backup_yes_is_consumed_by_public_boundary(self):
-  with mock.patch.object(cli,"_run_internal",return_value=0) as run:self.assertEqual(cli.main(["--yes","backup"]),0)
-  self.assertNotIn("--yes",run.call_args.args[1])
+  payload={"schema_version":"1","command":"backup","success":True,"result":{"path":"/backup/set","artifact_count":1}}
+  with mock.patch.object(cli.recovery_api,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):self.assertEqual(cli.main(["--yes","backup"]),0)
+  run.assert_called_once_with(None)
+ def test_backup_json_yes_renders_one_public_document(self):
+  payload={"schema_version":"1","command":"backup","success":True,"result":{"path":"/backup/set","artifact_count":1}};out=io.StringIO()
+  with mock.patch.object(cli.recovery_api,"backup_payload",return_value=payload),redirect_stdout(out):rc=cli.main(["backup","--json","--yes"])
+  self.assertEqual(rc,0);self.assertEqual(json.loads(out.getvalue()),payload)
 if __name__=="__main__":unittest.main()
