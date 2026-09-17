@@ -4,19 +4,14 @@
 from __future__ import annotations
 import os,re
 from pathlib import Path
-from commands import component_inventory,installer
+from . import manifests,upgrade_components
 TOP_LEVEL=("backup","completion","doctor","install","inventory","restore","start","status","stop","upgrade");GLOBAL_OPTIONS=("--json","--yes");RESTORE_ACTIONS=("apply","drill","list-backup-sets","plan","resume");BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$");SCHEMA_VERSION="1"
-def _stack_ids():return [str(sid) for sid in sorted(installer.all_manifests())]
+def _stack_ids():return [str(sid) for sid in sorted(manifests.all_manifests())]
 def _backup_sets():
  root=Path(os.environ.get("DR_BACKUP_ROOT","/opt/local-hybrid-ai-backups")).expanduser()
  try:return sorted((str(p) for p in root.iterdir() if p.is_dir() and not p.is_symlink() and BACKUP_SET_RE.fullmatch(p.name)),reverse=True)
  except OSError:return []
-def _upgrade_components(stack):
- if not stack.isdigit():return []
- key=f"stack{int(stack)}"
- for record in component_inventory.compile_upgrade_catalog()["stacks"]:
-  if record["id"]==key:return sorted(item["id"] for item in record["components"])
- return []
+def _upgrade_components(stack):return upgrade_components.upgrade_components(stack)
 def _with_globals(values):return [*values,*GLOBAL_OPTIONS]
 def _candidates(before):
  semantic=[x for x in before if x not in GLOBAL_OPTIONS];command=semantic[0] if semantic else None;tail=semantic[1:]
@@ -85,7 +80,7 @@ def json_payload(args,*,assume_yes=False):
   if args==["status"]:
    shell,target,installed=completion_status();return {"schema_version":SCHEMA_VERSION,"command":"completion.status","success":installed,"shell":shell,"target":str(target),"installed":installed},0 if installed else 1
   return {"schema_version":SCHEMA_VERSION,"command":"completion","success":False,"error":{"code":"COMPLETION_USAGE","message":"usage: local-ai completion <bash|zsh|install|status>"}},2
- except (OSError,ValueError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"completion","success":False,"error":{"code":"COMPLETION_ERROR","message":str(exc)}},1
+ except (OSError,ValueError,manifests.CompletionManifestError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"completion","success":False,"error":{"code":"COMPLETION_ERROR","message":str(exc)}},1
 def cli_text(payload):
  if not payload["success"]:
   if payload.get("command")=="completion.status" and not payload.get("installed"):return f"Shell: {payload['shell']}\nInstalled: no\nTarget: {payload['target']}"
