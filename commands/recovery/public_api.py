@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 RECOVERY_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = RECOVERY_ROOT.parents[1]
 SCHEMA_VERSION = "1"
 
 
@@ -30,24 +31,30 @@ def _operation(command: str, code: str, callback: Callable[[], dict[str, object]
     except Exception as exc: return _failure(command, code, exc)
 
 
+def backup_payload(destination: str | Path | None = None) -> dict[str, object]:
+    def run():
+        dr = _load("dr")
+        backup = _load("dr_backup_all")
+        backup.ENV_SOURCE = PROJECT_ROOT / ".env"
+        root, _ = dr.resolve_backup_root(str(destination) if destination is not None else None)
+        return backup.execute_backup_all(root).as_dict()
+    return _operation("backup", "BACKUP_FAILED", run)
+
+
 def plan_payload(backup_set: str | Path) -> dict[str, object]:
     def run(): return _load("dr_restore_all").plan_restore_all(Path(backup_set)).as_dict()
     return _operation("restore.plan", "RESTORE_PLAN_FAILED", run)
-
 def drill_payload(backup_set: str | Path, destination: str | Path) -> dict[str, object]:
     def run(): return _load("dr_restore_drill").run_restore_drill(Path(backup_set), Path(destination)).as_dict()
     return _operation("restore.drill", "RESTORE_DRILL_FAILED", run)
-
 def check_clean_target_payload(backup_set: str | Path) -> dict[str, object]:
     def run(): return _load("dr_restore_live_service").check_clean(Path(backup_set))
     return _operation("restore.apply", "RESTORE_PREFLIGHT_FAILED", run)
-
 def apply_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path | None = None) -> dict[str, object]:
     def run():
         bootstrap=Path(memory_sync_ssh_bootstrap) if memory_sync_ssh_bootstrap else None
         return _load("dr_restore_live_service").execute(Path(backup_set),bootstrap)
     return _operation("restore.apply", "RESTORE_APPLY_FAILED", run)
-
 def resume_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path) -> dict[str, object]:
     def run(): return _load("dr_restore_resume").resume(Path(backup_set),Path(memory_sync_ssh_bootstrap))
     return _operation("restore.resume", "RESTORE_RESUME_FAILED", run)
@@ -56,10 +63,11 @@ def resume_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path
 def cli_text(payload: dict[str, object]) -> str:
     if not payload.get("success"):
         error=payload.get("error")
-        if isinstance(error,dict): return f"RESTORE ERROR [{error.get('code','RESTORE_FAILED')}]: {error.get('message','recovery operation failed')}"
-        return "RESTORE ERROR [RESTORE_FAILED]: recovery operation failed"
+        if isinstance(error,dict): return f"RECOVERY ERROR [{error.get('code','RECOVERY_FAILED')}]: {error.get('message','recovery operation failed')}"
+        return "RECOVERY ERROR [RECOVERY_FAILED]: recovery operation failed"
     command=payload.get("command"); result=payload.get("result")
     if not isinstance(result,dict): return str(result)
+    if command=="backup": return "\n".join(["DR BACKUP: PASS",f"- backup set: {result.get('path','-')}",f"- artifacts: {result.get('artifact_count','-')}","- publication: atomic"])
     if command=="restore.plan":
         lines=["RESTORE PLAN: PASS"]; order=result.get("restore_order")
         if isinstance(order,list) and order: lines.append("- restore order: "+", ".join(str(item) for item in order))
