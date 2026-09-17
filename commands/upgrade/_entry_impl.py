@@ -1,26 +1,15 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Structured upgrade orchestration consumed by the public ``local-ai`` CLI."""
+# License, v. 2.0.
+"""Structured upgrade orchestration. Global CLI options belong to ./local-ai."""
 from __future__ import annotations
-import argparse,json
-from commands import upgrade,upgrade_executor,upgrade_policy,upgrade_registry,upgrade_selection
-_component_record=upgrade_selection.component_record;_effective_policy=upgrade_selection.effective_policy;_resolve_component=upgrade_selection.resolve_component;_current_runtime_version=upgrade_selection.current_runtime_version;_target_reference=upgrade_selection.target_reference;_validate_target=upgrade_selection.validate_target;_validate_immutable_target=upgrade_selection.validate_immutable_target;validate_selected_baselines=upgrade_selection.validate_selected_baselines;_execution_records_for=upgrade_selection.execution_records_for
-def public_parser():
- p=argparse.ArgumentParser(prog="local-ai upgrade",description="Inspect versions, stage component upgrades, manage policy and apply a staged plan")
- p.add_argument("--json",action="store_true",help="emit one machine-readable JSON document")
- p.add_argument("--yes",action="store_true",help="grant consent for state mutation or apply the current staged plan when no action is given")
- p.add_argument("--offline",action="store_true",help="inspect installed state without querying upstream registries")
- p.add_argument("arguments",nargs="*",metavar="ARG",help="check | STACK [COMPONENT] <select VERSION|clear> | policy STACK [COMPONENT] [set POLICY|clear] | adopt")
- return p
-def _force_metadata(component):
- record=_component_record(component);execution=record.get("execution") or {};apply=record.get("apply") or {};capable=execution.get("mode")=="inventory-only" and apply.get("type")=="env-version" and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in ("env_key","image_env_key")) and isinstance(apply.get("deploy"),list) and bool(apply.get("deploy"));return capable,execution.get("blocked_by")
-def _require_selection_permission(component,*,force):
- if component.selectable:return False,None
- capable,blocked=_force_metadata(component)
- if not force:raise upgrade.UpgradeError(f"component is inventory-only: {upgrade.key(component)} ({blocked})"+("; use --force to accept administrator risk" if capable else ""),code="UPGRADE_COMPONENT_NOT_SELECTABLE")
- if not capable:raise upgrade.UpgradeError(f"component has no deterministic forced-upgrade recipe: {upgrade.key(component)} ({blocked})",code="UPGRADE_FORCE_UNAVAILABLE")
- return True,blocked
+import json
+from . import core as upgrade
+from . import executor as upgrade_executor
+from . import policy as upgrade_policy
+from . import selection as upgrade_selection
+_component_record=upgrade_selection.component_record;_effective_policy=upgrade_selection.effective_policy;_resolve_component=upgrade_selection.resolve_component;_current_runtime_version=upgrade_selection.current_runtime_version;_validate_target=upgrade_selection.validate_target;validate_selected_baselines=upgrade_selection.validate_selected_baselines;_execution_records_for=upgrade_selection.execution_records_for
+def _force_metadata(component):return upgrade_selection.force_metadata(component)
+def _require_selection_permission(component,*,force):return upgrade_selection.require_selection_permission(component,force=force)
 def select_payload(stack,component_name,version,*,force=False):
  component=_resolve_component(stack,component_name);forced,blocked=_require_selection_permission(component,force=force);env=upgrade.read_env();current=_current_runtime_version(component,env)
  if current==version:raise upgrade.UpgradeError(f"{component.stack}/{component.name} is already at {version}",code="UPGRADE_ALREADY_CURRENT")
@@ -29,12 +18,6 @@ def select_payload(stack,component_name,version,*,force=False):
  plan["selected"][upgrade.key(component)]=selection;upgrade.save_plan(plan);return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.select","success":True,"selection":selection}
 def clear_payload(stack,component_name):
  component=_resolve_component(stack,component_name);plan=upgrade.load_plan();plan["selected"].pop(upgrade.key(component),None);upgrade.save_plan(plan);return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.clear","success":True,"stack":component.stack,"component":component.name}
-def select(stack,component_name,version,*,force=False):
- from commands import render
- payload=select_payload(stack,component_name,version,force=force);render.render_cli(cli_text(payload));return 0
-def clear(stack,component_name):
- from commands import render
- payload=clear_payload(stack,component_name);render.render_cli(cli_text(payload));return 0
 def selected_records():return [dict(v) for _,v in sorted(upgrade.load_plan()["selected"].items())]
 def execute_payload():
  selections=selected_records()
@@ -43,9 +26,6 @@ def execute_payload():
  try:result=upgrade_executor.execute(root=upgrade.ROOT,runtime_root=upgrade.runtime_root(),selections=selections,components=_execution_records_for(selections),plan_path=upgrade.plan_path(),quiet=True)
  except upgrade_executor.UpgradeExecutionError as exc:raise upgrade.UpgradeError(str(exc),code=exc.code,recovery_point=exc.recovery_point) from exc
  return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.apply","success":True,"recovery_point":result.get("recovery_point"),"upgraded":result.get("upgraded",[]),"reverified_stacks":[f"stack{sid}" for sid in result.get("reverified_stacks",[])]}
-def execute_selected(*,json_output=False):
- from commands import render
- payload=execute_payload();render.render_json(payload) if json_output else render.render_cli(cli_text(payload));return 0
 def json_payload(rows):return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.check","success":True,"components":rows}
 def _policy_record(stack,component_name):
  records=upgrade.component_records();matches=[(k,v) for k,v in records.items() if v.get("stack")==stack]
@@ -127,6 +107,3 @@ def build_payload(args,*,apply_selected=False):
   if isinstance(exc,upgrade_policy.PolicyError):exc=upgrade.UpgradeError(str(exc),code="UPGRADE_POLICY_INVALID")
   elif not isinstance(exc,upgrade.UpgradeError):exc=upgrade.UpgradeError(str(exc))
   return error_payload(exc),1
-def main(args,*,json_output=False):
- from commands import render
- payload,rc=build_payload(args);render.render_json(payload) if json_output else render.render_cli(cli_text(payload));return rc
