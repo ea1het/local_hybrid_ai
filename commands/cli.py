@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse,importlib,json,os,re,sys
 from dataclasses import dataclass
 from pathlib import Path
-from commands import completion,doctor,install_entry,inventory,render,runtime_lifecycle,status,upgrade_adopt,upgrade_entry
+from commands import completion,doctor,install_entry,inventory,lifecycle,render,status,upgrade_adopt,upgrade_entry
 from commands.recovery import public_api as recovery_api
 ROOT=Path(__file__).resolve().parents[1];RECOVERY=ROOT/"commands"/"recovery";SCHEMA_VERSION="1";DEFAULT_BACKUP_ROOT=Path("/opt/local-hybrid-ai-backups");BACKUP_ROOT_ENV="DR_BACKUP_ROOT";BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$")
 class CLIUsageError(Exception):pass
@@ -222,5 +222,5 @@ def main(argv=None):
   if not _public_stack_id(ns.stack):return _stack_selector_error(ns.stack,context=context,command=ns.command)
   consent=_require_mutation_consent(context=context,command=ns.command,message=f"{ns.command} mutates runtime state and requires --yes")
   if consent:return consent
-  payload=runtime_lifecycle.json_payload(ns.command,ns.stack);render.render_json(payload) if context.json_output else render.render_cli(runtime_lifecycle.cli_text(payload));return 0 if payload["success"] else 1
+  payload=lifecycle.json_payload(ns.command,ns.stack);render.render_json(payload) if context.json_output else render.render_cli(lifecycle.cli_text(payload));return 0 if payload["success"] else 1
  return _usage_error("unsupported command",context=context)
