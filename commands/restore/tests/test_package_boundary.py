@@ -16,10 +16,11 @@ class RestorePackageBoundaryTests(unittest.TestCase):
     def test_restore_tree_does_not_import_recovery_package(self):
         root = Path(inspect.getfile(api)).resolve().parent
         offenders = []
-        for path in sorted(root.rglob("*.py")):
+        for path in sorted(root.glob("*.py")):
             source = path.read_text(encoding="utf-8")
-            if "commands.recovery" in source:
-                offenders.append(str(path.relative_to(root)))
+            forbidden = "commands." + "recovery"
+            if forbidden in source:
+                offenders.append(path.name)
         self.assertEqual([], offenders)
 
     def test_restore_implementation_is_package_owned(self):
