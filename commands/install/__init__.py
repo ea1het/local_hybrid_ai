@@ -1,8 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
-"""Install command package.
-
-The package is the command-domain boundary. The path-sensitive installer engine
-is re-exported while its filesystem layout is migrated behind this package.
-"""
-from commands._install_legacy import *
+"""Install command domain."""
+from commands import installer
+from . import api
+from .api import SCHEMA_VERSION,InstallArgumentParser,parser,build_payload,json_payload,cli_text,main
+__all__=["api","SCHEMA_VERSION","InstallArgumentParser","parser","build_payload","json_payload","cli_text","main"]
