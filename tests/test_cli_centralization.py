@@ -3,30 +3,26 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Regression tests for policy owned by commands.cli rather than the launcher."""
 from __future__ import annotations
-import io,json,sys,unittest
+import io,json,unittest
 from contextlib import redirect_stdout,redirect_stderr
 from pathlib import Path
 from unittest import mock
 from commands import cli
 ROOT=Path(__file__).resolve().parents[1]
 class CliCentralizationTests(unittest.TestCase):
- def test_launcher_is_thin_and_contains_no_public_grammar(self):
-  text=(ROOT/"local-ai").read_text(encoding="utf-8")
-  self.assertNotIn("argparse",text);self.assertNotIn("_facade_help",text);self.assertNotIn("input(",text);self.assertIn("commands.cli import main",text)
+ def test_launcher_and_public_dispatcher_contain_no_human_input(self):
+  launcher=(ROOT/"local-ai").read_text(encoding="utf-8");dispatcher=(ROOT/"commands"/"cli.py").read_text(encoding="utf-8")
+  self.assertNotIn("argparse",launcher);self.assertNotIn("_facade_help",launcher);self.assertIn("commands.cli import main",launcher);self.assertNotIn("input(",launcher);self.assertNotIn("input(",dispatcher);self.assertNotIn("_interactive_consent",dispatcher)
  def test_inventory_rescan_json_fails_closed_without_yes_before_domain_write(self):
   out,err=io.StringIO(),io.StringIO()
   with mock.patch("commands.cli.inventory.json_payload") as payload,redirect_stdout(out),redirect_stderr(err):rc=cli.main(["--json","inventory","rescan"])
   self.assertEqual(rc,2);payload.assert_not_called();self.assertEqual(err.getvalue(),"");result=json.loads(out.getvalue());self.assertEqual(result["command"],"inventory.rescan");self.assertEqual(result["error"]["code"],"CONFIRMATION_REQUIRED")
- def test_inventory_rescan_noninteractive_fails_closed_without_yes(self):
-  with mock.patch.object(sys.stdin,"isatty",return_value=False),mock.patch("commands.cli.inventory.json_payload") as payload:rc=cli.main(["inventory","rescan"])
+ def test_inventory_rescan_fails_closed_without_yes(self):
+  with mock.patch("commands.cli.inventory.json_payload") as payload:rc=cli.main(["inventory","rescan"])
   self.assertEqual(rc,2);payload.assert_not_called()
  def test_inventory_rescan_yes_reaches_domain_once(self):
   result={"schema_version":"1","command":"inventory.rescan","success":True,"component_count":0,"snapshot":"/tmp/component-inventory.json","source_fingerprint":"sha256:x","diff":{"added":[],"removed":[],"changed":[]}}
   with mock.patch("commands.cli.inventory.json_payload",return_value=result) as payload,mock.patch("commands.cli.inventory.cli_text",return_value="ok"),mock.patch("commands.cli.render.render_cli"):rc=cli.main(["inventory","rescan","--yes"])
-  self.assertEqual(rc,0);payload.assert_called_once_with(["rescan"])
- def test_inventory_rescan_interactive_yes_is_converted_to_public_consent(self):
-  result={"schema_version":"1","command":"inventory.rescan","success":True,"component_count":0,"snapshot":"/tmp/component-inventory.json","source_fingerprint":"sha256:x","diff":{"added":[],"removed":[],"changed":[]}}
-  with mock.patch.object(sys.stdin,"isatty",return_value=True),mock.patch("builtins.input",return_value="yes"),mock.patch("commands.cli.inventory.json_payload",return_value=result) as payload,mock.patch("commands.cli.inventory.cli_text",return_value="ok"),mock.patch("commands.cli.render.render_cli"):rc=cli.main(["inventory","rescan"])
   self.assertEqual(rc,0);payload.assert_called_once_with(["rescan"])
  def test_start_stop_reject_every_out_of_range_public_selector_before_runtime(self):
   for command in ("start","stop"):
