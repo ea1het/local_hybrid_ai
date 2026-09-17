@@ -20,7 +20,7 @@ class UpgradeAdoptPartialTests(unittest.TestCase):
  def test_domain_payload_does_not_render_or_serialize(self):
   payload={"schema_version":"1","command":"upgrade.adopt","success":True,"executed":False,"missing_keys":[],"written_keys":[],"components":[]}
   with mock.patch("commands.upgrade_adopt.upgrade.ROOT") as root,mock.patch("commands.upgrade_adopt.desired_updates",return_value=({},[])),mock.patch("commands.upgrade_adopt._read_operational_env",return_value={}):
-   root.__truediv__.return_value.is_file.return_value=True;self.assertEqual(upgrade_adopt.json_payload([]),payload)
+   root.__truediv__.return_value.is_file.return_value=True;self.assertEqual(upgrade_adopt.json_payload(),payload)
  def test_public_cli_owns_adoption_rendering(self):
   payload={"schema_version":"1","command":"upgrade.adopt","success":True,"executed":False,"missing_keys":[],"written_keys":[],"components":[]}
   with mock.patch("commands.cli.upgrade_adopt.json_payload",return_value=payload),mock.patch("commands.cli.upgrade_adopt.cli_text",return_value="PLAN"),mock.patch("commands.cli.render.render_cli") as renderer:
