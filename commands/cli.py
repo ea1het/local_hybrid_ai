@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Public command dispatcher behind the root ``./local-ai`` entry point."""
 from __future__ import annotations
-import argparse,importlib,json,os,re,subprocess,sys
+import argparse,importlib,json,os,re,sys
 from dataclasses import dataclass,replace
 from pathlib import Path
 from commands import completion,doctor,install_entry,inventory,render,runtime_lifecycle,status,upgrade_adopt,upgrade_entry
@@ -46,7 +46,6 @@ def _public_help(argv):
   p=_leaf_parser("local-ai completion","Generate, install or inspect shell completion integration");p.add_argument("action",nargs="?",choices=("bash","zsh","install","status"));p.print_help();return True
  if path[0]=="upgrade":_upgrade_help(path);return True
  return False
-def _run_internal(path,args):return subprocess.run([sys.executable,str(path),*args],cwd=ROOT).returncode
 def _json_error(code,message,*,command=None):
  payload={"schema_version":SCHEMA_VERSION,"success":False,"error":{"code":code,"message":message}}
  if command:payload["command"]=command
@@ -90,17 +89,9 @@ def build_backup_parser():
 def backup_command(args,context):
  try:ns=build_backup_parser().parse_args(args)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="backup")
- if not context.assume_yes:
-  if context.json_output:return _confirmation_required("backup creation requires --yes in JSON/non-interactive mode",context=context,command="backup")
-  if not sys.stdin.isatty():return _confirmation_required("backup creation requires --yes when input is not interactive",context=context,command="backup")
-  destination=ns.destination or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)
-  try:answer=input(f"Create a new atomic DR backup set under {destination}? [y/N] ")
-  except EOFError:print("Backup cancelled.");return 1
-  if answer.strip().lower() not in {"y","yes"}:print("Backup cancelled.");return 1
- internal=[]
- if ns.destination:internal.extend(["--destination",ns.destination])
- if context.json_output:internal.append("--json")
- return _run_internal(RECOVERY/"backup-all.py",internal)
+ consent=_require_mutation_consent(context=context,command="backup",prompt=f"Create a new atomic DR backup set under {ns.destination or os.environ.get(BACKUP_ROOT_ENV) or DEFAULT_BACKUP_ROOT}? [y/N] ",message="backup creation requires --yes")
+ if consent:return consent
+ return _render_recovery(recovery_api.backup_payload(ns.destination),context)
 def _backup_root(override=None):return Path(override or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)).expanduser().resolve()
 def _recovery_archive_module():
  rp=str(RECOVERY);added=rp not in sys.path
