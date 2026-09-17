@@ -39,82 +39,105 @@ def load_recovery_schema(root: Path) -> dict:
     return result
 
 
-def _expect_keys(value: dict, allowed: set[str], context: str) -> None:
-    unknown = set(value) - allowed
-    if unknown:
-        _fail(f"{context}: unknown fields: {', '.join(sorted(unknown))}")
+def _exact_keys(value: dict, required: set[str], optional: set[str], where: str) -> None:
+    missing = required - set(value)
+    unexpected = set(value) - required - optional
+    if missing:
+        _fail(f"{where}: missing required fields: {', '.join(sorted(missing))}")
+    if unexpected:
+        _fail(f"{where}: unsupported fields: {', '.join(sorted(unexpected))}")
 
 
-def _expect_bool(value: object, context: str) -> None:
-    if not isinstance(value, bool):
-        _fail(f"{context}: must be boolean")
+def _non_empty(value: object, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        _fail(f"{where} must be a non-empty string")
+    return value
+
+
+def _validate_restore(restore: object, schema: dict, where: str) -> None:
+    if not isinstance(restore, dict):
+        _fail(f"{where} must be an object")
+    _exact_keys(restore, {"phase"}, set(), where)
+    if restore["phase"] not in schema["restore_phases"]:
+        _fail(f"{where}.phase has unsupported value: {restore['phase']}")
+
+
+STRATEGY_CONTRACTS = {
+    "archive": ("runtime-path", {"type", "path"}, set(), {"quiesce_container"}, True),
+    "postgres-custom-dump": ("postgres", {"type", "service", "database_env"}, {"user_env"}, set(), True),
+    "gitea-native-dump": ("application", {"type", "service"}, set(), set(), True),
+    "external-config": ("environment", {"type", "key"}, set(), set(), False),
+    "git": ("git", {"type"}, {"repository_env"}, set(), set(), False),
+}
+
+
+def _validate_resource(resource: object, schema: dict, where: str) -> None:
+    if not isinstance(resource, dict):
+        _fail(f"{where} must be an object")
+    _exact_keys(resource, {"id", "class", "strategy", "sensitive"}, {"config"}, where)
+    resource_id = _non_empty(resource["id"], f"{where}.id")
+    if not RESOURCE_ID_RE.fullmatch(resource_id):
+        _fail(f"{where}.id has invalid format: {resource_id}")
+    if resource["class"] not in schema["classes"]:
+        _fail(f"{where}.class has unsupported value: {resource['class']}")
+    strategy = resource["strategy"]
+    if strategy not in schema["strategies"]:
+        _fail(f"{where}.strategy has unsupported value: {strategy}")
+    if not isinstance(resource["sensitive"], bool):
+        _fail(f"{where}.sensitive must be boolean")
+    if not isinstance(resource.get("config"), dict):
+        _fail(f"{where}.config must be an object for strategy {strategy}")
+    contract = STRATEGY_CONTRACTS.get(strategy)
+    if contract is None:
+        _fail(f"{where}.strategy is declared by schema but unsupported by validator: {strategy}")
+    source_type, source_required, source_optional, config_optional, restore_required = contract
+    config = resource["config"]
+    required_config = {"source", "restore"} if restore_required else {"source"}
+    _exact_keys(config, required_config, config_optional, f"{where}.config")
+    source = config["source"]
+    if not isinstance(source, dict):
+        _fail(f"{where}.config.source must be an object")
+    _exact_keys(source, source_required, source_optional, f"{where}.config.source")
+    if source["type"] != source_type:
+        _fail(f"{where}.config.source.type must be {source_type} for strategy {strategy}")
+    for key, value in source.items():
+        if key != "type":
+            _non_empty(value, f"{where}.config.source.{key}")
+    if "quiesce_container" in config:
+        _non_empty(config["quiesce_container"], f"{where}.config.quiesce_container")
+    if restore_required:
+        _validate_restore(config["restore"], schema, f"{where}.config.restore")
 
 
 def validate_recovery(data: dict, schema: dict, manifest_path: Path) -> None:
     recovery = data.get("recovery")
+    where = f"{manifest_path}: recovery"
     if not isinstance(recovery, dict):
         _fail(f"{manifest_path}: recovery must be an object")
-    _expect_keys(recovery, {"contract", "resources"}, f"{manifest_path}: recovery")
-    contract = recovery.get("contract")
+    _exact_keys(recovery, {"contract"}, {"resources"}, where)
+    contract = recovery["contract"]
     if not isinstance(contract, dict):
         _fail(f"{manifest_path}: recovery.contract must be an object")
-    _expect_keys(contract, {"schema_version", "mode"}, f"{manifest_path}: recovery.contract")
-    if contract.get("schema_version") != schema["version"]:
-        _fail(f"{manifest_path}: unsupported recovery contract schema_version")
-    mode = contract.get("mode")
+    _exact_keys(contract, {"schema_version", "mode"}, set(), f"{manifest_path}: recovery.contract")
+    if contract["schema_version"] != schema["version"]:
+        _fail(f"{manifest_path}: recovery.contract.schema_version must be {schema['version']}")
+    mode = contract["mode"]
     if mode not in schema["modes"]:
-        _fail(f"{manifest_path}: invalid recovery mode {mode!r}")
-    resources = recovery.get("resources", [])
-    if not isinstance(resources, list):
-        _fail(f"{manifest_path}: recovery.resources must be a list")
-    if mode == "managed" and not resources:
-        _fail(f"{manifest_path}: managed recovery requires resources")
-    seen: set[str] = set()
-    for index, resource in enumerate(resources):
-        context = f"{manifest_path}: recovery.resources[{index}]"
-        if not isinstance(resource, dict):
-            _fail(f"{context}: must be an object")
-        _expect_keys(resource, {"id", "class", "strategy", "sensitive", "config"}, context)
-        resource_id = resource.get("id")
-        if not isinstance(resource_id, str) or not RESOURCE_ID_RE.fullmatch(resource_id):
-            _fail(f"{context}: invalid resource id")
-        if resource_id in seen:
-            _fail(f"{manifest_path}: duplicate recovery resource id {resource_id}")
-        seen.add(resource_id)
-        resource_class = resource.get("class")
-        strategy = resource.get("strategy")
-        if resource_class not in schema["classes"]:
-            _fail(f"{context}: invalid class {resource_class!r}")
-        if strategy not in schema["strategies"]:
-            _fail(f"{context}: invalid strategy {strategy!r}")
-        _expect_bool(resource.get("sensitive"), f"{context}.sensitive")
-        config = resource.get("config")
-        if not isinstance(config, dict):
-            _fail(f"{context}.config: must be an object")
-        source = config.get("source")
-        if not isinstance(source, dict):
-            _fail(f"{context}.config.source: must be an object")
-        source_type = source.get("type")
-        expected_source = {
-            "archive": "runtime-path",
-            "file-copy": "runtime-path",
-            "postgres-custom-dump": "postgres",
-            "gitea-native-dump": "application",
-            "external-config": "environment",
-            "git": "git",
-        }.get(strategy)
-        if expected_source is not None and source_type != expected_source:
-            _fail(f"{context}: strategy {strategy} requires source type {expected_source}")
-        if mode == "reconstructable" and resource_class in {"persistent-data", "persistent-identity"}:
-            _fail(f"{context}: reconstructable stack cannot own local persistent state")
-        if "quiesce_container" in config:
-            quiesce = config["quiesce_container"]
-            if strategy != "archive" or not isinstance(quiesce, str) or not quiesce.strip():
-                _fail(f"{context}: invalid quiesce_container")
-        restore = config.get("restore")
-        if restore is not None:
-            if not isinstance(restore, dict):
-                _fail(f"{context}.config.restore: must be an object")
-            phase = restore.get("phase")
-            if phase not in schema["restore_phases"]:
-                _fail(f"{context}: invalid restore phase {phase!r}")
+        _fail(f"{manifest_path}: unsupported recovery mode: {mode}")
+    resources = recovery.get("resources")
+    if resources is not None:
+        if not isinstance(resources, list) or not resources:
+            _fail(f"{manifest_path}: recovery.resources must be a non-empty list when present")
+        seen: set[str] = set()
+        for index, resource in enumerate(resources):
+            resource_where = f"{manifest_path}: recovery.resources[{index}]"
+            _validate_resource(resource, schema, resource_where)
+            if resource["id"] in seen:
+                _fail(f"{manifest_path}: duplicate recovery resource id: {resource['id']}")
+            seen.add(resource["id"])
+    if mode in {"managed", "mixed"} and resources is None:
+        _fail(f"{manifest_path}: recovery mode {mode} requires resources")
+    if mode == "reconstructable" and resources is not None:
+        for resource in resources:
+            if resource["class"] != "externalized":
+                _fail(f"{manifest_path}: reconstructable stacks may only declare externalized recovery resources")
