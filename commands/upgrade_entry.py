@@ -108,11 +108,13 @@ def error_payload(exc):
  payload={"schema_version":upgrade.SCHEMA_VERSION,"success":False,"error":{"code":exc.code,"message":str(exc)}}
  if exc.recovery_point:payload["recovery_point"]=exc.recovery_point
  return payload
-def build_payload(args):
+def build_payload(args,*,apply_selected=False):
  try:
+  if apply_selected:
+   if args:raise upgrade.UpgradeError("invalid upgrade syntax",code="UPGRADE_USAGE")
+   return execute_payload(),0
   if not args or args==["check"]:return json_payload(upgrade.inventory(query_upstream=True)),0
   if args in (["--offline"],["check","--offline"],["--offline","check"]):return json_payload(upgrade.inventory(query_upstream=False)),0
-  if args==["--yes"]:return execute_payload(),0
   if args and args[0]=="policy":return policy_payload(args[1:]),0
   if "select" in args:
    if args.count("--force")>1:raise upgrade.UpgradeError("invalid select syntax",code="UPGRADE_USAGE")
