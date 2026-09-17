@@ -13,7 +13,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import dr_preflight
+try:
+    from . import dr_preflight
+except ImportError:
+    import dr_preflight
 
 BACKUP_ROOT_ENV = dr_preflight.BACKUP_ROOT_ENV
 BACKUP_SET_NAME_PATTERN = dr_preflight.BACKUP_SET_NAME_PATTERN
@@ -42,7 +45,8 @@ resolve_backup_root = dr_preflight.resolve_backup_root
 resolve_base_path = dr_preflight.resolve_base_path
 runtime_resources = dr_preflight.runtime_resources
 
-ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = Path(__file__).resolve().parent
+ROOT = PACKAGE_ROOT.parents[1]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
 BACKUP_SET_SCHEMA_VERSION = 1
 ARTIFACT_EXTENSIONS = {"archive": ".tar", "postgres-custom-dump": ".dump", "gitea-native-dump": ".zip"}
