@@ -45,8 +45,7 @@ def _operation(command: str, code: str, callback: Callable[[], dict[str, object]
 
 
 def _backup_root(override: str | Path | None = None) -> Path:
-    value = str(override) if override is not None else os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)
-    return Path(value).expanduser().resolve()
+    return Path(override or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)).expanduser().resolve()
 
 
 def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str, object]:
@@ -54,9 +53,9 @@ def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str,
     try:
         if not root.exists():
             records: list[dict[str, object]] = []
+        elif not root.is_dir():
+            raise OSError(f"backup root is not a directory: {root}")
         else:
-            if not root.is_dir():
-                raise OSError(f"backup root is not a directory: {root}")
             archive = _load("dr_archive")
             records = []
             for path in root.iterdir():
@@ -71,7 +70,12 @@ def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str,
                         if not isinstance(metadata, dict):
                             raise archive.ArchiveBackupError("backup metadata must be an object")
                         archive.validate_completed_metadata(metadata)
-                        record.update({"status": "completed", "created_at": metadata["created_at"], "source_commit": metadata["source_commit"], "resolved_stacks": metadata["resolved_stacks"]})
+                        record.update({
+                            "status": "completed",
+                            "created_at": metadata["created_at"],
+                            "source_commit": metadata["source_commit"],
+                            "resolved_stacks": metadata["resolved_stacks"],
+                        })
                     except (OSError, json.JSONDecodeError, archive.ArchiveBackupError, KeyError, TypeError):
                         pass
                 records.append(record)
