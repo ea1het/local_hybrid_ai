@@ -32,13 +32,8 @@ def _operation(command: str, code: str, callback: Callable[[], dict[str, object]
 
 
 def backup_payload(destination: str | Path | None = None) -> dict[str, object]:
-    def run():
-        dr = _load("dr")
-        backup = _load("dr_backup_all")
-        backup.ENV_SOURCE = PROJECT_ROOT / ".env"
-        root, _ = dr.resolve_backup_root(str(destination) if destination is not None else None)
-        return backup.execute_backup_all(root).as_dict()
-    return _operation("backup", "BACKUP_FAILED", run)
+    from commands.backup.api import backup_payload as package_backup_payload
+    return package_backup_payload(destination)
 
 
 def plan_payload(backup_set: str | Path) -> dict[str, object]:
@@ -67,7 +62,9 @@ def cli_text(payload: dict[str, object]) -> str:
         return "RECOVERY ERROR [RECOVERY_FAILED]: recovery operation failed"
     command=payload.get("command"); result=payload.get("result")
     if not isinstance(result,dict): return str(result)
-    if command=="backup": return "\n".join(["DR BACKUP: PASS",f"- backup set: {result.get('path','-')}",f"- artifacts: {result.get('artifact_count','-')}","- publication: atomic"])
+    if command=="backup":
+        path=result.get("backup_set",result.get("path","-"))
+        return "\n".join(["DR BACKUP: PASS",f"- backup set: {path}",f"- artifacts: {result.get('artifact_count','-')}","- publication: atomic"])
     if command=="restore.plan":
         lines=["RESTORE PLAN: PASS"]; order=result.get("restore_order")
         if isinstance(order,list) and order: lines.append("- restore order: "+", ".join(str(item) for item in order))
