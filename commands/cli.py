@@ -59,6 +59,15 @@ def _confirmation_required(message,*,context,command):
  if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command=command)
  else:print(f"ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr)
  return 2
+def _require_mutation_consent(*,context,command,prompt,message=None):
+ if context.assume_yes:return 0
+ message=message or f"{command} requires --yes when input is not interactive"
+ if context.json_output or not sys.stdin.isatty():return _confirmation_required(message,context=context,command=command)
+ try:answer=input(prompt)
+ except EOFError:return _confirmation_required(message,context=context,command=command)
+ if answer.strip().lower() in {"y","yes"}:return 0
+ print("Operation cancelled.")
+ return 1
 def _stack_selector_error(token,*,context,command):
  message=f"stack selector must be a numeric id from 0 through 7, not {token!r}"
  if context.json_output:_json_error("STACK_SELECTOR_INVALID",message,command=command)
@@ -72,12 +81,6 @@ def _upgrade_public_args(args):
  token=translated[pos]
  if not _public_stack_id(token):return None,token
  translated[pos]=f"stack{int(token)}";return translated,None
-def _run_internal_json(path,args,*,command):
- cp=subprocess.run([sys.executable,str(path),*args,"--json"],cwd=ROOT,text=True,capture_output=True,check=False)
- if cp.returncode!=0:_json_error("INTERNAL_COMMAND_FAILED",(cp.stderr or cp.stdout or f"{command} failed").strip(),command=command);return cp.returncode
- try:result=json.loads(cp.stdout)
- except json.JSONDecodeError:_json_error("INTERNAL_JSON_INVALID",f"{command} did not return a valid machine response",command=command);return 1
- render.render_json({"schema_version":SCHEMA_VERSION,"command":command,"success":True,"result":result});return 0
 def _render_recovery(payload,context):
  if context.json_output:render.render_json(payload)
  else:render.render_cli(recovery_api.cli_text(payload))
@@ -149,23 +152,23 @@ def restore_command(args,context):
  if ns.restore_action=="list-backup-sets":return list_backup_sets(ns.backup_root,context=context)
  action=ns.restore_action
  if action=="plan":return _render_recovery(recovery_api.plan_payload(ns.backup_set),context)
- if action=="drill":return _render_recovery(recovery_api.drill_payload(ns.backup_set,ns.destination),context)
+ if action=="drill":
+  consent=_require_mutation_consent(context=context,command="restore.drill",prompt="Execute isolated restore drill? [y/N] ",message="restore drill writes an isolated destination and requires --yes")
+  if consent:return consent
+  return _render_recovery(recovery_api.drill_payload(ns.backup_set,ns.destination),context)
  if action=="apply":
   if ns.execute and not ns.confirm_clean_target:
    msg="restore apply --execute requires --confirm-clean-target"
    if context.json_output:_json_error("CONFIRMATION_REQUIRED",msg,command="restore.apply");return 2
    return _usage_error(msg,context=context,command="restore.apply")
   if ns.check_clean_target and ns.confirm_clean_target:return _usage_error("--confirm-clean-target is valid only with --execute",context=context,command="restore.apply")
-  if ns.execute and not context.assume_yes:
-   msg="restore execution requires --yes"
-   if context.json_output:_json_error("CONFIRMATION_REQUIRED",msg,command="restore.apply");return 2
-   if not sys.stdin.isatty():print(f"ERROR [CONFIRMATION_REQUIRED]: {msg}",file=sys.stderr);return 2
-   if input("Execute clean-target restore? [y/N] ").strip().lower() not in {"y","yes"}:print("Restore cancelled.");return 1
-  script,internal=RECOVERY/"restore-live.py",[ns.backup_set,"--check-clean-target" if ns.check_clean_target else "--execute"]
-  if ns.confirm_clean_target:internal.append("--confirm-clean-target")
-  if ns.memory_sync_ssh_bootstrap:internal.extend(["--memory-sync-ssh-bootstrap",ns.memory_sync_ssh_bootstrap])
- else:script,internal=RECOVERY/"restore-resume.py",[ns.backup_set,"--memory-sync-ssh-bootstrap",ns.memory_sync_ssh_bootstrap]
- return _run_internal_json(script,internal,command=f"restore.{action}") if context.json_output else _run_internal(script,internal)
+  if ns.check_clean_target:return _render_recovery(recovery_api.check_clean_target_payload(ns.backup_set),context)
+  consent=_require_mutation_consent(context=context,command="restore.apply",prompt="Execute clean-target restore? [y/N] ",message="restore execution requires --yes")
+  if consent:return consent
+  return _render_recovery(recovery_api.apply_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context)
+ consent=_require_mutation_consent(context=context,command="restore.resume",prompt="Resume interrupted reconstructed target? [y/N] ",message="restore resume mutates the reconstructed target and requires --yes")
+ if consent:return consent
+ return _render_recovery(recovery_api.resume_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context)
 def build_parser():
  p=_add_global_help(PublicArgumentParser(prog="local-ai",description="Supported management CLI for the Local Hybrid AI installation"));sub=p.add_subparsers(dest="command",parser_class=PublicArgumentParser)
  for name,text in (("install","install or reconcile stacks"),("backup","create a recovery point"),("restore","list, plan, drill, apply or resume disaster recovery"),("status","show operational stack state, runtime health and drift"),("doctor","diagnose management prerequisites and environment consistency"),("inventory","validate and rescan manifest-declared component topology"),("completion","emit Bash or Zsh completion integration"),("upgrade","inspect versions and manage component upgrades")):_add_global_help(sub.add_parser(name,help=text))
@@ -232,7 +235,7 @@ def main(argv=None):
  if raw and raw[0]=="restore":return restore_command(raw[1:],context)
  if raw and raw[0]=="inventory":
   if raw[1:]==["rescan"] and not context.assume_yes:return _confirmation_required("inventory rescan writes the derived runtime snapshot and requires --yes",context=context,command="inventory.rescan")
-  payload=inventory.json_payload(raw[1:]);render.render_json(payload) if context.json_output else render.render_cli(inventory.cli_text(payload));return 0 if payload["success"] else 1
+  payload=inventory.json_payload(raw[1:]);render.render_json(payload) if context.json_output else render.render_cli(inventory.cli_text(payload));return 0 if payload["success"] else (2 if payload.get("error",{}).get("code")=="INVENTORY_USAGE" else 1)
  if raw and raw[0]=="upgrade":
   if len(raw)>=2 and raw[1]=="adopt":return _upgrade_adopt(raw[2:],context=context)
   args,invalid=_upgrade_public_args(raw[1:])
@@ -247,5 +250,7 @@ def main(argv=None):
  if ns.command=="doctor":payload=doctor.json_payload();render.render_json(payload) if context.json_output else render.render_cli(doctor.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command in {"start","stop"}:
   if not _public_stack_id(ns.stack):return _stack_selector_error(ns.stack,context=context,command=ns.command)
+  consent=_require_mutation_consent(context=context,command=ns.command,prompt=f"{ns.command.capitalize()} stack {ns.stack}? [y/N] ",message=f"{ns.command} mutates runtime state and requires --yes")
+  if consent:return consent
   payload=runtime_lifecycle.json_payload(ns.command,ns.stack);render.render_json(payload) if context.json_output else render.render_cli(runtime_lifecycle.cli_text(payload));return 0 if payload["success"] else 1
  return _usage_error("unsupported command",context=context)
