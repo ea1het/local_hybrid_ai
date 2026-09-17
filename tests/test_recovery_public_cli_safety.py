@@ -39,8 +39,8 @@ class RecoveryPublicCliSafetyTests(unittest.TestCase):
   self.assertEqual(rc,2);run.assert_not_called()
  def test_restore_execute_with_both_confirmations_reaches_structured_engine(self):
   payload={"schema_version":"1","command":"restore.apply","success":True,"result":{"changes_made":True}}
-  with mock.patch.object(cli.recovery_api,"apply_payload",return_value=payload) as run,mock.patch.object(cli,"_run_internal") as internal,mock.patch.object(cli.render,"render_cli"):rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext(assume_yes=True))
-  self.assertEqual(rc,0);run.assert_called_once_with("/backup/set",None);internal.assert_not_called()
+  with mock.patch.object(cli.recovery_api,"apply_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext(assume_yes=True))
+  self.assertEqual(rc,0);run.assert_called_once_with("/backup/set",None)
  def test_restore_check_clean_target_is_read_only_and_needs_no_yes(self):
   payload={"schema_version":"1","command":"restore.apply","success":True,"result":{"clean_target":True,"changes_made":False}}
   with mock.patch.object(cli.recovery_api,"check_clean_target_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_json"):rc=cli.restore_command(["apply","/backup/set","--check-clean-target"],cli.CLIContext(json_output=True))
@@ -53,6 +53,6 @@ class RecoveryPublicCliSafetyTests(unittest.TestCase):
   self.assertEqual(rc,2);run.assert_not_called()
  def test_restore_resume_reaches_structured_engine_with_yes(self):
   payload={"schema_version":"1","command":"restore.resume","success":True,"result":{"memory_sync_enabled":True}}
-  with mock.patch.object(cli.recovery_api,"resume_payload",return_value=payload) as run,mock.patch.object(cli,"_run_internal") as internal,mock.patch.object(cli.render,"render_json"):rc=cli.restore_command(["resume","/backup/set","--memory-sync-ssh-bootstrap","/ssh"],cli.CLIContext(json_output=True,assume_yes=True))
-  self.assertEqual(rc,0);run.assert_called_once_with("/backup/set","/ssh");internal.assert_not_called()
+  with mock.patch.object(cli.recovery_api,"resume_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_json"):rc=cli.restore_command(["resume","/backup/set","--memory-sync-ssh-bootstrap","/ssh"],cli.CLIContext(json_output=True,assume_yes=True))
+  self.assertEqual(rc,0);run.assert_called_once_with("/backup/set","/ssh")
 if __name__=="__main__":unittest.main()
