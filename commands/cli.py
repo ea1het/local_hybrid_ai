@@ -3,12 +3,10 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Public command dispatcher behind the root ``./local-ai`` entry point."""
 from __future__ import annotations
-import argparse,importlib,json,os,re,sys
+import argparse,sys
 from dataclasses import dataclass
-from pathlib import Path
-from commands import completion,doctor,install_entry,inventory,lifecycle,render,status,upgrade_adopt,upgrade_entry
-from commands.recovery import public_api as recovery_api
-ROOT=Path(__file__).resolve().parents[1];RECOVERY=ROOT/"commands"/"recovery";SCHEMA_VERSION="1";DEFAULT_BACKUP_ROOT=Path("/opt/local-hybrid-ai-backups");BACKUP_ROOT_ENV="DR_BACKUP_ROOT";BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$")
+from commands import backup,completion,doctor,install_entry,inventory,lifecycle,render,restore,status,upgrade_adopt,upgrade_entry
+SCHEMA_VERSION="1"
 class CLIUsageError(Exception):pass
 class PublicArgumentParser(argparse.ArgumentParser):
  def error(self,message):raise CLIUsageError(message)
@@ -34,8 +32,7 @@ def _public_help(argv):
  if not semantic or semantic[-1] not in {"-h","--help"}:return False
  path=semantic[:-1]
  if not path:build_parser().print_help();return True
- if path[0]=="install":
-  p=install_entry.parser();_add_global_help(p).print_help();return True
+ if path[0]=="install":p=install_entry.parser();_add_global_help(p).print_help();return True
  if path[0]=="backup":build_backup_parser().print_help();return True
  if path[0]=="restore":build_restore_parser().parse_args([*path[1:],"--help"]);return True
  if path[0] in {"status","doctor"}:_leaf_parser(f"local-ai {path[0]}","Show operational status" if path[0]=="status" else "Diagnose management prerequisites and environment consistency").print_help();return True
@@ -75,57 +72,18 @@ def _upgrade_public_args(args):
  token=translated[pos]
  if not _public_stack_id(token):return None,token
  translated[pos]=f"stack{int(token)}";return translated,None
-def _render_recovery(payload,context):
+def _render_owned(payload,context,api):
  if context.json_output:render.render_json(payload)
- else:render.render_cli(recovery_api.cli_text(payload))
+ else:render.render_cli(api.cli_text(payload))
  return 0 if payload.get("success") else 1
 def build_backup_parser():
- p=_add_global_help(PublicArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set"));p.add_argument("--destination",help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}");return p
+ p=_add_global_help(PublicArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set"));p.add_argument("--destination",help="backup root; defaults to DR_BACKUP_ROOT or /opt/local-hybrid-ai-backups");return p
 def backup_command(args,context):
  try:ns=build_backup_parser().parse_args(args)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="backup")
  consent=_require_mutation_consent(context=context,command="backup",message="backup creation requires --yes")
  if consent:return consent
- return _render_recovery(recovery_api.backup_payload(ns.destination),context)
-def _backup_root(override=None):return Path(override or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)).expanduser().resolve()
-def _recovery_archive_module():
- rp=str(RECOVERY);added=rp not in sys.path
- if added:sys.path.insert(0,rp)
- try:return importlib.import_module("dr_archive")
- finally:
-  if added:
-   try:sys.path.remove(rp)
-   except ValueError:pass
-def _backup_sets(root):
- if not root.exists():return []
- if not root.is_dir():raise OSError(f"backup root is not a directory: {root}")
- archive=_recovery_archive_module();records=[]
- for path in root.iterdir():
-  if not path.is_dir() or path.is_symlink() or not BACKUP_SET_RE.fullmatch(path.name):continue
-  mp=path/"backup.json";cp=path/"checksums.sha256";record={"name":path.name,"path":str(path),"status":"invalid"}
-  if mp.is_file() and not mp.is_symlink() and cp.is_file() and not cp.is_symlink():
-   try:
-    metadata=json.loads(mp.read_text(encoding="utf-8"))
-    if not isinstance(metadata,dict):raise archive.ArchiveBackupError("backup metadata must be an object")
-    archive.validate_completed_metadata(metadata);record.update({"status":"completed","created_at":metadata["created_at"],"source_commit":metadata["source_commit"],"resolved_stacks":metadata["resolved_stacks"]})
-   except (OSError,json.JSONDecodeError,archive.ArchiveBackupError,KeyError,TypeError):pass
-  records.append(record)
- return sorted(records,key=lambda item:str(item["name"]),reverse=True)
-def backup_sets_payload(backup_root=None):
- root=_backup_root(backup_root)
- try:records=_backup_sets(root)
- except (OSError,ImportError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"restore.list-backup-sets","success":False,"error":{"code":"BACKUP_ROOT_INVALID","message":str(exc)}}
- return {"schema_version":SCHEMA_VERSION,"command":"restore.list-backup-sets","success":True,"backup_root":str(root),"backup_sets":records}
-def _backup_sets_cli(payload):
- if not payload["success"]:return f"ERROR [BACKUP_ROOT_INVALID]: {payload['error']['message']}"
- lines=[f"Backup root: {payload['backup_root']}"];records=payload["backup_sets"]
- if not records:return "\n".join(lines+["No backup sets found."])
- lines += ["STATUS     BACKUP SET                   SOURCE COMMIT  STACKS","---------- ---------------------------- ------------- ------"]
- for record in records:
-  source=str(record.get("source_commit") or "-")[:12];stacks=",".join(str(v) for v in record.get("resolved_stacks",[])) or "-";lines.append(f"{str(record['status']).upper():<10} {str(record['name']):<28} {source:<13} {stacks}")
- return "\n".join(lines+["","The PATH for a restore command is <backup-root>/<backup-set>."])
-def list_backup_sets(backup_root,*,context):
- payload=backup_sets_payload(backup_root);render.render_json(payload) if context.json_output else render.render_cli(_backup_sets_cli(payload));return 0 if payload["success"] else 1
+ return _render_owned(backup.backup_payload(ns.destination),context,backup)
 def build_restore_parser():
  p=_add_global_help(PublicArgumentParser(prog="local-ai restore",description="Disaster-recovery operations for Local Hybrid AI"));a=p.add_subparsers(dest="restore_action",metavar="ACTION",parser_class=PublicArgumentParser)
  def action(name,**kwargs):return _add_global_help(a.add_parser(name,**kwargs))
@@ -135,26 +93,26 @@ def restore_command(args,context):
  try:ns=p.parse_args(args)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="restore")
  if ns.restore_action is None:p.print_help();return 0
- if ns.restore_action=="list-backup-sets":return list_backup_sets(ns.backup_root,context=context)
  action=ns.restore_action
- if action=="plan":return _render_recovery(recovery_api.plan_payload(ns.backup_set),context)
+ if action=="list-backup-sets":return _render_owned(restore.list_backup_sets_payload(ns.backup_root),context,restore)
+ if action=="plan":return _render_owned(restore.plan_payload(ns.backup_set),context,restore)
  if action=="drill":
   consent=_require_mutation_consent(context=context,command="restore.drill",message="restore drill writes an isolated destination and requires --yes")
   if consent:return consent
-  return _render_recovery(recovery_api.drill_payload(ns.backup_set,ns.destination),context)
+  return _render_owned(restore.drill_payload(ns.backup_set,ns.destination),context,restore)
  if action=="apply":
   if ns.execute and not ns.confirm_clean_target:
    msg="restore apply --execute requires --confirm-clean-target"
    if context.json_output:_json_error("CONFIRMATION_REQUIRED",msg,command="restore.apply");return 2
    return _usage_error(msg,context=context,command="restore.apply")
   if ns.check_clean_target and ns.confirm_clean_target:return _usage_error("--confirm-clean-target is valid only with --execute",context=context,command="restore.apply")
-  if ns.check_clean_target:return _render_recovery(recovery_api.check_clean_target_payload(ns.backup_set),context)
+  if ns.check_clean_target:return _render_owned(restore.check_clean_target_payload(ns.backup_set),context,restore)
   consent=_require_mutation_consent(context=context,command="restore.apply",message="restore execution requires --yes")
   if consent:return consent
-  return _render_recovery(recovery_api.apply_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context)
+  return _render_owned(restore.apply_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context,restore)
  consent=_require_mutation_consent(context=context,command="restore.resume",message="restore resume mutates the reconstructed target and requires --yes")
  if consent:return consent
- return _render_recovery(recovery_api.resume_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context)
+ return _render_owned(restore.resume_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context,restore)
 def build_parser():
  p=_add_global_help(PublicArgumentParser(prog="local-ai",description="Supported management CLI for the Local Hybrid AI installation"));sub=p.add_subparsers(dest="command",parser_class=PublicArgumentParser)
  for name,text in (("install","install or reconcile stacks"),("backup","create a recovery point"),("restore","list, plan, drill, apply or resume disaster recovery"),("status","show operational stack state, runtime health and drift"),("doctor","diagnose management prerequisites and environment consistency"),("inventory","validate and rescan manifest-declared component topology"),("completion","emit Bash or Zsh completion integration"),("upgrade","inspect versions and manage component upgrades")):_add_global_help(sub.add_parser(name,help=text))
