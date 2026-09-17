@@ -6,6 +6,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+from commands import cli
 from commands.recovery import public_api
 
 
@@ -40,6 +41,32 @@ class RecoveryStructuredApiTests(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertFalse(payload["result"]["live_runtime_modified"])
         engine.run_restore_drill.assert_called_once()
+
+    def test_plan_public_dispatch_does_not_spawn_private_script(self):
+        payload = {"schema_version": "1", "command": "restore.plan", "success": True, "result": {"changes_made": False}}
+        with mock.patch.object(cli.recovery_api, "plan_payload", return_value=payload) as plan, \
+             mock.patch.object(cli, "_run_internal") as internal, \
+             mock.patch.object(cli, "_run_internal_json") as internal_json, \
+             mock.patch.object(cli.render, "render_json") as render_json:
+            rc = cli.restore_command(["plan", "/backup/set"], cli.CLIContext(json_output=True))
+        self.assertEqual(rc, 0)
+        plan.assert_called_once_with("/backup/set")
+        render_json.assert_called_once_with(payload)
+        internal.assert_not_called()
+        internal_json.assert_not_called()
+
+    def test_drill_public_dispatch_does_not_spawn_private_script(self):
+        payload = {"schema_version": "1", "command": "restore.drill", "success": True, "result": {"destination": "/tmp/drill"}}
+        with mock.patch.object(cli.recovery_api, "drill_payload", return_value=payload) as drill, \
+             mock.patch.object(cli, "_run_internal") as internal, \
+             mock.patch.object(cli, "_run_internal_json") as internal_json, \
+             mock.patch.object(cli.render, "render_cli") as render_cli:
+            rc = cli.restore_command(["drill", "/backup/set", "--destination", "/tmp/drill"], cli.CLIContext())
+        self.assertEqual(rc, 0)
+        drill.assert_called_once_with("/backup/set", "/tmp/drill")
+        render_cli.assert_called_once()
+        internal.assert_not_called()
+        internal_json.assert_not_called()
 
     def test_adapter_contains_no_rendering_or_subprocess_boundary(self):
         source = (public_api.RECOVERY_ROOT / "public_api.py").read_text(encoding="utf-8")
