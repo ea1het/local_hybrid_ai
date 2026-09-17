@@ -13,6 +13,9 @@ class CliCentralizationTests(unittest.TestCase):
  def test_launcher_and_public_dispatcher_contain_no_human_input(self):
   launcher=(ROOT/"local-ai").read_text(encoding="utf-8");dispatcher=(ROOT/"commands"/"cli.py").read_text(encoding="utf-8")
   self.assertNotIn("argparse",launcher);self.assertNotIn("_facade_help",launcher);self.assertIn("commands.cli import main",launcher);self.assertNotIn("input(",launcher);self.assertNotIn("input(",dispatcher);self.assertNotIn("_interactive_consent",dispatcher)
+ def test_public_dispatcher_does_not_depend_on_recovery_compatibility_package(self):
+  dispatcher=(ROOT/"commands"/"cli.py").read_text(encoding="utf-8")
+  self.assertNotIn("commands.recovery",dispatcher);self.assertNotIn('commands/recovery',dispatcher);self.assertNotIn("recovery_api",dispatcher)
  def test_inventory_rescan_json_fails_closed_without_yes_before_domain_write(self):
   out,err=io.StringIO(),io.StringIO()
   with mock.patch("commands.cli.inventory.json_payload") as payload,redirect_stdout(out),redirect_stderr(err):rc=cli.main(["--json","inventory","rescan"])
@@ -27,7 +30,7 @@ class CliCentralizationTests(unittest.TestCase):
  def test_start_stop_reject_every_out_of_range_public_selector_before_runtime(self):
   for command in ("start","stop"):
    for selector in ("stack7","8","99","-1"):
-    with self.subTest(command=command,selector=selector),mock.patch("commands.cli.runtime_lifecycle.json_payload") as runtime:rc=cli.main([command,selector])
+    with self.subTest(command=command,selector=selector),mock.patch("commands.cli.lifecycle.json_payload") as runtime:rc=cli.main([command,selector])
     self.assertEqual(rc,2);runtime.assert_not_called()
  def test_upgrade_rejects_out_of_range_selector_before_upgrade_domain(self):
   for selector in ("stack7","8","99","-1"):
