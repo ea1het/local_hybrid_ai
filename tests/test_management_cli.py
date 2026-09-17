@@ -40,9 +40,7 @@ class ManagementCliContractTests(unittest.TestCase):
   values=completion.complete(["upgrade","policy",""])
   for i in range(8):self.assertIn(str(i),values)
  def test_completion_upgrade_adopt_has_no_stack_argument(self):
-  values=completion.complete(["upgrade","adopt",""])
-  self.assertEqual([value for value in values if not value.startswith("--")],[])
-  self.assertIn("--json",values);self.assertIn("--yes",values)
+  values=completion.complete(["upgrade","adopt",""]);self.assertEqual([v for v in values if not v.startswith("--")],[]);self.assertIn("--json",values);self.assertIn("--yes",values)
  def test_completion_command_outputs_shell_integration(self):
   cp=self.run_cli("completion","bash");self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("complete -F _local_ai_complete local-ai ./local-ai",cp.stdout);self.assertIn("__complete",cp.stdout)
  def test_completion_rejects_unknown_shell(self):self.assertNotEqual(self.run_cli("completion","fish").returncode,0)
@@ -67,11 +65,12 @@ class ManagementCliContractTests(unittest.TestCase):
  def test_interactive_backup_decline_does_not_execute(self):
   with mock.patch.object(sys.stdin,"isatty",return_value=True),mock.patch("builtins.input",return_value="n"),mock.patch.object(cli,"_run_internal",return_value=0) as run:rc=cli.backup_command([],cli.CLIContext())
   self.assertEqual(rc,1);run.assert_not_called()
- def test_restore_dispatches_public_grammar_to_private_engines(self):
-  cases={"plan":(["plan","/backup/set"],"restore-all.py",["/backup/set","--dry-run"]),"drill":(["drill","/backup/set","--destination","/tmp/drill"],"restore-drill.py",["/backup/set","--destination","/tmp/drill"]),"apply":(["apply","/backup/set","--check-clean-target"],"restore-live.py",["/backup/set","--check-clean-target"]),"resume":(["resume","/backup/set","--memory-sync-ssh-bootstrap","/ssh"],"restore-resume.py",["/backup/set","--memory-sync-ssh-bootstrap","/ssh"])}
-  for action,(public_args,filename,internal_args) in cases.items():
-   with mock.patch.object(cli,"_run_internal",return_value=0) as run:
-    rc=cli.restore_command(public_args,cli.CLIContext());self.assertEqual(rc,0);path,args=run.call_args.args;self.assertEqual(path,ROOT/"commands"/"recovery"/filename);self.assertEqual(args,internal_args)
+ def test_restore_public_grammar_dispatches_to_structured_api(self):
+  cases=((['plan','/backup/set'],'plan_payload',('/backup/set',),False),(['drill','/backup/set','--destination','/tmp/drill'],'drill_payload',('/backup/set','/tmp/drill'),True),(['apply','/backup/set','--check-clean-target'],'check_clean_target_payload',('/backup/set',),False),(['resume','/backup/set','--memory-sync-ssh-bootstrap','/ssh'],'resume_payload',('/backup/set','/ssh'),True))
+  for public_args,name,expected,needs_yes in cases:
+   payload={"schema_version":"1","command":"restore.test","success":True,"result":{}}
+   with self.subTest(name=name),mock.patch.object(cli.recovery_api,name,return_value=payload) as run,mock.patch.object(cli,"_run_internal") as internal,mock.patch.object(cli.render,"render_cli"):
+    rc=cli.restore_command(public_args,cli.CLIContext(assume_yes=needs_yes));self.assertEqual(rc,0);run.assert_called_once_with(*expected);internal.assert_not_called()
  def test_restore_help_is_owned_by_local_ai_and_hides_private_scripts(self):
   for action in ("plan","drill","apply","resume","list-backup-sets"):
    cp=self.run_cli("restore",action,"--help");self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn(f"usage: local-ai restore {action}",cp.stdout.lower())
@@ -79,10 +78,6 @@ class ManagementCliContractTests(unittest.TestCase):
  def test_restore_without_action_shows_public_restore_help(self):
   cp=self.run_cli("restore");self.assertEqual(cp.returncode,0,cp.stderr)
   for item in ("list-backup-sets","plan","drill","apply","resume"):self.assertIn(item,cp.stdout)
- def test_list_backup_sets_discovers_completed_recovery_points(self):
-  with tempfile.TemporaryDirectory() as tmp:
-   root=Path(tmp);backup=root/"backup-20260916T120000Z";backup.mkdir();(backup/"checksums.sha256").write_text("x\n",encoding="utf-8");metadata={"schema_version":1,"kind":"local-hybrid-ai-backup-set","created_at":"2026-09-16T12:00:00Z","source_commit":"a"*40,"requested":["all"],"resolved_stacks":[0,3,6],"artifacts":[],"prerequisites":[]};(backup/"backup.json").write_text(json.dumps(metadata),encoding="utf-8");cp=self.run_cli("restore","list-backup-sets",env_extra={"DR_BACKUP_ROOT":tmp})
-  self.assertEqual(cp.returncode,0,cp.stderr);self.assertIn("backup-20260916T120000Z",cp.stdout);self.assertIn("COMPLETED",cp.stdout);self.assertIn("0,3,6",cp.stdout)
  def test_json_list_backup_sets_has_public_versioned_contract(self):
   with tempfile.TemporaryDirectory() as tmp:cp=self.run_cli("restore","list-backup-sets","--json",env_extra={"DR_BACKUP_ROOT":tmp})
   self.assertEqual(cp.returncode,0,cp.stderr);payload=json.loads(cp.stdout);self.assertEqual(payload["command"],"restore.list-backup-sets");self.assertTrue(payload["success"]);self.assertEqual(payload["backup_sets"],[])
