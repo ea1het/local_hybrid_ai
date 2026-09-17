@@ -44,7 +44,10 @@ class RepositoryLayoutTests(unittest.TestCase):
   text=(ROOT/".gitignore").read_text(encoding="utf-8");self.assertIn("__pycache__/",text);self.assertIn("*.py[cod]",text)
  def test_stack_readmes_remain_local_and_canonical(self):
   files=tracked_files();stacks=sorted(p.name for p in ROOT.glob("stack*_*") if p.is_dir());self.assertEqual(len(stacks),8)
-  for stack in stacks:self.assertIn(f"{stack}/README.md",files);self.assertFalse(any(p.startswith(f"{stack}/README.") and p.endswith(".md") for p in files))
+  for stack in stacks:
+   canonical=f"{stack}/README.md";self.assertIn(canonical,files)
+   alternates=[p for p in files if p.startswith(f"{stack}/README.") and p.endswith(".md") and p!=canonical]
+   self.assertEqual(alternates,[],stack)
  def test_local_ai_is_the_supported_root_management_cli(self):
   files=tracked_files();cli=ROOT/"local-ai";self.assertIn("local-ai",files);self.assertTrue(cli.stat().st_mode&0o111)
   for package in ("install","backup","restore","status","doctor","inventory","completion","upgrade","lifecycle"):self.assertTrue(any(p.startswith(f"commands/{package}/") for p in files),package)
