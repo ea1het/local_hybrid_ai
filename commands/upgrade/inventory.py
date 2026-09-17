@@ -26,5 +26,9 @@ def registry_state(state):
 def human_stack_id(stack:str)->str:return stack[5:] if stack.startswith("stack") else stack
 def human_available(row:dict)->str:
  value=row.get("available","n/a")
+ if value=="unknown":
+  registry=row.get("registry") or {};status=registry.get("remote_status") or registry.get("tags_status")
+  reasons={"rate_limited":"rate limited","unauthorized":"unauthorized","forbidden":"forbidden"}
+  if status in reasons:return f"unknown ({reasons[status]})"
  if value in {"n/a","unchecked","pinned","unknown","current","update"}:return value
  return str(value)
