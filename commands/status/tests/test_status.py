@@ -21,6 +21,5 @@ class StatusOperationalTests(unittest.TestCase):
  def test_human_status_contains_only_operational_columns(self):
   rows=[{"stack":"stack5","name":"dockhand","state":"running","health":"ready"}];text=status.cli_text({"success":True,"stacks":rows});self.assertEqual(text.splitlines()[0].split(),["STACK","NAME","STATE","HEALTH"])
  def test_status_does_not_depend_on_upgrade(self):
-  source=open(status.__file__,encoding="utf-8").read()+open(status.api.__file__,encoding="utf-8").read() if hasattr(status,"api") else open(status.__file__,encoding="utf-8").read()
-  self.assertNotIn("commands.upgrade",source);self.assertNotIn("upgrade_registry",source)
+  source=open(status.api.__file__,encoding="utf-8").read();self.assertNotIn("commands.upgrade",source);self.assertNotIn("upgrade_registry",source);self.assertNotIn("from commands import upgrade",source)
 if __name__=="__main__":unittest.main()
