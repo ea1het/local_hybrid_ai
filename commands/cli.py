@@ -4,7 +4,7 @@
 """Public command dispatcher behind the root ``./local-ai`` entry point."""
 from __future__ import annotations
 import argparse,importlib,json,os,re,sys
-from dataclasses import dataclass,replace
+from dataclasses import dataclass
 from pathlib import Path
 from commands import completion,doctor,install_entry,inventory,render,runtime_lifecycle,status,upgrade_adopt,upgrade_entry
 from commands.recovery import public_api as recovery_api
@@ -58,15 +58,9 @@ def _confirmation_required(message,*,context,command):
  if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command=command)
  else:print(f"ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr)
  return 2
-def _require_mutation_consent(*,context,command,prompt,message=None):
+def _require_mutation_consent(*,context,command,message=None):
  if context.assume_yes:return 0
- message=message or f"{command} requires --yes when input is not interactive"
- if context.json_output or not sys.stdin.isatty():return _confirmation_required(message,context=context,command=command)
- try:answer=input(prompt)
- except EOFError:return _confirmation_required(message,context=context,command=command)
- if answer.strip().lower() in {"y","yes"}:return 0
- print("Operation cancelled.")
- return 1
+ return _confirmation_required(message or f"{command} requires --yes",context=context,command=command)
 def _stack_selector_error(token,*,context,command):
  message=f"stack selector must be a numeric id from 0 through 7, not {token!r}"
  if context.json_output:_json_error("STACK_SELECTOR_INVALID",message,command=command)
@@ -89,7 +83,7 @@ def build_backup_parser():
 def backup_command(args,context):
  try:ns=build_backup_parser().parse_args(args)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context,command="backup")
- consent=_require_mutation_consent(context=context,command="backup",prompt=f"Create a new atomic DR backup set under {ns.destination or os.environ.get(BACKUP_ROOT_ENV) or DEFAULT_BACKUP_ROOT}? [y/N] ",message="backup creation requires --yes")
+ consent=_require_mutation_consent(context=context,command="backup",message="backup creation requires --yes")
  if consent:return consent
  return _render_recovery(recovery_api.backup_payload(ns.destination),context)
 def _backup_root(override=None):return Path(override or os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)).expanduser().resolve()
@@ -144,7 +138,7 @@ def restore_command(args,context):
  action=ns.restore_action
  if action=="plan":return _render_recovery(recovery_api.plan_payload(ns.backup_set),context)
  if action=="drill":
-  consent=_require_mutation_consent(context=context,command="restore.drill",prompt="Execute isolated restore drill? [y/N] ",message="restore drill writes an isolated destination and requires --yes")
+  consent=_require_mutation_consent(context=context,command="restore.drill",message="restore drill writes an isolated destination and requires --yes")
   if consent:return consent
   return _render_recovery(recovery_api.drill_payload(ns.backup_set,ns.destination),context)
  if action=="apply":
@@ -154,10 +148,10 @@ def restore_command(args,context):
    return _usage_error(msg,context=context,command="restore.apply")
   if ns.check_clean_target and ns.confirm_clean_target:return _usage_error("--confirm-clean-target is valid only with --execute",context=context,command="restore.apply")
   if ns.check_clean_target:return _render_recovery(recovery_api.check_clean_target_payload(ns.backup_set),context)
-  consent=_require_mutation_consent(context=context,command="restore.apply",prompt="Execute clean-target restore? [y/N] ",message="restore execution requires --yes")
+  consent=_require_mutation_consent(context=context,command="restore.apply",message="restore execution requires --yes")
   if consent:return consent
   return _render_recovery(recovery_api.apply_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context)
- consent=_require_mutation_consent(context=context,command="restore.resume",prompt="Resume interrupted reconstructed target? [y/N] ",message="restore resume mutates the reconstructed target and requires --yes")
+ consent=_require_mutation_consent(context=context,command="restore.resume",message="restore resume mutates the reconstructed target and requires --yes")
  if consent:return consent
  return _render_recovery(recovery_api.resume_payload(ns.backup_set,ns.memory_sync_ssh_bootstrap),context)
 def build_parser():
@@ -190,31 +184,15 @@ def _upgrade_mutates(args):
  if args[0]=="policy":return "set" in args or args[-1:]==["clear"]
  return "select" in args or args[-1:]==["clear"]
 def _confirm_upgrade_mutation(args,context):
- if not _upgrade_mutates(args):return True
- if context.assume_yes:return True
- message="upgrade state mutation requires --yes in JSON/non-interactive mode"
- if context.json_output:_json_error("CONFIRMATION_REQUIRED",message,command="upgrade");return False
- if not sys.stdin.isatty():print(f"ERROR [CONFIRMATION_REQUIRED]: {message}",file=sys.stderr);return False
- try:answer=input("Modify the persisted upgrade selection/policy state? [y/N] ")
- except EOFError:return False
- return answer.strip().lower() in {"y","yes"}
-def _interactive_consent(raw,context):
- if context.assume_yes or context.json_output or not sys.stdin.isatty():return context
- prompt=None
- if raw[:2]==["completion","install"]:prompt="Install shell completion integration? [y/N] "
- elif raw[:2]==["inventory","rescan"]:prompt="Persist the derived component inventory snapshot? [y/N] "
- elif raw and raw[0]=="install" and not any(flag in raw[1:] for flag in ("--plan","--dry-run")):prompt="Execute the resolved stack installation/reconciliation plan? [y/N] "
- if prompt is None:return context
- try:answer=input(prompt)
- except EOFError:return context
- return replace(context,assume_yes=True) if answer.strip().lower() in {"y","yes"} else context
+ if not _upgrade_mutates(args) or context.assume_yes:return True
+ _confirmation_required("upgrade state mutation requires --yes",context=context,command="upgrade");return False
 def main(argv=None):
  original=list(sys.argv[1:] if argv is None else argv)
  if original and original[0]=="__complete":
   try:print("\n".join(completion.complete(original[1:])));return 0
   except Exception:return 0
  if _public_help(original):return 0
- raw,context=_extract_global_options(original);context=_interactive_consent(raw,context)
+ raw,context=_extract_global_options(original)
  if raw and raw[0]=="completion":return _completion_command(raw[1:],context)
  if raw and raw[0]=="install":
   args=[*raw[1:],*( ["--yes"] if context.assume_yes else [])];payload,rc=install_entry.json_payload(args)
@@ -241,7 +219,7 @@ def main(argv=None):
  if ns.command=="doctor":payload=doctor.json_payload();render.render_json(payload) if context.json_output else render.render_cli(doctor.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command in {"start","stop"}:
   if not _public_stack_id(ns.stack):return _stack_selector_error(ns.stack,context=context,command=ns.command)
-  consent=_require_mutation_consent(context=context,command=ns.command,prompt=f"{ns.command.capitalize()} stack {ns.stack}? [y/N] ",message=f"{ns.command} mutates runtime state and requires --yes")
+  consent=_require_mutation_consent(context=context,command=ns.command,message=f"{ns.command} mutates runtime state and requires --yes")
   if consent:return consent
   payload=runtime_lifecycle.json_payload(ns.command,ns.stack);render.render_json(payload) if context.json_output else render.render_cli(runtime_lifecycle.cli_text(payload));return 0 if payload["success"] else 1
  return _usage_error("unsupported command",context=context)
