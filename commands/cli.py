@@ -7,6 +7,7 @@ import argparse,importlib,json,os,re,subprocess,sys
 from dataclasses import dataclass,replace
 from pathlib import Path
 from commands import completion,doctor,install_entry,inventory,render,runtime_lifecycle,status,upgrade_adopt,upgrade_entry
+from commands.recovery import public_api as recovery_api
 ROOT=Path(__file__).resolve().parents[1];RECOVERY=ROOT/"commands"/"recovery";SCHEMA_VERSION="1";DEFAULT_BACKUP_ROOT=Path("/opt/local-hybrid-ai-backups");BACKUP_ROOT_ENV="DR_BACKUP_ROOT";BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$")
 class CLIUsageError(Exception):pass
 class PublicArgumentParser(argparse.ArgumentParser):
@@ -77,6 +78,10 @@ def _run_internal_json(path,args,*,command):
  try:result=json.loads(cp.stdout)
  except json.JSONDecodeError:_json_error("INTERNAL_JSON_INVALID",f"{command} did not return a valid machine response",command=command);return 1
  render.render_json({"schema_version":SCHEMA_VERSION,"command":command,"success":True,"result":result});return 0
+def _render_recovery(payload,context):
+ if context.json_output:render.render_json(payload)
+ else:render.render_cli(recovery_api.cli_text(payload))
+ return 0 if payload.get("success") else 1
 def build_backup_parser():
  p=_add_global_help(PublicArgumentParser(prog="local-ai backup",description="Create one atomic disaster-recovery backup set"));p.add_argument("--destination",help=f"backup root; defaults to ${BACKUP_ROOT_ENV} or {DEFAULT_BACKUP_ROOT}");return p
 def backup_command(args,context):
@@ -143,9 +148,9 @@ def restore_command(args,context):
  if ns.restore_action is None:p.print_help();return 0
  if ns.restore_action=="list-backup-sets":return list_backup_sets(ns.backup_root,context=context)
  action=ns.restore_action
- if action=="plan":script,internal=RECOVERY/"restore-all.py",[ns.backup_set,"--dry-run"]
- elif action=="drill":script,internal=RECOVERY/"restore-drill.py",[ns.backup_set,"--destination",ns.destination]
- elif action=="apply":
+ if action=="plan":return _render_recovery(recovery_api.plan_payload(ns.backup_set),context)
+ if action=="drill":return _render_recovery(recovery_api.drill_payload(ns.backup_set,ns.destination),context)
+ if action=="apply":
   if ns.execute and not ns.confirm_clean_target:
    msg="restore apply --execute requires --confirm-clean-target"
    if context.json_output:_json_error("CONFIRMATION_REQUIRED",msg,command="restore.apply");return 2
@@ -232,13 +237,12 @@ def main(argv=None):
   if len(raw)>=2 and raw[1]=="adopt":return _upgrade_adopt(raw[2:],context=context)
   args,invalid=_upgrade_public_args(raw[1:])
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
-  if not _confirm_upgrade_mutation(args or [],context):return 2
+  if not _confirm_upgrade_mutation(args,context):return 2
   if context.assume_yes and not args:args=["--yes"]
-  payload,rc=upgrade_entry.build_payload(args or []);return _render_upgrade(payload,rc,context)
- p=build_parser()
- try:ns=p.parse_args(raw)
+  payload,rc=upgrade_entry.build_payload(args);return _render_upgrade(payload,rc,context)
+ try:ns=build_parser().parse_args(raw)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context)
- if ns.command is None:p.print_help();return 0
+ if ns.command is None:p=build_parser();p.print_help();return 0
  if ns.command=="status":payload=status.json_payload();render.render_json(payload) if context.json_output else render.render_cli(status.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command=="doctor":payload=doctor.json_payload();render.render_json(payload) if context.json_output else render.render_cli(doctor.cli_text(payload));return 0 if payload["success"] else 1
  if ns.command in {"start","stop"}:
