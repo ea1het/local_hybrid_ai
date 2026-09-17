@@ -4,12 +4,18 @@
 from __future__ import annotations
 
 import importlib
+import json
+import os
+import re
 import sys
 from pathlib import Path
 from typing import Callable
 
 RESTORE_ROOT = Path(__file__).resolve().parent
 SCHEMA_VERSION = "1"
+DEFAULT_BACKUP_ROOT = Path("/opt/local-hybrid-ai-backups")
+BACKUP_ROOT_ENV = "DR_BACKUP_ROOT"
+BACKUP_SET_RE = re.compile(r"^backup-\d{8}T\d{6}Z$")
 
 
 def _load(name: str):
@@ -36,6 +42,43 @@ def _failure(command: str, code: str, exc: Exception) -> dict[str, object]:
 def _operation(command: str, code: str, callback: Callable[[], dict[str, object]]) -> dict[str, object]:
     try: return _envelope(command, callback())
     except Exception as exc: return _failure(command, code, exc)
+
+
+def _backup_root(override: str | Path | None = None) -> Path:
+    value = str(override) if override is not None else os.environ.get(BACKUP_ROOT_ENV) or str(DEFAULT_BACKUP_ROOT)
+    return Path(value).expanduser().resolve()
+
+
+def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str, object]:
+    root = _backup_root(backup_root)
+    try:
+        if not root.exists():
+            records: list[dict[str, object]] = []
+        else:
+            if not root.is_dir():
+                raise OSError(f"backup root is not a directory: {root}")
+            archive = _load("dr_archive")
+            records = []
+            for path in root.iterdir():
+                if not path.is_dir() or path.is_symlink() or not BACKUP_SET_RE.fullmatch(path.name):
+                    continue
+                metadata_path = path / "backup.json"
+                checksums_path = path / "checksums.sha256"
+                record: dict[str, object] = {"name": path.name, "path": str(path), "status": "invalid"}
+                if metadata_path.is_file() and not metadata_path.is_symlink() and checksums_path.is_file() and not checksums_path.is_symlink():
+                    try:
+                        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                        if not isinstance(metadata, dict):
+                            raise archive.ArchiveBackupError("backup metadata must be an object")
+                        archive.validate_completed_metadata(metadata)
+                        record.update({"status": "completed", "created_at": metadata["created_at"], "source_commit": metadata["source_commit"], "resolved_stacks": metadata["resolved_stacks"]})
+                    except (OSError, json.JSONDecodeError, archive.ArchiveBackupError, KeyError, TypeError):
+                        pass
+                records.append(record)
+            records.sort(key=lambda item: str(item["name"]), reverse=True)
+    except (OSError, ImportError) as exc:
+        return {"schema_version": SCHEMA_VERSION, "command": "restore.list-backup-sets", "success": False, "error": {"code": "BACKUP_ROOT_INVALID", "message": str(exc)}}
+    return {"schema_version": SCHEMA_VERSION, "command": "restore.list-backup-sets", "success": True, "backup_root": str(root), "backup_sets": records}
 
 
 def plan_payload(backup_set: str | Path) -> dict[str, object]:
@@ -66,7 +109,21 @@ def cli_text(payload: dict[str, object]) -> str:
         error = payload.get("error")
         if isinstance(error, dict): return f"RECOVERY ERROR [{error.get('code','RECOVERY_FAILED')}]: {error.get('message','recovery operation failed')}"
         return "RECOVERY ERROR [RECOVERY_FAILED]: recovery operation failed"
-    command = payload.get("command"); result = payload.get("result")
+    command = payload.get("command")
+    if command == "restore.list-backup-sets":
+        lines = [f"Backup root: {payload.get('backup_root', '-')}" ]
+        records = payload.get("backup_sets")
+        if not isinstance(records, list) or not records:
+            return "\n".join(lines + ["No backup sets found."])
+        lines += ["STATUS     BACKUP SET                   SOURCE COMMIT  STACKS", "---------- ---------------------------- ------------- ------"]
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            source = str(record.get("source_commit") or "-")[:12]
+            stacks = ",".join(str(v) for v in record.get("resolved_stacks", [])) or "-"
+            lines.append(f"{str(record.get('status','invalid')).upper():<10} {str(record.get('name','-')):<28} {source:<13} {stacks}")
+        return "\n".join(lines + ["", "The PATH for a restore command is <backup-root>/<backup-set>."])
+    result = payload.get("result")
     if not isinstance(result, dict): return str(result)
     if command == "restore.plan":
         lines=["RESTORE PLAN: PASS"]; order=result.get("restore_order")
@@ -80,4 +137,4 @@ def cli_text(payload: dict[str, object]) -> str:
     return str(result)
 
 
-__all__ = ["SCHEMA_VERSION", "apply_payload", "check_clean_target_payload", "cli_text", "drill_payload", "plan_payload", "resume_payload"]
+__all__ = ["SCHEMA_VERSION", "apply_payload", "check_clean_target_payload", "cli_text", "drill_payload", "list_backup_sets_payload", "plan_payload", "resume_payload"]
