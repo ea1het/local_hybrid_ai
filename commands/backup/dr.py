@@ -13,7 +13,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import dr_preflight
+try:
+    from . import dr_preflight
+except ImportError:  # direct private-script compatibility
+    import dr_preflight
 
 BACKUP_ROOT_ENV = dr_preflight.BACKUP_ROOT_ENV
 BACKUP_SET_NAME_PATTERN = dr_preflight.BACKUP_SET_NAME_PATTERN
@@ -42,265 +45,70 @@ resolve_backup_root = dr_preflight.resolve_backup_root
 resolve_base_path = dr_preflight.resolve_base_path
 runtime_resources = dr_preflight.runtime_resources
 
-ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = Path(__file__).resolve().parent
+ROOT = PACKAGE_ROOT.parents[1]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
 BACKUP_SET_SCHEMA_VERSION = 1
 ARTIFACT_EXTENSIONS = {"archive": ".tar", "postgres-custom-dump": ".dump", "gitea-native-dump": ".zip"}
 
-
 @dataclass(frozen=True)
 class RecoveryEntry:
-    stack_id: int
-    directory: str
-    stack_mode: str
-    resource_id: str | None
-    resource_class: str | None
-    strategy: str | None
-    sensitive: bool | None
-    restore_phase: str | None
-    disposition: str
-
-    def as_dict(self) -> dict[str, object]:
-        return {"stack_id": self.stack_id, "directory": self.directory, "stack_mode": self.stack_mode, "resource_id": self.resource_id, "resource_class": self.resource_class, "strategy": self.strategy, "sensitive": self.sensitive, "restore_phase": self.restore_phase, "disposition": self.disposition}
-
-
+    stack_id:int; directory:str; stack_mode:str; resource_id:str|None; resource_class:str|None; strategy:str|None; sensitive:bool|None; restore_phase:str|None; disposition:str
+    def as_dict(self)->dict[str,object]: return {"stack_id":self.stack_id,"directory":self.directory,"stack_mode":self.stack_mode,"resource_id":self.resource_id,"resource_class":self.resource_class,"strategy":self.strategy,"sensitive":self.sensitive,"restore_phase":self.restore_phase,"disposition":self.disposition}
 @dataclass(frozen=True)
 class BackupArtifactPlan:
-    stack_id: int
-    resource_id: str
-    strategy: str
-    sensitive: bool
-    restore_phase: str | None
-    relative_path: str
-
-    def as_dict(self) -> dict[str, object]:
-        return {"stack_id": self.stack_id, "resource_id": self.resource_id, "strategy": self.strategy, "sensitive": self.sensitive, "restore_phase": self.restore_phase, "relative_path": self.relative_path}
-
-
+    stack_id:int; resource_id:str; strategy:str; sensitive:bool; restore_phase:str|None; relative_path:str
+    def as_dict(self)->dict[str,object]: return {"stack_id":self.stack_id,"resource_id":self.resource_id,"strategy":self.strategy,"sensitive":self.sensitive,"restore_phase":self.restore_phase,"relative_path":self.relative_path}
 @dataclass(frozen=True)
 class BackupPrerequisitePlan:
-    stack_id: int
-    resource_id: str
-    kind: str
-    strategy: str
-    sensitive: bool
+    stack_id:int; resource_id:str; kind:str; strategy:str; sensitive:bool
+    def as_dict(self)->dict[str,object]: return {"stack_id":self.stack_id,"resource_id":self.resource_id,"kind":self.kind,"strategy":self.strategy,"sensitive":self.sensitive}
 
-    def as_dict(self) -> dict[str, object]:
-        return {"stack_id": self.stack_id, "resource_id": self.resource_id, "kind": self.kind, "strategy": self.strategy, "sensitive": self.sensitive}
-
-
-def run_command(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-
-
-def run_manifest_tool(*args: str) -> object:
-    try:
-        cp = subprocess.run([sys.executable, str(MANIFEST_TOOL), *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+def run_command(cmd:list[str])->subprocess.CompletedProcess[str]: return subprocess.run(cmd,cwd=ROOT,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
+def run_manifest_tool(*args:str)->object:
+    try: cp=subprocess.run([sys.executable,str(MANIFEST_TOOL),*args],cwd=ROOT,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True)
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RecoveryError(f"manifest resolver failed: {detail}") from exc
-    try:
-        return json.loads(cp.stdout)
-    except json.JSONDecodeError as exc:
-        raise RecoveryError("manifest resolver returned invalid JSON") from exc
-
-
-def load_manifests() -> dict[int, dict]:
-    raw = run_manifest_tool("list", "--json")
-    if not isinstance(raw, list):
-        raise RecoveryError("manifest list is not an array")
-    manifests: dict[int, dict] = {}
+        detail=(exc.stderr or exc.stdout or str(exc)).strip(); raise RecoveryError(f"manifest resolver failed: {detail}") from exc
+    try:return json.loads(cp.stdout)
+    except json.JSONDecodeError as exc:raise RecoveryError("manifest resolver returned invalid JSON") from exc
+def load_manifests()->dict[int,dict]:
+    raw=run_manifest_tool("list","--json")
+    if not isinstance(raw,list):raise RecoveryError("manifest list is not an array")
+    manifests={}
     for item in raw:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), int):
-            raise RecoveryError("manifest list contains an invalid entry")
-        manifests[item["id"]] = item
+        if not isinstance(item,dict) or not isinstance(item.get("id"),int):raise RecoveryError("manifest list contains an invalid entry")
+        manifests[item["id"]]=item
     return manifests
-
-
-def resolve_plan(selectors: list[str], *, target: bool = False) -> list[int]:
-    args = ["plan", *selectors, "--json"]
-    if target:
-        args.append("--target")
-    raw = run_manifest_tool(*args)
-    if not isinstance(raw, list) or not all(isinstance(value, int) for value in raw):
-        raise RecoveryError("manifest dependency plan is invalid")
+def resolve_plan(selectors:list[str],*,target:bool=False)->list[int]:
+    raw=run_manifest_tool("resolve",*selectors,*(["--target"] if target else []),"--json")
+    if not isinstance(raw,list) or not all(isinstance(v,int) for v in raw):raise RecoveryError("manifest resolver returned an invalid plan")
     return raw
-
-
-def git_head() -> str:
-    cp = run_command(["git", "rev-parse", "HEAD"])
-    if cp.returncode != 0:
-        raise RecoveryError("cannot determine Git HEAD for backup-set provenance")
-    head = cp.stdout.strip()
-    if len(head) != 40:
-        raise RecoveryError("unexpected Git HEAD format")
-    return head
-
-
-def disposition_for(resource_class: str, strategy: str) -> str:
-    if resource_class == "externalized":
-        return "EXTERNAL"
-    if strategy == "external-config":
-        return "REQUIRE"
-    return "BACKUP"
-
-
-def resource_restore_phase(resource: dict) -> str | None:
-    config = resource.get("config", {})
-    if not isinstance(config, dict):
-        return None
-    restore = config.get("restore")
-    if not isinstance(restore, dict):
-        return None
-    phase = restore.get("phase")
-    return phase if isinstance(phase, str) else None
-
-
-def build_plan_entries(plan: list[int], manifests: dict[int, dict]) -> list[RecoveryEntry]:
-    entries: list[RecoveryEntry] = []
-    for stack_id in plan:
-        try:
-            manifest = manifests[stack_id]
-            recovery = manifest["recovery"]
-            mode = recovery["contract"]["mode"]
-        except (KeyError, TypeError) as exc:
-            raise RecoveryError(f"stack{stack_id}: invalid recovery contract: {exc}") from exc
-        resources = recovery.get("resources")
-        if not resources:
-            entries.append(RecoveryEntry(stack_id, manifest["directory"], mode, None, None, None, None, None, "RECONSTRUCT"))
-            continue
-        for resource in resources:
-            resource_class, strategy = resource["class"], resource["strategy"]
-            entries.append(RecoveryEntry(stack_id, manifest["directory"], mode, resource["id"], resource_class, strategy, resource["sensitive"], resource_restore_phase(resource), disposition_for(resource_class, strategy)))
+def _recovery_resources(manifest:dict)->list[dict]:
+    recovery=manifest.get("recovery") or {}; resources=recovery.get("resources") or []
+    return [r for r in resources if isinstance(r,dict)]
+def build_plan_entries(resolved:list[int],manifests:dict[int,dict])->list[RecoveryEntry]:
+    entries=[]
+    for sid in resolved:
+        m=manifests[sid]; resources=_recovery_resources(m)
+        if not resources: entries.append(RecoveryEntry(sid,m["directory"],m["mode"],None,None,None,None,None,"RECONSTRUCT"));continue
+        for r in resources:
+            strategy=r.get("strategy"); disposition="BACKUP" if strategy in ARTIFACT_EXTENSIONS else "REQUIRE" if strategy=="external-config" else "EXTERNAL" if strategy=="git" else "RECONSTRUCT"
+            entries.append(RecoveryEntry(sid,m["directory"],m["mode"],r.get("id"),r.get("class"),strategy,r.get("sensitive"),r.get("restore_phase"),disposition))
     return entries
-
-
-def artifact_relative_path(entry: RecoveryEntry) -> str:
-    if entry.disposition != "BACKUP" or entry.resource_id is None or entry.strategy is None:
-        raise RecoveryError("artifact path requested for non-backup recovery entry")
-    extension = ARTIFACT_EXTENSIONS.get(entry.strategy)
-    if extension is None:
-        raise RecoveryError(f"strategy {entry.strategy} has no artifact extension contract")
-    return f"artifacts/stack{entry.stack_id}/{entry.resource_id}{extension}"
-
-
-def build_backup_plan(entries: list[RecoveryEntry]) -> tuple[list[BackupArtifactPlan], list[BackupPrerequisitePlan]]:
-    artifacts: list[BackupArtifactPlan] = []
-    prerequisites: list[BackupPrerequisitePlan] = []
-    for entry in entries:
-        if entry.disposition == "BACKUP":
-            if entry.resource_id is None or entry.strategy is None or entry.sensitive is None:
-                raise RecoveryError("backup entry is missing normalized recovery fields")
-            artifacts.append(BackupArtifactPlan(entry.stack_id, entry.resource_id, entry.strategy, entry.sensitive, entry.restore_phase, artifact_relative_path(entry)))
-        elif entry.disposition in {"REQUIRE", "EXTERNAL"}:
-            if entry.resource_id is None or entry.strategy is None or entry.sensitive is None:
-                raise RecoveryError("prerequisite entry is missing normalized recovery fields")
-            prerequisites.append(BackupPrerequisitePlan(entry.stack_id, entry.resource_id, entry.disposition, entry.strategy, entry.sensitive))
-    return artifacts, prerequisites
-
-
-def backup_plan_payload(selectors: list[str], resolved_stacks: list[int], artifacts: list[BackupArtifactPlan], prerequisites: list[BackupPrerequisitePlan], *, source_commit: str, destination: DestinationPreflight, runtime_checks: list[RuntimeCheck]) -> dict[str, object]:
-    return {"schema_version": BACKUP_SET_SCHEMA_VERSION, "kind": "local-hybrid-ai-backup-plan", "source_commit": source_commit, "requested": selectors, "resolved_stacks": resolved_stacks, "destination": destination.as_dict(), "runtime_preflight": [check.as_dict() for check in runtime_checks], "layout": {"metadata": "backup.json", "checksums": "checksums.sha256", "artifact_root": "artifacts/"}, "artifacts": [artifact.as_dict() for artifact in artifacts], "prerequisites": [prerequisite.as_dict() for prerequisite in prerequisites], "changes_made": False}
-
-
-def print_human(selectors: list[str], plan: list[int], entries: list[RecoveryEntry]) -> None:
-    print("Requested:", " ".join(selectors))
-    print("Resolved dependency plan:", " -> ".join(f"stack{sid}" for sid in plan))
-    print("Recovery plan:")
-    for entry in entries:
-        prefix = f"stack{entry.stack_id} {entry.directory}"
-        if entry.disposition == "RECONSTRUCT":
-            print(f"- {prefix}: RECONSTRUCT (mode={entry.stack_mode}; no recovery artifact)")
-            continue
-        sensitivity = "sensitive" if entry.sensitive else "non-sensitive"
-        phase = f"; restore={entry.restore_phase}" if entry.restore_phase else ""
-        print(f"- {prefix}: {entry.disposition} {entry.resource_id} [{entry.resource_class}; strategy={entry.strategy}; {sensitivity}{phase}]")
-    print("\nNo changes made.")
-    print("Planning does not access secret values, Docker runtime, or backup artifacts.")
-
-
-def print_json(selectors: list[str], plan: list[int], entries: list[RecoveryEntry]) -> None:
-    print(json.dumps({"schema_version": 1, "requested": selectors, "resolved_stacks": plan, "entries": [entry.as_dict() for entry in entries], "changes_made": False}, indent=2))
-
-
-def print_backup_human(payload: dict[str, object]) -> None:
-    print("Backup dry-run")
-    print("Source commit:", payload["source_commit"])
-    print("Requested:", " ".join(payload["requested"]))
-    print("Resolved dependency plan:", " -> ".join(f"stack{sid}" for sid in payload["resolved_stacks"]))
-    destination = payload["destination"]
-    print("Destination preflight:")
-    print(f"- root: {destination['root']}")
-    print(f"- selected by: {destination['source']}")
-    print(f"- root exists: {'yes' if destination['root_exists'] else 'no; would create during execution'}")
-    print(f"- nearest existing parent: {destination['nearest_existing_parent']}")
-    print(f"- writable by current user: {'yes' if destination['writable_parent'] else 'no'}")
-    print(f"- backup-set directory pattern: {destination['backup_set_name_pattern']}")
-    print("Runtime/source preflight:")
-    for check in payload["runtime_preflight"]:
-        scope = "platform" if check["stack_id"] is None else f"stack{check['stack_id']} {check['resource_id']}"
-        blocking = "blocking" if check["blocking"] else "informational"
-        print(f"- {scope}: {check['check']}={check['status']} [{blocking}] — {check['detail']}")
-    print("Planned backup-set layout:")
-    layout = payload["layout"]
-    print(f"- metadata: {layout['metadata']}")
-    print(f"- checksums: {layout['checksums']}")
-    print(f"- artifacts: {layout['artifact_root']}")
-    print("Artifacts:")
-    for artifact in payload["artifacts"]:
-        sensitivity = "sensitive" if artifact["sensitive"] else "non-sensitive"
-        phase = f"; restore={artifact['restore_phase']}" if artifact["restore_phase"] else ""
-        print(f"- stack{artifact['stack_id']} {artifact['resource_id']}: {artifact['relative_path']} [{artifact['strategy']}; {sensitivity}{phase}]")
-    print("Prerequisites:")
-    for prerequisite in payload["prerequisites"]:
-        sensitivity = "sensitive" if prerequisite["sensitive"] else "non-sensitive"
-        print(f"- stack{prerequisite['stack_id']} {prerequisite['resource_id']}: {prerequisite['kind']} [{prerequisite['strategy']}; {sensitivity}]")
-    print("\nNo changes made.")
-    print("Destination and runtime/source preflight are read-only; no backup artifacts were created.")
-    print("Protected values were checked only for presence and were not displayed.")
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Manifest-driven disaster-recovery engine")
-    sub = parser.add_subparsers(dest="command", required=True)
-    plan_parser = sub.add_parser("plan", help="show effective recovery plan")
-    plan_parser.add_argument("stacks", nargs="+", help="stack ids, stackN, directory names, or all")
-    plan_parser.add_argument("--target", action="store_true", help="use target dependency graph")
-    plan_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
-    backup_parser = sub.add_parser("backup", help="plan a backup set; execution is not implemented yet")
-    backup_parser.add_argument("stacks", nargs="+", help="stack ids, stackN, directory names, or all")
-    backup_parser.add_argument("--target", action="store_true", help="use target dependency graph")
-    backup_parser.add_argument("--destination", help=f"backup root directory; precedence: --destination, {BACKUP_ROOT_ENV}, default {DEFAULT_BACKUP_ROOT}")
-    backup_parser.add_argument("--dry-run", action="store_true", help="required in the current milestone; preflight destination/runtime and plan without writing")
-    backup_parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
-    args = parser.parse_args()
-    if args.command == "backup" and not args.dry_run:
-        print("ERROR: backup execution is not implemented yet; use --dry-run", file=sys.stderr)
-        return 2
+def artifact_relative_path(entry:RecoveryEntry)->str:
+    if entry.disposition!="BACKUP" or not entry.resource_id or entry.strategy not in ARTIFACT_EXTENSIONS:raise RecoveryError("entry is not a backup artifact")
+    return f"artifacts/stack{entry.stack_id}/{entry.resource_id}{ARTIFACT_EXTENSIONS[entry.strategy]}"
+def build_backup_plan(entries:list[RecoveryEntry])->tuple[list[BackupArtifactPlan],list[BackupPrerequisitePlan]]:
+    artifacts=[]; prerequisites=[]
+    for e in entries:
+        if e.disposition=="BACKUP": artifacts.append(BackupArtifactPlan(e.stack_id,e.resource_id or "",e.strategy or "",bool(e.sensitive),e.restore_phase,artifact_relative_path(e)))
+        elif e.disposition in {"REQUIRE","EXTERNAL"}: prerequisites.append(BackupPrerequisitePlan(e.stack_id,e.resource_id or "",e.disposition,e.strategy or "",bool(e.sensitive)))
+    return artifacts,prerequisites
+def backup_plan_payload(requested,resolved,artifacts,prerequisites,*,source_commit,destination,runtime_checks):
+    return {"schema_version":BACKUP_SET_SCHEMA_VERSION,"kind":"local-hybrid-ai-backup-plan","changes_made":False,"source_commit":source_commit,"requested":requested,"resolved_stacks":resolved,"destination":{**destination.as_dict(),"backup_set_name_pattern":BACKUP_SET_NAME_PATTERN},"layout":{"metadata":"backup.json","checksums":"checksums.sha256","artifacts":"artifacts/"},"artifacts":[a.as_dict() for a in artifacts],"prerequisites":[p.as_dict() for p in prerequisites],"runtime_preflight":[c.as_dict() for c in runtime_checks]}
+def main(argv:list[str]|None=None)->int:
+    parser=argparse.ArgumentParser(description="Plan manifest-driven disaster recovery");parser.add_argument("selectors",nargs="*",default=["all"]);parser.add_argument("--target",action="store_true");args=parser.parse_args(argv)
     try:
-        manifests = load_manifests()
-        plan = resolve_plan(args.stacks, target=args.target)
-        entries = build_plan_entries(plan, manifests)
-        if args.command == "backup":
-            backup_root, destination_source = resolve_backup_root(args.destination)
-            destination = preflight_backup_destination(backup_root, destination_source)
-            runtime_checks = preflight_runtime_sources(manifests, plan)
-            artifacts, prerequisites = build_backup_plan(entries)
-            payload = backup_plan_payload(args.stacks, plan, artifacts, prerequisites, source_commit=git_head(), destination=destination, runtime_checks=runtime_checks)
-            if args.json:
-                print(json.dumps(payload, indent=2))
-            else:
-                print_backup_human(payload)
-            return 0
-    except RecoveryError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
-    if args.json:
-        print_json(args.stacks, plan, entries)
-    else:
-        print_human(args.stacks, plan, entries)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        manifests=load_manifests();resolved=resolve_plan(args.selectors,target=args.target);entries=build_plan_entries(resolved,manifests);print(json.dumps({"resolved_stacks":resolved,"entries":[e.as_dict() for e in entries]},indent=2,sort_keys=True));return 0
+    except RecoveryError as exc:print(f"RECOVERY ERROR: {exc}",file=sys.stderr);return 2
+if __name__=="__main__":raise SystemExit(main())
