@@ -1,5 +1,6 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
+"""Package-boundary tests for the restore command package."""
 from __future__ import annotations
 
 import inspect
