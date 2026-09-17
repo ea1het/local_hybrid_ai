@@ -5,9 +5,9 @@
 
 """Restore-owned disaster-recovery primitives.
 
-This module intentionally duplicates the small DR surface consumed by restore
-while command packages are being closed.  It must not import another command
-package implementation.
+This module intentionally duplicates the DR surface consumed by restore while
+command packages are being closed. It must not import another command package
+implementation.
 """
 from __future__ import annotations
 
@@ -45,38 +45,19 @@ resolve_backup_root = dr_preflight.resolve_backup_root
 resolve_base_path = dr_preflight.resolve_base_path
 runtime_resources = dr_preflight.runtime_resources
 
-# This copy lives two levels below the repository root.
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
 BACKUP_SET_SCHEMA_VERSION = 1
-ARTIFACT_EXTENSIONS = {
-    "archive": ".tar",
-    "postgres-custom-dump": ".dump",
-    "gitea-native-dump": ".zip",
-}
+ARTIFACT_EXTENSIONS = {"archive": ".tar", "postgres-custom-dump": ".dump", "gitea-native-dump": ".zip"}
 
 
 def run_command(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    return subprocess.run(cmd, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
 
 def run_manifest_tool(*args: str) -> object:
     try:
-        cp = subprocess.run(
-            [sys.executable, str(MANIFEST_TOOL), *args],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
+        cp = subprocess.run([sys.executable, str(MANIFEST_TOOL), *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or str(exc)).strip()
         raise RecoveryError(f"manifest resolver failed: {detail}") from exc
@@ -116,3 +97,22 @@ def git_head() -> str:
     if len(head) != 40:
         raise RecoveryError("unexpected Git HEAD format")
     return head
+
+
+def disposition_for(resource_class: str, strategy: str) -> str:
+    if resource_class == "externalized":
+        return "EXTERNAL"
+    if strategy == "external-config":
+        return "REQUIRE"
+    return "BACKUP"
+
+
+def resource_restore_phase(resource: dict) -> str | None:
+    config = resource.get("config", {})
+    if not isinstance(config, dict):
+        return None
+    restore = config.get("restore")
+    if not isinstance(restore, dict):
+        return None
+    phase = restore.get("phase")
+    return phase if isinstance(phase, str) else None
