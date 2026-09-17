@@ -3,7 +3,7 @@
 """Package-private upgrade inventory presentation helpers."""
 from __future__ import annotations
 import re
-from commands import upgrade_registry
+from . import registry as upgrade_registry
 def version_from_image(image:str|None)->str:
  if not image:return "n/a"
  if "@sha256:" in image:
@@ -23,15 +23,8 @@ def registry_state(state):
  if state.update_available is False:return "current",details,state.current_version
  if state.remote_status=="not_tracked":return "pinned",details,state.current_version
  return "unknown",details,state.current_version
-def human_stack_id(stack:str)->str:
- match=re.fullmatch(r"stack(\d+)",stack);return match.group(1) if match else stack
+def human_stack_id(stack:str)->str:return stack[5:] if stack.startswith("stack") else stack
 def human_available(row:dict)->str:
- available=row["available"];registry=row.get("registry")
- if available=="unknown" and registry:
-  status=registry.get("remote_status")
-  if status=="rate_limited":return "unknown (rate limited)"
-  if status and status not in {"ok","not_tracked"}:return f"unknown ({status.replace('_',' ')})"
-  status=registry.get("tags_status")
-  if status=="rate_limited":return "unknown (rate limited)"
-  if status and status not in {"ok","unchecked"}:return f"unknown ({status.replace('_',' ')})"
- return available
+ value=row.get("available","n/a")
+ if value in {"n/a","unchecked","pinned","unknown","current","update"}:return value
+ return str(value)
