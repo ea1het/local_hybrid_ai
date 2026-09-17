@@ -1,5 +1,6 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0.
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Public inventory mutation-boundary contracts."""
 from __future__ import annotations
 
@@ -42,6 +43,19 @@ class InventoryPublicContractTests(unittest.TestCase):
         self.assertFalse(payload["success"])
         self.assertEqual(payload["error"]["code"], "INVENTORY_USAGE")
         self.assertIn("inventory [rescan]", payload["error"]["message"])
+
+    def test_standalone_main_uses_central_json_renderer(self):
+        payload = {"schema_version": "1", "command": "inventory", "success": True}
+        with mock.patch.object(inventory, "json_payload", return_value=payload), \
+             mock.patch.object(inventory.render, "render_json") as renderer:
+            rc = inventory.main([], json_output=True)
+        self.assertEqual(rc, 0)
+        renderer.assert_called_once_with(payload)
+
+    def test_standalone_usage_error_returns_two(self):
+        with mock.patch.object(inventory.render, "render_json"):
+            rc = inventory.main(["unexpected"], json_output=True)
+        self.assertEqual(rc, 2)
 
 
 if __name__ == "__main__":
