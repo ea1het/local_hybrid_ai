@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Stable JSON contracts for the public management boundary."""
 from __future__ import annotations
-import io,json,subprocess,unittest
+import io,json,unittest
 from contextlib import redirect_stdout,redirect_stderr
 from unittest import mock
 from commands import cli,install_entry
@@ -26,14 +26,14 @@ class ManagementJsonContractTests(unittest.TestCase):
   err=io.StringIO()
   with redirect_stderr(err):payload,rc=install_entry.build_payload(["7","--plan","--dry-run"])
   self.assertEqual(rc,2);self.assertEqual(err.getvalue(),"");self.assertEqual(payload["error"]["code"],"CLI_USAGE")
- def test_restore_json_wraps_private_result_in_stable_public_envelope(self):
-  completed=subprocess.CompletedProcess(args=["python"],returncode=0,stdout=json.dumps({"resolved_stacks":[0,1]}),stderr="");out=io.StringIO()
-  with mock.patch("commands.cli.subprocess.run",return_value=completed),redirect_stdout(out):rc=cli.restore_command(["plan","/backup"],cli.CLIContext(json_output=True))
-  self.assertEqual(rc,0);payload=json.loads(out.getvalue());self.assertEqual(payload["command"],"restore.plan");self.assertEqual(payload["result"]["resolved_stacks"],[0,1])
- def test_restore_json_failure_is_single_json_document(self):
-  completed=subprocess.CompletedProcess(args=["python"],returncode=1,stdout="",stderr="restore failed");out=io.StringIO()
-  with mock.patch("commands.cli.subprocess.run",return_value=completed),redirect_stdout(out):rc=cli.restore_command(["plan","/backup"],cli.CLIContext(json_output=True))
-  self.assertEqual(rc,1);payload=json.loads(out.getvalue());self.assertFalse(payload["success"]);self.assertEqual(payload["error"]["code"],"INTERNAL_COMMAND_FAILED")
+ def test_restore_json_renders_structured_service_result_unchanged(self):
+  service_payload={"schema_version":"1","command":"restore.plan","success":True,"result":{"resolved_stacks":[0,1]}};out=io.StringIO()
+  with mock.patch("commands.cli.recovery_api.plan_payload",return_value=service_payload),redirect_stdout(out):rc=cli.restore_command(["plan","/backup"],cli.CLIContext(json_output=True))
+  self.assertEqual(rc,0);self.assertEqual(json.loads(out.getvalue()),service_payload)
+ def test_restore_json_failure_is_single_structured_document(self):
+  service_payload={"schema_version":"1","command":"restore.plan","success":False,"error":{"code":"RESTORE_PLAN_FAILED","message":"restore failed"}};out=io.StringIO()
+  with mock.patch("commands.cli.recovery_api.plan_payload",return_value=service_payload),redirect_stdout(out):rc=cli.restore_command(["plan","/backup"],cli.CLIContext(json_output=True))
+  self.assertEqual(rc,1);self.assertEqual(json.loads(out.getvalue()),service_payload)
  def test_json_parser_errors_are_one_machine_document_and_silent_on_stderr(self):
   cases=(["--json","backup","--bogus"],["restore","apply","/backup","--json"],["--json","restore","drill","/backup"],["--json","start"])
   for argv in cases:
