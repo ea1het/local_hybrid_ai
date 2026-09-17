@@ -8,6 +8,7 @@ import importlib
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Callable
 
 RECOVERY_ROOT = Path(__file__).resolve().parent
 SCHEMA_VERSION = "1"
@@ -55,34 +56,66 @@ def _envelope(command: str, result: dict[str, object]) -> dict[str, object]:
     return {"schema_version": SCHEMA_VERSION, "command": command, "success": True, "result": result}
 
 
+def _failure(command: str, code: str, exc: Exception) -> dict[str, object]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command": command,
+        "success": False,
+        "error": {"code": code, "message": str(exc)},
+    }
+
+
+def _operation(command: str, code: str, callback: Callable[[], dict[str, object]]) -> dict[str, object]:
+    """Normalize domain failures without swallowing process-control exceptions."""
+    try:
+        return _envelope(command, callback())
+    except Exception as exc:
+        return _failure(command, code, exc)
+
+
 def plan_payload(backup_set: str | Path) -> dict[str, object]:
-    engine = _load("dr_restore_all")
-    return _envelope("restore.plan", engine.plan_restore_all(Path(backup_set)).as_dict())
+    def run() -> dict[str, object]:
+        engine = _load("dr_restore_all")
+        return engine.plan_restore_all(Path(backup_set)).as_dict()
+    return _operation("restore.plan", "RESTORE_PLAN_FAILED", run)
 
 
 def drill_payload(backup_set: str | Path, destination: str | Path) -> dict[str, object]:
-    engine = _load("dr_restore_drill")
-    return _envelope("restore.drill", engine.run_restore_drill(Path(backup_set), Path(destination)).as_dict())
+    def run() -> dict[str, object]:
+        engine = _load("dr_restore_drill")
+        return engine.run_restore_drill(Path(backup_set), Path(destination)).as_dict()
+    return _operation("restore.drill", "RESTORE_DRILL_FAILED", run)
 
 
 def check_clean_target_payload(backup_set: str | Path) -> dict[str, object]:
-    entry = _load_script("restore-live.py")
-    return _envelope("restore.apply", entry.check_clean(Path(backup_set)))
+    def run() -> dict[str, object]:
+        entry = _load_script("restore-live.py")
+        return entry.check_clean(Path(backup_set))
+    return _operation("restore.apply", "RESTORE_PREFLIGHT_FAILED", run)
 
 
 def apply_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path | None = None) -> dict[str, object]:
-    entry = _load_script("restore-live.py")
-    bootstrap = Path(memory_sync_ssh_bootstrap) if memory_sync_ssh_bootstrap else None
-    return _envelope("restore.apply", entry._execute_with_optional_bootstrap(Path(backup_set), bootstrap))
+    def run() -> dict[str, object]:
+        entry = _load_script("restore-live.py")
+        bootstrap = Path(memory_sync_ssh_bootstrap) if memory_sync_ssh_bootstrap else None
+        return entry._execute_with_optional_bootstrap(Path(backup_set), bootstrap)
+    return _operation("restore.apply", "RESTORE_APPLY_FAILED", run)
 
 
 def resume_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path) -> dict[str, object]:
-    entry = _load_script("restore-resume.py")
-    return _envelope("restore.resume", entry.resume(Path(backup_set), Path(memory_sync_ssh_bootstrap)))
+    def run() -> dict[str, object]:
+        entry = _load_script("restore-resume.py")
+        return entry.resume(Path(backup_set), Path(memory_sync_ssh_bootstrap))
+    return _operation("restore.resume", "RESTORE_RESUME_FAILED", run)
 
 
 def cli_text(payload: dict[str, object]) -> str:
     """Return human-readable text without writing to stdout or stderr."""
+    if not payload.get("success"):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return f"RESTORE ERROR [{error.get('code', 'RESTORE_FAILED')}]: {error.get('message', 'recovery operation failed')}"
+        return "RESTORE ERROR [RESTORE_FAILED]: recovery operation failed"
     command = payload.get("command")
     result = payload.get("result")
     if not isinstance(result, dict):
