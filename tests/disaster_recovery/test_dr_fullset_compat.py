@@ -2,29 +2,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Protect compatibility of individual DR adapters with a complete multi-stack backup set.
-
-The tests ensure shared backup metadata remains strict while Stack3 and Stack4
-adapters can locate only their own artifacts inside a global recovery point. This
-prevents adapter-specific tooling from assuming a single-stack backup layout.
-"""
-
-import datetime as dt
+"""Protect compatibility of restore adapters with a complete multi-stack backup set."""
 import json
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[2] / "commands" / "recovery"
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-import dr_archive
-import dr_postgres_artifact_verify
-import dr_stack4_inspect
+from commands.restore import dr_archive
+from commands.restore import dr_postgres_artifact_verify
+from commands.restore import dr_stack4_inspect
 
 
 class FullBackupSetCompatibilityTests(unittest.TestCase):
@@ -54,32 +40,26 @@ class FullBackupSetCompatibilityTests(unittest.TestCase):
         dr_archive.validate_completed_metadata(self.metadata())
 
     def test_completed_metadata_rejects_unknown_top_level_field(self):
-        data = self.metadata()
-        data["surprise"] = True
+        data = self.metadata(); data["surprise"] = True
         with self.assertRaises(dr_archive.ArchiveBackupError):
             dr_archive.validate_completed_metadata(data)
 
     def test_postgres_locator_selects_stack3_from_full_set(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            data = self.metadata()
+            root = Path(tmp); data = self.metadata()
             artifact = root / "artifacts/stack3/litellm-database.dump"
-            artifact.parent.mkdir(parents=True)
-            artifact.write_bytes(b"x")
+            artifact.parent.mkdir(parents=True); artifact.write_bytes(b"x")
             data["artifacts"][1]["sha256"] = dr_archive.sha256_file(artifact)
             (root / "backup.json").write_text(json.dumps(data), encoding="utf-8")
             meta, selected = dr_postgres_artifact_verify.locate_artifact(root)
-            self.assertEqual(meta["stack_id"], 3)
-            self.assertEqual(selected, artifact)
+            self.assertEqual(meta["stack_id"], 3); self.assertEqual(selected, artifact)
 
     def test_stack4_metadata_accepts_full_set(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            data = self.metadata()
+            root = Path(tmp); data = self.metadata()
             (root / "backup.json").write_text(json.dumps(data), encoding="utf-8")
             loaded = dr_stack4_inspect.read_metadata(root)
             self.assertEqual(loaded["requested"], ["all"])
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == "__main__": unittest.main()
