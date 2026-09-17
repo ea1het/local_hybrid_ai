@@ -64,9 +64,8 @@ def _apply_missing(path,expected):
   except OSError:pass
   raise AdoptionError(f"cannot update operational .env atomically: {exc}",code="UPGRADE_ADOPTION_ENV_WRITE_FAILED") from exc
  return sorted(missing)
-def json_payload(args):
- execute=args==["--yes"]
- if args not in ([],["--yes"]):raise AdoptionError("usage: ./local-ai upgrade adopt [--yes]",code="UPGRADE_USAGE")
+def json_payload(*,assume_yes=False):
+ execute=assume_yes
  if execute and os.geteuid()!=0:raise AdoptionError("version adoption requires root",code="UPGRADE_ROOT_REQUIRED")
  env_path=upgrade.ROOT/".env"
  if not env_path.is_file():raise AdoptionError(f"missing operational environment: {env_path}",code="UPGRADE_ENV_MISSING")
@@ -79,6 +78,3 @@ def cli_text(payload):
  else:lines.append("- operational version authority already matches observed installed stacks")
  if not payload["executed"] and payload["missing_keys"]:lines.append("- no changes made; run `./local-ai upgrade adopt --yes` to persist this exact runtime baseline")
  return "\n".join(lines)
-def main(args,*,json_output=False):
- from commands import render
- payload=json_payload(args);render.render_json(payload) if json_output else render.render_cli(cli_text(payload));return 0
