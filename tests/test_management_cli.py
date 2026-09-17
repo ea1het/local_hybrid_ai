@@ -52,21 +52,21 @@ class ManagementCliContractTests(unittest.TestCase):
   cp=self.run_cli("--json","backup");self.assertEqual(cp.returncode,2);payload=json.loads(cp.stdout);self.assertEqual(payload["command"],"backup");self.assertEqual(payload["error"]["code"],"CONFIRMATION_REQUIRED");self.assertEqual(cp.stderr,"")
  def test_backup_yes_dispatches_to_structured_api(self):
   payload={"schema_version":"1","command":"backup","success":True,"result":{"path":"/backup/set","artifact_count":1}}
-  with mock.patch.object(cli.recovery_api,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):rc=cli.main(["backup","--yes"])
+  with mock.patch.object(cli.backup,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):rc=cli.main(["backup","--yes"])
   self.assertEqual(rc,0);run.assert_called_once_with(None)
  def test_backup_destination_reaches_structured_api(self):
   payload={"schema_version":"1","command":"backup","success":True,"result":{"path":"/backup/set","artifact_count":1}}
-  with mock.patch.object(cli.recovery_api,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):rc=cli.main(["backup","--destination","/mnt/backup/local-ai","--yes"])
+  with mock.patch.object(cli.backup,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):rc=cli.main(["backup","--destination","/mnt/backup/local-ai","--yes"])
   self.assertEqual(rc,0);run.assert_called_once_with("/mnt/backup/local-ai")
  def test_json_backup_yes_is_rendered_by_public_cli(self):
   payload={"schema_version":"1","command":"backup","success":True,"result":{"path":"/backup/set","artifact_count":1}}
-  with mock.patch.object(cli.recovery_api,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_json") as rendered:rc=cli.main(["--json","backup","--destination","/mnt/backup/local-ai","--yes"])
+  with mock.patch.object(cli.backup,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_json") as rendered:rc=cli.main(["--json","backup","--destination","/mnt/backup/local-ai","--yes"])
   self.assertEqual(rc,0);run.assert_called_once_with("/mnt/backup/local-ai");rendered.assert_called_once_with(payload)
  def test_restore_public_grammar_dispatches_to_structured_api(self):
   cases=((['plan','/backup/set'],'plan_payload',('/backup/set',),False),(['drill','/backup/set','--destination','/tmp/drill'],'drill_payload',('/backup/set','/tmp/drill'),True),(['apply','/backup/set','--check-clean-target'],'check_clean_target_payload',('/backup/set',),False),(['resume','/backup/set','--memory-sync-ssh-bootstrap','/ssh'],'resume_payload',('/backup/set','/ssh'),True))
   for public_args,name,expected,needs_yes in cases:
    payload={"schema_version":"1","command":"restore.test","success":True,"result":{}}
-   with self.subTest(name=name),mock.patch.object(cli.recovery_api,name,return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):
+   with self.subTest(name=name),mock.patch.object(cli.restore,name,return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):
     rc=cli.restore_command(public_args,cli.CLIContext(assume_yes=needs_yes));self.assertEqual(rc,0);run.assert_called_once_with(*expected)
  def test_restore_help_is_owned_by_local_ai_and_hides_private_scripts(self):
   for action in ("plan","drill","apply","resume","list-backup-sets"):
