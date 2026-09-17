@@ -9,8 +9,8 @@ from unittest import mock
 from commands import cli
 class RecoveryPublicCliSafetyTests(unittest.TestCase):
  def _write_set(self,root,metadata):
-  backup=root/"backup-20260916T120000Z";backup.mkdir();(backup/"backup.json").write_text(json.dumps(metadata),encoding="utf-8");(backup/"checksums.sha256").write_text("placeholder\n",encoding="utf-8");return backup
- def _valid_metadata(self):return {"schema_version":1,"kind":"local-hybrid-ai-backup-set","created_at":"2026-09-16T12:00:00Z","source_commit":"a"*40,"requested":["all"],"resolved_stacks":[0,3,6],"artifacts":[],"prerequisites":[]}
+  backup=root/"backup-20260916T120000Z";backup.mkdir();(backup/"backup.json").write_text(json.dumps(metadata),encoding="utf-8");(backup/"checksums.sha256").write_text("x\n",encoding="utf-8")
+ def _valid_metadata(self):return {"schema_version":1,"kind":"local-hybrid-ai-backup-set","created_at":"2026-09-16T12:00:00+00:00","source_commit":"a"*40,"requested_selector":"all","requested_stacks":[0,3,6],"resolved_stacks":[0,3,6],"artifacts":[],"prerequisites":[]}
  def test_backup_listing_rejects_boolean_schema_version(self):
   metadata=self._valid_metadata();metadata["schema_version"]=True
   with tempfile.TemporaryDirectory() as tmp:self._write_set(Path(tmp),metadata);records=cli._backup_sets(Path(tmp))
@@ -25,16 +25,23 @@ class RecoveryPublicCliSafetyTests(unittest.TestCase):
   self.assertEqual(records[0]["status"],"invalid")
  def test_restore_execute_requires_clean_target_confirmation(self):
   err=io.StringIO()
-  with contextlib.redirect_stderr(err),mock.patch.object(cli,"_run_internal") as run:rc=cli.restore_command(["apply","/backup/set","--execute"],cli.CLIContext(assume_yes=True))
+  with contextlib.redirect_stderr(err),mock.patch.object(cli.recovery_api,"apply_payload") as run:rc=cli.restore_command(["apply","/backup/set","--execute"],cli.CLIContext(assume_yes=True))
   self.assertEqual(rc,2);self.assertIn("CLI_USAGE",err.getvalue());run.assert_not_called()
  def test_restore_preflight_rejects_execution_confirmation(self):
   err=io.StringIO()
-  with contextlib.redirect_stderr(err),mock.patch.object(cli,"_run_internal") as run:rc=cli.restore_command(["apply","/backup/set","--check-clean-target","--confirm-clean-target"],cli.CLIContext())
+  with contextlib.redirect_stderr(err),mock.patch.object(cli.recovery_api,"check_clean_target_payload") as run:rc=cli.restore_command(["apply","/backup/set","--check-clean-target","--confirm-clean-target"],cli.CLIContext())
   self.assertEqual(rc,2);self.assertIn("CLI_USAGE",err.getvalue());run.assert_not_called()
  def test_restore_execute_requires_global_yes_noninteractive(self):
-  with mock.patch.object(cli.sys.stdin,"isatty",return_value=False),mock.patch.object(cli,"_run_internal") as run:rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext())
+  with mock.patch.object(cli.sys.stdin,"isatty",return_value=False),mock.patch.object(cli.recovery_api,"apply_payload") as run:rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext())
   self.assertEqual(rc,2);run.assert_not_called()
- def test_restore_execute_with_both_confirmations_reaches_engine(self):
-  with mock.patch.object(cli,"_run_internal",return_value=0) as run:rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext(assume_yes=True))
-  self.assertEqual(rc,0);self.assertEqual(run.call_args.args[1],["/backup/set","--execute","--confirm-clean-target"])
+ def test_restore_execute_with_both_confirmations_reaches_structured_engine(self):
+  payload={"schema_version":"1","command":"restore.apply","success":True,"result":{"changes_made":True}}
+  with mock.patch.object(cli.recovery_api,"apply_payload",return_value=payload) as run,mock.patch.object(cli,"_run_internal") as internal,mock.patch.object(cli,"_run_internal_json") as internal_json,mock.patch.object(cli.render,"render_cli"):
+   rc=cli.restore_command(["apply","/backup/set","--execute","--confirm-clean-target"],cli.CLIContext(assume_yes=True))
+  self.assertEqual(rc,0);run.assert_called_once_with("/backup/set",None);internal.assert_not_called();internal_json.assert_not_called()
+ def test_restore_resume_reaches_structured_engine(self):
+  payload={"schema_version":"1","command":"restore.resume","success":True,"result":{"memory_sync_enabled":True}}
+  with mock.patch.object(cli.recovery_api,"resume_payload",return_value=payload) as run,mock.patch.object(cli,"_run_internal") as internal,mock.patch.object(cli,"_run_internal_json") as internal_json,mock.patch.object(cli.render,"render_json"):
+   rc=cli.restore_command(["resume","/backup/set","--memory-sync-ssh-bootstrap","/ssh"],cli.CLIContext(json_output=True,assume_yes=True))
+  self.assertEqual(rc,0);run.assert_called_once_with("/backup/set","/ssh");internal.assert_not_called();internal_json.assert_not_called()
 if __name__=="__main__":unittest.main()
