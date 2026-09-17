@@ -12,7 +12,7 @@ This is the canonical provenance and lifecycle guide for secrets used by `local_
 
 Real secrets never belong in Git, issues, pull requests, documentation, screenshots or chat transcripts. Persistent secrets are identities rather than disposable configuration.
 
-Normal runtime persistence and disaster-recovery value are separate concepts. The [DR how-to](../dr/howto.md) and implementation-owned [`recovery.schema.json`](../../commands/recovery/recovery.schema.json) define the DR contract. A secret may be preserved during routine operation yet still be reconstructable during a full disaster rebuild.
+Normal runtime persistence and disaster-recovery value are separate concepts. The [DR how-to](../dr/howto.md) and implementation-owned [`recovery.schema.json`](../../commands/restore/recovery.schema.json) define the DR contract. A secret may be preserved during routine operation yet still be reconstructable during a full disaster rebuild.
 
 ## Secret classes
 
@@ -325,6 +325,6 @@ The stack recovery contract determines which runtime identities are separately p
 
 A new secret is classified and documented here in the same change that adds it to `.env.template` or runtime lifecycle. Its owner, generator/issuer, exact storage, consumers, entropy/format, bootstrap, restore behaviour, rotation impact and empty-value semantics are recorded.
 
-A new stack also declares its recovery semantics under the normalized contract described by [`recovery.schema.json`](../../commands/recovery/recovery.schema.json) and [the DR how-to](../dr/howto.md) before backup/restore behaviour is implemented.
+A new stack also declares its recovery semantics under the normalized contract described by [`recovery.schema.json`](../../commands/restore/recovery.schema.json) and [the DR how-to](../dr/howto.md) before backup/restore behaviour is implemented.
 
 Shared `.env` is reserved for secrets that genuinely require that ownership model. Stack-owned secrets that do not need cross-stack sharing prefer restricted runtime secret files.
