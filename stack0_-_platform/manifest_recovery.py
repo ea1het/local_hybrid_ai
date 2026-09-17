@@ -67,7 +67,7 @@ STRATEGY_CONTRACTS = {
     "postgres-custom-dump": ("postgres", {"type", "service", "database_env"}, {"user_env"}, set(), True),
     "gitea-native-dump": ("application", {"type", "service"}, set(), set(), True),
     "external-config": ("environment", {"type", "key"}, set(), set(), False),
-    "git": ("git", {"type"}, {"repository_env"}, set(), set(), False),
+    "git": ("git", {"type"}, {"repository_env"}, set(), False),
 }
 
 
