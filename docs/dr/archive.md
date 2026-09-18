@@ -10,7 +10,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [← DR index](README.md) · [Current DR workflow](howto.md) · [Documentation map](../TOC.md)
 
-This document records the milestone that first qualified the bounded `archive` recovery strategy using Stack0 PKI. The current operator backup boundary is `./local-ai backup`, which executes the manifest-driven full backup path. The private `dr_archive.py` helper remains an implementation component and is not a supported public command.
+This document records the milestone that first qualified the bounded `archive` recovery strategy using Stack0 PKI. The current operator backup boundary is `./local-ai backup`, which executes the manifest-driven full backup path. The private `archive.py` helper remains an implementation component and is not a supported public command.
 
 ## Qualified resource
 

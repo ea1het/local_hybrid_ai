@@ -56,7 +56,7 @@ def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str,
         elif not root.is_dir():
             raise OSError(f"backup root is not a directory: {root}")
         else:
-            from local_ai_cli.common import dr_archive as archive
+            from local_ai_cli.common import archive as archive
             records = []
             for path in root.iterdir():
                 if not path.is_dir() or path.is_symlink() or not BACKUP_SET_RE.fullmatch(path.name):
@@ -86,26 +86,26 @@ def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str,
 
 
 def plan_payload(backup_set: str | Path) -> dict[str, object]:
-    return _operation("restore.plan", "RESTORE_PLAN_FAILED", lambda: _load("dr_restore_all").plan_restore_all(Path(backup_set)).as_dict())
+    return _operation("restore.plan", "RESTORE_PLAN_FAILED", lambda: _load("restore_all").plan_restore_all(Path(backup_set)).as_dict())
 
 
 def drill_payload(backup_set: str | Path, destination: str | Path) -> dict[str, object]:
-    return _operation("restore.drill", "RESTORE_DRILL_FAILED", lambda: _load("dr_restore_drill").run_restore_drill(Path(backup_set), Path(destination)).as_dict())
+    return _operation("restore.drill", "RESTORE_DRILL_FAILED", lambda: _load("restore_drill").run_restore_drill(Path(backup_set), Path(destination)).as_dict())
 
 
 def check_clean_target_payload(backup_set: str | Path) -> dict[str, object]:
-    return _operation("restore.apply", "RESTORE_PREFLIGHT_FAILED", lambda: _load("dr_restore_live_service").check_clean(Path(backup_set)))
+    return _operation("restore.apply", "RESTORE_PREFLIGHT_FAILED", lambda: _load("restore_live_service").check_clean(Path(backup_set)))
 
 
 def apply_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path | None = None) -> dict[str, object]:
     def run():
         bootstrap = Path(memory_sync_ssh_bootstrap) if memory_sync_ssh_bootstrap else None
-        return _load("dr_restore_live_service").execute(Path(backup_set), bootstrap)
+        return _load("restore_live_service").execute(Path(backup_set), bootstrap)
     return _operation("restore.apply", "RESTORE_APPLY_FAILED", run)
 
 
 def resume_payload(backup_set: str | Path, memory_sync_ssh_bootstrap: str | Path) -> dict[str, object]:
-    return _operation("restore.resume", "RESTORE_RESUME_FAILED", lambda: _load("dr_restore_resume").resume(Path(backup_set), Path(memory_sync_ssh_bootstrap)))
+    return _operation("restore.resume", "RESTORE_RESUME_FAILED", lambda: _load("restore_resume").resume(Path(backup_set), Path(memory_sync_ssh_bootstrap)))
 
 
 def cli_text(payload: dict[str, object]) -> str:

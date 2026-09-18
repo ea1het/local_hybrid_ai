@@ -11,13 +11,13 @@ BACKUP_DIR = PACKAGES_ROOT / "backup"
 class BackupPackageBoundaryTests(unittest.TestCase):
     def test_backup_package_owns_execution_graph(self):
         required = {
-            "dr.py", "dr_stack3_backup.py", "dr_stack4_backup.py", "dr_backup_all.py",
+            "planner.py", "stack3_backup.py", "stack4_backup.py", "backup_all.py",
         }
         self.assertTrue(required.issubset({p.name for p in BACKUP_DIR.iterdir()}))
 
     def test_shared_dr_primitives_are_core_owned(self):
         common = PACKAGES_ROOT / "common"
-        required = {"dr_preflight.py", "dr_archive.py", "dr_filesystem.py", "dr_postgres_verify.py", "backup-set.schema.json"}
+        required = {"preflight.py", "archive.py", "filesystem.py", "postgres.py", "backup-set.schema.json"}
         self.assertTrue(required.issubset({p.name for p in common.iterdir()}))
 
     def test_public_api_does_not_import_recovery_package(self):

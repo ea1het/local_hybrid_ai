@@ -89,7 +89,7 @@ flowchart LR
     R --> Q[READY + VERIFY]
 ```
 
-`src/local_ai_cli/recovery/dr.py` owns planning/orchestration and `dr_preflight.py` owns destination/runtime-source preflight. Mutation phases remain separate because their safety properties differ.
+`src/local_ai_cli/backup/planner.py` and `src/local_ai_cli/restore/planner.py` own planning/orchestration for their respective package, and `src/local_ai_cli/common/preflight.py` owns the shared destination/runtime-source preflight. Mutation phases remain separate because their safety properties differ.
 
 ## Lifecycle boundary
 ```mermaid

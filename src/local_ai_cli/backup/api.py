@@ -38,11 +38,11 @@ def _failure(exc: Exception) -> dict[str, object]:
 
 def backup_payload(destination: str | Path | None = None) -> dict[str, object]:
     try:
-        dr = _load("dr")
-        dr.MANIFEST_TOOL = PROJECT_ROOT / "stack0_-_platform" / "manifests.py"
-        backup = _load("dr_backup_all")
+        planner = _load("planner")
+        planner.MANIFEST_TOOL = PROJECT_ROOT / "stack0_-_platform" / "manifests.py"
+        backup = _load("backup_all")
         backup.ENV_SOURCE = PROJECT_ROOT / ".env"
-        root, _ = dr.resolve_backup_root(str(destination) if destination is not None else None)
+        root, _ = planner.resolve_backup_root(str(destination) if destination is not None else None)
         return _envelope(backup.execute_backup_all(root).as_dict())
     except Exception as exc:
         return _failure(exc)

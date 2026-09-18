@@ -4,7 +4,7 @@
 
 Production DR modules under ``src/local_ai_cli/backup`` and
 ``src/local_ai_cli/restore`` import each other by short flat name (e.g.
-``import dr_stack4_inspect``), relying on their own directory being on
+``import stack4_inspect``), relying on their own directory being on
 ``sys.path``. Historical tests do the same, so both package roots are
 exposed for the duration of that migration.
 """

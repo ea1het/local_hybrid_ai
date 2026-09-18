@@ -31,7 +31,7 @@ class RecoveryStructuredApiTests(unittest.TestCase):
  def test_clean_target_preflight_uses_importable_service(self):
   service=mock.Mock();service.check_clean.return_value={"clean_target":True,"changes_made":False}
   with mock.patch.object(restore_api,"_load",return_value=service) as load:payload=restore.check_clean_target_payload("/backup/set")
-  load.assert_called_once_with("dr_restore_live_service");self.assertTrue(payload["success"])
+  load.assert_called_once_with("restore_live_service");self.assertTrue(payload["success"])
  def test_live_apply_failure_is_stable_public_envelope(self):
   service=mock.Mock();service.execute.side_effect=OSError("restore failed")
   with mock.patch.object(restore_api,"_load",return_value=service):payload=restore.apply_payload("/backup/set")
@@ -39,7 +39,7 @@ class RecoveryStructuredApiTests(unittest.TestCase):
  def test_resume_uses_importable_engine(self):
   engine=mock.Mock();engine.resume.return_value={"status":"PASS","memory_sync_enabled":True}
   with mock.patch.object(restore_api,"_load",return_value=engine) as load:payload=restore.resume_payload("/backup/set","/operator/ssh")
-  load.assert_called_once_with("dr_restore_resume");self.assertTrue(payload["success"])
+  load.assert_called_once_with("restore_resume");self.assertTrue(payload["success"])
  def test_failed_payload_has_human_error_text(self):
   text=restore.cli_text({"schema_version":"1","command":"restore.resume","success":False,"error":{"code":"RESTORE_RESUME_FAILED","message":"broken"}});self.assertEqual(text,"RECOVERY ERROR [RESTORE_RESUME_FAILED]: broken")
  def test_plan_public_dispatch_uses_restore_package(self):

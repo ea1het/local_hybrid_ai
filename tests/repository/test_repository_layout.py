@@ -25,7 +25,7 @@ class RepositoryLayoutTests(unittest.TestCase):
  def test_no_python_tests_live_inside_src(self):
   files=tracked_files();self.assertFalse(any(p.startswith("src/") and Path(p).name.startswith("test_") for p in files))
  def test_dr_tests_do_not_shadow_production_dr_module(self):
-  files=tracked_files();self.assertNotIn("tests/dr/dr.py",files);self.assertTrue(any(p.startswith("tests/backup/") or p.startswith("tests/restore/") or p.startswith("tests/common/") for p in files));self.assertIn("src/local_ai_cli/backup/dr.py",files);self.assertFalse(any(p.startswith("commands/") for p in files))
+  files=tracked_files();self.assertNotIn("tests/dr/dr.py",files);self.assertTrue(any(p.startswith("tests/backup/") or p.startswith("tests/restore/") or p.startswith("tests/common/") for p in files));self.assertIn("src/local_ai_cli/backup/planner.py",files);self.assertFalse(any(p.startswith("commands/") for p in files))
  def test_documentation_and_decision_roots_are_normalized(self):
   docs=ROOT/"docs"
   for path in (docs,docs/"user-docs",docs/"devel-docs",docs/"devel-docs"/"adr",docs/"devel-docs"/"sdr",docs/"devel-docs"/"openspec"):self.assertTrue(path.is_dir())
