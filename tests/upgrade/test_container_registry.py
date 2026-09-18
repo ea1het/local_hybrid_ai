@@ -5,8 +5,8 @@
 from __future__ import annotations
 import json,unittest
 from unittest import mock
-from commands.upgrade import registry as container_registry
-PATCH="commands.upgrade.registry"
+from local_ai_cli.upgrade import registry as container_registry
+PATCH="local_ai_cli.upgrade.registry"
 class ContainerRegistryTests(unittest.TestCase):
  def test_parse_reference_uses_docker_hub_for_unqualified_images(self):
   ref=container_registry.parse_reference("rabbitmq:3-alpine");self.assertEqual((ref.registry,ref.registry_host,ref.repository,ref.tag,ref.digest),("docker.io","registry-1.docker.io","library/rabbitmq","3-alpine",None))

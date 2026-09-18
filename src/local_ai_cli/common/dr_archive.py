@@ -6,7 +6,6 @@
 """First executing DR adapter: bounded archive backup for Stack0 platform PKI."""
 from __future__ import annotations
 
-import argparse
 import ctypes
 import datetime as dt
 import errno
@@ -17,13 +16,11 @@ import re
 import secrets
 import shutil
 import stat
-import sys
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import dr
-import dr_filesystem
+from . import dr_filesystem
 
 ROOT = Path(__file__).resolve().parent
 BACKUP_SCHEMA = ROOT / "backup-set.schema.json"
@@ -176,16 +173,3 @@ def execute_archive_backup_set(*,backup_root:Path,source:Path,source_commit:str,
         return CompletedBackupSet(final,final/"backup.json",final/"checksums.sha256",final/artifact.relative_path,artifact_hash,artifact_size)
     except Exception: cleanup_temp(temp); raise
     finally: os.umask(old_umask)
-def select_stack0_archive(manifests:dict[int,dict],plan:list[int])->tuple[ArchiveArtifact,Path]:
-    if plan!=[0]:raise ArchiveBackupError("this milestone enables real backup execution only for Stack0")
-    resource=[r for r in manifests[0]["recovery"].get("resources",[]) if r["strategy"]=="archive"][0]; values=dr.read_dotenv_presence(ROOT/".env"); base_path=dr.resolve_base_path(values)
-    return ArchiveArtifact(0,resource["id"],"archive",resource["sensitive"],resource["config"].get("restore",{}).get("phase"),f"artifacts/stack0/{resource['id']}.tar"),dr.expand_runtime_path(resource["config"]["source"]["path"],base_path)
-def execute_stack0(selectors:list[str],destination:str|None)->CompletedBackupSet:
-    manifests=dr.load_manifests(); plan=dr.resolve_plan(selectors); artifact,source=select_stack0_archive(manifests,plan); backup_root,destination_source=dr.resolve_backup_root(destination); dr.preflight_backup_destination(backup_root,destination_source); dr.preflight_runtime_sources(manifests,plan); dr_filesystem.ensure_backup_root(backup_root)
-    return execute_archive_backup_set(backup_root=backup_root,source=source,source_commit=dr.git_head(),requested=selectors,resolved_stacks=plan,artifact=artifact,prerequisites=[])
-def main()->int:
-    parser=argparse.ArgumentParser(); parser.add_argument("stack"); parser.add_argument("--destination"); parser.add_argument("--json",action="store_true"); args=parser.parse_args()
-    try: result=execute_stack0([args.stack],args.destination)
-    except (ArchiveBackupError,dr.RecoveryError,dr_filesystem.FilesystemContractError,OSError) as exc: print(f"ERROR: {exc}",file=sys.stderr); return 1
-    print(json.dumps({"status":"COMPLETED","backup_set":str(result.path)},indent=2) if args.json else f"DR archive backup: COMPLETED\n- backup set: {result.path}"); return 0
-if __name__=="__main__": raise SystemExit(main())

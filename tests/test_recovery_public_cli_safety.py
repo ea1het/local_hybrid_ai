@@ -5,7 +5,7 @@
 from __future__ import annotations
 import contextlib,io,unittest
 from unittest import mock
-from commands import cli
+from local_ai_cli import cli
 class RecoveryPublicCliSafetyTests(unittest.TestCase):
  def test_restore_execute_requires_clean_target_confirmation(self):
   err=io.StringIO()

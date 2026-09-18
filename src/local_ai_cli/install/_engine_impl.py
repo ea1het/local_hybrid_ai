@@ -7,7 +7,7 @@
 
 The installer orchestrates stack-owned lifecycle operations. Dependency and
 capability truth stays in manifest.json; stack lifecycle entry points stay in
-commands/install-lifecycle.json.
+src/local_ai_cli/install-lifecycle.json.
 """
 from __future__ import annotations
 
@@ -22,9 +22,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from local_ai_cli.common import manifests as _common_manifests
+
+ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
-LIFECYCLE_FILE = ROOT / "commands" / "install-lifecycle.json"
+LIFECYCLE_FILE = ROOT / "src" / "local_ai_cli" / "install-lifecycle.json"
 RUNTIME_READY_TIMEOUT_SECONDS = 180
 RUNTIME_READY_POLL_SECONDS = 2
 INTERNAL_WAIT_COMMAND = "__installer_wait_required_runtime__"
@@ -67,14 +69,9 @@ def run(
 
 def manifest_json(*args: str) -> object:
     try:
-        cp = run([sys.executable, str(MANIFEST_TOOL), *args], capture=True)
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise InstallerError(f"manifest resolver failed: {detail}") from exc
-    try:
-        return json.loads(cp.stdout)
-    except json.JSONDecodeError as exc:
-        raise InstallerError("manifest resolver returned invalid JSON") from exc
+        return _common_manifests.manifest_json(*args)
+    except _common_manifests.ManifestError as exc:
+        raise InstallerError(str(exc)) from exc
 
 
 def load_lifecycle() -> dict:
@@ -83,15 +80,15 @@ def load_lifecycle() -> dict:
     except (OSError, json.JSONDecodeError) as exc:
         raise InstallerError(f"cannot read lifecycle registry: {exc}") from exc
     if data.get("schema_version") != 1 or not isinstance(data.get("stacks"), dict):
-        raise InstallerError("unsupported commands/install-lifecycle.json schema")
+        raise InstallerError("unsupported src/local_ai_cli/install-lifecycle.json schema")
     return data
 
 
 def all_manifests() -> dict[int, dict]:
-    raw = manifest_json("list", "--json")
-    if not isinstance(raw, list):
-        raise InstallerError("manifest list is not an array")
-    return {int(item["id"]): item for item in raw}
+    try:
+        return _common_manifests.all_manifests()
+    except _common_manifests.ManifestError as exc:
+        raise InstallerError(str(exc)) from exc
 
 
 def resolve_requested(selectors: list[str], manifests: dict[int, dict]) -> list[int]:

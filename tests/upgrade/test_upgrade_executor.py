@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from commands import upgrade_executor, upgrade_registry
+from local_ai_cli.upgrade import executor as upgrade_executor, registry as upgrade_registry
 
 
 class UpgradeExecutorSafetyTests(unittest.TestCase):
@@ -51,7 +51,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             "nousresearch/hermes-agent:v2026.9.11",
         )
 
-    @mock.patch("commands.upgrade_executor.subprocess.run")
+    @mock.patch("local_ai_cli.upgrade.executor.subprocess.run")
     def test_target_image_preflight_is_read_only_manifest_inspection(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,7 +67,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
         )
         self.assertFalse(kwargs["check"])
 
-    @mock.patch("commands.upgrade_executor.subprocess.run")
+    @mock.patch("local_ai_cli.upgrade.executor.subprocess.run")
     def test_target_image_preflight_rejects_missing_image(self, run):
         run.return_value = subprocess.CompletedProcess([], 1, "", "manifest unknown")
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,7 +78,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
         self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_NOT_AVAILABLE")
 
-    @mock.patch("commands.upgrade_executor.upgrade_registry.manifest_probe")
+    @mock.patch("local_ai_cli.upgrade.executor.upgrade_registry.manifest_probe")
     def test_immutable_target_rejects_moved_tag(self, probe):
         probe.return_value = upgrade_registry.RemoteProbe("sha256:bbbb", "ok")
         with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
@@ -92,7 +92,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_MOVED")
 
-    @mock.patch("commands.upgrade_executor._run")
+    @mock.patch("local_ai_cli.upgrade.executor._run")
     def test_recovery_point_consumes_backup_set_json_field(self, run):
         run.return_value = subprocess.CompletedProcess(
             [], 0, json.dumps({"backup_set": "/opt/local-hybrid-ai-backups/backup-test"}), ""
@@ -119,13 +119,13 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_NOTHING_SELECTED")
 
-    @mock.patch("commands.upgrade_executor.os.geteuid", return_value=0)
+    @mock.patch("local_ai_cli.upgrade.executor.os.geteuid", return_value=0)
     def test_executor_revalidates_policy_before_target_preflight_or_mutation(self, _geteuid):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             runtime = root / "runtime"
-            (root / "commands").mkdir()
-            (root / "commands" / "install-lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
+            (root / "src" / "local_ai_cli").mkdir(parents=True)
+            (root / "src" / "local_ai_cli" / "install-lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
             (root / ".env").write_text(
                 "APP_IMAGE=example/app\nAPP_VERSION=1.27.1\n",
                 encoding="utf-8",

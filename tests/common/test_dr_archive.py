@@ -8,16 +8,12 @@ import hashlib
 import json
 import os
 import stat
-import sys
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2] / "commands" / "backup"
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-import dr_archive
+from local_ai_cli.common import dr_archive
 
 class DisasterRecoveryArchiveTests(unittest.TestCase):
     def make_source(self,parent):
@@ -51,7 +47,4 @@ class DisasterRecoveryArchiveTests(unittest.TestCase):
     def test_malformed_metadata_is_rejected_against_schema_contract(self):
         metadata={"schema_version":1,"kind":"local-hybrid-ai-backup-set","created_at":"2026-09-10T15:00:00Z","source_commit":"a"*40,"requested":["0"],"resolved_stacks":[0],"artifacts":[{"stack_id":0,"resource_id":"platform-pki","strategy":"archive","sensitive":True,"restore_phase":"pre-prepare","relative_path":"artifacts/stack0/platform-pki.tar","sha256":"not-a-hash","size_bytes":1}],"prerequisites":[]}
         with self.assertRaises(dr_archive.ArchiveBackupError):dr_archive.validate_completed_metadata(metadata)
-    def test_real_milestone_gate_rejects_non_stack0_dependency_plan(self):
-        manifests={0:{"recovery":{"resources":[{"id":"platform-pki","strategy":"archive","sensitive":True,"config":{"source":{"path":"${BASE_PATH}/service_-_platform/pki"},"restore":{"phase":"pre-prepare"}}}]}}}
-        with self.assertRaises(dr_archive.ArchiveBackupError):dr_archive.select_stack0_archive(manifests,[0,1])
 if __name__=="__main__":unittest.main()

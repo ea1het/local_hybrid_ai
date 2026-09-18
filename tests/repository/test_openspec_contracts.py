@@ -18,7 +18,7 @@ import re
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OPENSPEC = ROOT / "docs" / "devel-docs" / "openspec"
 
 
@@ -42,7 +42,7 @@ class OpenSpecContractTests(unittest.TestCase):
                 self.assertIn(dependency, manifests, f"stack{sid} requires unknown stack{dependency}")
 
     def test_INSTALL_LIFECYCLE_001_restart_reconcile_waits_ready(self):
-        lifecycle = json.loads((ROOT / "commands" / "install-lifecycle.json").read_text(encoding="utf-8"))
+        lifecycle = json.loads((ROOT / "src" / "local_ai_cli" / "install-lifecycle.json").read_text(encoding="utf-8"))
         reconcile = lifecycle["stacks"]["6"]["reconcile"]
         self.assertEqual(reconcile[0], ["bash", "./06-reconcile-capabilities.sh", "--restart"])
         self.assertEqual(reconcile[1], ["bash", "./07-wait-ready.sh"])

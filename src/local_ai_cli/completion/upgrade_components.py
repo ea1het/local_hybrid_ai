@@ -2,7 +2,7 @@
 # License, v. 2.0.
 """Private upgrade-component discovery owned by completion."""
 from __future__ import annotations
-from . import manifests
+from local_ai_cli.common import manifests
 def upgrade_components(stack):
  if not stack.isdigit():return []
  manifest=manifests.all_manifests().get(int(stack),{});out=[]

@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import dr_preflight
+from local_ai_cli.common import dr_preflight
 
 BACKUP_ROOT_ENV = dr_preflight.BACKUP_ROOT_ENV
 BACKUP_SET_NAME_PATTERN = dr_preflight.BACKUP_SET_NAME_PATTERN
@@ -45,7 +45,7 @@ resolve_backup_root = dr_preflight.resolve_backup_root
 resolve_base_path = dr_preflight.resolve_base_path
 runtime_resources = dr_preflight.runtime_resources
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
 BACKUP_SET_SCHEMA_VERSION = 1
 ARTIFACT_EXTENSIONS = {"archive": ".tar", "postgres-custom-dump": ".dump", "gitea-native-dump": ".zip"}

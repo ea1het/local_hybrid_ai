@@ -10,7 +10,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 The DR rule preserves only state whose loss would prevent a correct rebuild. A Docker volume or bind mount is not a backup target unless a manifest declares it.
 
-`./local-ai` is the supported operator and integration boundary. DR implementation is privately owned by the independent `commands/backup/` and `commands/restore/` packages; external automation does not couple to their direct Python contracts.
+`./local-ai` is the supported operator and integration boundary. DR implementation is privately owned by the independent `src/local_ai_cli/backup/` and `src/local_ai_cli/restore/` packages; external automation does not couple to their direct Python contracts.
 
 ```mermaid
 flowchart LR
@@ -36,7 +36,7 @@ flowchart LR
 | 6 Hermes | reconstruct + external | Git-backed `MEMORY.md` + `USER.md` |
 | 7 Open WebUI | mixed | `/app/backend/data` archive + secret key |
 
-Schemas are implementation-owned: [`recovery.schema.json`](../../commands/restore/recovery.schema.json) belongs to Restore and [`backup-set.schema.json`](../../commands/backup/backup-set.schema.json) belongs to Backup.
+Schemas are implementation-owned: [`recovery.schema.json`](../../src/local_ai_cli/restore/recovery.schema.json) belongs to Restore and [`backup-set.schema.json`](../../src/local_ai_cli/common/backup-set.schema.json) is a shared Backup/Restore primitive.
 
 ## Recovery phases
 
@@ -65,7 +65,7 @@ A real backup preflights source/runtime prerequisites, stages sensitive data pri
 
 ## Restore
 
-Supported management forms are exposed through `./local-ai restore ...`; the underlying `commands/restore/` implementation remains private. A restore validates the recorded recovery point before materializing source/configuration, stages artifacts before live mutation, restores managed state in its declared phase, converges runtime and finally re-establishes READY/VERIFY and external prerequisites.
+Supported management forms are exposed through `./local-ai restore ...`; the underlying `src/local_ai_cli/restore/` implementation remains private. A restore validates the recorded recovery point before materializing source/configuration, stages artifacts before live mutation, restores managed state in its declared phase, converges runtime and finally re-establishes READY/VERIFY and external prerequisites.
 
 Historical recovery compatibility may recognize source commits that still contain `installer/install.py` or the older root `install.py`. That is a restore-compatibility rule only; it does not make those historical paths supported management interfaces.
 

@@ -14,9 +14,9 @@ import json
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 STACK = ROOT / "stack7_-_open-webui"
-LIFECYCLE = ROOT / "commands" / "install-lifecycle.json"
+LIFECYCLE = ROOT / "src" / "local_ai_cli" / "install-lifecycle.json"
 
 
 class Stack7OpenWebUIContractTests(unittest.TestCase):

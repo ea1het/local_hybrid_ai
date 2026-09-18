@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import unittest
 
-from commands import component_inventory, upgrade_adopt
+from local_ai_cli import upgrade_adopt
+from local_ai_cli.common import component_inventory
 
 
 class UpgradeAdoptCatalogContractTests(unittest.TestCase):

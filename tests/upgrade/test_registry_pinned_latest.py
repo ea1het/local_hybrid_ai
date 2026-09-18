@@ -5,8 +5,8 @@
 from __future__ import annotations
 import unittest
 from unittest import mock
-from commands.upgrade import registry as container_registry
-P="commands.upgrade.registry"
+from local_ai_cli.upgrade import registry as container_registry
+P="local_ai_cli.upgrade.registry"
 class RegistryPinnedLatestTests(unittest.TestCase):
  def test_digest_label_uses_first_nine_sha_characters(self):self.assertEqual(container_registry.digest_label("sha256:df1a393ce8bfc3801570"),"latest(df1a393ce)")
  def test_digest_only_latest_only_package_reports_current_with_digest_label(self):

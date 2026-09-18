@@ -11,7 +11,7 @@ receives dump content through stdin without unsafe filename or shell conventions
 
 import unittest
 
-import dr_postgres_verify
+from local_ai_cli.common import dr_postgres_verify
 
 
 class DisasterRecoveryPostgresVerifyTests(unittest.TestCase):

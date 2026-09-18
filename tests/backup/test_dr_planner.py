@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commands.backup import dr as dr_planner
+from local_ai_cli.backup import dr as dr_planner
 
 ROOT = Path(dr_planner.__file__).resolve().parent
 
@@ -148,7 +148,7 @@ class DisasterRecoveryPlannerTests(unittest.TestCase):
         for artifact in payload["artifacts"]: self.assertNotIn("sha256",artifact); self.assertNotIn("size_bytes",artifact)
 
     def test_completed_backup_schema_is_distinct_from_dry_run_plan(self):
-        schema_path=ROOT/"backup-set.schema.json"; self.assertTrue(schema_path.is_file()); text=schema_path.read_text(encoding="utf-8"); self.assertIn('"local-hybrid-ai-backup-set"',text); self.assertIn('"sha256"',text); self.assertIn('"size_bytes"',text); self.assertNotIn('"local-hybrid-ai-backup-plan"',text)
+        schema_path=ROOT.parent/"common"/"backup-set.schema.json"; self.assertTrue(schema_path.is_file()); text=schema_path.read_text(encoding="utf-8"); self.assertIn('"local-hybrid-ai-backup-set"',text); self.assertIn('"sha256"',text); self.assertIn('"size_bytes"',text); self.assertNotIn('"local-hybrid-ai-backup-plan"',text)
 
     def test_artifact_path_rejects_non_backup_entry(self):
         entries=dr_planner.build_plan_entries([6],self.manifests)

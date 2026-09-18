@@ -4,9 +4,11 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Sole supported management entry point for local_hybrid_ai."""
 import sys
+from pathlib import Path
 sys.dont_write_bytecode = True
-from commands.cli import main
-from commands.upgrade_guard import run_guarded
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+from local_ai_cli.cli import main
+from local_ai_cli.upgrade.guard import run_guarded
 
 if __name__ == "__main__":
     raise SystemExit(run_guarded(sys.argv[1:], main))

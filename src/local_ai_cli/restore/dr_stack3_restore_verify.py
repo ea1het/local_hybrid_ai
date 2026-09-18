@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 import dr
-import dr_archive
-import dr_postgres_verify
+from local_ai_cli.common import dr_archive
+from local_ai_cli.common import dr_postgres_verify
 
 ROOT = Path(__file__).resolve().parent
 STACK_ID = 3

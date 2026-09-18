@@ -6,9 +6,9 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from unittest import mock
-from commands import backup,cli,restore
-from commands.backup import api as backup_api
-from commands.restore import api as restore_api
+from local_ai_cli import backup,cli,restore
+from local_ai_cli.backup import api as backup_api
+from local_ai_cli.restore import api as restore_api
 
 ROOT=Path(__file__).resolve().parents[1]
 class RecoveryStructuredApiTests(unittest.TestCase):
@@ -47,7 +47,7 @@ class RecoveryStructuredApiTests(unittest.TestCase):
   with mock.patch.object(cli.restore,"plan_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_json"):rc=cli.restore_command(["plan","/backup/set"],cli.CLIContext(json_output=True))
   self.assertEqual(rc,0);run.assert_called_once_with("/backup/set")
  def test_public_dispatcher_has_no_recovery_facade_or_private_subprocess_boundary(self):
-  source=(ROOT/"commands"/"cli.py").read_text(encoding="utf-8");self.assertNotIn("commands.recovery",source);self.assertNotIn("recovery_api",source);self.assertNotIn("_run_internal",source);self.assertNotIn("subprocess",source)
+  source=(ROOT/"src"/"local_ai_cli"/"cli.py").read_text(encoding="utf-8");self.assertNotIn("local_ai_cli.recovery",source);self.assertNotIn("recovery_api",source);self.assertNotIn("_run_internal",source);self.assertNotIn("subprocess",source)
  def test_owned_apis_contain_no_rendering_or_subprocess_boundary(self):
   for path in (backup_api.PACKAGE_ROOT/"api.py",restore_api.RESTORE_ROOT/"api.py"):
    source=path.read_text(encoding="utf-8");self.assertNotIn("subprocess",source);self.assertNotIn("render_json",source);self.assertNotIn("print(",source)

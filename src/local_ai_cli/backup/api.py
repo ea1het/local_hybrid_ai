@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = PACKAGE_ROOT.parents[1]
+PROJECT_ROOT = PACKAGE_ROOT.parents[2]
 SCHEMA_VERSION = "1"
 
 

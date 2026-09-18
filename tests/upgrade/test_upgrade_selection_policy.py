@@ -6,11 +6,12 @@ from __future__ import annotations
 import json,tempfile,unittest
 from pathlib import Path
 from unittest import mock
-from commands import upgrade,upgrade_policy
-from commands.upgrade import registry as container_registry
-from commands.upgrade import selection as upgrade_selection
-from commands.upgrade import _core_impl as upgrade_core_impl
-from commands.upgrade import _entry_impl as upgrade_entry
+from local_ai_cli import upgrade
+from local_ai_cli.upgrade import policy as upgrade_policy
+from local_ai_cli.upgrade import registry as container_registry
+from local_ai_cli.upgrade import selection as upgrade_selection
+from local_ai_cli.upgrade import _core_impl as upgrade_core_impl
+from local_ai_cli.upgrade import _entry_impl as upgrade_entry
 class UpgradeSelectionPolicyTests(unittest.TestCase):
  def _runtime_patches(self,runtime):return (mock.patch.object(upgrade_selection.upgrade,"runtime_root",return_value=runtime),mock.patch.object(upgrade_selection.upgrade,"running_image",return_value="ghcr.io/open-webui/open-webui:v0.11.3"),mock.patch.object(upgrade_core_impl,"runtime_root",return_value=runtime),mock.patch.object(upgrade_core_impl,"running_image",return_value="ghcr.io/open-webui/open-webui:v0.11.3"))
  def _select(self,stack,name,version):return upgrade_entry.select_payload(stack,name,version)

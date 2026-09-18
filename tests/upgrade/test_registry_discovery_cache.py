@@ -6,8 +6,8 @@ from __future__ import annotations
 import json,tempfile,unittest
 from pathlib import Path
 from unittest import mock
-from commands.upgrade import _core_impl as upgrade
-from commands.upgrade import registry as upgrade_registry
+from local_ai_cli.upgrade import _core_impl as upgrade
+from local_ai_cli.upgrade import registry as upgrade_registry
 class RegistryDiscoveryCacheTests(unittest.TestCase):
  def component(self):return upgrade.Component(stack="stack7",name="open-webui",service="open-webui",container="open-webui",compose="stack7_-_open-webui/docker-compose.yml",upstream="open-webui/open-webui",selectable=True)
  def state(self,local="sha256:local"):return upgrade_registry.RegistryState(image="ghcr.io/open-webui/open-webui:v0.11.3",local_digest=local,remote_digest="sha256:remote",tracking_image="ghcr.io/open-webui/open-webui:v0.11.3",remote_status="ok",current_version="v0.11.3",available_version="v0.11.4",tags_status="ok",registry="ghcr.io",repository="open-webui/open-webui")

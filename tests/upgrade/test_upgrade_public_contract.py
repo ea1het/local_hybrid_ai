@@ -5,8 +5,8 @@
 from __future__ import annotations
 import json,os,subprocess,tempfile,unittest
 from pathlib import Path
-from commands import component_inventory
-ROOT=Path(__file__).resolve().parents[1]
+from local_ai_cli.common import component_inventory
+ROOT=Path(__file__).resolve().parents[2]
 class UpgradePublicContractTests(unittest.TestCase):
  def run_cli(self,*args,runtime_root=None):
   env=os.environ.copy()

@@ -7,7 +7,7 @@
 # Docker Compose implementation details.
 #
 # Architecture: ADR-0002 establishes the single CLI boundary and ADR-0005 places
-# its private implementation under commands/. Stack dependency/capability truth
+# its private implementation under src/local_ai_cli/. Stack dependency/capability truth
 # remains in manifests and is summarized in docs/stacks/README.md.
 #
 # Evidence: stable tags are mapped to automated and runtime evidence in
@@ -30,8 +30,8 @@ Feature: Single management CLI anticorruption boundary
     @CLI-LAYOUT-001
     Scenario: Private management implementation has one coherent package root
       Given `./local-ai` is the sole supported management boundary
-      Then installation, status and upgrade implementation live under `commands/`
-      And disaster-recovery implementation lives under `commands/recovery/`
+      Then installation, status and upgrade implementation live under `src/local_ai_cli/`
+      And disaster-recovery implementation lives under `src/local_ai_cli/recovery/`
       And no top-level `internal/`, `installer/` or `bkp-dr/` implementation root is required
       And historical recovery paths may be recognized only for restoring recorded source revisions
 

@@ -6,13 +6,13 @@ import unittest
 
 class UpgradePackageBoundaryTests(unittest.TestCase):
     def test_package_does_not_import_legacy_upgrade_modules(self):
-        root = Path(__file__).resolve().parents[1]
+        root = Path(__file__).resolve().parents[2] / "src" / "local_ai_cli" / "upgrade"
         forbidden = (
-            "commands._upgrade_legacy",
-            "commands.upgrade_entry",
-            "commands.upgrade_registry",
-            "from commands import upgrade",
-            "from commands import component_inventory",
+            "local_ai_cli._upgrade_legacy",
+            "local_ai_cli.upgrade_entry",
+            "local_ai_cli.upgrade_registry",
+            "from local_ai_cli import upgrade",
+            "from local_ai_cli import component_inventory",
         )
         offenders = []
         for path in root.glob("*.py"):
@@ -23,20 +23,20 @@ class UpgradePackageBoundaryTests(unittest.TestCase):
         self.assertEqual([], offenders)
 
     def test_public_api_is_package_owned(self):
-        from commands.upgrade import api
-        self.assertEqual("commands.upgrade.api", api.__name__)
+        from local_ai_cli.upgrade import api
+        self.assertEqual("local_ai_cli.upgrade.api", api.__name__)
         self.assertTrue(callable(api.build_payload))
 
     def test_registry_is_package_owned(self):
-        from commands.upgrade import registry
-        self.assertEqual("commands.upgrade.registry", registry.__name__)
+        from local_ai_cli.upgrade import registry
+        self.assertEqual("local_ai_cli.upgrade.registry", registry.__name__)
         self.assertTrue(callable(registry.parse_reference))
         self.assertTrue(callable(registry.local_digest))
         self.assertTrue(hasattr(registry, "RegistryError"))
 
     def test_core_root_is_repository_root(self):
-        from commands.upgrade import core
-        expected = Path(__file__).resolve().parents[3]
+        from local_ai_cli.upgrade import core
+        expected = Path(__file__).resolve().parents[2]
         self.assertEqual(expected, core.ROOT)
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ def _detail(cp: subprocess.CompletedProcess[bytes]) -> str:
 
 def _lifecycle_path(stacks_root: Path) -> Path:
     for candidate in (
+        stacks_root / "src" / "local_ai_cli" / "install-lifecycle.json",
         stacks_root / "commands" / "install-lifecycle.json",
         stacks_root / "installer" / "lifecycle.json",
     ):
@@ -66,6 +67,7 @@ def _load_lifecycle(stacks_root: Path) -> dict:
 def _installer_path(stacks_root: Path) -> Path:
     """Resolve current engine path while preserving historical recovery points."""
     for candidate in (
+        stacks_root / "src" / "local_ai_cli" / "install" / "_engine_impl.py",
         stacks_root / "commands" / "install.py",
         stacks_root / "installer" / "install.py",
         stacks_root / "install.py",

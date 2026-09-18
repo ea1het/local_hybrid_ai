@@ -4,8 +4,9 @@
 from __future__ import annotations
 import unittest
 from unittest import mock
-from commands import runtime_lifecycle,stack_contracts
-from commands.install import engine as install_engine
+from local_ai_cli import runtime_lifecycle
+from local_ai_cli.common import stack_contracts
+from local_ai_cli.install import engine as install_engine
 class StackCliContractTests(unittest.TestCase):
  def test_every_manifest_stack_has_json_payload_contract(self):
   manifests=install_engine.all_manifests();self.assertEqual(sorted(manifests),list(range(8)))
@@ -16,6 +17,6 @@ class StackCliContractTests(unittest.TestCase):
   for sid,manifest in install_engine.all_manifests().items():self.assertIsInstance(stack_contracts.json_payload(sid,manifest["directory"]),dict)
  def test_runtime_result_flows_through_stack_owned_contract(self):
   result=runtime_lifecycle.RuntimeResult("start",7,"stack7_-_open-webui",("open-webui",))
-  with mock.patch("commands.runtime_lifecycle.stack_contracts.json_payload",return_value={"stack":"stack7","success":True}) as builder:payload=result.as_dict()
+  with mock.patch("local_ai_cli.runtime_lifecycle.stack_contracts.json_payload",return_value={"stack":"stack7","success":True}) as builder:payload=result.as_dict()
   self.assertEqual(payload,{"stack":"stack7","success":True});builder.assert_called_once_with(7,"stack7_-_open-webui",schema_version="1",command="runtime.start",success=True,directory="stack7_-_open-webui",containers=["open-webui"])
 if __name__=="__main__":unittest.main()

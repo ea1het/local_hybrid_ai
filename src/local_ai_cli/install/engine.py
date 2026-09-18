@@ -5,10 +5,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from . import _engine_impl as impl
-ROOT=Path(__file__).resolve().parents[2]
+ROOT=Path(__file__).resolve().parents[3]
 impl.ROOT=ROOT
 impl.MANIFEST_TOOL=ROOT/"stack0_-_platform"/"manifests.py"
-impl.LIFECYCLE_FILE=ROOT/"commands"/"install-lifecycle.json"
+impl.LIFECYCLE_FILE=ROOT/"src"/"local_ai_cli"/"install-lifecycle.json"
 def run(cmd,*,cwd=None,capture=False,check=True):
  return subprocess.run(cmd,cwd=ROOT if cwd is None else cwd,text=True,stdout=subprocess.PIPE if capture else None,stderr=subprocess.PIPE if capture else None,check=check)
 impl.run=run

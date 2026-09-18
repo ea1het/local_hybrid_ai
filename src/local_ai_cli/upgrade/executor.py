@@ -114,7 +114,7 @@ def execute(*,root:Path,runtime_root:Path,selections:list[dict],components:dict[
     if os.geteuid()!=0:raise UpgradeExecutionError("UPGRADE_ROOT_REQUIRED","upgrade execution requires root")
     env_path=root/".env"
     if not env_path.is_file():raise UpgradeExecutionError("UPGRADE_ENV_MISSING",f"missing operational environment: {env_path}")
-    lifecycle=_load_json(root/"commands"/"install-lifecycle.json"); manifests=_load_manifests(root); env_values=_read_env_values(env_path); env_updates={}; affected_stacks=set(); recovery_required=False; target_images=[]
+    lifecycle=_load_json(root/"src"/"local_ai_cli"/"install-lifecycle.json"); manifests=_load_manifests(root); env_values=_read_env_values(env_path); env_updates={}; affected_stacks=set(); recovery_required=False; target_images=[]
     for selection in selections:
         component_key=f"{selection['stack']}/{selection['component']}"; component=components.get(component_key)
         if component is None:raise UpgradeExecutionError("UPGRADE_COMPONENT_UNKNOWN",f"selected component is not in catalog: {component_key}")

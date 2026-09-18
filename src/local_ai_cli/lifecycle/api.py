@@ -6,9 +6,9 @@ from __future__ import annotations
 import os,subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from . import install
-from commands import stack_contracts
-ROOT=Path(__file__).resolve().parents[2];SCHEMA_VERSION="1"
+from local_ai_cli.common import runtime as install
+from local_ai_cli.common import stack_contracts
+ROOT=Path(__file__).resolve().parents[3];SCHEMA_VERSION="1"
 class RuntimeLifecycleError(RuntimeError):
  def __init__(self,code,message):super().__init__(message);self.code=code;self.message=message
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ def _required_consumers(provider_sid,manifests,lifecycle):
 def _missing_required_providers(sid,manifests,lifecycle):return [p for p in sorted(_required_provider_ids(manifests[sid])) if _required_containers(p,lifecycle) and not _runtime_running(p,lifecycle)]
 def _resolve_one(selector,manifests):
  try:values=install.resolve_requested([selector],manifests)
- except install.InstallerError as exc:raise RuntimeLifecycleError("STACK_UNKNOWN",str(exc)) from exc
+ except install.ManifestError as exc:raise RuntimeLifecycleError("STACK_UNKNOWN",str(exc)) from exc
  if len(values)!=1:raise RuntimeLifecycleError("STACK_SELECTOR_INVALID","exactly one stack selector is required")
  return values[0]
 def _preflight():
@@ -55,15 +55,15 @@ def execute(action,selector):
   detail=(cp.stderr or cp.stdout or "").strip();raise RuntimeLifecycleError("STACK_RUNTIME_COMMAND_FAILED",f"stack{sid} docker compose {action} failed: {detail or 'no diagnostic output'}")
  if action=="start":
   try:install.wait_required_runtime(sid,lifecycle["stacks"][str(sid)])
-  except install.InstallerError as exc:raise RuntimeLifecycleError("STACK_START_NOT_READY",str(exc)) from exc
+  except install.ManifestError as exc:raise RuntimeLifecycleError("STACK_START_NOT_READY",str(exc)) from exc
  return RuntimeResult(action,sid,directory,owned)
 def json_payload(action,selector):
  try:return execute(action,selector).as_dict()
- except (RuntimeLifecycleError,install.InstallerError,stack_contracts.StackContractError) as exc:
+ except (RuntimeLifecycleError,install.ManifestError,stack_contracts.StackContractError) as exc:
   code=exc.code if isinstance(exc,RuntimeLifecycleError) else "RUNTIME_INTERNAL_ERROR";message=exc.message if isinstance(exc,RuntimeLifecycleError) else str(exc);return {"schema_version":SCHEMA_VERSION,"command":f"runtime.{action}","success":False,"error":{"code":code,"message":message}}
 def cli_text(payload):
  if not payload["success"]:return f"ERROR [{payload['error']['code']}]: {payload['error']['message']}"
  return f"{payload['stack']}: {payload['command'].split('.')[-1].upper()} PASS\n- directory: {payload['directory']}\n- containers: {', '.join(payload['containers'])}"
 def main(action,selector,*,json_output=False):
- from commands import render
+ from local_ai_cli.common import render
  payload=json_payload(action,selector);render.render_json(payload) if json_output else render.render_cli(cli_text(payload));return 0 if payload["success"] else 1

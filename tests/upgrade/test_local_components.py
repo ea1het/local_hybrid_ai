@@ -9,9 +9,9 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from commands import upgrade, upgrade_adopt
+from local_ai_cli import upgrade, upgrade_adopt
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RUNNER_DIGEST = "sha256:50c352f0506b1878be93f2e9e97353cd6261cd2e7f7bfe70fcd968d00874f9f9"
 
 

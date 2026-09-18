@@ -46,7 +46,7 @@ ADRs explain architectural choices. SDRs explain security choices and accepted r
 
 Unit and integration tests may exercise internal modules because they need precise diagnostics. Public contract tests exercise `./local-ai`. OpenSpec sits above both: it explains why the assertions exist and which behaviour must survive implementation refactoring.
 
-`tests/test_openspec_contracts.py` verifies that every tagged scenario is traceable and also enforces selected cross-cutting architecture invariants. `tests/test_documentation_contract.py` protects the minimum documentation structure. A tagged scenario without evidence is a specification defect.
+`src/local_ai_cli/common/tests/test_openspec_contracts.py` verifies that every tagged scenario is traceable and also enforces selected cross-cutting architecture invariants. `src/local_ai_cli/common/tests/test_documentation_contract.py` protects the minimum documentation structure. A tagged scenario without evidence is a specification defect.
 
 ## Change discipline
 

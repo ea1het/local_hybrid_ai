@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-import dr_archive
+from local_ai_cli.common import dr_archive
 import dr_stack4_backup
 
 class Stack4InspectError(RuntimeError): pass

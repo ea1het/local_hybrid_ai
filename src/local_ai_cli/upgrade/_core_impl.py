@@ -5,7 +5,7 @@ from __future__ import annotations
 import os,time
 from dataclasses import dataclass
 from pathlib import Path
-from . import component_inventory
+from local_ai_cli.common import component_inventory
 from . import cache as upgrade_cache
 from . import catalog as upgrade_catalog
 from . import inventory as upgrade_inventory
@@ -13,7 +13,7 @@ from . import plan as upgrade_plan
 from . import policy as upgrade_policy
 from . import registry as upgrade_registry
 from . import runtime as upgrade_runtime
-ROOT=Path(__file__).resolve().parents[2]
+ROOT=Path(__file__).resolve().parents[3]
 SCHEMA_VERSION="1";REGISTRY_CACHE_SCHEMA_VERSION=upgrade_cache.SCHEMA_VERSION;REGISTRY_CACHE_DEFAULT_TTL_SECONDS=upgrade_cache.DEFAULT_TTL_SECONDS;REGISTRY_CACHE_MAX_ENTRIES=upgrade_cache.MAX_ENTRIES
 class UpgradeError(RuntimeError):
  def __init__(self,message,*,code="UPGRADE_ERROR",recovery_point=None):super().__init__(message);self.code=code;self.recovery_point=recovery_point
@@ -43,7 +43,7 @@ def _store_registry_state(component,image,state):
  entries=_load_registry_cache();entries[_registry_cache_key(component,image,state.local_digest)]={"stored_at":time.time(),"state":dict(state.__dict__)};_save_registry_cache(entries)
 def load_catalog_raw():
  try:raw=component_inventory.compile_upgrade_catalog()
- except component_inventory.InventoryError as exc:raise UpgradeError(f"cannot compile component catalog: {exc}",code="UPGRADE_CATALOG_INVALID") from exc
+ except component_inventory.ComponentInventoryError as exc:raise UpgradeError(f"cannot compile component catalog: {exc}",code="UPGRADE_CATALOG_INVALID") from exc
  if raw.get("schema_version")!=1 or not isinstance(raw.get("stacks"),list):raise UpgradeError("unsupported component catalog schema",code="UPGRADE_CATALOG_INVALID")
  return raw
 def component_records():return upgrade_catalog.records(load_catalog_raw())

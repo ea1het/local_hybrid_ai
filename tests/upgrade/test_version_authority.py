@@ -6,10 +6,10 @@ from __future__ import annotations
 import io,stat,tempfile,unittest
 from pathlib import Path
 from unittest import mock
-from commands import upgrade
-from commands.upgrade import adopt as upgrade_adopt
-from commands.upgrade import registry as upgrade_registry
-from commands.upgrade import selection as upgrade_selection
+from local_ai_cli import upgrade
+from local_ai_cli.upgrade import adopt as upgrade_adopt
+from local_ai_cli.upgrade import registry as upgrade_registry
+from local_ai_cli.upgrade import selection as upgrade_selection
 class VersionAuthorityTests(unittest.TestCase):
  def test_selectability_matches_runtime_qualification_state(self):
   records=upgrade.component_records();redis=records["stack2/redis"];self.assertTrue(redis.get("selectable",True));self.assertEqual(redis["execution"],{"mode":"guarded","blocked_by":None});self.assertEqual(redis["apply"]["type"],"env-version")
@@ -18,7 +18,7 @@ class VersionAuthorityTests(unittest.TestCase):
  def test_catalog_no_longer_uses_tracked_compose_pin_as_block_reason(self):
   for key,record in upgrade.component_records().items():self.assertNotEqual(record["execution"].get("blocked_by"),"tracked-compose-pin",key)
  def test_compose_baselines_pin_pre_adoption_runtime_versions(self):
-  root=Path(__file__).resolve().parents[1];s1=(root/"stack1_-_haproxy_web"/"docker-compose.yml").read_text();s2=(root/"stack2_-_searxng_firecrawl"/"docker-compose.yml").read_text();s5=(root/"stack5_-_dockhand"/"docker-compose.yml").read_text();self.assertIn("${HAPROXY_VERSION:-3.0.26-alpine3.24}",s1);self.assertIn("${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}",s2);self.assertIn("${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}",s2);self.assertIn("${DOCKHAND_REPOSITORY:-fnsys/dockhand}:${DOCKHAND_VERSION:-v1.0.40}",s5);self.assertNotIn("image: haproxy:3.0-alpine",s1);self.assertNotIn("image: redis:alpine",s2);self.assertNotIn("image: rabbitmq:3-alpine",s2)
+  root=Path(__file__).resolve().parents[2];s1=(root/"stack1_-_haproxy_web"/"docker-compose.yml").read_text();s2=(root/"stack2_-_searxng_firecrawl"/"docker-compose.yml").read_text();s5=(root/"stack5_-_dockhand"/"docker-compose.yml").read_text();self.assertIn("${HAPROXY_VERSION:-3.0.26-alpine3.24}",s1);self.assertIn("${FIRECRAWL_REDIS_VERSION:-8.10.0-alpine3.23}",s2);self.assertIn("${FIRECRAWL_RABBITMQ_VERSION:-3.13.7-alpine}",s2);self.assertIn("${DOCKHAND_REPOSITORY:-fnsys/dockhand}:${DOCKHAND_VERSION:-v1.0.40}",s5);self.assertNotIn("image: haproxy:3.0-alpine",s1);self.assertNotIn("image: redis:alpine",s2);self.assertNotIn("image: rabbitmq:3-alpine",s2)
  def test_human_upgrade_table_calls_runtime_version_installed(self):
   rows=[{"stack":"stack2","component":"redis","actual":"8.10.0-alpine3.23","actual_display":"8.10.0-alpine3.23","available":"8.10.1-alpine3.23","policy":"major-series","selectable":True,"selected":None,"selection_valid":None,"registry":None}];out=io.StringIO()
   with mock.patch("sys.stdout",out):upgrade.print_table(rows)

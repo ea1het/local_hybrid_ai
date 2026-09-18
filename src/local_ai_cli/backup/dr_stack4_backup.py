@@ -41,8 +41,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 import dr
-import dr_archive
-import dr_filesystem
+from local_ai_cli.common import dr_archive
+from local_ai_cli.common import dr_filesystem
 
 ROOT = Path(__file__).resolve().parent
 STACK_ID = 4

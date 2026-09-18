@@ -3,8 +3,8 @@
 """Read-only operational status data for the Local Hybrid AI installation."""
 from __future__ import annotations
 import json
-from . import install
-from commands import stack_contracts
+from local_ai_cli.common import runtime as install
+from local_ai_cli.common import stack_contracts
 SCHEMA_VERSION="4"
 class StatusError(RuntimeError):pass
 def _stack_name(directory):
@@ -25,7 +25,7 @@ def stack_inventory():
  return rows
 def json_payload():
  try:return {"schema_version":SCHEMA_VERSION,"command":"status","success":True,"stacks":stack_inventory()}
- except (install.InstallerError,stack_contracts.StackContractError,StatusError,OSError,json.JSONDecodeError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"status","success":False,"error":{"code":"STATUS_STATE_INVALID","message":str(exc)}}
+ except (install.ManifestError,stack_contracts.StackContractError,StatusError,OSError,json.JSONDecodeError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"status","success":False,"error":{"code":"STATUS_STATE_INVALID","message":str(exc)}}
 def _human_stack_id(stack):return str(stack).removeprefix("stack")
 def cli_text(payload):
  if not payload["success"]:return f"STATUS ERROR [STATUS_STATE_INVALID]: {payload['error']['message']}"
@@ -35,5 +35,5 @@ def cli_text(payload):
   if index==0:lines.append("  ".join("-"*width for width in widths))
  return "\n".join(lines)
 def main(*,json_output=False):
- from commands import render
+ from local_ai_cli.common import render
  payload=json_payload();render.render_json(payload) if json_output else render.render_cli(cli_text(payload));return 0 if payload["success"] else 1

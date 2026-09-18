@@ -18,7 +18,7 @@ def _fail(message: str) -> NoReturn:
 
 
 def load_recovery_schema(root: Path) -> dict:
-    schema_path = root / "commands" / "restore" / "recovery.schema.json"
+    schema_path = root / "src" / "local_ai_cli" / "restore" / "recovery.schema.json"
     try:
         schema = json.loads(schema_path.read_text())
         contract = schema["$defs"]["contract"]

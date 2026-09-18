@@ -11,7 +11,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from commands import component_inventory, inventory, upgrade
+from local_ai_cli import inventory, upgrade
+from local_ai_cli.common import component_inventory
+from local_ai_cli.inventory import component_inventory as inventory_snapshot
 
 
 class ComponentInventoryTests(unittest.TestCase):
@@ -42,7 +44,7 @@ class ComponentInventoryTests(unittest.TestCase):
         ):
             rc = inventory.main(["rescan"])
             self.assertEqual(rc, 0)
-            snapshot = component_inventory.read_snapshot()
+            snapshot = inventory_snapshot.read_snapshot()
             self.assertIsNotNone(snapshot)
             self.assertTrue(snapshot["source_fingerprint"].startswith("sha256:"))
             self.assertTrue((Path(tmp) / "platform" / "component-inventory.json").is_file())
@@ -60,7 +62,7 @@ class ComponentInventoryTests(unittest.TestCase):
                 {"stack": "stack3", "id": "new", "management_type": "local"},
             ]
         }
-        self.assertEqual(component_inventory.diff(previous, current), {
+        self.assertEqual(inventory_snapshot.diff(previous, current), {
             "added": ["stack3/new"],
             "removed": ["stack1/old"],
             "changed": ["stack2/same"],

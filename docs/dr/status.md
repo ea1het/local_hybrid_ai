@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # DR qualification status
 
-This document summarizes disaster-recovery capabilities that have been qualified beyond source-only inspection. It records capability-level evidence rather than environment-specific hostnames, local paths, backup identifiers or deployment content. Read it with [howto.md](howto.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../devel-docs/adr/](../devel-docs/adr/) and [../devel-docs/sdr/](../devel-docs/sdr/). The private DR implementation and schemas live under [`../../commands/recovery/`](../../commands/recovery/).
+This document summarizes disaster-recovery capabilities that have been qualified beyond source-only inspection. It records capability-level evidence rather than environment-specific hostnames, local paths, backup identifiers or deployment content. Read it with [howto.md](howto.md), [../a2aknowledge.md](../a2aknowledge.md), [../pending.md](../pending.md), [../devel-docs/adr/](../devel-docs/adr/) and [../devel-docs/sdr/](../devel-docs/sdr/). The private DR implementation and schemas live under [`../../src/local_ai_cli/backup/`](../../src/local_ai_cli/backup/) and [`../../src/local_ai_cli/restore/`](../../src/local_ai_cli/restore/).
 
 ## Core clean-target recovery — PASS
 

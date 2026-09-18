@@ -2,11 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Protect the filesystem contract used before any DR backup artifact is published."""
-import os,stat,sys,tempfile,unittest
+import os,stat,tempfile,unittest
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[2]/"commands"/"backup"
-if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
-import dr_filesystem
+from local_ai_cli.common import dr_filesystem
 class DisasterRecoveryFilesystemTests(unittest.TestCase):
  def test_destination_defaults_to_opt(self):
   path,source=dr_filesystem.resolve_backup_root(None,environ={});self.assertEqual(path,Path("/opt/local-hybrid-ai-backups"));self.assertEqual(source,"default")

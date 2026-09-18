@@ -5,7 +5,8 @@
 from __future__ import annotations
 import argparse,sys
 from dataclasses import dataclass
-from commands import backup,completion,doctor,install_entry,inventory,lifecycle,render,restore,status,upgrade_adopt,upgrade_entry
+from local_ai_cli import backup,completion,doctor,install_entry,inventory,lifecycle,restore,status,upgrade_adopt,upgrade_entry
+from local_ai_cli.common import render
 SCHEMA_VERSION="1"
 class CLIUsageError(Exception):pass
 class PublicArgumentParser(argparse.ArgumentParser):

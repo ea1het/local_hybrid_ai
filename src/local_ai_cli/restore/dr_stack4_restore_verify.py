@@ -31,7 +31,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-import dr_archive
+from local_ai_cli.common import dr_archive
 import dr_stack4_backup
 import dr_stack4_inspect
 

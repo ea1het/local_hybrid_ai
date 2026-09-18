@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STACK6 = ROOT / "stack6_-_hermes"
-LIFECYCLE = ROOT / "commands" / "install-lifecycle.json"
+LIFECYCLE = ROOT / "src" / "local_ai_cli" / "install-lifecycle.json"
 
 
 class Stack6BuzzContractTests(unittest.TestCase):

@@ -24,15 +24,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import dr
-import dr_archive
-import dr_filesystem
-import dr_postgres_verify
+from local_ai_cli.common import dr_archive
+from local_ai_cli.common import dr_filesystem
+from local_ai_cli.common import dr_postgres_verify
 import dr_stack3_backup
 import dr_stack4_backup
 
 ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = ROOT.parents[1]
-LIFECYCLE_FILE = PROJECT_ROOT / "commands" / "install-lifecycle.json"
+PROJECT_ROOT = ROOT.parents[2]
+LIFECYCLE_FILE = PROJECT_ROOT / "src" / "local_ai_cli" / "install-lifecycle.json"
 ENV_SOURCE = ROOT / ".env"
 ENV_RELATIVE_PATH = "artifacts/global/operational.env"
 

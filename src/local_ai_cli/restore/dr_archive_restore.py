@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse,hashlib,json,os,shutil,stat,sys,tarfile,tempfile
 from dataclasses import dataclass
 from pathlib import Path,PurePosixPath
-from . import dr_archive
+from local_ai_cli.common import dr_archive
 DIR_MODE=0o700;FILE_MODE=0o600
 class ArchiveRestoreError(RuntimeError): pass
 @dataclass(frozen=True)

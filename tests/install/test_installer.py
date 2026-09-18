@@ -5,8 +5,8 @@
 """Planner tests for the install package-owned manifest/runtime primitives."""
 import unittest
 from unittest.mock import patch
-from commands.install import engine as installer
-from commands.install import _engine_impl as installer_impl
+from local_ai_cli.install import engine as installer
+from local_ai_cli.install import _engine_impl as installer_impl
 MANIFESTS={0:{"id":0,"directory":"stack0_-_platform","provides":["platform.foundation"],"optional_consumes":[],"owns":[]},2:{"id":2,"directory":"stack2_-_searxng_firecrawl","provides":["web.search","web.extract"],"optional_consumes":[],"owns":["container:searxng","container:firecrawl-api"]},4:{"id":4,"directory":"stack4_-_gitea","provides":["git.remote","git.runner"],"optional_consumes":[],"owns":["container:gitea","container:gitea-runner"]},6:{"id":6,"directory":"stack6_-_hermes","provides":["ai.agent"],"optional_consumes":["web.search","web.extract","git.remote"],"owns":["container:hermes","container:hermes-sandbox"]}}
 LIFECYCLE={"stacks":{"0":{"required_containers":[],"prepare":[["./01-prepare.sh"]],"deploy":[],"reconcile":[],"verify":[["./verify.sh"]]},"2":{"required_containers":["searxng","firecrawl-api"],"prepare":[["./01-prepare.sh"]],"deploy":[["docker","compose","up","-d"]],"reconcile":[],"verify":[["docker","compose","config","--quiet"]]},"4":{"required_containers":["gitea","gitea-runner"],"prepare":[["./01-prepare.sh"]],"deploy":[["./02-run.sh"]],"reconcile":[],"verify":[["docker","compose","config","--quiet"]]},"6":{"required_containers":["hermes","hermes-sandbox"],"prepare":[["./01-prepare.sh"]],"deploy":[["docker","compose","up","-d"]],"reconcile":[["./06-reconcile-capabilities.sh","--restart"]],"verify":[["docker","compose","config","--quiet"]]}}}
 def state(prepared,**containers):return {"prepared":prepared,"containers":containers}

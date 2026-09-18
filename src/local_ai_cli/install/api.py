@@ -31,5 +31,5 @@ def cli_text(payload):
  if not payload.get("success"):return f"INSTALL ERROR [{payload['error']['code']}]: {payload['error']['message']}"
  return "\n".join([f"INSTALL: {'PASS' if payload.get('executed') or payload.get('mode')!='execute' else 'READY'}",f"- mode: {payload['mode']}",f"- resolved stacks: {', '.join(payload['resolved_stacks']) or '-'}",f"- executed: {'yes' if payload['executed'] else 'no'}"])
 def main(argv):
- from commands import render
+ from local_ai_cli.common import render
  result,rc=build_payload(argv);render.render_json(result);return rc

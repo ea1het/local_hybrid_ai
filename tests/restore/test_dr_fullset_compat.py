@@ -8,9 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commands.restore import dr_archive
-from commands.restore import dr_postgres_artifact_verify
-from commands.restore import dr_stack4_inspect
+from local_ai_cli.common import dr_archive
+from local_ai_cli.restore import dr_postgres_artifact_verify
+from local_ai_cli.restore import dr_stack4_inspect
 
 
 class FullBackupSetCompatibilityTests(unittest.TestCase):

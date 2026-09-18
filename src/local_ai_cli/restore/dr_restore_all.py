@@ -22,10 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import dr
-import dr_archive
+from local_ai_cli.common import dr_archive
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LIFECYCLE_FILE = PROJECT_ROOT / "commands" / "install-lifecycle.json"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+LIFECYCLE_FILE = PROJECT_ROOT / "src" / "local_ai_cli" / "install-lifecycle.json"
 PHASE_ORDER = (
     "global",
     "pre-prepare",

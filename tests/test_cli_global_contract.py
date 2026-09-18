@@ -7,7 +7,8 @@ import contextlib,io,json,re,subprocess,unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
-from commands import cli,completion,render
+from local_ai_cli import cli,completion
+from local_ai_cli.common import render
 ROOT=Path(__file__).resolve().parents[1]
 PUBLIC_HELP_PATHS=((),("install",),("backup",),("restore",),("restore","list-backup-sets"),("restore","plan"),("restore","drill"),("restore","apply"),("restore","resume"),("status",),("doctor",),("inventory",),("inventory","rescan"),("completion",),("completion","bash"),("completion","zsh"),("completion","install"),("completion","status"),("upgrade",),("upgrade","check"),("upgrade","adopt"),("upgrade","policy"),("upgrade","7","open-webui","select"),("upgrade","7","open-webui","clear"),("start",),("stop",))
 class GlobalCliContractTests(unittest.TestCase):
@@ -44,8 +45,8 @@ class GlobalCliContractTests(unittest.TestCase):
   with redirect_stdout(out):render.render_cli("body",header="STATUS",banner="LOCAL-AI")
   self.assertEqual(out.getvalue(),"LOCAL-AI\n\nSTATUS\n\nbody\n")
  def test_read_only_commands_accept_yes_as_noop(self):
-  with mock.patch("commands.status.json_payload",return_value={"success":True,"stacks":[],"components":[]}),mock.patch("commands.status.cli_text",return_value="ok"),mock.patch("commands.render.render_cli"):self.assertEqual(cli.main(["status","--yes"]),0)
-  with mock.patch("commands.doctor.json_payload",return_value={"success":True,"checks":[]}),mock.patch("commands.doctor.cli_text",return_value="ok"),mock.patch("commands.render.render_cli"):self.assertEqual(cli.main(["doctor","--yes"]),0)
+  with mock.patch("local_ai_cli.status.json_payload",return_value={"success":True,"stacks":[],"components":[]}),mock.patch("local_ai_cli.status.cli_text",return_value="ok"),mock.patch("local_ai_cli.common.render.render_cli"):self.assertEqual(cli.main(["status","--yes"]),0)
+  with mock.patch("local_ai_cli.doctor.json_payload",return_value={"success":True,"checks":[]}),mock.patch("local_ai_cli.doctor.cli_text",return_value="ok"),mock.patch("local_ai_cli.common.render.render_cli"):self.assertEqual(cli.main(["doctor","--yes"]),0)
  def test_backup_yes_is_consumed_by_public_boundary(self):
   payload={"schema_version":"1","command":"backup","success":True,"result":{"path":"/backup/set","artifact_count":1}}
   with mock.patch.object(cli.backup,"backup_payload",return_value=payload) as run,mock.patch.object(cli.render,"render_cli"):self.assertEqual(cli.main(["--yes","backup"]),0)

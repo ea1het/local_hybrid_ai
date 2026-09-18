@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [← Documentation map](../TOC.md)
 
-This area contains the supported operator-facing contract for Local Hybrid AI. Operators and external automation use `./local-ai`; implementation modules under `commands/`, stack scripts and Compose files are not public management APIs.
+This area contains the supported operator-facing contract for Local Hybrid AI. Operators and external automation use `./local-ai`; implementation modules under `src/local_ai_cli/`, stack scripts and Compose files are not public management APIs.
 
 ## Start here
 
@@ -25,6 +25,6 @@ This area contains the supported operator-facing contract for Local Hybrid AI. O
 
 For a compact statement of what exists now and what legacy implementation surfaces have been retired, see [current implementation state](../current-state.md).
 
-`commands/` is a private implementation package behind the CLI. Historical restore compatibility may recognize older source layouts, but those historical paths are not supported operator interfaces.
+`src/local_ai_cli/` is a private implementation package behind the CLI. Historical restore compatibility may recognize older source layouts, but those historical paths are not supported operator interfaces.
 
 The documentation describes behaviour implemented by the current source tree. Where a command intentionally lacks a stable JSON contract, the CLI fails explicitly rather than pretending one exists.

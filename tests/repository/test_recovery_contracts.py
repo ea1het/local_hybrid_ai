@@ -16,7 +16,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MANIFESTS_PATH = ROOT / "stack0_-_platform" / "manifests.py"
 SPEC = importlib.util.spec_from_file_location("manifest_registry", MANIFESTS_PATH)
 manifest_registry = importlib.util.module_from_spec(SPEC)

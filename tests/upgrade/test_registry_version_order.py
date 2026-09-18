@@ -5,7 +5,7 @@
 """Ordering tests for registry release and tracking-channel candidates."""
 from __future__ import annotations
 import unittest
-from commands.upgrade import registry as container_registry
+from local_ai_cli.upgrade import registry as container_registry
 
 class RegistryVersionOrderTests(unittest.TestCase):
     def test_exact_release_never_advertises_older_same_major_version(self):

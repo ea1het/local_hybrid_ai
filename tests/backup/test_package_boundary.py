@@ -4,31 +4,36 @@
 from pathlib import Path
 import unittest
 
+PACKAGES_ROOT = Path(__file__).resolve().parents[2] / "src" / "local_ai_cli"
+BACKUP_DIR = PACKAGES_ROOT / "backup"
+
 
 class BackupPackageBoundaryTests(unittest.TestCase):
     def test_backup_package_owns_execution_graph(self):
-        root = Path(__file__).resolve().parents[1]
         required = {
-            "dr.py", "dr_preflight.py", "dr_archive.py", "dr_filesystem.py",
-            "dr_postgres_verify.py", "dr_stack3_backup.py", "dr_stack4_backup.py",
-            "dr_backup_all.py", "backup-set.schema.json",
+            "dr.py", "dr_stack3_backup.py", "dr_stack4_backup.py", "dr_backup_all.py",
         }
-        self.assertTrue(required.issubset({p.name for p in root.iterdir()}))
+        self.assertTrue(required.issubset({p.name for p in BACKUP_DIR.iterdir()}))
+
+    def test_shared_dr_primitives_are_core_owned(self):
+        common = PACKAGES_ROOT / "common"
+        required = {"dr_preflight.py", "dr_archive.py", "dr_filesystem.py", "dr_postgres_verify.py", "backup-set.schema.json"}
+        self.assertTrue(required.issubset({p.name for p in common.iterdir()}))
 
     def test_public_api_does_not_import_recovery_package(self):
-        text = (Path(__file__).resolve().parents[1] / "api.py").read_text(encoding="utf-8")
-        self.assertNotIn("commands.recovery", text)
+        text = (BACKUP_DIR / "api.py").read_text(encoding="utf-8")
+        self.assertNotIn("local_ai_cli.recovery", text)
         self.assertNotIn("recovery.public_api", text)
 
     def test_backup_payload_is_package_owned(self):
-        from commands.backup import api
-        self.assertEqual("commands.backup.api", api.__name__)
+        from local_ai_cli.backup import api
+        self.assertEqual("local_ai_cli.backup.api", api.__name__)
         self.assertTrue(callable(api.backup_payload))
 
     def test_package_env_points_to_project_env(self):
-        link = Path(__file__).resolve().parents[1] / ".env"
+        link = BACKUP_DIR / ".env"
         self.assertTrue(link.is_symlink())
-        self.assertEqual("../../.env", str(link.readlink()))
+        self.assertEqual("../../../.env", str(link.readlink()))
 
 
 if __name__ == "__main__":

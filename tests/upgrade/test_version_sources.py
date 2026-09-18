@@ -5,9 +5,9 @@
 from __future__ import annotations
 import unittest
 from unittest import mock
-from commands.upgrade import component_inventory
-from commands.upgrade import _core_impl as upgrade
-from commands.upgrade import registry as container_registry
+from local_ai_cli.common import component_inventory
+from local_ai_cli.upgrade import _core_impl as upgrade
+from local_ai_cli.upgrade import registry as container_registry
 class VersionSourceTests(unittest.TestCase):
  def _inventory_component(self):return upgrade.Component(stack="stack1",name="haproxy",service=None,container="haproxy",compose=None,upstream="haproxy/haproxy",selectable=False)
  def _inventory(self,component,record,image,*,online=True,registry_state=None):

@@ -5,7 +5,7 @@
 from __future__ import annotations
 import contextlib,io,unittest
 from unittest import mock
-from commands import cli
+from local_ai_cli import cli
 class ManagementRuntimeCliTests(unittest.TestCase):
  def test_start_dispatches_numeric_stack_selector_through_public_cli(self):
   payload={"success":True,"command":"runtime.start","stack":"stack7","directory":"stack7_-_open-webui","containers":["open-webui"]}

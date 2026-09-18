@@ -17,7 +17,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from commands import upgrade, upgrade_policy
+from local_ai_cli import upgrade
+from local_ai_cli.upgrade import policy as upgrade_policy
 
 
 class UpgradePolicyTests(unittest.TestCase):

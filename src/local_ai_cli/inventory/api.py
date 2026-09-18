@@ -4,7 +4,8 @@
 """Read-only source inventory validation and explicit rescan snapshot support."""
 from __future__ import annotations
 import sys
-from commands import render
+from local_ai_cli.common import render
+from local_ai_cli.common.component_inventory import ComponentInventoryError
 from . import component_inventory
 SCHEMA_VERSION="1"
 def _error(command,code,message):return {"schema_version":SCHEMA_VERSION,"command":command,"success":False,"error":{"code":code,"message":message}}
@@ -15,7 +16,7 @@ def json_payload(args=None):
  try:
   previous=component_inventory.read_snapshot();current=component_inventory.snapshot();changes=component_inventory.diff(previous,current)
   if rescan:component_inventory.write_snapshot(current)
- except (component_inventory.InventoryError,OSError) as exc:return _error(command,"INVENTORY_INVALID",str(exc))
+ except (ComponentInventoryError,OSError) as exc:return _error(command,"INVENTORY_INVALID",str(exc))
  return {"schema_version":SCHEMA_VERSION,"command":command,"success":True,"source_fingerprint":current["source_fingerprint"],"components":current["components"],"changes":changes,"previous_snapshot":bool(previous),"snapshot_written":rescan}
 def cli_text(payload):
  if not payload["success"]:return f"INVENTORY ERROR [{payload['error']['code']}]: {payload['error']['message']}"

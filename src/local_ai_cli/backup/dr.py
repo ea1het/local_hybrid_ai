@@ -13,10 +13,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from . import dr_preflight
-except ImportError:
-    import dr_preflight
+if __package__ in (None, ""):
+    _project_root = Path(__file__).resolve().parents[3]
+    if str(_project_root) not in sys.path:
+        sys.path.insert(0, str(_project_root))
+from local_ai_cli.common import dr_preflight
 
 BACKUP_ROOT_ENV = dr_preflight.BACKUP_ROOT_ENV
 BACKUP_SET_NAME_PATTERN = dr_preflight.BACKUP_SET_NAME_PATTERN
@@ -46,7 +47,7 @@ resolve_base_path = dr_preflight.resolve_base_path
 runtime_resources = dr_preflight.runtime_resources
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
-ROOT = PACKAGE_ROOT.parents[1]
+ROOT = PACKAGE_ROOT.parents[2]
 MANIFEST_TOOL = ROOT / "stack0_-_platform" / "manifests.py"
 BACKUP_SET_SCHEMA_VERSION = 1
 ARTIFACT_EXTENSIONS = {"archive": ".tar", "postgres-custom-dump": ".dump", "gitea-native-dump": ".zip"}

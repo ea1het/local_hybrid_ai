@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 import dr
-import dr_archive
-import dr_postgres_verify as pg
+from local_ai_cli.common import dr_archive
+from local_ai_cli.common import dr_postgres_verify as pg
 
 
 class PostgresArtifactVerifyError(RuntimeError):

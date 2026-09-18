@@ -14,7 +14,7 @@ import json
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 STACK7 = ROOT / "stack7_-_open-webui"
 
 

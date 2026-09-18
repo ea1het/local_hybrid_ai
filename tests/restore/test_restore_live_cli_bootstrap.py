@@ -7,7 +7,7 @@ from __future__ import annotations
 import stat,tempfile,unittest
 from pathlib import Path
 from unittest import mock
-from commands.restore import dr_restore_live_service as restore_service
+from local_ai_cli.restore import dr_restore_live_service as restore_service
 
 class RestoreLiveBootstrapTests(unittest.TestCase):
     def _bootstrap(self,root:Path)->Path:

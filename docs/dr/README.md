@@ -46,9 +46,9 @@ These documents retain useful strategy evidence, but their historical standalone
 
 ## Implementation boundaries
 
-`commands/recovery/dr.py` owns recovery planning/orchestration and intentionally keeps its direct backup subcommand dry-run-only. `commands/recovery/dr_preflight.py` owns destination and runtime-source preflight. The public `./local-ai backup` command dispatches to the private full-backup execution entry. Backup execution, staging, managed restore, live restore and resume remain separate phases because their mutation and failure properties differ. These modules are private implementation boundaries rather than supported integration APIs.
+`src/local_ai_cli/recovery/dr.py` owns recovery planning/orchestration and intentionally keeps its direct backup subcommand dry-run-only. `src/local_ai_cli/recovery/dr_preflight.py` owns destination and runtime-source preflight. The public `./local-ai backup` command dispatches to the private full-backup execution entry. Backup execution, staging, managed restore, live restore and resume remain separate phases because their mutation and failure properties differ. These modules are private implementation boundaries rather than supported integration APIs.
 
-Schemas remain implementation-owned under `commands/recovery/`; manifests declare which resources participate in recovery. The architecture is summarized in [Management-plane architecture](../architecture/management-plane.md).
+Schemas remain implementation-owned under `src/local_ai_cli/recovery/`; manifests declare which resources participate in recovery. The architecture is summarized in [Management-plane architecture](../architecture/management-plane.md).
 
 ## Related decisions and contracts
 

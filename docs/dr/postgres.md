@@ -34,6 +34,6 @@ It does not restore over the live LiteLLM database and does not restart applicat
 
 ## Current boundary
 
-The historical Stack3 milestone originally stated that generic multi-stack backup and Gitea backup were not enabled. Those restrictions are retired: Stack4 has a native backup strategy and `./local-ai backup` now executes the full manifest-driven backup path through the private `commands/recovery/backup-all.py` entry point.
+The historical Stack3 milestone originally stated that generic multi-stack backup and Gitea backup were not enabled. Those restrictions are retired: Stack4 has a native backup strategy and `./local-ai backup` now executes the full manifest-driven backup path through the private `src/local_ai_cli/recovery/backup-all.py` entry point.
 
 The Stack3-specific helpers remain implementation/qualification tools, not supported operator interfaces. Current end-to-end recovery qualification is summarized in [DR status](status.md).

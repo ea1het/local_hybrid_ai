@@ -6,7 +6,7 @@ from __future__ import annotations
 import json,os,subprocess,tempfile,unittest
 from pathlib import Path
 from unittest import mock
-from commands import cli,completion
+from local_ai_cli import cli,completion
 ROOT=Path(__file__).resolve().parents[1]
 class ManagementCliContractTests(unittest.TestCase):
  def run_cli(self,*args,runtime_root=None,env_extra=None):

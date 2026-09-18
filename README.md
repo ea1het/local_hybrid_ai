@@ -90,7 +90,7 @@ Preparation establishes prerequisites and declarative/runtime structure. Deploym
 
 ## One supported management interface
 
-`./local-ai` is the project’s **sole supported management and automation boundary**. Python modules under `commands/`, stack shell scripts and Compose files are implementation details.
+`./local-ai` is the project’s **sole supported management and automation boundary**. Python modules under `src/local_ai_cli/`, stack shell scripts and Compose files are implementation details.
 
 ```mermaid
 flowchart LR
@@ -132,12 +132,14 @@ Disaster recovery is manifest-driven. Stateful resources are backed up according
 ## Repository map
 
 ```text
-local-ai                 supported operator/automation CLI
-commands/                private management implementation
-commands/recovery/       backup and restore engines
-stack0_-_* … stack7_-_*  atomic stack implementations
-docs/                    documentation and decision records
-tests/                   automated verification
+local-ai                        supported operator/automation CLI
+src/local_ai_cli/                private management implementation package
+src/local_ai_cli/backup/         backup engine
+src/local_ai_cli/restore/        restore engine
+src/local_ai_cli/common/         shared primitives (manifests, DR archive/filesystem/postgres, render)
+stack0_-_* … stack7_-_*         atomic stack implementations
+docs/                           documentation and decision records
+tests/                          automated verification, mirroring src/local_ai_cli/
 ```
 
 The complete documentation structure is in [`docs/TOC.md`](docs/TOC.md). Behavioural traceability from requirements to implementation and tests is in [OpenSpec traceability](docs/devel-docs/openspec/traceability.md).
@@ -147,7 +149,7 @@ The complete documentation structure is in [`docs/TOC.md`](docs/TOC.md). Behavio
 The repository validation gate is:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -t .
 ```
 
 Testing conventions and qualification evidence are documented in [testing strategy](docs/devel-docs/testing.md).

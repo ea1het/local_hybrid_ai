@@ -56,7 +56,7 @@ def list_backup_sets_payload(backup_root: str | Path | None = None) -> dict[str,
         elif not root.is_dir():
             raise OSError(f"backup root is not a directory: {root}")
         else:
-            archive = _load("dr_archive")
+            from local_ai_cli.common import dr_archive as archive
             records = []
             for path in root.iterdir():
                 if not path.is_dir() or path.is_symlink() or not BACKUP_SET_RE.fullmatch(path.name):

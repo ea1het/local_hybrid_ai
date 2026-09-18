@@ -7,7 +7,7 @@ import inspect
 import unittest
 from pathlib import Path
 
-import commands.restore.api as api
+import local_ai_cli.restore.api as api
 
 
 class RestorePackageBoundaryTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class RestorePackageBoundaryTests(unittest.TestCase):
         offenders = []
         for path in sorted(root.glob("*.py")):
             source = path.read_text(encoding="utf-8")
-            forbidden = "commands." + "recovery"
+            forbidden = "local_ai_cli." + "recovery"
             if forbidden in source:
                 offenders.append(path.name)
         self.assertEqual([], offenders)
@@ -28,8 +28,6 @@ class RestorePackageBoundaryTests(unittest.TestCase):
         root = Path(inspect.getfile(api)).resolve().parent
         for name in (
             "dr.py",
-            "dr_archive.py",
-            "dr_preflight.py",
             "dr_restore_all.py",
             "dr_restore_drill.py",
             "dr_restore_live_service.py",
@@ -40,10 +38,15 @@ class RestorePackageBoundaryTests(unittest.TestCase):
         ):
             self.assertTrue((root / name).is_file(), name)
 
+    def test_shared_dr_primitives_are_core_owned(self):
+        common = Path(inspect.getfile(api)).resolve().parents[1] / "common"
+        for name in ("dr_archive.py", "dr_preflight.py"):
+            self.assertTrue((common / name).is_file(), name)
+
     def test_restore_dr_uses_repository_root(self):
         root = Path(inspect.getfile(api)).resolve().parent
         source = (root / "dr.py").read_text(encoding="utf-8")
-        self.assertIn('Path(__file__).resolve().parents[2]', source)
+        self.assertIn('Path(__file__).resolve().parents[3]', source)
         self.assertIn('ROOT / "stack0_-_platform" / "manifests.py"', source)
 
     def test_public_surface_is_complete(self):

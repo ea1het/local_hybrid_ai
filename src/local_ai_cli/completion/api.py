@@ -4,7 +4,8 @@
 from __future__ import annotations
 import os,re
 from pathlib import Path
-from . import manifests,upgrade_components
+from local_ai_cli.common import manifests
+from . import upgrade_components
 TOP_LEVEL=("backup","completion","doctor","install","inventory","restore","start","status","stop","upgrade");GLOBAL_OPTIONS=("--json","--yes");RESTORE_ACTIONS=("apply","drill","list-backup-sets","plan","resume");BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$");SCHEMA_VERSION="1"
 def _stack_ids():return [str(sid) for sid in sorted(manifests.all_manifests())]
 def _backup_sets():
@@ -80,7 +81,7 @@ def json_payload(args,*,assume_yes=False):
   if args==["status"]:
    shell,target,installed=completion_status();return {"schema_version":SCHEMA_VERSION,"command":"completion.status","success":installed,"shell":shell,"target":str(target),"installed":installed},0 if installed else 1
   return {"schema_version":SCHEMA_VERSION,"command":"completion","success":False,"error":{"code":"COMPLETION_USAGE","message":"usage: local-ai completion <bash|zsh|install|status>"}},2
- except (OSError,ValueError,manifests.CompletionManifestError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"completion","success":False,"error":{"code":"COMPLETION_ERROR","message":str(exc)}},1
+ except (OSError,ValueError,manifests.ManifestError) as exc:return {"schema_version":SCHEMA_VERSION,"command":"completion","success":False,"error":{"code":"COMPLETION_ERROR","message":str(exc)}},1
 def cli_text(payload):
  if not payload["success"]:
   if payload.get("command")=="completion.status" and not payload.get("installed"):return f"Shell: {payload['shell']}\nInstalled: no\nTarget: {payload['target']}"
@@ -89,5 +90,5 @@ def cli_text(payload):
  if payload["command"]=="completion.install":return f"Detected shell: {payload['shell']}\nCompletion target: {payload['target']}\nInstalled: yes\nStatus: ready for new shell sessions"
  return f"Shell: {payload['shell']}\nInstalled: yes\nTarget: {payload['target']}"
 def main(args):
- from commands import render
+ from local_ai_cli.common import render
  payload,rc=json_payload(args,assume_yes=True);render.render_cli(cli_text(payload));return rc

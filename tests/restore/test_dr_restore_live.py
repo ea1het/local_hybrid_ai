@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import dr_archive
+from local_ai_cli.common import dr_archive
 import dr_restore_compat
 import dr_restore_live
 

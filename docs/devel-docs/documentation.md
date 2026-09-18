@@ -36,7 +36,7 @@ Every directory under `docs/` has a `README.md` that:
 2. explains the purpose of that directory;
 3. links to the documents and relevant sibling areas.
 
-Source-adjacent stack `README.md` files remain beside their code because they are local implementation contracts. They are indexed from `docs/stacks/README.md` and from the canonical TOC. `tests/README.md` is similarly part of the navigable developer-documentation corpus.
+Source-adjacent stack `README.md` files remain beside their code because they are local implementation contracts. They are indexed from `docs/stacks/README.md` and from the canonical TOC. Test layout and strategy are documented in [developer testing](testing.md) rather than in a source-adjacent `tests/README.md`, because there is no root `tests/` package: every test lives under the `tests/<package>/` package it protects.
 
 Long-form project documentation belongs under `docs/` unless proximity to the source is itself part of the document's purpose.
 
@@ -107,4 +107,4 @@ Automated unit or contract tests are not live qualification. Runtime success is 
 
 ## Automated structural checks
 
-`tests/test_documentation_contract.py` protects minimum structure: module docstrings, docs-directory README coverage, TOC backlinks, relative-link resolution, Gherkin scope text, supported Mermaid block declarations and common deployment-local residue. It complements human review; passing the structural test is necessary but does not prove documentation quality or semantic agreement with current source.
+`tests/repository/test_documentation_contract.py` protects minimum structure: module docstrings, docs-directory README coverage, TOC backlinks, relative-link resolution, Gherkin scope text, supported Mermaid block declarations and common deployment-local residue. It complements human review; passing the structural test is necessary but does not prove documentation quality or semantic agreement with current source.

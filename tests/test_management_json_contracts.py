@@ -6,7 +6,7 @@ from __future__ import annotations
 import io,json,unittest
 from contextlib import redirect_stdout,redirect_stderr
 from unittest import mock
-from commands import cli,install
+from local_ai_cli import cli,install
 class ManagementJsonContractTests(unittest.TestCase):
  def _install_boundary(self,argv):
   manifests={7:{"directory":"stack7_-_open-webui"}};lifecycle={"stacks":{"7":{}}}
