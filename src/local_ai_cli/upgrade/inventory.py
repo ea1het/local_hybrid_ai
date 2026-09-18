@@ -23,6 +23,10 @@ def registry_state(state):
  if state.update_available is False:return "current",details,state.current_version
  if state.remote_status=="not_tracked":return "pinned",details,state.current_version
  return "unknown",details,state.current_version
+def drift_for(available:str)->str:
+ if available=="current":return "no"
+ if available in {"n/a","unchecked","local","pinned","unknown"}:return "n/a"
+ return "yes"
 def human_stack_id(stack:str)->str:return stack[5:] if stack.startswith("stack") else stack
 def human_available(row:dict)->str:
  value=row.get("available","n/a")

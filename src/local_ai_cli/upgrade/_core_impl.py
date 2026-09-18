@@ -78,7 +78,7 @@ def inventory(*,query_upstream=True):
  env=read_env();selected=load_plan()["selected"];records=component_records();rows=[]
  for component in load_catalog():
   component_key=key(component);observed=running_image(component);record=records[component_key];selection=selected.get(component_key);available,registry,actual_display=_inventory_availability(component,record,observed,compose_image(component,env),query_upstream=query_upstream);actual=version_from_image(observed);policy_state=_selection_status(component_key,record,selection)
-  rows.append({"stack":component.stack,"component":component.name,"actual":actual,"actual_display":actual_display,"current":actual,"current_display":actual_display,"available":available,"policy":policy_state["effective_policy"],"selectable":component.selectable,"execution":_execution_metadata(record,component),"selected":selection.get("version") if selection else None,"selection_valid":policy_state["selection_valid"],"registry":registry})
+  rows.append({"stack":component.stack,"component":component.name,"actual":actual,"actual_display":actual_display,"current":actual,"current_display":actual_display,"available":available,"drift":upgrade_inventory.drift_for(available),"policy":policy_state["effective_policy"],"selectable":component.selectable,"execution":_execution_metadata(record,component),"selected":selection.get("version") if selection else None,"selection_valid":policy_state["selection_valid"],"registry":registry})
  return rows
 def human_stack_id(stack):return upgrade_inventory.human_stack_id(stack)
 def _human_available(row):return upgrade_inventory.human_available(row)
