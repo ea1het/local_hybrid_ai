@@ -59,7 +59,9 @@ def load_plan():
 def save_plan(plan):upgrade_plan.save(plan_path(),plan)
 def _execution_metadata(record,component):return upgrade_inventory.execution_metadata(record,selectable=component.selectable)
 def _registry_availability(component,image,*,online):
- if not online:return "unchecked",None,None
+ if not online:
+  state=_cached_registry_state(component,image) if image else None
+  return upgrade_inventory.registry_state(state) if state is not None else ("unchecked",None,None)
  try:
   state=_cached_registry_state(component,image) if image else None
   if state is None:
@@ -67,18 +69,21 @@ def _registry_availability(component,image,*,online):
    if state is not None and image:_store_registry_state(component,image,state)
  except upgrade_registry.RegistryError as exc:raise UpgradeError(f"registry discovery failed for {key(component)}: {exc}",code="UPGRADE_REGISTRY_SOURCE_INVALID") from exc
  return upgrade_inventory.registry_state(state)
-def _inventory_availability(component,record,observed_image,desired_image,*,query_upstream):
+def _inventory_availability(component,record,observed_image,desired_image,*,query_upstream,evaluate):
  actual=version_from_image(observed_image);availability=record.get("availability")
  if availability in ("local","n/a"):return availability,None,("local" if availability=="local" and observed_image else actual)
+ if not evaluate:return "not-evaluated",None,actual
  available,registry,discovered=_registry_availability(component,observed_image or desired_image,online=query_upstream);display=upgrade_registry.display_label(observed_image,discovered_version=discovered) if observed_image else actual;return available,registry,display
 def _selection_status(component_key,record,selection):
  try:return upgrade_policy.selection_status(runtime_root(),component_key,record,selection)
  except upgrade_policy.PolicyError as exc:raise UpgradeError(str(exc),code="UPGRADE_POLICY_INVALID") from exc
 def inventory(*,query_upstream=True):
- env=read_env();selected=load_plan()["selected"];records=component_records();rows=[]
+ env=read_env();selected=load_plan()["selected"];records=component_records();root=runtime_root();rows=[]
  for component in load_catalog():
-  component_key=key(component);observed=running_image(component);record=records[component_key];selection=selected.get(component_key);available,registry,actual_display=_inventory_availability(component,record,observed,compose_image(component,env),query_upstream=query_upstream);actual=version_from_image(observed);policy_state=_selection_status(component_key,record,selection)
-  rows.append({"stack":component.stack,"component":component.name,"actual":actual,"actual_display":actual_display,"current":actual,"current_display":actual_display,"available":available,"drift":upgrade_inventory.drift_for(available),"policy":policy_state["effective_policy"],"selectable":component.selectable,"execution":_execution_metadata(record,component),"selected":selection.get("version") if selection else None,"selection_valid":policy_state["selection_valid"],"registry":registry})
+  component_key=key(component);observed=running_image(component);record=records[component_key];selection=selected.get(component_key)
+  effective_selectable=upgrade_policy.effective_selectable(root,component_key,component.selectable)[2]
+  available,registry,actual_display=_inventory_availability(component,record,observed,compose_image(component,env),query_upstream=query_upstream,evaluate=effective_selectable);actual=version_from_image(observed);policy_state=_selection_status(component_key,record,selection)
+  rows.append({"stack":component.stack,"component":component.name,"actual":actual,"actual_display":actual_display,"current":actual,"current_display":actual_display,"available":available,"drift":upgrade_inventory.drift_for(available),"policy":policy_state["effective_policy"],"selectable":effective_selectable,"execution":_execution_metadata(record,component),"selected":selection.get("version") if selection else None,"selection_valid":policy_state["selection_valid"],"registry":registry})
  return rows
 def human_stack_id(stack):return upgrade_inventory.human_stack_id(stack)
 def _human_available(row):return upgrade_inventory.human_available(row)
@@ -99,6 +104,7 @@ def find_component(stack,name):
  else:
   component=next((c for c in matches if c.name==name),None)
   if component is None:raise UpgradeError(f"unknown component for {stack}: {name}",code="UPGRADE_COMPONENT_UNKNOWN")
- if not component.selectable:
-  record=component_records()[key(component)];blocked_by=_execution_metadata(record,component)["blocked_by"];raise UpgradeError(f"component is inventory-only: {key(component)} ({blocked_by})",code="UPGRADE_COMPONENT_NOT_SELECTABLE")
+ record=component_records()[key(component)]
+ if not upgrade_policy.effective_selectable(runtime_root(),key(component),component.selectable)[2]:
+  blocked_by=_execution_metadata(record,component)["blocked_by"];raise UpgradeError(f"component is inventory-only: {key(component)} ({blocked_by})",code="UPGRADE_COMPONENT_NOT_SELECTABLE")
  return component

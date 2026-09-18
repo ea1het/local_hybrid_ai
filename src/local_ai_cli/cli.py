@@ -24,9 +24,11 @@ def _upgrade_help(path):
   p=_leaf_parser("local-ai upgrade check","Inspect installed and available component versions");p.add_argument("--offline",action="store_true",help="do not query upstream registries");p.print_help();return
  if leaf[0]=="adopt":_leaf_parser("local-ai upgrade adopt","Inspect the observed runtime baseline; use --yes to persist missing version-authority keys").print_help();return
  if leaf[0]=="policy":
-  p=_leaf_parser("local-ai upgrade policy","Show or mutate the upgrade policy for one public stack/component");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.add_argument("component",nargs="?",metavar="COMPONENT",help="required when the stack has multiple components");p.add_argument("policy_action",nargs="?",metavar="ACTION",help="set POLICY or clear; omit to show policy");p.add_argument("policy",nargs="?",metavar="POLICY",choices=("patch-series","minor-series","major-series"),help="policy for ACTION=set: patch-series, minor-series or major-series");p.print_help();return
+  p=_leaf_parser("local-ai upgrade policy","Show or mutate the upgrade policy for one public stack/component");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.add_argument("component",nargs="?",metavar="COMPONENT",help="required when the stack has multiple components");p.add_argument("policy_action",nargs="?",metavar="ACTION",help="set POLICY or clear; omit to show policy");p.add_argument("policy",nargs="?",metavar="POLICY",choices=("manual","minor-series","major-series"),help="policy for ACTION=set: manual, minor-series or major-series");p.print_help();return
+ if leaf[0]=="selectable":
+  p=_leaf_parser("local-ai upgrade selectable","Show or override the selectable classification for one public stack/component");p.add_argument("stack",metavar="STACK",help="numeric public stack selector (0..7)");p.add_argument("component",nargs="?",metavar="COMPONENT",help="required when the stack has multiple components");p.add_argument("selectable_action",nargs="?",metavar="ACTION",choices=("enable","disable","clear"),help="enable or disable a durable override, or clear it; omit to show classification");p.print_help();return
  if leaf[0].isdigit():
-  p=_leaf_parser("local-ai upgrade STACK [COMPONENT]","Stage or clear a component upgrade selection");p.add_argument("action",choices=("select","clear"),help="stage a VERSION or clear the staged selection");p.add_argument("version",nargs="?",metavar="VERSION",help="required by select");p.add_argument("--force",action="store_true",help="accept administrator risk for a supported forced inventory-only recipe");p.print_help();return
+  p=_leaf_parser("local-ai upgrade STACK [COMPONENT]","Stage or clear a component upgrade selection");p.add_argument("action",choices=("select","clear"),help="stage a VERSION or clear the staged selection");p.add_argument("version",nargs="?",metavar="VERSION",help="required by select");p.print_help();return
  upgrade_entry.public_parser().print_help()
 def _public_help(argv):
  semantic=[arg for arg in argv if arg not in {"--json","--yes"}]
@@ -68,7 +70,7 @@ def _stack_selector_error(token,*,context,command):
 def _public_stack_id(token):return token.isdigit() and 0<=int(token)<=7
 def _upgrade_public_args(args):
  if not args or args[0] in {"--offline","check","adopt"}:return list(args),None
- translated=list(args);pos=1 if translated[0]=="policy" else 0
+ translated=list(args);pos=1 if translated[0] in ("policy","selectable") else 0
  if len(translated)<=pos:return translated,None
  token=translated[pos]
  if not _public_stack_id(token):return None,token
@@ -143,6 +145,7 @@ def _completion_command(args,context):
 def _upgrade_mutates(args):
  if not args:return False
  if args[0]=="policy":return "set" in args or args[-1:]==["clear"]
+ if args[0]=="selectable":return "enable" in args or "disable" in args or args[-1:]==["clear"]
  return "select" in args or args[-1:]==["clear"]
 def _confirm_upgrade_mutation(args,context):
  if not _upgrade_mutates(args) or context.assume_yes:return True

@@ -18,14 +18,14 @@ def resolve_component(stack,name):
  component=next((c for c in matches if c.name==name),None)
  if component is None:raise upgrade.UpgradeError(f"unknown component for {stack}: {name}",code="UPGRADE_COMPONENT_UNKNOWN")
  return component
-def force_metadata(component):
- record=component_record(component);execution=record.get("execution") or {};apply=record.get("apply") or {};capable=execution.get("mode")=="inventory-only" and apply.get("type")=="env-version" and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in ("env_key","image_env_key")) and isinstance(apply.get("deploy"),list) and bool(apply.get("deploy"));return capable,execution.get("blocked_by")
-def require_selection_permission(component,*,force):
- if component.selectable:return False,None
- capable,blocked=force_metadata(component)
- if not force:raise upgrade.UpgradeError(f"component is inventory-only: {upgrade.key(component)} ({blocked})"+("; use --force to accept administrator risk" if capable else ""),code="UPGRADE_COMPONENT_NOT_SELECTABLE")
- if not capable:raise upgrade.UpgradeError(f"component has no deterministic forced-upgrade recipe: {upgrade.key(component)} ({blocked})",code="UPGRADE_FORCE_UNAVAILABLE")
- return True,blocked
+def apply_recipe_available(record):
+ apply=record.get("apply") or {};return apply.get("type")=="env-version" and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in ("env_key","image_env_key")) and isinstance(apply.get("deploy"),list) and bool(apply.get("deploy"))
+def effective_selectable(component):
+ return upgrade_policy.effective_selectable(upgrade.runtime_root(),upgrade.key(component),component.selectable)
+def require_selection_permission(component):
+ if effective_selectable(component)[2]:return
+ record=component_record(component);blocked=(record.get("execution") or {}).get("blocked_by")
+ raise upgrade.UpgradeError(f"component is not selectable: {upgrade.key(component)} ({blocked}); enable it with 'upgrade selectable {upgrade.human_stack_id(component.stack)} {component.name} enable --yes'",code="UPGRADE_COMPONENT_NOT_SELECTABLE")
 def current_runtime_version(component,env):
  running=upgrade.running_image(component)
  if running:
@@ -61,10 +61,7 @@ def validate_selected_baselines(selections):
  for selection in selections:
   component_key=f"{selection.get('stack')}/{selection.get('component')}";component=components.get(component_key)
   if component is None:raise upgrade.UpgradeError(f"selected component no longer exists: {component_key}",code="UPGRADE_PLAN_STALE")
-  if not component.selectable:
-   if selection.get("forced") is not True:raise upgrade.UpgradeError(f"selected component is no longer selectable: {component_key}",code="UPGRADE_COMPONENT_NOT_SELECTABLE")
-   capable,blocked=force_metadata(component)
-   if not capable:raise upgrade.UpgradeError(f"forced upgrade recipe is no longer available: {component_key} ({blocked})",code="UPGRADE_FORCE_UNAVAILABLE")
+  if not effective_selectable(component)[2]:raise upgrade.UpgradeError(f"selected component is no longer selectable: {component_key}",code="UPGRADE_COMPONENT_NOT_SELECTABLE")
   current=current_runtime_version(component,env);expected=selection.get("current_at_selection")
   if current!=expected:raise upgrade.UpgradeError(f"upgrade plan is stale for {component_key}: selected from {expected}, current is {current}",code="UPGRADE_PLAN_STALE")
   target=selection.get("version")
@@ -76,6 +73,7 @@ def validate_selected_baselines(selections):
 def execution_records_for(selections):
  records=upgrade.component_records();result={key:dict(value) for key,value in records.items()}
  for selection in selections:
-  if selection.get("forced") is True:
-   component_key=f"{selection['stack']}/{selection['component']}";record=dict(result[component_key]);record["selectable"]=True;result[component_key]=record
+  component_key=f"{selection['stack']}/{selection['component']}"
+  if component_key in result:
+   record=dict(result[component_key]);_,_,effective=upgrade_policy.effective_selectable(upgrade.runtime_root(),component_key,record.get("selectable",True));record["selectable"]=effective;result[component_key]=record
  return result

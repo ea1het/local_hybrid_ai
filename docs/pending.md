@@ -21,6 +21,7 @@ Only active or intentionally deferred work belongs here. Completed work and impl
 - Reject boolean `schema_version` explicitly rather than accepting Python's `True == 1` equivalence.
 - Ensure every adapter completes fallible integrity checks before terminal atomic publication.
 - Add Stack4 helper failure-path tests covering dump, restart, health, helper cleanup and combined failure.
+- Decide the fate of `restore/stack4_dump_validation.py`: it is not imported by any runtime code path and is referenced only by a package-boundary filename listing in tests. Either wire it to a real entry point or remove it; it must not remain a naming-only fixture.
 - Reassess remaining compatibility project-root/symlink assumptions and replace them only where a concrete recovery path still depends on them.
 - Normalize global-artifact access around `resource_id` where current recovery contracts still expose inconsistent access patterns.
 - Keep bounded/resumable recovery fail-closed; managed state is never blindly re-imported after a late failure.
@@ -38,6 +39,14 @@ The earlier proposal to introduce a generic managed-restore adapter registry sol
 - Extend documentation-contract coverage from structural navigation to public-command coverage so every top-level `local-ai` command, including `completion`, is represented by the CLI command map and canonical documentation.
 
 The existing `src/local_ai_cli/common/tests/test_documentation_contract.py` already validates documentation-directory indexes, TOC backlinks, relative links, Mermaid fences, Gherkin scope documentation and publication hygiene; this item concerns semantic public-command coverage beyond those existing checks.
+
+## P2 — Upgrade engine hardening
+
+- Registry-driven version discovery (`upgrade/registry.py`) compares tag numbers purely arithmetically; it has no concept of versioning-scheme identity. A component under `manual` upgrade policy whose upstream registry adopts an incompatible numbering convention with a numerically larger leading segment (for example a switch from SemVer to date-based tags) can be misreported as having a newer version available, even though the two tag lineages are not comparable. `minor-series`/`major-series` policies already reject this via their own major-number check; only `manual` policy is exposed. No generic registry-side signal distinguishes versioning schemes, so this remains an accepted, narrow residual risk rather than an open defect.
+
+## P2 — Architecture cleanup
+
+- `src/local_ai_cli/context.py` declares `CommandContext`, a global-modifiers dataclass that is never imported by any runtime code path; `cli.py` resolves its own separate `CLIContext` instead. Either wire `CommandContext` into the real dispatch path it was meant to serve, or remove it.
 
 ## P2 — Operations
 

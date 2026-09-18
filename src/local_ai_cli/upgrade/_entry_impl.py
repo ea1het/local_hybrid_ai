@@ -8,13 +8,11 @@ from . import executor as upgrade_executor
 from . import policy as upgrade_policy
 from . import selection as upgrade_selection
 _component_record=upgrade_selection.component_record;_effective_policy=upgrade_selection.effective_policy;_resolve_component=upgrade_selection.resolve_component;_current_runtime_version=upgrade_selection.current_runtime_version;_validate_target=upgrade_selection.validate_target;validate_selected_baselines=upgrade_selection.validate_selected_baselines;_execution_records_for=upgrade_selection.execution_records_for
-def _force_metadata(component):return upgrade_selection.force_metadata(component)
-def _require_selection_permission(component,*,force):return upgrade_selection.require_selection_permission(component,force=force)
-def select_payload(stack,component_name,version,*,force=False):
- component=_resolve_component(stack,component_name);forced,blocked=_require_selection_permission(component,force=force);env=upgrade.read_env();current=_current_runtime_version(component,env)
+def _require_selection_permission(component):return upgrade_selection.require_selection_permission(component)
+def select_payload(stack,component_name,version):
+ component=_resolve_component(stack,component_name);_require_selection_permission(component);env=upgrade.read_env();current=_current_runtime_version(component,env)
  if current==version:raise upgrade.UpgradeError(f"{component.stack}/{component.name} is already at {version}",code="UPGRADE_ALREADY_CURRENT")
  effective,target_ref,target_digest=_validate_target(component,current,version,env);plan=upgrade.load_plan();selection={"stack":component.stack,"component":component.name,"current_at_selection":current,"version":version,"policy_at_selection":effective,"target_image":target_ref,"target_digest":target_digest}
- if forced:selection.update(forced=True,qualification_bypassed=blocked)
  plan["selected"][upgrade.key(component)]=selection;upgrade.save_plan(plan);return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.select","success":True,"selection":selection}
 def clear_payload(stack,component_name):
  component=_resolve_component(stack,component_name);plan=upgrade.load_plan();plan["selected"].pop(upgrade.key(component),None);upgrade.save_plan(plan);return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.clear","success":True,"stack":component.stack,"component":component.name}
@@ -39,7 +37,25 @@ def _policy_record(stack,component_name):
 def _policy_row(key,record,plan):
  try:state=upgrade_policy.selection_status(upgrade.runtime_root(),key,record,plan["selected"].get(key))
  except upgrade_policy.PolicyError as exc:raise upgrade.UpgradeError(str(exc),code="UPGRADE_POLICY_INVALID") from exc
- return {"stack":record["stack"],"component":record["id"],**state,"selectable":record.get("selectable",True),"selected":plan["selected"].get(key,{}).get("version")}
+ effective=upgrade_policy.effective_selectable(upgrade.runtime_root(),key,record.get("selectable",True))[2];return {"stack":record["stack"],"component":record["id"],**state,"selectable":effective,"selected":plan["selected"].get(key,{}).get("version")}
+def _selectable_row(key,record):
+ default,override,effective=upgrade_policy.effective_selectable(upgrade.runtime_root(),key,record.get("selectable",True))
+ return {"stack":record["stack"],"component":record["id"],"default_selectable":default,"override_selectable":override,"effective_selectable":effective,"executable":upgrade_selection.apply_recipe_available(record)}
+def selectable_payload(args):
+ records=upgrade.component_records()
+ if not args:return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.selectable","success":True,"components":[_selectable_row(k,r) for k,r in sorted(records.items())]}
+ action=None;left=list(args)
+ if left[-1:]==["enable"]:action,left="enable",left[:-1]
+ elif left[-1:]==["disable"]:action,left="disable",left[:-1]
+ elif left[-1:]==["clear"]:action,left="clear",left[:-1]
+ if len(left) not in (1,2):raise upgrade.UpgradeError("invalid selectable syntax",code="UPGRADE_USAGE")
+ key,record=_policy_record(left[0],left[1] if len(left)==2 else None);before=_selectable_row(key,record)
+ if action=="enable":upgrade_policy.set_selectable_override(upgrade.runtime_root(),key,True)
+ elif action=="disable":upgrade_policy.set_selectable_override(upgrade.runtime_root(),key,False)
+ elif action=="clear":upgrade_policy.clear_selectable_override(upgrade.runtime_root(),key)
+ after=_selectable_row(key,record);payload={"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.selectable","success":True,"action":action or "show",**after}
+ if action:payload["previous_effective_selectable"]=before["effective_selectable"]
+ return payload
 def policy_payload(args):
  records=upgrade.component_records();plan=upgrade.load_plan()
  if not args:return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.policy","success":True,"components":[_policy_row(k,r,plan) for k,r in sorted(records.items())]}
@@ -68,18 +84,25 @@ def cli_text(payload):
   for idx,row in enumerate(values):lines.append("  ".join(str(v).ljust(widths[i]) for i,v in enumerate(row)));lines.extend(["  ".join("-"*w for w in widths)] if idx==0 else [])
   return "\n".join(lines)
  if command=="upgrade.select":
-  s=payload["selection"];marker=f", FORCED: {s.get('qualification_bypassed')}" if s.get("forced") else "";return f"Selected {s['stack']}/{s['component']}: {s['current_at_selection']} -> {s['version']} ({s['policy_at_selection']}, {s['target_digest']}{marker})"
+  s=payload["selection"];return f"Selected {s['stack']}/{s['component']}: {s['current_at_selection']} -> {s['version']} ({s['policy_at_selection']}, {s['target_digest']})"
  if command=="upgrade.clear":return f"Cleared {payload['stack']}/{payload['component']}"
  if command=="upgrade.apply":
   lines=["UPGRADE: PASS"]
   if payload.get("recovery_point"):lines.append(f"- recovery point: {payload['recovery_point']}")
-  for item in payload["upgraded"]:lines.append(f"- {item['stack']}/{item['component']}: {item['current_at_selection']} -> {item['version']}"+(" [FORCED]" if item.get("forced") else ""))
+  for item in payload["upgraded"]:lines.append(f"- {item['stack']}/{item['component']}: {item['current_at_selection']} -> {item['version']}")
   if payload["reverified_stacks"]:lines.append("- reverified consumers: "+", ".join(payload["reverified_stacks"]))
   return "\n".join(lines)
  if command=="upgrade.policy":
   rows=payload.get("components") or [payload];headers=("STACK","COMPONENT","DEFAULT","OVERRIDE","EFFECTIVE","SELECTABLE","SELECTED","VALID");values=[headers]
   for row in rows:
    valid=row["selection_valid"];values.append((upgrade.human_stack_id(row["stack"]),row["component"],row["default_policy"],row["override_policy"] or "-",row["effective_policy"],"yes" if row["selectable"] else "no",row["selected"] or "-","-" if valid is None else ("yes" if valid else "no")))
+  widths=[max(len(str(r[i])) for r in values) for i in range(len(headers))];lines=[]
+  for idx,row in enumerate(values):lines.append("  ".join(str(v).ljust(widths[i]) for i,v in enumerate(row)));lines.extend(["  ".join("-"*w for w in widths)] if idx==0 else [])
+  return "\n".join(lines)
+ if command=="upgrade.selectable":
+  rows=payload.get("components") or [payload];headers=("STACK","COMPONENT","DEFAULT","OVERRIDE","EFFECTIVE","EXECUTABLE");values=[headers]
+  for row in rows:
+   values.append((upgrade.human_stack_id(row["stack"]),row["component"],"yes" if row["default_selectable"] else "no","-" if row["override_selectable"] is None else ("yes" if row["override_selectable"] else "no"),"yes" if row["effective_selectable"] else "no","yes" if row["executable"] else "no"))
   widths=[max(len(str(r[i])) for r in values) for i in range(len(headers))];lines=[]
   for idx,row in enumerate(values):lines.append("  ".join(str(v).ljust(widths[i]) for i,v in enumerate(row)));lines.extend(["  ".join("-"*w for w in widths)] if idx==0 else [])
   return "\n".join(lines)
@@ -96,11 +119,11 @@ def build_payload(args,*,apply_selected=False):
   if not args or args==["check"]:return json_payload(upgrade.inventory(query_upstream=True)),0
   if args in (["--offline"],["check","--offline"],["--offline","check"]):return json_payload(upgrade.inventory(query_upstream=False)),0
   if args and args[0]=="policy":return policy_payload(args[1:]),0
+  if args and args[0]=="selectable":return selectable_payload(args[1:]),0
   if "select" in args:
-   if args.count("--force")>1:raise upgrade.UpgradeError("invalid select syntax",code="UPGRADE_USAGE")
-   force="--force" in args;clean=[a for a in args if a!="--force"];pos=clean.index("select");left,right=clean[:pos],clean[pos+1:]
+   pos=args.index("select");left,right=args[:pos],args[pos+1:]
    if len(right)!=1 or len(left) not in (1,2):raise upgrade.UpgradeError("invalid select syntax",code="UPGRADE_USAGE")
-   return select_payload(left[0],left[1] if len(left)==2 else None,right[0],force=force),0
+   return select_payload(left[0],left[1] if len(left)==2 else None,right[0]),0
   if args[-1:]==["clear"] and len(args) in (2,3):left=args[:-1];return clear_payload(left[0],left[1] if len(left)==2 else None),0
   raise upgrade.UpgradeError("invalid upgrade syntax",code="UPGRADE_USAGE")
  except (upgrade.UpgradeError,upgrade_policy.PolicyError,OSError,json.JSONDecodeError) as exc:

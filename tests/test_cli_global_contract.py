@@ -10,7 +10,7 @@ from unittest import mock
 from local_ai_cli import cli,completion
 from local_ai_cli.common import render
 ROOT=Path(__file__).resolve().parents[1]
-PUBLIC_HELP_PATHS=((),("install",),("backup",),("restore",),("restore","list-backup-sets"),("restore","plan"),("restore","drill"),("restore","apply"),("restore","resume"),("status",),("doctor",),("inventory",),("inventory","rescan"),("completion",),("completion","bash"),("completion","zsh"),("completion","install"),("completion","status"),("upgrade",),("upgrade","check"),("upgrade","adopt"),("upgrade","policy"),("upgrade","7","open-webui","select"),("upgrade","7","open-webui","clear"),("start",),("stop",))
+PUBLIC_HELP_PATHS=((),("install",),("backup",),("restore",),("restore","list-backup-sets"),("restore","plan"),("restore","drill"),("restore","apply"),("restore","resume"),("status",),("doctor",),("inventory",),("inventory","rescan"),("completion",),("completion","bash"),("completion","zsh"),("completion","install"),("completion","status"),("upgrade",),("upgrade","check"),("upgrade","adopt"),("upgrade","policy"),("upgrade","selectable"),("upgrade","7","open-webui","select"),("upgrade","7","open-webui","clear"),("start",),("stop",))
 class GlobalCliContractTests(unittest.TestCase):
  def test_global_flags_are_position_independent(self):
   cases=[(["--json","--yes","status"],["status","--json","--yes"]),(["--yes","doctor","--json"],["doctor","--yes","--json"]),(["--json","--yes","inventory","rescan"],["inventory","rescan","--yes","--json"])]
@@ -28,8 +28,9 @@ class GlobalCliContractTests(unittest.TestCase):
     for token in private:self.assertNotIn(token,cp.stdout+cp.stderr)
  def test_upgrade_leaf_help_is_specific(self):
   check=subprocess.run([str(ROOT/"local-ai"),"upgrade","check","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("--offline",check.stdout)
-  policy=subprocess.run([str(ROOT/"local-ai"),"upgrade","policy","--help"],cwd=ROOT,text=True,capture_output=True,check=False);normalized=re.sub(r"\s*-\s*\n\s*", "-", policy.stdout);self.assertIn("patch-series",normalized);self.assertIn("minor-series",normalized);self.assertIn("major-series",normalized)
-  select=subprocess.run([str(ROOT/"local-ai"),"upgrade","7","open-webui","select","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("--force",select.stdout);self.assertIn("VERSION",select.stdout)
+  policy=subprocess.run([str(ROOT/"local-ai"),"upgrade","policy","--help"],cwd=ROOT,text=True,capture_output=True,check=False);normalized=re.sub(r"\s*-\s*\n\s*", "-", policy.stdout);self.assertIn("manual",normalized);self.assertIn("minor-series",normalized);self.assertIn("major-series",normalized)
+  selectable=subprocess.run([str(ROOT/"local-ai"),"upgrade","selectable","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("enable",selectable.stdout);self.assertIn("disable",selectable.stdout);self.assertIn("clear",selectable.stdout)
+  select=subprocess.run([str(ROOT/"local-ai"),"upgrade","7","open-webui","select","--help"],cwd=ROOT,text=True,capture_output=True,check=False);self.assertIn("VERSION",select.stdout);self.assertNotIn("--force",select.stdout)
  def test_restore_leaf_help_documents_global_flags(self):
   for action in ("list-backup-sets","plan","drill","apply","resume"):
    out=io.StringIO()

@@ -31,4 +31,14 @@ class RegistryDiscoveryCacheTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp,mock.patch.dict("os.environ",{"LOCAL_AI_RUNTIME_ROOT":tmp},clear=False):
    entries={f"key-{i}":{"stored_at":float(i),"state":{}} for i in range(upgrade.REGISTRY_CACHE_MAX_ENTRIES+20)};upgrade._save_registry_cache(entries);data=json.loads((Path(tmp)/"platform"/"registry-discovery-cache.json").read_text(encoding="utf-8"))
   self.assertEqual(len(data["entries"]),upgrade.REGISTRY_CACHE_MAX_ENTRIES);self.assertIn(f"key-{upgrade.REGISTRY_CACHE_MAX_ENTRIES+19}",data["entries"]);self.assertNotIn("key-0",data["entries"])
+ def test_offline_availability_reuses_cached_state_without_live_inspect(self):
+  with tempfile.TemporaryDirectory() as tmp,mock.patch.dict("os.environ",{"LOCAL_AI_RUNTIME_ROOT":tmp,"LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS":"300"},clear=False),mock.patch.object(upgrade.time,"time",return_value=1000.0):
+   component=self.component();state=self.state();upgrade._store_registry_state(component,state.image,state)
+   with mock.patch.object(upgrade.upgrade_registry,"local_digest",return_value="sha256:local"),mock.patch.object(upgrade.upgrade_registry,"inspect") as inspect:available,registry,_=upgrade._registry_availability(component,state.image,online=False)
+  self.assertEqual(available,"v0.11.4");inspect.assert_not_called()
+ def test_offline_availability_falls_back_to_unchecked_without_cache(self):
+  with tempfile.TemporaryDirectory() as tmp,mock.patch.dict("os.environ",{"LOCAL_AI_RUNTIME_ROOT":tmp,"LOCAL_AI_REGISTRY_CACHE_TTL_SECONDS":"300"},clear=False):
+   component=self.component()
+   with mock.patch.object(upgrade.upgrade_registry,"inspect") as inspect:available,registry,discovered=upgrade._registry_availability(component,"ghcr.io/open-webui/open-webui:v0.11.3",online=False)
+  self.assertEqual((available,registry,discovered),("unchecked",None,None));inspect.assert_not_called()
 if __name__=="__main__":unittest.main()

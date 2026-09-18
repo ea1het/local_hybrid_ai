@@ -2,12 +2,13 @@
 # License, v. 2.0.
 """Guarded executor for explicitly selected component upgrades."""
 from __future__ import annotations
-import json, os, subprocess, sys, time
+import json, os, subprocess, time
 from pathlib import Path
 from . import inventory as upgrade_inventory
 from . import policy as upgrade_policy
 from . import registry as upgrade_registry
 from . import runtime as upgrade_runtime
+from local_ai_cli import backup as upgrade_backup
 
 class UpgradeExecutionError(RuntimeError):
     def __init__(self, code: str, message: str, *, recovery_point: str | None = None):
@@ -88,11 +89,13 @@ def _preflight_target_image(root,image_ref):
     except OSError as exc:raise UpgradeExecutionError("UPGRADE_TARGET_PREFLIGHT_FAILED",f"cannot inspect target image {image_ref}: {exc}") from exc
     if cp.returncode!=0:
         detail=(cp.stderr or "").strip(); raise UpgradeExecutionError("UPGRADE_TARGET_NOT_AVAILABLE",f"target image is not available: {image_ref}"+(f": {detail}" if detail else ""))
-def _recovery_point(root):
-    cp=_run([sys.executable,str(root/"commands"/"recovery"/"backup-all.py"),"--json"],cwd=root,capture=True)
-    try:path=str(json.loads(cp.stdout)["backup_set"])
-    except (json.JSONDecodeError,KeyError,TypeError) as exc:raise UpgradeExecutionError("UPGRADE_BACKUP_INVALID","backup engine returned invalid JSON") from exc
-    if not path:raise UpgradeExecutionError("UPGRADE_BACKUP_INVALID","backup engine returned an empty recovery-point path")
+def _recovery_point():
+    payload=upgrade_backup.backup_payload()
+    if not payload.get("success"):
+        error=payload.get("error") or {}
+        raise UpgradeExecutionError("UPGRADE_BACKUP_FAILED",f"backup engine failed: {error.get('message','backup operation failed')}")
+    result=payload.get("result");path=result.get("backup_set") if isinstance(result,dict) else None
+    if not isinstance(path,str) or not path:raise UpgradeExecutionError("UPGRADE_BACKUP_INVALID","backup engine returned an empty recovery-point path")
     return path
 def _run_commands(root,directory,commands,*,quiet):
     cwd=root/directory
@@ -130,7 +133,7 @@ def execute(*,root:Path,runtime_root:Path,selections:list[dict],components:dict[
         if not isinstance(env_key,str) or not env_key:raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG",f"component has invalid env_key: {component_key}")
         env_updates[env_key]=selection["version"]; affected_stacks.add(_stack_number(selection["stack"])); recovery_required=recovery_required or bool(component.get("recovery_required",False)); image_ref=_target_image_ref(component_key,component,selection,env_values); _verify_selected_digest(component_key,image_ref,selection); target_images.append(image_ref)
     for image_ref in target_images:_preflight_target_image(root,image_ref)
-    recovery_point=_recovery_point(root) if recovery_required else None
+    recovery_point=_recovery_point() if recovery_required else None
     try:
         _atomic_update_env(env_path,env_updates)
         for sid in sorted(affected_stacks):

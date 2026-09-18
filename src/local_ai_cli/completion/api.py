@@ -33,20 +33,24 @@ def _candidates(before):
  if command=="inventory":return _with_globals(["rescan"] if not tail else [])
  if command=="install":return _with_globals([*_stack_ids(),"--plan","--dry-run","--target","--reconcile"])
  if command=="upgrade":
-  if not tail:return _with_globals([*_stack_ids(),"adopt","check","--offline","policy"])
+  if not tail:return _with_globals([*_stack_ids(),"adopt","check","--offline","policy","selectable"])
   if tail[0]=="adopt":return _with_globals([])
   if tail[0] in {"--offline","check"}:return _with_globals([])
   if tail[0]=="policy":
    if len(tail)==1:return _with_globals(_stack_ids())
    if len(tail)==2:return _with_globals(_upgrade_components(tail[1]))
    if len(tail)==3:return _with_globals(["clear","set"])
-   if len(tail)>=4 and tail[-2]=="set":return _with_globals(["patch-series","minor-series","major-series"])
+   if len(tail)>=4 and tail[-2]=="set":return _with_globals(["manual","minor-series","major-series"])
+   return _with_globals([])
+  if tail[0]=="selectable":
+   if len(tail)==1:return _with_globals(_stack_ids())
+   if len(tail)==2:return _with_globals(_upgrade_components(tail[1]))
+   if len(tail)==3:return _with_globals(["clear","disable","enable"])
    return _with_globals([])
   stack=tail[0]
   if stack in _stack_ids():
    if len(tail)==1:return _with_globals(_upgrade_components(stack))
    if len(tail)==2:return _with_globals(["clear","select"])
-   if len(tail)>=3 and "select" in tail:return _with_globals(["--force"])
  return _with_globals([])
 def complete(words):
  prefix=words[-1] if words else "";before=words[:-1] if words else [];seen=set();out=[]

@@ -12,7 +12,6 @@ revalidation before any mutation occurs.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import tempfile
 import unittest
@@ -92,17 +91,29 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_MOVED")
 
-    @mock.patch("local_ai_cli.upgrade.executor._run")
-    def test_recovery_point_consumes_backup_set_json_field(self, run):
-        run.return_value = subprocess.CompletedProcess(
-            [], 0, json.dumps({"backup_set": "/opt/local-hybrid-ai-backups/backup-test"}), ""
-        )
-        root = Path("/opt/docker/stacks")
-        result = upgrade_executor._recovery_point(root)
+    @mock.patch("local_ai_cli.upgrade.executor.upgrade_backup.backup_payload")
+    def test_recovery_point_consumes_backup_set_result_field(self, backup_payload):
+        backup_payload.return_value = {
+            "schema_version": "1",
+            "command": "backup",
+            "success": True,
+            "result": {"backup_set": "/opt/local-hybrid-ai-backups/backup-test"},
+        }
+        result = upgrade_executor._recovery_point()
         self.assertEqual(result, "/opt/local-hybrid-ai-backups/backup-test")
-        command = run.call_args.args[0]
-        self.assertEqual(command[1], str(root / "commands" / "recovery" / "backup-all.py"))
-        self.assertEqual(command[2], "--json")
+        backup_payload.assert_called_once_with()
+
+    @mock.patch("local_ai_cli.upgrade.executor.upgrade_backup.backup_payload")
+    def test_recovery_point_surfaces_backup_engine_failure(self, backup_payload):
+        backup_payload.return_value = {
+            "schema_version": "1",
+            "command": "backup",
+            "success": False,
+            "error": {"code": "BACKUP_FAILED", "message": "destination is not writable"},
+        }
+        with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
+            upgrade_executor._recovery_point()
+        self.assertEqual(ctx.exception.code, "UPGRADE_BACKUP_FAILED")
 
     def test_execution_rejects_empty_selection_before_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
