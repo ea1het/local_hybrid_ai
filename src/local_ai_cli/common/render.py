@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
@@ -14,11 +15,15 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-DEFAULT_BANNER = """█      ███   ███   ███  █           ███  ███
+from local_ai_cli import __version__
+
+_ASCII_ART = """█      ███   ███   ███  █           ███  ███
 █     █   █ █     █   █ █          █   █  █
 █     █   █ █     █████ █     ████ █████  █
 █     █   █ █     █   █ █          █   █  █
 █████  ███   ███  █   █ █████      █   █ ███"""
+
+DEFAULT_BANNER = f"{_ASCII_ART}\nVersion: {__version__}"
 
 
 def render_json(payload: Any) -> None:
@@ -30,12 +35,15 @@ def render_cli(
     body: str | Callable[[], None] | None = None,
     *,
     header: str | None = None,
-    banner: str | None = None,
+    banner: str | None = DEFAULT_BANNER,
 ) -> None:
-    """Render human output with an optional customizable text header.
+    """Render human output, prefixed by the project banner unless suppressed.
 
-    ``banner`` is opt-in so existing command output remains stable while callers
-    migrate. Passing ``banner=DEFAULT_BANNER`` enables the project banner.
+    Every human-text ``local-ai`` invocation renders through this function, so
+    the banner shows once per successful invocation by default. Pass
+    ``banner=None`` to omit it for a specific call (for example, tests
+    asserting an exact body). ``--json`` output never goes through this
+    function and is therefore never prefixed.
     """
     if banner:
         print(banner)

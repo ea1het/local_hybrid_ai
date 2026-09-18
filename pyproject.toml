@@ -8,12 +8,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local_ai_cli"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Private management CLI implementation behind the ./local-ai entry point for Local Hybrid AI."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MPL-2.0" }
 dependencies = []
+
+[tool.setuptools.dynamic]
+version = { attr = "local_ai_cli.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

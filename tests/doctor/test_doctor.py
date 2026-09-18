@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Contract tests owned by the read-only doctor command package."""

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Canonical component-topology compilation from stack manifests, shared by doctor, upgrade and inventory.

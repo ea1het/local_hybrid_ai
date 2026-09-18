@@ -22,14 +22,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Verify required MPL headers
-        run: python3 tools/apply_mpl_headers.py --check
+      - name: Ensure Python module shebangs
+        run: python3 tools/apply_python_shebangs.py
 
-      - name: Regenerate exception register in runner
+      - name: Ensure MPL headers and exception register
         run: python3 tools/apply_mpl_headers.py
 
-      - name: Verify exception register is explicit and current
-        run: git diff --exit-code -- docs/license-header-exceptions.md
-
-      - name: Verify checker made no repository changes
+      - name: Verify no drift between committed and expected module headers
         run: git diff --exit-code

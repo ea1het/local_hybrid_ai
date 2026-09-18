@@ -3,7 +3,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Keep repository file-license coverage explicit and fail closed."""
+"""Keep the project shebang mandatory and explicit across Python modules."""
 
 import subprocess
 import sys
@@ -13,13 +13,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class LicenseHeaderContractTests(unittest.TestCase):
-    """Verify every safely commentable tracked file carries the MPL notice."""
+class PythonShebangContractTests(unittest.TestCase):
+    """Verify every tracked Python module starts with the project shebang."""
 
-    def test_tracked_files_have_mpl_header_or_documented_exception(self):
+    def test_tracked_python_modules_have_a_shebang(self):
         """Delegate classification to the same conservative repository policy."""
         result = subprocess.run(
-            [sys.executable, "tools/apply_mpl_headers.py", "--check"],
+            [sys.executable, "tools/apply_python_shebangs.py", "--check"],
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,

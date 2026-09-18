@@ -1513,3 +1513,11 @@ FodyWeavers.xsd
 !/src/local_ai_cli/backup/**
 !/tests/backup/
 !/tests/backup/**
+
+# The broad "backup/**" negation above also un-ignores Python bytecode caches
+# nested under these two packages, undoing the generic __pycache__/ and *.pyc
+# rules earlier in this file. Re-ignore them explicitly, at any depth.
+src/local_ai_cli/backup/**/__pycache__/
+tests/backup/**/__pycache__/
+src/local_ai_cli/backup/**/*.pyc
+tests/backup/**/*.pyc
