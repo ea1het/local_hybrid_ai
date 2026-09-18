@@ -28,11 +28,11 @@ This compact reference supports AI-assisted maintenance and contributor continui
 
 ## Management and version invariants
 
-`./local-ai` is the sole supported management/automation boundary. `commands/`, `commands/recovery/`, stack scripts and Compose files are private implementation surfaces.
+`./local-ai` is the sole supported management/automation boundary. `src/local_ai_cli/`, `src/local_ai_cli/recovery/`, stack scripts and Compose files are private implementation surfaces.
 
 The management plane separates lifecycle, upgrade and Recovery responsibilities. Upgrade keeps command orchestration, selection/stale-plan policy, inventory/catalog/plan/cache state, runtime observation, OCI registry handling and guarded mutation distinct. Recovery keeps planning/orchestration separate from destination/runtime-source preflight and from mutating backup/restore phases. These boundaries support auditability; they are not public Python APIs.
 
-The current source tree has no separate top-level `internal/`, `installer/` or `bkp-dr/` implementation roots and no static `commands/upgrade-components.json` catalog. Historical restore compatibility may recognize old layouts without making them current APIs.
+The current source tree has no separate top-level `internal/`, `installer/` or `bkp-dr/` implementation roots and no static `src/local_ai_cli/upgrade-components.json` catalog. Historical restore compatibility may recognize old layouts without making them current APIs.
 
 Git/Compose is the bootstrap source baseline. After adoption, version intent is installation-owned. The following facts remain separate:
 

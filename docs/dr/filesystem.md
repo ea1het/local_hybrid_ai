@@ -10,7 +10,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [← DR index](README.md) · [Current DR workflow](howto.md) · [Documentation map](../TOC.md)
 
-This document records the filesystem milestone that established the backup-root safety and publication assumptions used by later recovery adapters. The current operator entry point is `./local-ai backup`; `dr_filesystem.py` is a private implementation helper rather than a public management command.
+This document records the filesystem milestone that established the backup-root safety and publication assumptions used by later recovery adapters. The current operator entry point is `./local-ai backup`; `filesystem.py` is a private implementation helper rather than a public management command.
 
 ## Destination contract
 

@@ -1,123 +1,103 @@
 <!--
 This Source Code Form is subject to the terms of the Mozilla Public
-License, v. 2.0. If a copy of the MPL was not distributed with this
-file, You can obtain one at https://mozilla.org/MPL/2.0/.
+License, v. 2.0.
 -->
-
 # Management-plane architecture
-
 [← Documentation map](../TOC.md) · [Architecture index](README.md) · [Current state](../current-state.md)
 
-The management plane is the control surface behind `./local-ai`. It translates operator intent into manifest-aware lifecycle, version-maintenance and recovery operations while keeping stack scripts, Compose files and Python modules private implementation details.
+The management plane is the control surface behind `./local-ai`. Stack scripts, Compose files and Python modules remain implementation details.
 
 ## Responsibility map
-
 ```mermaid
 flowchart TB
-    H["Human operator"] --> CLI["./local-ai"]
-    A["Automation / CI"] -->|"--json"| CLI
-
-    CLI --> LIFE["Lifecycle\ninstall · start · stop · status"]
-    CLI --> UP["Upgrade\ndiscover · select · apply"]
-    CLI --> DR["Recovery\nplan · backup · restore"]
-
-    MAN["Stack manifests\nownership · dependencies · capabilities · recovery"] --> LIFE
+    H[Human operator] --> CLI[./local-ai]
+    A[Automation / CI] -->|--json / --yes| CLI
+    S0[Stack 0 cli_contract] -->|object| CLI
+    SN[Stacks 1..7 cli_contract] -->|object| CLI
+    CLI --> HR[Human renderer]
+    CLI --> JR[JSON renderer]
+    CLI --> LIFE[Lifecycle]
+    CLI --> UP[Upgrade]
+    CLI --> DR[Recovery]
+    MAN[Stack manifests] --> LIFE
     MAN --> UP
     MAN --> DR
-
-    LIFE --> STACKS["Stack lifecycle contracts"]
-    UP --> STACKS
-    DR --> STACKS
-
-    STACKS --> RT["Installation runtime"]
+    LIFE --> RT[Installation runtime]
+    UP --> RT
+    DR --> RT
 ```
 
-The public boundary is intentionally narrow. A consumer depends on `./local-ai` and its documented JSON/text contracts, not on internal module names or individual stack scripts.
+The boundary deliberately separates facts from presentation. Every stack owns a `cli_contract.py` module whose `json_payload()` returns a JSON-compatible Python object. A stack contract never prints, serializes JSON, adds terminal decoration or interprets global automation flags. The management CLI composes those objects and is the only layer that renders human or machine output.
+
+`src/local_ai_cli/render.py` is the presentation boundary. Its JSON renderer emits one machine document without banners or prose. Its human renderer can prepend a configurable text banner/header. Consequently, presentation changes cannot alter stack logic and stack changes cannot silently change JSON serialization.
+
+## Global automation context
+`--json` and `--yes` are properties of `local-ai`, not stack-specific options. The public boundary normalizes them independently of position and passes explicit context to operations. `--json` selects machine presentation. `--yes` supplies non-interactive consent; it is accepted as a no-op by read-only operations. Operation-specific assertions remain independent safety gates. In particular, `restore apply --execute` requires the DR-specific `--confirm-clean-target` assertion in addition to global execution consent.
 
 ## Manifest compilation boundary
-
-Each stack manifest is the machine-readable declaration of physical ownership and operational semantics. The platform manifest layer compiles the cross-stack graph used by lifecycle and capability planning. Recovery validation is a separate responsibility so that backup and restore constraints remain explicit rather than becoming incidental dependency-parser behaviour.
+Each stack manifest declares ownership and operational semantics. The platform manifest layer compiles the cross-stack graph used by lifecycle, capability, upgrade and recovery planning. Recovery validation remains separate so backup/restore constraints are explicit.
 
 ```mermaid
 flowchart LR
-    M["manifest.json files"] --> CORE["Manifest graph\nownership + dependency + capability semantics"]
-    M --> REC["Recovery contract validation"]
-    CORE --> LIFE["Lifecycle planning"]
-    CORE --> CAP["Capability reconciliation"]
-    REC --> DR["Backup / restore planning"]
+    M[manifest.json files] --> CORE[Manifest graph]
+    M --> REC[Recovery validation]
+    CORE --> LIFE[Lifecycle planning]
+    CORE --> CAP[Capability reconciliation]
+    REC --> DR[Backup / restore planning]
 ```
 
-The implementation currently separates the general manifest planner in `stack0_-_platform/manifests.py` from recovery-specific validation in `stack0_-_platform/manifest_recovery.py`. Those file names describe current implementation boundaries; they are not public APIs.
+The general planner currently lives in `stack0_-_platform/manifests.py` and recovery-specific validation in `stack0_-_platform/manifest_recovery.py`; these names are implementation details.
 
 ## Upgrade control flow
-
-Upgrade deliberately separates observation, operator intent and mutation. Registry discovery does not become desired state, and a selected target is revalidated before execution.
-
 ```mermaid
 sequenceDiagram
     actor Operator
     participant CLI as local-ai
-    participant Inventory as Inventory/runtime observation
-    participant Registry as OCI registry boundary
+    participant Registry as OCI registry
     participant Selection as Selection policy
     participant Executor as Guarded executor
-    participant Runtime as Stack runtime
-
-    Operator->>CLI: inspect upgrade state
-    CLI->>Inventory: compile installed/actual state
+    participant Runtime
+    Operator->>CLI: inspect
     CLI->>Registry: discover available identity
-    CLI-->>Operator: installed / available / selectable
-
+    CLI-->>Operator: rendered structured state
     Operator->>CLI: select exact target
-    CLI->>Registry: validate tag and digest
-    CLI->>Selection: persist explicit intent
-
+    CLI->>Selection: persist validated intent
     Operator->>CLI: upgrade --yes
-    CLI->>Selection: reject stale or invalid intent
-    CLI->>Registry: revalidate immutable target
+    CLI->>Selection: revalidate intent
     CLI->>Executor: apply selected target
-    opt selected component requires recovery
+    opt recovery_required=true
         Executor->>Runtime: establish recovery point
     end
-    Executor->>Runtime: mutate deployment
-    Executor->>Runtime: READY / reconcile / VERIFY
-    Runtime-->>CLI: verified result
-    CLI-->>Operator: UPGRADE: PASS or fail closed
+    Executor->>Runtime: mutate + READY + reconcile + VERIFY
+    Runtime-->>CLI: structured verified result
+    CLI-->>Operator: render result
 ```
 
-The current implementation reflects those responsibilities across focused modules: entry/command orchestration, selection policy, inventory/catalog/plan/cache state, runtime observation, OCI registry handling and the guarded mutation executor. The separation is intended to make consent and failure boundaries auditable rather than to expose those modules as supported integration points. A recovery point is created only when at least one selected component declares `recovery_required=true`; reconstructable upgrades can execute without manufacturing an unnecessary backup.
+Discovery never creates desired state. Mutation revalidates runtime baseline, policy, immutable target and executor eligibility. A recovery point is created only when selected components require one.
 
 ## Recovery control flow
-
-Recovery separates read-only planning and preflight from backup publication and destructive restore phases. A recovery point is treated as a recorded contract, not merely as a directory containing copied files.
-
 ```mermaid
 flowchart LR
-    P["Plan"] --> PF["Read-only preflight"]
-    PF --> B["Backup execution"]
-    B --> RP["Immutable recovery point"]
-    RP --> V["Validate metadata + checksums"]
-    V --> S["Stage restore"]
-    S --> M["Restore managed state"]
-    M --> L["Apply live state"]
-    L --> R["Resume / converge"]
-    R --> Q["READY + VERIFY"]
+    P[Plan] --> PF[Read-only preflight]
+    PF --> B[Backup]
+    B --> RP[Atomic recovery point]
+    RP --> V[Metadata + checksum validation]
+    V --> S[Stage]
+    S --> M[Managed restore]
+    M --> L[Live restore]
+    L --> R[Resume / converge]
+    R --> Q[READY + VERIFY]
 ```
 
-`commands/recovery/dr.py` owns recovery planning/orchestration while `commands/recovery/dr_preflight.py` owns destination and runtime-source preflight. Backup, staging, managed restore, live restore and resume verification remain separate implementation phases because their mutation and safety properties differ.
+`src/local_ai_cli/backup/planner.py` and `src/local_ai_cli/restore/planner.py` own planning/orchestration for their respective package, and `src/local_ai_cli/common/preflight.py` owns the shared destination/runtime-source preflight. Mutation phases remain separate because their safety properties differ.
 
 ## Lifecycle boundary
-
-The common stack lifecycle remains:
-
 ```mermaid
 flowchart LR
-    P["PREPARE"] --> D["DEPLOY"] --> R["READY"] --> C["RECONCILE"] --> V["VERIFY"]
+    P[PREPARE] --> D[DEPLOY] --> R[READY] --> C[RECONCILE] --> V[VERIFY]
     C -.->|runtime changed| R
 ```
 
 PREPARE establishes prerequisites and installation-owned structure. DEPLOY changes runtime. READY proves required runtime health. RECONCILE applies capability-dependent policy. VERIFY proves the resulting contract. A `.lock` records PREPARED state only.
 
-## Relationship to the stack plane
-
-The management plane does not replace stack ownership. It interprets the declared graph and invokes stack-owned lifecycle contracts. The runtime topology itself is documented in [Stack architecture](../stacks/README.md). Architectural rationale is preserved in [ADRs](../devel-docs/adr/README.md), security rationale in [SDRs](../devel-docs/sdr/README.md), and externally observable behaviour in [OpenSpec](../devel-docs/openspec/README.md).
+The runtime topology is documented in [Stack architecture](../stacks/README.md). Architectural rationale remains in [ADRs](../devel-docs/adr/README.md), security rationale in [SDRs](../devel-docs/sdr/README.md), and observable behaviour in [OpenSpec](../devel-docs/openspec/README.md).

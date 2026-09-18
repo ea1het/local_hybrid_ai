@@ -49,7 +49,7 @@ Some credential/bootstrap operations remain explicitly gated because they issue 
 
 ## 5. Machine integration
 
-External automation uses `./local-ai --json ...` where a command exposes a stable JSON contract. It does not import `commands/` modules or invoke individual stack scripts. Machine schema versions are independent from private implementation versions.
+External automation uses `./local-ai --json ...` where a command exposes a stable JSON contract. It does not import `src/local_ai_cli/` modules or invoke individual stack scripts. Machine schema versions are independent from private implementation versions.
 
 ## 6. Development validation
 
@@ -63,7 +63,7 @@ Tests are a development interface, not an operator management interface.
 
 ## Runtime and component ownership
 
-Project source and mutable installation state are separate. Each stack manifest declares owned resources and semantic components. `components[]` is the operational component inventory; Compose supplies implementation bindings. The retired static `commands/upgrade-components.json` catalog is not part of the current architecture.
+Project source and mutable installation state are separate. Each stack manifest declares owned resources and semantic components. `components[]` is the operational component inventory; Compose supplies implementation bindings. The retired static `src/local_ai_cli/upgrade-components.json` catalog is not part of the current architecture.
 
 `./local-ai inventory rescan` validates current manifest/Compose topology and writes a diagnostic snapshot. Normal management compiles current manifests directly; the snapshot is not version authority and is not required before `status` or `upgrade`.
 

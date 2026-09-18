@@ -14,7 +14,7 @@ This page describes the implementation that exists in the current source tree. I
 
 `./local-ai` is the only supported management interface. Current public command families are installation/lifecycle (`install`, `start`, `stop`), operational inspection (`status`, `doctor`, `inventory rescan`), version maintenance (`upgrade`, `upgrade policy`, `upgrade adopt`), recovery (`backup`, `restore plan`, `restore drill`, `restore apply`, `restore resume`) and shell integration (`completion bash`, `completion zsh`, `completion install`, `completion status`).
 
-Implementation lives under `commands/`, with recovery implementation under `commands/recovery/`. Stack-owned scripts are implementation details behind that boundary. The internal architecture deliberately separates lifecycle planning, upgrade observation/selection/execution and recovery preflight/restore phases so that read-only decisions and mutating operations remain auditable. The [management-plane architecture](architecture/management-plane.md) describes these responsibility boundaries without promoting private Python modules to public APIs.
+Implementation lives under `src/local_ai_cli/`, with recovery implementation under `src/local_ai_cli/recovery/`. Stack-owned scripts are implementation details behind that boundary. The internal architecture deliberately separates lifecycle planning, upgrade observation/selection/execution and recovery preflight/restore phases so that read-only decisions and mutating operations remain auditable. The [management-plane architecture](architecture/management-plane.md) describes these responsibility boundaries without promoting private Python modules to public APIs.
 
 ## Stack and component model
 
@@ -60,7 +60,7 @@ Recovery planning/orchestration and read-only destination/runtime-source preflig
 
 ## Retired implementation surfaces
 
-The following are not current architecture: separate top-level `internal/`, `installer/` and `bkp-dr/` roots; static `commands/upgrade-components.json`; Git/Compose as ongoing version authority after adoption; `tracked-compose-pin` as a generic upgrade blocker; registry discovery as implicit selection; and direct stack scripts/Compose/Python modules as supported external management APIs.
+The following are not current architecture: separate top-level `internal/`, `installer/` and `bkp-dr/` roots; static `src/local_ai_cli/upgrade-components.json`; Git/Compose as ongoing version authority after adoption; `tracked-compose-pin` as a generic upgrade blocker; registry discovery as implicit selection; and direct stack scripts/Compose/Python modules as supported external management APIs.
 
 Historical ADRs, compatibility code and tests may mention retired paths only to explain decisions or recover older recorded source revisions. Those references are historical evidence, not current interfaces.
 

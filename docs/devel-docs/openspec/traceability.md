@@ -30,7 +30,7 @@ General manifest graph/capability semantics are implemented in `stack0_-_platfor
 
 ## Disaster recovery
 
-- `DR-BACKUP-001` — OpenSpec contract test plus `tests/disaster_recovery/test_dr_backup_all.py` and qualified global backup. Planning/orchestration is owned by `commands/recovery/dr.py`; source/destination preflight is owned by `commands/recovery/dr_preflight.py`.
+- `DR-BACKUP-001` — OpenSpec contract test plus `tests/disaster_recovery/test_dr_backup_all.py` and qualified global backup. Planning/orchestration is owned by `src/local_ai_cli/recovery/dr.py`; source/destination preflight is owned by `src/local_ai_cli/recovery/dr_preflight.py`.
 - `DR-BACKUP-002` — backup destination/preflight overlap tests plus runtime rejection of equal/descendant/ancestor protected paths.
 - `DR-RESTORE-001` — restore planning/staging/managed/live/resume tests plus qualified clean-target recovery.
 - `DR-STACK7-001` — OpenSpec contract test plus [DR status](../../dr/status.md).
@@ -77,11 +77,11 @@ General manifest graph/capability semantics are implemented in `stack0_-_platfor
 - `CLI-COMPLETION-003` — `tests/test_completion.py` verifies Bash/Zsh generated adapters delegate to `__complete`, share the same candidate engine, use numeric lifecycle/upgrade stack ids and expose only implemented upgrade actions (`select`/`clear`, policy `set`/`clear`).
 - `CLI-COMPLETION-004` — `tests/test_completion.py` verifies Bash/Zsh detection, root/user targets, exact generated content and idempotent installation; deployment qualification has additionally exercised the root Bash target.
 - `CLI-COMPLETION-005` — `tests/test_completion.py` verifies unsupported shells fail rather than selecting a guessed target.
-- `CLI-COMPLETION-006` — implementation boundary in `commands/completion.py` plus installation tests: only the adapter target/parent is written; shell startup files are outside installer ownership.
+- `CLI-COMPLETION-006` — implementation boundary in `src/local_ai_cli/completion.py` plus installation tests: only the adapter target/parent is written; shell startup files are outside installer ownership.
 
 ### Registry discovery semantics
 
-- `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 and proves failure remains `available=unknown`, never `current`; positive registry families are separately runtime-qualified. OCI parsing/probing belongs to `commands/upgrade_registry.py`.
+- `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 and proves failure remains `available=unknown`, never `current`; positive registry families are separately runtime-qualified. OCI parsing/probing belongs to `src/local_ai_cli/upgrade_registry.py`.
 - `CLI-REGISTRY-002` — `tests/test_registry_discovery_cache.py` verifies TTL reuse/expiry, local-digest invalidation and bounded cache size; cache ownership remains separate from registry HTTP semantics.
 
 ### Upgrade execution

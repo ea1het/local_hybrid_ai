@@ -90,7 +90,7 @@ Preparation establishes prerequisites and declarative/runtime structure. Deploym
 
 ## One supported management interface
 
-`./local-ai` is the project’s **sole supported management and automation boundary**. Python modules under `commands/`, stack shell scripts and Compose files are implementation details.
+`./local-ai` is the project’s **sole supported management and automation boundary**. Python modules under `src/local_ai_cli/`, stack shell scripts and Compose files are implementation details.
 
 ```mermaid
 flowchart LR
@@ -110,9 +110,12 @@ Common entry points are:
 ./local-ai start 5
 ./local-ai stop 5
 ./local-ai upgrade
-./local-ai backup
-./local-ai restore plan <backup-set> --dry-run
+./local-ai backup --yes
+./local-ai restore list-backup-sets
+./local-ai restore plan <backup-set>
 ```
+
+Interactive backup asks for confirmation; unattended or JSON execution requires `--yes`. Restore planning is read-only and does not expose the recovery engine's private `--dry-run` implementation flag.
 
 Selective lifecycle is conservative: `stop` refuses to stop a provider while required consumers are running, and `start` refuses to invent or auto-start missing required providers. The complete [CLI reference](docs/user-docs/cli.md), [management-plane architecture](docs/architecture/management-plane.md) and [ADR-0002](docs/devel-docs/adr/0002-single-management-cli.md) describe the boundary at different levels.
 
@@ -129,12 +132,14 @@ Disaster recovery is manifest-driven. Stateful resources are backed up according
 ## Repository map
 
 ```text
-local-ai                 supported operator/automation CLI
-commands/                private management implementation
-commands/recovery/       backup and restore engines
-stack0_-_* … stack7_-_*  atomic stack implementations
-docs/                    documentation and decision records
-tests/                   automated verification
+local-ai                        supported operator/automation CLI
+src/local_ai_cli/                private management implementation package
+src/local_ai_cli/backup/         backup engine
+src/local_ai_cli/restore/        restore engine
+src/local_ai_cli/common/         shared primitives (manifests, DR archive/filesystem/postgres, render)
+stack0_-_* … stack7_-_*         atomic stack implementations
+docs/                           documentation and decision records
+tests/                          automated verification, mirroring src/local_ai_cli/
 ```
 
 The complete documentation structure is in [`docs/TOC.md`](docs/TOC.md). Behavioural traceability from requirements to implementation and tests is in [OpenSpec traceability](docs/devel-docs/openspec/traceability.md).
@@ -144,7 +149,7 @@ The complete documentation structure is in [`docs/TOC.md`](docs/TOC.md). Behavio
 The repository validation gate is:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -t .
 ```
 
 Testing conventions and qualification evidence are documented in [testing strategy](docs/devel-docs/testing.md).

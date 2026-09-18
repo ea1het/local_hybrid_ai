@@ -37,7 +37,7 @@ The earlier proposal to introduce a generic managed-restore adapter registry sol
 
 - Extend documentation-contract coverage from structural navigation to public-command coverage so every top-level `local-ai` command, including `completion`, is represented by the CLI command map and canonical documentation.
 
-The existing `tests/test_documentation_contract.py` already validates documentation-directory indexes, TOC backlinks, relative links, Mermaid fences, Gherkin scope documentation and publication hygiene; this item concerns semantic public-command coverage beyond those existing checks.
+The existing `src/local_ai_cli/common/tests/test_documentation_contract.py` already validates documentation-directory indexes, TOC backlinks, relative links, Mermaid fences, Gherkin scope documentation and publication hygiene; this item concerns semantic public-command coverage beyond those existing checks.
 
 ## P2 — Operations
 

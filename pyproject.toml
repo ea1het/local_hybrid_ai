@@ -1,0 +1,22 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local_ai_cli"
+version = "0.1.0"
+description = "Private management CLI implementation behind the ./local-ai entry point for Local Hybrid AI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MPL-2.0" }
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+local_ai_cli = ["*.json", "*.schema.json"]

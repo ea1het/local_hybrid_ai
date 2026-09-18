@@ -103,7 +103,6 @@ A reader looking for the deployed system begins with **Current state**. An opera
 - [Feature contracts](devel-docs/openspec/features/README.md)
 - [Per-stack contracts](devel-docs/openspec/stacks/README.md)
 - [AI-assisted continuity contract](a2aknowledge.md) — agent-oriented maintenance context, not an operator guide.
-- [Test-suite documentation](../tests/README.md)
 
 ## Documentation rules
 

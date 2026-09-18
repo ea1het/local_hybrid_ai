@@ -10,7 +10,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [← DR index](README.md) · [Current DR workflow](howto.md) · [Documentation map](../TOC.md)
 
-Stack4 declares `gitea-state` as a managed `gitea-native-dump` recovery resource. `dr_stack4_backup.py` implements the private strategy used by the full manifest-driven backup engine.
+Stack4 declares `gitea-state` as a managed `gitea-native-dump` recovery resource. `stack4_backup.py` implements the private strategy used by the full manifest-driven backup engine.
 
 For Stack4, dependency closure includes Stack0, so the relevant recovery point contains the required platform material and the native Gitea dump as part of the complete backup set.
 
@@ -44,7 +44,7 @@ A future change of Gitea image family, execution user, work path or configuratio
 
 ## Restore verification
 
-`dr_stack4_inspect.py` validates completed-set checksums and ZIP integrity and reports archive layout. `dr_stack4_restore_verify.py` performs an isolated reconstruction proof without touching the live Gitea runtime: it validates metadata/checksums, safely extracts the native ZIP, imports `gitea-db.sql` into a new temporary SQLite database, verifies application tables/data, discovers restored bare repositories and runs `git fsck --full --no-dangling` against each restored repository. The temporary restore tree is removed afterwards.
+`stack4_inspect.py` validates completed-set checksums and ZIP integrity and reports archive layout. `stack4_restore_verify.py` performs an isolated reconstruction proof without touching the live Gitea runtime: it validates metadata/checksums, safely extracts the native ZIP, imports `gitea-db.sql` into a new temporary SQLite database, verifies application tables/data, discovers restored bare repositories and runs `git fsck --full --no-dangling` against each restored repository. The temporary restore tree is removed afterwards.
 
 This proves that the Gitea application database and Git repository object stores represented in the native dump can be reconstructed from the persisted artifact. It deliberately does not replace the active Gitea runtime or start a second externally reachable Gitea service.
 

@@ -1503,3 +1503,13 @@ FodyWeavers.xsd
 # Additional files built by Visual Studio
 
 # End of https://www.toptal.com/developers/gitignore/api/python,react,reactnative,visualstudiocode,visualstudio,jetbrains+all,macos,windows,flask,redis,terraform,rust,node,angular,platformio,microsoftoffice,pydev,pycharm+all,pythonvanilla,jupyternotebooks,circuitpython,zsh,rust-analyzer,powershell,c,c++,cmake,premake-gmake
+
+# The generated "Backup*/" rule above (Visual Studio project-conversion backups)
+# matches this project's own src/local_ai_cli/backup/ package and its tests/backup/
+# counterpart on case-insensitive filesystems (e.g. default macOS). Un-ignore both
+# explicitly; placed last so this wins over every prior matching pattern in this
+# generated file.
+!/src/local_ai_cli/backup/
+!/src/local_ai_cli/backup/**
+!/tests/backup/
+!/tests/backup/**

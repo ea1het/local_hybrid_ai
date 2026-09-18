@@ -10,6 +10,26 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 The suite protects distinct public, architectural and internal boundaries. Apparent duplication is acceptable when tests prove different contracts or failure classes. Automated repository tests should be deterministic wherever practical; behaviour requiring real Docker, registry or application interaction additionally needs representative runtime qualification.
 
+## Test layout
+
+`local_ai_cli` is a conventional `src/`-layout Python package (`src/local_ai_cli/`, declared in `pyproject.toml` but not pip-installed — `./local-ai` and the test suite both add `src/` to `sys.path` themselves). `tests/` is a root-level sibling of `src/`, mirroring the package:
+
+```text
+tests/<package>/       tests for the same-named src/local_ai_cli/<package>
+                        (install, backup, restore, status, doctor, inventory,
+                        completion, lifecycle, upgrade) — one directory per package
+tests/common/          tests for src/local_ai_cli/common, the shared primitives
+                        (manifests, component inventory, render, stack contracts,
+                        DR archive/filesystem/postgres) used by more than one package
+tests/repository/      repository-wide contracts that exercise no local_ai_cli
+                        code at all (documentation, license headers, OpenSpec
+                        traceability, repository layout, stack-specific contracts)
+tests/test_*.py        tests for src/local_ai_cli/cli.py, the sole dispatcher
+                        that sits above every package (top-level, like cli.py itself)
+```
+
+A test lives with its owning code: package-private code is tested under that package's `tests/<package>/`; code shared by more than one package is tested under `tests/common/`; `cli.py` — which depends on every package rather than being depended on — has its tests directly under `tests/`; and anything that exercises no `local_ai_cli` code at all (repository/documentation/stack contracts) lives under `tests/repository/`.
+
 ## Test layers
 
 ### Public management contract
@@ -22,23 +42,23 @@ Installer, status, repository-layout, component-inventory and runtime-lifecycle 
 
 ### Upgrade discovery, authority, policy and execution
 
-Registry discovery, cache behaviour, tag ordering, latest-only digest handling, installation-owned version authority, adoption, compatibility policy, explicit selection, forced qualification bypass and guarded execution have separate tests. Discovery is fact gathering, selection is consent and execution is mutation; tests keep those boundaries separate.
+Registry discovery, cache behaviour, tag ordering, latest-only digest handling, installation-owned version authority, adoption, compatibility policy, explicit selection, forced qualification bypass and guarded execution have separate tests under `tests/upgrade/`. Discovery is fact gathering, selection is consent and execution is mutation; tests keep those boundaries separate.
 
 ### Shell completion
 
-`tests/test_completion.py` protects source-local candidate generation, Bash/Zsh adapter generation, shell detection, target selection and idempotent file installation. Completion must not contact Docker or registries. Candidate grammar is part of the public contract: lifecycle and upgrade use numeric stack ids, selection exposes `select`/`clear`, and policy exposes `set`/`clear` without inventing a `show` action.
+`tests/completion/test_completion.py` protects source-local candidate generation, Bash/Zsh adapter generation, shell detection, target selection and idempotent file installation. Completion must not contact Docker or registries. Candidate grammar is part of the public contract: lifecycle and upgrade use numeric stack ids, selection exposes `select`/`clear`, and policy exposes `set`/`clear` without inventing a `show` action.
 
 ### Stack contracts
 
-Stack-specific tests protect behaviour generic orchestration cannot prove, including Stack6 isolation/capability reconciliation and Stack7 model/web policy.
+Stack-specific tests (`tests/repository/test_stack1_routes.py`, `test_stack6_reconcile_ready.py`, `test_stack7_open_webui.py`, `test_stack7_web_capabilities.py`, `test_stack6_buzz_contract.py`) protect behaviour generic orchestration cannot prove, including Stack6 isolation/capability reconciliation and Stack7 model/web policy. They live under `tests/repository/` because they exercise no `local_ai_cli` implementation module — a stack directory is not a command package.
 
 ### Disaster recovery
 
-`tests/disaster_recovery/` protects archive safety, filesystem rules, backup publication, planning, PostgreSQL logical recovery, Gitea-native recovery, clean-target enforcement, historical source compatibility, drills, staging and Stack6 external-memory prerequisites.
+DR tests are split by ownership: `tests/backup/` and `tests/restore/` protect archive safety, backup publication, planning, PostgreSQL logical recovery, Gitea-native recovery, clean-target enforcement, historical source compatibility, drills and staging for their respective package; `tests/common/` protects the shared archive/filesystem/PostgreSQL-verification primitives, and `tests/repository/` covers Stack6 external-memory prerequisites that neither package owns alone.
 
 ### Specification traceability
 
-`tests/test_openspec_contracts.py` bridges tagged OpenSpec scenarios to explicit evidence. New behavioural tags require traceability entries; removed behaviour must be marked superseded/retired rather than silently disappearing.
+`tests/repository/test_openspec_contracts.py` bridges tagged OpenSpec scenarios to explicit evidence. New behavioural tags require traceability entries; removed behaviour must be marked superseded/retired rather than silently disappearing.
 
 ## Regression rule: shared runtime identity semantics
 
@@ -57,13 +77,13 @@ Use component-agnostic fixtures and mocked registry/Docker boundaries for determ
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v \
-  tests.test_status \
-  tests.test_version_sources \
-  tests.test_container_registry \
-  tests.test_registry_pinned_latest
+  tests.status.test_status \
+  tests.upgrade.test_version_sources \
+  tests.upgrade.test_container_registry \
+  tests.upgrade.test_registry_pinned_latest
 ```
 
-If public CLI output or JSON changes, include `tests.test_management_cli`. If documentation/OpenSpec changes, include documentation-contract and OpenSpec-contract tests.
+If public CLI output or JSON changes, include `tests.test_management_cli`. If documentation/OpenSpec changes, include documentation-contract and OpenSpec-contract tests (`tests.repository.test_documentation_contract`, `tests.repository.test_openspec_contracts`).
 
 ## Refactoring guidance
 
@@ -74,7 +94,7 @@ Shared fixtures and fake Docker/registry/CLI helpers are appropriate when they r
 A repository change is fully qualified only after the complete suite passes:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -t .
 ```
 
 Documentation changes must keep repository-layout, documentation-contract and OpenSpec traceability tests green. Runtime qualification must never be inferred from source-only evidence.
