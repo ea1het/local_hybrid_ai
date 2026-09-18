@@ -18,11 +18,23 @@ def json_payload(args=None):
   if rescan:component_inventory.write_snapshot(current)
  except (ComponentInventoryError,OSError) as exc:return _error(command,"INVENTORY_INVALID",str(exc))
  return {"schema_version":SCHEMA_VERSION,"command":command,"success":True,"source_fingerprint":current["source_fingerprint"],"components":current["components"],"changes":changes,"previous_snapshot":bool(previous),"snapshot_written":rescan}
+def _human_stack_id(stack):return stack[5:] if stack.startswith("stack") else stack
 def cli_text(payload):
  if not payload["success"]:return f"INVENTORY ERROR [{payload['error']['code']}]: {payload['error']['message']}"
- lines=[f"SOURCE FINGERPRINT  {payload['source_fingerprint']}",f"COMPONENTS          {len(payload['components'])}",f"PREVIOUS SNAPSHOT   {'yes' if payload['previous_snapshot'] else 'no'}",f"SNAPSHOT WRITTEN    {'yes' if payload.get('snapshot_written') else 'no'}",""]
+ headers=("STACK","COMPONENT","TYPE","CONTAINER","UPGRADE");values=[headers]
+ for c in payload["components"]:values.append((_human_stack_id(c["stack"]),c["id"],c["management_type"],c.get("container") or "-","yes" if c["upgrade_visible"] else "no"))
+ widths=[max(len(str(row[i])) for row in values) for i in range(len(headers))];lines=[]
+ for idx,row in enumerate(values):
+  lines.append("  ".join(str(v).ljust(widths[i]) for i,v in enumerate(row)))
+  if idx==0:lines.append("  ".join("-"*w for w in widths))
+ lines.append("")
+ lines.append(f"SOURCE FINGERPRINT  {payload['source_fingerprint']}")
+ lines.append(f"COMPONENTS          {len(payload['components'])}")
+ lines.append(f"PREVIOUS SNAPSHOT   {'yes' if payload['previous_snapshot'] else 'no'}")
+ lines.append(f"SNAPSHOT WRITTEN    {'yes' if payload.get('snapshot_written') else 'no'}")
+ lines.append("")
  for label in ("added","removed","changed"):
-  values=payload["changes"][label];lines.append(f"{label.upper():<8} {', '.join(values) if values else '-'}")
+  changed=payload["changes"][label];lines.append(f"{label.upper():<8} {', '.join(changed) if changed else '-'}")
  return "\n".join(lines)
 def main(args=None,*,json_output=False):
  payload=json_payload(args)
