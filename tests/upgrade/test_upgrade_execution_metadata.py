@@ -6,8 +6,9 @@
 """Contract tests for explicit upgrade execution safety metadata.
 
 The catalog must explain why inventory-only components cannot be selected, while
-selectable components must declare guarded execution. LiteLLM remains blocked
-until its migration/compatibility policy is made explicit.
+selectable components must declare guarded execution. LiteLLM is selectable and
+keeps ``recovery_required`` so a recovery point is still established before it
+mutates.
 """
 
 from __future__ import annotations
@@ -31,11 +32,11 @@ class UpgradeExecutionMetadataTests(unittest.TestCase):
                 self.assertIsInstance(execution["blocked_by"], str, key)
                 self.assertTrue(execution["blocked_by"], key)
 
-    def test_litellm_remains_non_selectable_until_migration_policy_exists(self):
+    def test_litellm_is_selectable_and_still_requires_a_recovery_point(self):
         record = upgrade.component_records()["stack3/litellm"]
-        self.assertFalse(record["selectable"])
-        self.assertEqual(record["execution"]["mode"], "inventory-only")
-        self.assertEqual(record["execution"]["blocked_by"], "migration-policy-required")
+        self.assertTrue(record["selectable"])
+        self.assertEqual(record["execution"], {"mode": "guarded", "blocked_by": None})
+        self.assertTrue(record.get("recovery_required"))
 
     def test_inventory_exposes_execution_metadata(self):
         component = upgrade.Component(

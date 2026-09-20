@@ -23,9 +23,20 @@
       "management": {"type": "versioned"},
       "upgrade": {
         "upstream": "postgres/postgres",
-        "selectable": false,
+        "selectable": true,
         "default_policy": "major-series",
-        "execution": {"mode": "inventory-only", "blocked_by": "migration-policy-required"}
+        "recovery_required": true,
+        "execution": {"mode": "guarded", "blocked_by": null},
+        "apply": {
+          "type": "postgres-major-upgrade",
+          "image_env_key": "LITELLM_POSTGRES_IMAGE",
+          "database_env": "LITELLM_DB_NAME",
+          "role_env": "LITELLM_DB_USER",
+          "data_path_env": "BASE_PATH",
+          "data_relative_path": "service_-_litellm-postgres/data",
+          "dependent_containers": ["litellm"],
+          "deploy": ["./02-postgres.sh"]
+        }
       }
     },
     {
@@ -35,10 +46,10 @@
       "management": {"type": "versioned"},
       "upgrade": {
         "upstream": "BerriAI/litellm",
-        "selectable": false,
+        "selectable": true,
         "default_policy": "manual",
         "recovery_required": true,
-        "execution": {"mode": "inventory-only", "blocked_by": "migration-policy-required"},
+        "execution": {"mode": "guarded", "blocked_by": null},
         "apply": {
           "type": "env-version",
           "env_key": "LITELLM_VERSION",

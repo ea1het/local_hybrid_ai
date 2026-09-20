@@ -5,6 +5,7 @@
 from __future__ import annotations
 from . import core as upgrade
 from . import policy as upgrade_policy
+from . import postgres_major_upgrade as upgrade_postgres_migration
 from . import registry as upgrade_registry
 def component_record(component):return upgrade.component_records()[upgrade.key(component)]
 def effective_policy(component):
@@ -20,7 +21,10 @@ def resolve_component(stack,name):
  if component is None:raise upgrade.UpgradeError(f"unknown component for {stack}: {name}",code="UPGRADE_COMPONENT_UNKNOWN")
  return component
 def apply_recipe_available(record):
- apply=record.get("apply") or {};return apply.get("type")=="env-version" and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in ("env_key","image_env_key")) and isinstance(apply.get("deploy"),list) and bool(apply.get("deploy"))
+ apply=record.get("apply") or {};has_deploy=isinstance(apply.get("deploy"),list) and bool(apply.get("deploy"))
+ if apply.get("type")=="env-version":return has_deploy and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in ("env_key","image_env_key"))
+ if apply.get("type")==upgrade_postgres_migration.TYPE:return has_deploy and all(isinstance(apply.get(k),str) and bool(apply.get(k)) for k in upgrade_postgres_migration.REQUIRED_APPLY_KEYS)
+ return False
 def effective_selectable(component):
  return upgrade_policy.effective_selectable(upgrade.runtime_root(),upgrade.key(component),component.selectable)
 def require_selection_permission(component):

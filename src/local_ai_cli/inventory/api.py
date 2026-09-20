@@ -22,7 +22,7 @@ def json_payload(args=None):
 def _human_stack_id(stack):return stack[5:] if stack.startswith("stack") else stack
 def cli_text(payload):
  if not payload["success"]:return f"INVENTORY ERROR [{payload['error']['code']}]: {payload['error']['message']}"
- headers=("STACK","COMPONENT","TYPE","CONTAINER","UPGRADE");values=[headers]
+ headers=("STACK","COMPONENT","TYPE","CONTAINER","TRACKED");values=[headers]
  for c in payload["components"]:values.append((_human_stack_id(c["stack"]),c["id"],c["management_type"],c.get("container") or "-","yes" if c["upgrade_visible"] else "no"))
  widths=[max(len(str(row[i])) for row in values) for i in range(len(headers))];lines=[]
  for idx,row in enumerate(values):

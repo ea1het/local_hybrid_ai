@@ -9,5 +9,6 @@ def public_parser():
  p.add_argument("--offline",action="store_true",help="inspect installed state without querying upstream registries")
  p.add_argument("--json",action="store_true",help="emit one machine-readable JSON document; global option owned by local-ai")
  p.add_argument("--yes",action="store_true",help="grant non-interactive consent for mutations; global option owned by local-ai")
- p.add_argument("arguments",nargs="*",metavar="ARG",help="check | STACK [COMPONENT] <select VERSION|clear> | policy STACK [COMPONENT] [set POLICY|clear] | adopt")
+ p.add_argument("--confirm-data-migration",action="store_true",help="required in addition to --yes to apply a staged selection that performs a data migration (e.g. a PostgreSQL major-version upgrade)")
+ p.add_argument("arguments",nargs="*",metavar="ARG",help="check | STACK [COMPONENT] <select VERSION|clear> | policy STACK [COMPONENT] [set POLICY|clear] | selectable STACK [COMPONENT] [enable|disable|clear] | adopt")
  return p

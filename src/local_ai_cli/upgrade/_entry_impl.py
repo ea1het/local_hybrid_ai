@@ -18,11 +18,11 @@ def select_payload(stack,component_name,version):
 def clear_payload(stack,component_name):
  component=_resolve_component(stack,component_name);plan=upgrade.load_plan();plan["selected"].pop(upgrade.key(component),None);upgrade.save_plan(plan);return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.clear","success":True,"stack":component.stack,"component":component.name}
 def selected_records():return [dict(v) for _,v in sorted(upgrade.load_plan()["selected"].items())]
-def execute_payload():
+def execute_payload(*,confirm_data_migration=False):
  selections=selected_records()
  if not selections:raise upgrade.UpgradeError("no upgrades are selected",code="UPGRADE_NOTHING_SELECTED")
  validate_selected_baselines(selections)
- try:result=upgrade_executor.execute(root=upgrade.ROOT,runtime_root=upgrade.runtime_root(),selections=selections,components=_execution_records_for(selections),plan_path=upgrade.plan_path(),quiet=True)
+ try:result=upgrade_executor.execute(root=upgrade.ROOT,runtime_root=upgrade.runtime_root(),selections=selections,components=_execution_records_for(selections),plan_path=upgrade.plan_path(),quiet=True,confirm_data_migration=confirm_data_migration)
  except upgrade_executor.UpgradeExecutionError as exc:raise upgrade.UpgradeError(str(exc),code=exc.code,recovery_point=exc.recovery_point) from exc
  return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.apply","success":True,"recovery_point":result.get("recovery_point"),"upgraded":result.get("upgraded",[]),"reverified_stacks":[f"stack{sid}" for sid in result.get("reverified_stacks",[])]}
 def json_payload(rows):return {"schema_version":upgrade.SCHEMA_VERSION,"command":"upgrade.check","success":True,"components":rows}
@@ -112,11 +112,11 @@ def error_payload(exc):
  payload={"schema_version":upgrade.SCHEMA_VERSION,"success":False,"error":{"code":exc.code,"message":str(exc)}}
  if exc.recovery_point:payload["recovery_point"]=exc.recovery_point
  return payload
-def build_payload(args,*,apply_selected=False):
+def build_payload(args,*,apply_selected=False,confirm_data_migration=False):
  try:
   if apply_selected:
    if args:raise upgrade.UpgradeError("invalid upgrade syntax",code="UPGRADE_USAGE")
-   return execute_payload(),0
+   return execute_payload(confirm_data_migration=confirm_data_migration),0
   if not args or args==["check"]:return json_payload(upgrade.inventory(query_upstream=True)),0
   if args in (["--offline"],["check","--offline"],["--offline","check"]):return json_payload(upgrade.inventory(query_upstream=False)),0
   if args and args[0]=="policy":return policy_payload(args[1:]),0

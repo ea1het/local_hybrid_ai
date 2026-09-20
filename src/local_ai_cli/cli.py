@@ -172,10 +172,11 @@ def main(argv=None):
   payload=inventory.json_payload(raw[1:]);render.render_json(payload) if context.json_output else render.render_cli(inventory.cli_text(payload));return 0 if payload["success"] else (2 if payload.get("error",{}).get("code")=="INVENTORY_USAGE" else 1)
  if raw and raw[0]=="upgrade":
   if len(raw)>=2 and raw[1]=="adopt":return _upgrade_adopt(raw[2:],context=context)
-  args,invalid=_upgrade_public_args(raw[1:])
+  tail=raw[1:];confirm_data_migration="--confirm-data-migration" in tail;tail=[a for a in tail if a!="--confirm-data-migration"]
+  args,invalid=_upgrade_public_args(tail)
   if invalid is not None:return _stack_selector_error(invalid,context=context,command="upgrade")
   if not _confirm_upgrade_mutation(args,context):return 2
-  payload,rc=upgrade_entry.build_payload(args,apply_selected=context.assume_yes and not args);return _render_upgrade(payload,rc,context)
+  payload,rc=upgrade_entry.build_payload(args,apply_selected=context.assume_yes and not args,confirm_data_migration=confirm_data_migration);return _render_upgrade(payload,rc,context)
  try:ns=build_parser().parse_args(raw)
  except CLIUsageError as exc:return _usage_error(str(exc),context=context)
  if ns.command is None:p=build_parser();p.print_help();return 0

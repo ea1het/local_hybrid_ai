@@ -9,6 +9,7 @@ from . import inventory as upgrade_inventory
 from . import policy as upgrade_policy
 from . import registry as upgrade_registry
 from . import runtime as upgrade_runtime
+from . import postgres_major_upgrade as upgrade_postgres_migration
 from local_ai_cli import backup as upgrade_backup
 
 class UpgradeExecutionError(RuntimeError):
@@ -113,7 +114,7 @@ def _stack_number(stack):
     if not stack.startswith("stack") or not stack[5:].isdigit():raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG",f"invalid stack id: {stack}")
     return int(stack[5:])
 def _prepared(root,manifest):return (root/manifest["directory"]/".lock").is_file()
-def execute(*,root:Path,runtime_root:Path,selections:list[dict],components:dict[str,dict],plan_path:Path,quiet:bool=False)->dict:
+def execute(*,root:Path,runtime_root:Path,selections:list[dict],components:dict[str,dict],plan_path:Path,quiet:bool=False,confirm_data_migration:bool=False)->dict:
     if not selections:raise UpgradeExecutionError("UPGRADE_NOTHING_SELECTED","no upgrades are selected")
     if os.geteuid()!=0:raise UpgradeExecutionError("UPGRADE_ROOT_REQUIRED","upgrade execution requires root")
     env_path=root/".env"
@@ -128,11 +129,16 @@ def execute(*,root:Path,runtime_root:Path,selections:list[dict],components:dict[
         current,target=selection.get("current_at_selection"),selection.get("version")
         if not isinstance(current,str) or not isinstance(target,str):raise UpgradeExecutionError("UPGRADE_PLAN_INVALID",f"selected versions are invalid: {component_key}")
         if not upgrade_policy.target_supported(effective,current,target):raise UpgradeExecutionError("UPGRADE_TARGET_UNSUPPORTED",f"selected target {target} is not permitted by {effective} policy for {component_key}")
-        apply=component.get("apply")
-        if not isinstance(apply,dict) or apply.get("type")!="env-version":raise UpgradeExecutionError("UPGRADE_COMPONENT_NOT_EXECUTABLE",f"component has no safe executor: {component_key}")
-        env_key=apply.get("env_key")
-        if not isinstance(env_key,str) or not env_key:raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG",f"component has invalid env_key: {component_key}")
-        env_updates[env_key]=selection["version"]; affected_stacks.add(_stack_number(selection["stack"])); recovery_required=recovery_required or bool(component.get("recovery_required",False)); image_ref=_target_image_ref(component_key,component,selection,env_values); _verify_selected_digest(component_key,image_ref,selection); target_images.append(image_ref)
+        apply=component.get("apply");apply_type=apply.get("type") if isinstance(apply,dict) else None
+        if apply_type=="env-version":
+            env_key=apply.get("env_key")
+            if not isinstance(env_key,str) or not env_key:raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG",f"component has invalid env_key: {component_key}")
+            env_updates[env_key]=selection["version"]
+        elif apply_type==upgrade_postgres_migration.TYPE:
+            if len(selections)!=1:raise UpgradeExecutionError("UPGRADE_DATA_MIGRATION_MUST_BE_ISOLATED",f"{component_key} performs a data migration and must be applied alone, not combined with other selections")
+            if not confirm_data_migration:raise UpgradeExecutionError("UPGRADE_DATA_MIGRATION_CONFIRMATION_REQUIRED",f"{component_key} requires --confirm-data-migration")
+        else:raise UpgradeExecutionError("UPGRADE_COMPONENT_NOT_EXECUTABLE",f"component has no safe executor: {component_key}")
+        affected_stacks.add(_stack_number(selection["stack"])); recovery_required=recovery_required or bool(component.get("recovery_required",False)); image_ref=_target_image_ref(component_key,component,selection,env_values); _verify_selected_digest(component_key,image_ref,selection); target_images.append(image_ref)
     for image_ref in target_images:_preflight_target_image(root,image_ref)
     recovery_point=_recovery_point() if recovery_required else None
     try:
@@ -140,7 +146,11 @@ def execute(*,root:Path,runtime_root:Path,selections:list[dict],components:dict[
         for sid in sorted(affected_stacks):
             entry=lifecycle["stacks"][str(sid)]; selected_for_stack=[s for s in selections if _stack_number(s["stack"])==sid]
             for selection in selected_for_stack:
-                component=components[f"{selection['stack']}/{selection['component']}"]; deploy=component["apply"].get("deploy")
+                component=components[f"{selection['stack']}/{selection['component']}"];apply=component["apply"]
+                if apply.get("type")==upgrade_postgres_migration.TYPE:
+                    upgrade_postgres_migration.execute(root=root,runtime_root=runtime_root,stack_directory=entry["directory"],component_key=f"{selection['stack']}/{selection['component']}",apply=apply,container=component["container"],target_image_ref=selection["target_image"],env_path=env_path,env_values=env_values,quiet=quiet)
+                    continue
+                deploy=apply.get("deploy")
                 if not isinstance(deploy,list) or not deploy:raise UpgradeExecutionError("UPGRADE_INTERNAL_CONFIG",f"component has no targeted deploy command: {selection['stack']}/{selection['component']}")
                 _run_commands(root,entry["directory"],[deploy],quiet=quiet)
             _wait_ready(root,entry["required_containers"]); _run_commands(root,entry["directory"],entry.get("reconcile",[]),quiet=quiet); _wait_ready(root,entry["required_containers"]); _run_commands(root,entry["directory"],entry.get("verify",[]),quiet=quiet)

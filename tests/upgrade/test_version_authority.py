@@ -13,9 +13,10 @@ from local_ai_cli.upgrade import registry as upgrade_registry
 from local_ai_cli.upgrade import selection as upgrade_selection
 class VersionAuthorityTests(unittest.TestCase):
  def test_selectability_matches_runtime_qualification_state(self):
-  records=upgrade.component_records();redis=records["stack2/redis"];self.assertTrue(redis.get("selectable",True));self.assertEqual(redis["execution"],{"mode":"guarded","blocked_by":None});self.assertEqual(redis["apply"]["type"],"env-version")
-  for key in ("stack1/haproxy","stack2/rabbitmq","stack5/dockhand"):
-   record=records[key];self.assertFalse(record.get("selectable",True),key);self.assertEqual(record["execution"],{"mode":"inventory-only","blocked_by":"executor-not-qualified"});self.assertEqual(record["apply"]["type"],"env-version")
+  records=upgrade.component_records();exceptions={"stack0/platform-foundation":"non-versioned-component","stack4/runner":"local-managed","stack6/sandbox":"local-build"}
+  for key,record in records.items():
+   if key in exceptions:self.assertFalse(record.get("selectable",True),key);self.assertEqual(record["execution"]["blocked_by"],exceptions[key],key)
+   else:self.assertTrue(record.get("selectable",True),key);self.assertEqual(record["execution"],{"mode":"guarded","blocked_by":None},key)
  def test_catalog_no_longer_uses_tracked_compose_pin_as_block_reason(self):
   for key,record in upgrade.component_records().items():self.assertNotEqual(record["execution"].get("blocked_by"),"tracked-compose-pin",key)
  def test_compose_baselines_pin_pre_adoption_runtime_versions(self):

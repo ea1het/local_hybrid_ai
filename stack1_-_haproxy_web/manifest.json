@@ -17,10 +17,10 @@
       "management": {"type": "versioned"},
       "upgrade": {
         "upstream": "haproxy/haproxy",
-        "selectable": false,
+        "selectable": true,
         "default_policy": "minor-series",
         "recovery_required": false,
-        "execution": {"mode": "inventory-only", "blocked_by": "executor-not-qualified"},
+        "execution": {"mode": "guarded", "blocked_by": null},
         "apply": {
           "type": "env-version",
           "env_key": "HAPROXY_VERSION",

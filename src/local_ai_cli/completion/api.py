@@ -34,7 +34,7 @@ def _candidates(before):
  if command=="inventory":return _with_globals(["rescan"] if not tail else [])
  if command=="install":return _with_globals([*_stack_ids(),"--plan","--dry-run","--target","--reconcile"])
  if command=="upgrade":
-  if not tail:return _with_globals([*_stack_ids(),"adopt","check","--offline","policy","selectable"])
+  if not tail:return _with_globals([*_stack_ids(),"adopt","check","--offline","--confirm-data-migration","policy","selectable"])
   if tail[0]=="adopt":return _with_globals([])
   if tail[0] in {"--offline","check"}:return _with_globals([])
   if tail[0]=="policy":

@@ -17,9 +17,9 @@
       "management": {"type": "versioned"},
       "upgrade": {
         "upstream": "go-gitea/gitea",
-        "selectable": false,
+        "selectable": true,
         "default_policy": "minor-series",
-        "execution": {"mode": "inventory-only", "blocked_by": "migration-policy-required"}
+        "execution": {"mode": "guarded", "blocked_by": null}
       }
     },
     {

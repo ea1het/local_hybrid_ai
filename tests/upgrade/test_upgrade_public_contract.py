@@ -45,7 +45,7 @@ class UpgradePublicContractTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp:cp=self.run_cli("upgrade","3","select","1.100.0","--yes",runtime_root=tmp)
   self.assertNotEqual(cp.returncode,0);self.assertIn("multiple components",cp.stderr)
  def test_nonselectable_component_is_rejected(self):
-  with tempfile.TemporaryDirectory() as tmp:cp=self.run_cli("upgrade","3","postgresql","select","17.11-alpine3.24","--yes",runtime_root=tmp)
+  with tempfile.TemporaryDirectory() as tmp:cp=self.run_cli("upgrade","4","runner","select","4","--yes",runtime_root=tmp)
   self.assertNotEqual(cp.returncode,0);self.assertIn("UPGRADE_COMPONENT_NOT_SELECTABLE",cp.stderr)
  def test_upgrade_yes_never_auto_selects_available_versions(self):
   with tempfile.TemporaryDirectory() as tmp:cp=self.run_cli("upgrade","--yes",runtime_root=tmp)
