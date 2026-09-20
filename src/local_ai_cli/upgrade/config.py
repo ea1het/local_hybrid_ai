@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
-"""Core upgrade inventory, plan persistence and component metadata helpers."""
+"""Upgrade domain configuration: catalog, inventory and component metadata owned by the upgrade package."""
 from __future__ import annotations
 import os,time
 from dataclasses import dataclass
 from pathlib import Path
 from local_ai_cli.common import component_inventory
-from . import cache as upgrade_cache
-from . import catalog as upgrade_catalog
-from . import inventory as upgrade_inventory
-from . import plan as upgrade_plan
-from . import policy as upgrade_policy
-from . import registry as upgrade_registry
-from . import runtime as upgrade_runtime
+from . import _cache as upgrade_cache
+from . import _catalog as upgrade_catalog
+from . import _inventory as upgrade_inventory
+from . import _plan as upgrade_plan
+from . import _policy as upgrade_policy
+from . import _registry as upgrade_registry
+from . import _runtime as upgrade_runtime
 ROOT=Path(__file__).resolve().parents[3]
 SCHEMA_VERSION="1";REGISTRY_CACHE_SCHEMA_VERSION=upgrade_cache.SCHEMA_VERSION;REGISTRY_CACHE_DEFAULT_TTL_SECONDS=upgrade_cache.DEFAULT_TTL_SECONDS;REGISTRY_CACHE_MAX_ENTRIES=upgrade_cache.MAX_ENTRIES
 class UpgradeError(RuntimeError):
