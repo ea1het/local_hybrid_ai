@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 
 from local_ai_cli import upgrade
-from local_ai_cli.upgrade import policy as upgrade_policy
+from local_ai_cli.upgrade import _policy as upgrade_policy
 
 
 class UpgradePolicyTests(unittest.TestCase):

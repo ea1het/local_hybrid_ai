@@ -6,7 +6,7 @@
 import importlib.util,sys,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]/"src"/"local_ai_cli"/"restore"
-MODULE_PATH=ROOT/"stack6_verify.py"
+MODULE_PATH=ROOT/"_stack6_verify.py"
 SPEC=importlib.util.spec_from_file_location("dr_stack6_verify_tested",MODULE_PATH);mod=importlib.util.module_from_spec(SPEC);assert SPEC.loader is not None;sys.modules[SPEC.name]=mod
 if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 SPEC.loader.exec_module(mod)

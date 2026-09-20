@@ -4,7 +4,7 @@
 """Package-private upgrade inventory presentation helpers."""
 from __future__ import annotations
 import re
-from . import registry as upgrade_registry
+from . import _registry as upgrade_registry
 def version_from_image(image:str|None)->str:
  if not image:return "n/a"
  if "@sha256:" in image:

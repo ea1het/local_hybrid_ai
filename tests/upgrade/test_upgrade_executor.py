@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from local_ai_cli.upgrade import executor as upgrade_executor, registry as upgrade_registry
+from local_ai_cli.upgrade import engine as upgrade_executor, _registry as upgrade_registry
 
 
 class UpgradeExecutorSafetyTests(unittest.TestCase):
@@ -52,7 +52,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             "nousresearch/hermes-agent:v2026.9.11",
         )
 
-    @mock.patch("local_ai_cli.upgrade.executor.subprocess.run")
+    @mock.patch("local_ai_cli.upgrade.engine.subprocess.run")
     def test_target_image_preflight_is_read_only_manifest_inspection(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")
         with tempfile.TemporaryDirectory() as tmp:
@@ -68,7 +68,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
         )
         self.assertFalse(kwargs["check"])
 
-    @mock.patch("local_ai_cli.upgrade.executor.subprocess.run")
+    @mock.patch("local_ai_cli.upgrade.engine.subprocess.run")
     def test_target_image_preflight_rejects_missing_image(self, run):
         run.return_value = subprocess.CompletedProcess([], 1, "", "manifest unknown")
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,7 +79,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
         self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_NOT_AVAILABLE")
 
-    @mock.patch("local_ai_cli.upgrade.executor.upgrade_registry.manifest_probe")
+    @mock.patch("local_ai_cli.upgrade.engine.upgrade_registry.manifest_probe")
     def test_immutable_target_rejects_moved_tag(self, probe):
         probe.return_value = upgrade_registry.RemoteProbe("sha256:bbbb", "ok")
         with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
@@ -93,7 +93,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_MOVED")
 
-    @mock.patch("local_ai_cli.upgrade.executor.upgrade_backup.backup_payload")
+    @mock.patch("local_ai_cli.upgrade.engine.upgrade_backup.backup_payload")
     def test_recovery_point_consumes_backup_set_result_field(self, backup_payload):
         backup_payload.return_value = {
             "schema_version": "1",
@@ -105,7 +105,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
         self.assertEqual(result, "/opt/local-hybrid-ai-backups/backup-test")
         backup_payload.assert_called_once_with()
 
-    @mock.patch("local_ai_cli.upgrade.executor.upgrade_backup.backup_payload")
+    @mock.patch("local_ai_cli.upgrade.engine.upgrade_backup.backup_payload")
     def test_recovery_point_surfaces_backup_engine_failure(self, backup_payload):
         backup_payload.return_value = {
             "schema_version": "1",
@@ -132,7 +132,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_NOTHING_SELECTED")
 
-    @mock.patch("local_ai_cli.upgrade.executor.os.geteuid", return_value=0)
+    @mock.patch("local_ai_cli.upgrade.engine.os.geteuid", return_value=0)
     def test_executor_revalidates_policy_before_target_preflight_or_mutation(self, _geteuid):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -202,7 +202,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             "target_digest": "sha256:" + "a" * 64,
         }
 
-    @mock.patch("local_ai_cli.upgrade.executor.os.geteuid", return_value=0)
+    @mock.patch("local_ai_cli.upgrade.engine.os.geteuid", return_value=0)
     def test_data_migration_selection_must_be_isolated(self, _geteuid):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -219,7 +219,7 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_DATA_MIGRATION_MUST_BE_ISOLATED")
 
-    @mock.patch("local_ai_cli.upgrade.executor.os.geteuid", return_value=0)
+    @mock.patch("local_ai_cli.upgrade.engine.os.geteuid", return_value=0)
     def test_data_migration_requires_explicit_confirmation(self, _geteuid):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -235,15 +235,15 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_DATA_MIGRATION_CONFIRMATION_REQUIRED")
 
-    @mock.patch("local_ai_cli.upgrade.executor.os.geteuid", return_value=0)
-    @mock.patch("local_ai_cli.upgrade.executor.upgrade_postgres_migration.execute")
-    @mock.patch("local_ai_cli.upgrade.executor.subprocess.run")
-    @mock.patch("local_ai_cli.upgrade.executor.upgrade_registry.manifest_probe")
-    @mock.patch("local_ai_cli.upgrade.executor._version_from_image", return_value="17.11-alpine")
-    @mock.patch("local_ai_cli.upgrade.executor._running_image", return_value="postgres:17.11-alpine")
-    @mock.patch("local_ai_cli.upgrade.executor._run_commands")
-    @mock.patch("local_ai_cli.upgrade.executor._wait_ready")
-    @mock.patch("local_ai_cli.upgrade.executor._load_manifests", return_value={3: {"provides": [], "requires": [], "optional": [], "consumes": [], "optional_consumes": []}})
+    @mock.patch("local_ai_cli.upgrade.engine.os.geteuid", return_value=0)
+    @mock.patch("local_ai_cli.upgrade.engine.upgrade_postgres_migration.execute")
+    @mock.patch("local_ai_cli.upgrade.engine.subprocess.run")
+    @mock.patch("local_ai_cli.upgrade.engine.upgrade_registry.manifest_probe")
+    @mock.patch("local_ai_cli.upgrade.engine._version_from_image", return_value="17.11-alpine")
+    @mock.patch("local_ai_cli.upgrade.engine._running_image", return_value="postgres:17.11-alpine")
+    @mock.patch("local_ai_cli.upgrade.engine._run_commands")
+    @mock.patch("local_ai_cli.upgrade.engine._wait_ready")
+    @mock.patch("local_ai_cli.upgrade.engine._load_manifests", return_value={3: {"provides": [], "requires": [], "optional": [], "consumes": [], "optional_consumes": []}})
     def test_data_migration_dispatches_to_dedicated_module(
         self, _load_manifests, _wait_ready, _run_commands, _running_image, _version_from_image, manifest_probe, subprocess_run, migration_execute, _geteuid,
     ):

@@ -7,7 +7,7 @@ from __future__ import annotations
 import sys
 from local_ai_cli.common import render
 from local_ai_cli.common.component_inventory import ComponentInventoryError
-from . import component_inventory
+from . import _component_inventory as component_inventory
 SCHEMA_VERSION="1"
 def _error(command,code,message):return {"schema_version":SCHEMA_VERSION,"command":command,"success":False,"error":{"code":code,"message":message}}
 def json_payload(args=None):

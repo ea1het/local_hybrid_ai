@@ -28,14 +28,13 @@ class RestorePackageBoundaryTests(unittest.TestCase):
     def test_restore_implementation_is_package_owned(self):
         root = Path(inspect.getfile(api)).resolve().parent
         for name in (
-            "planner.py",
-            "restore_all.py",
-            "restore_drill.py",
-            "restore_live_service.py",
-            "restore_managed.py",
-            "restore_resume.py",
-            "restore_stage.py",
-            "stack4_dump_validation.py",
+            "_planner.py",
+            "_restore_all.py",
+            "_restore_drill.py",
+            "_restore_live_service.py",
+            "_restore_managed.py",
+            "_restore_resume.py",
+            "_restore_stage.py",
         ):
             self.assertTrue((root / name).is_file(), name)
 
@@ -46,7 +45,7 @@ class RestorePackageBoundaryTests(unittest.TestCase):
 
     def test_restore_dr_uses_repository_root(self):
         root = Path(inspect.getfile(api)).resolve().parent
-        source = (root / "planner.py").read_text(encoding="utf-8")
+        source = (root / "_planner.py").read_text(encoding="utf-8")
         self.assertIn('Path(__file__).resolve().parents[3]', source)
         self.assertIn('ROOT / "stack0_-_platform" / "manifests.py"', source)
 

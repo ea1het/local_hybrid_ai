@@ -20,14 +20,14 @@ ROOT = Path(__file__).resolve().parents[2] / "src" / "local_ai_cli" / "restore"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import restore_drill
+import _restore_drill as restore_drill
 
 
 class RestoreDrillTests(unittest.TestCase):
-    @mock.patch("restore_drill._verify_external_prerequisites", return_value=1)
-    @mock.patch("restore_drill.restore_managed.run_managed_restore")
-    @mock.patch("restore_drill.restore_stage.stage_restore_all")
-    @mock.patch("restore_drill.restore_all.plan_restore_all")
+    @mock.patch("_restore_drill._verify_external_prerequisites", return_value=1)
+    @mock.patch("_restore_drill.restore_managed.run_managed_restore")
+    @mock.patch("_restore_drill.restore_stage.stage_restore_all")
+    @mock.patch("_restore_drill.restore_all.plan_restore_all")
     def test_orchestrates_stage_managed_external_in_order(self, plan, stage, managed, external):
         plan.return_value = SimpleNamespace(source_commit="a" * 40, checksums_verified=5)
         stage.return_value = SimpleNamespace(
@@ -52,8 +52,8 @@ class RestoreDrillTests(unittest.TestCase):
         managed.assert_called_once_with(Path("/backup"), Path("/isolated"))
         external.assert_called_once_with(Path("/backup"), Path("/isolated/source/.env"))
 
-    @mock.patch("restore_drill.stack6_verify.verify_stack6_memory")
-    @mock.patch("restore_drill.restore_all.read_completed_backup_set")
+    @mock.patch("_restore_drill.stack6_verify.verify_stack6_memory")
+    @mock.patch("_restore_drill.restore_all.read_completed_backup_set")
     def test_external_git_verification_is_strategy_driven(self, read_meta, verify):
         read_meta.return_value = {
             "prerequisites": [
@@ -64,7 +64,7 @@ class RestoreDrillTests(unittest.TestCase):
         self.assertEqual(count, 1)
         verify.assert_called_once_with(Path("/stage/.env"))
 
-    @mock.patch("restore_drill.restore_all.read_completed_backup_set")
+    @mock.patch("_restore_drill.restore_all.read_completed_backup_set")
     def test_unknown_external_strategy_fails_closed(self, read_meta):
         read_meta.return_value = {
             "prerequisites": [

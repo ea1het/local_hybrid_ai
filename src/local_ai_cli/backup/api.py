@@ -39,9 +39,9 @@ def _failure(exc: Exception) -> dict[str, object]:
 
 def backup_payload(destination: str | Path | None = None) -> dict[str, object]:
     try:
-        planner = _load("planner")
+        planner = _load("_planner")
         planner.MANIFEST_TOOL = PROJECT_ROOT / "stack0_-_platform" / "manifests.py"
-        backup = _load("backup_all")
+        backup = _load("engine")
         backup.ENV_SOURCE = PROJECT_ROOT / ".env"
         root, _ = planner.resolve_backup_root(str(destination) if destination is not None else None)
         return _envelope(backup.execute_backup_all(root).as_dict())

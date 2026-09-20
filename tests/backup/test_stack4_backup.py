@@ -15,8 +15,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
-import stack4_backup
-import stack4_inspect
+import _stack4_backup as stack4_backup
+import _stack4_inspect as stack4_inspect
 
 
 class Stack4BackupAdapterTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class Stack4BackupAdapterTests(unittest.TestCase):
 
     def test_validate_zip_member_rejects_unsafe_paths(self):
         for name in ("/absolute", "../escape", "x/../../escape", "bad\\path"):
-            with self.assertRaises(stack4_backup.Stack4BackupError):
+            with self.assertRaises(stack4_backup.gitea_archive.GiteaDumpError):
                 stack4_backup.validate_zip_member(name)
 
     def test_validate_gitea_dump_checks_zip_integrity(self):
@@ -43,7 +43,7 @@ class Stack4BackupAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "gitea.zip"
             path.write_bytes(b"not a zip")
-            with self.assertRaises(stack4_backup.Stack4BackupError):
+            with self.assertRaises(stack4_backup.gitea_archive.GiteaDumpError):
                 stack4_backup.validate_gitea_dump(path)
 
     def test_classify_members_finds_recovery_categories(self):

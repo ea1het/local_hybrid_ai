@@ -21,7 +21,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-import planner
+import _planner as planner
 from local_ai_cli.common import archive
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

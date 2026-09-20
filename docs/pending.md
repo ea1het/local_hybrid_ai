@@ -21,7 +21,6 @@ Only active or intentionally deferred work belongs here. Completed work and impl
 - Reject boolean `schema_version` explicitly rather than accepting Python's `True == 1` equivalence.
 - Ensure every adapter completes fallible integrity checks before terminal atomic publication.
 - Add Stack4 helper failure-path tests covering dump, restart, health, helper cleanup and combined failure.
-- Decide the fate of `restore/stack4_dump_validation.py`: it is not imported by any runtime code path and is referenced only by a package-boundary filename listing in tests. Either wire it to a real entry point or remove it; it must not remain a naming-only fixture.
 - Reassess remaining compatibility project-root/symlink assumptions and replace them only where a concrete recovery path still depends on them.
 - Normalize global-artifact access around `resource_id` where current recovery contracts still expose inconsistent access patterns.
 - Keep bounded/resumable recovery fail-closed; managed state is never blindly re-imported after a late failure.

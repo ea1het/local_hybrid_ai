@@ -8,9 +8,9 @@ import io,stat,tempfile,unittest
 from pathlib import Path
 from unittest import mock
 from local_ai_cli import upgrade
-from local_ai_cli.upgrade import adopt as upgrade_adopt
-from local_ai_cli.upgrade import registry as upgrade_registry
-from local_ai_cli.upgrade import selection as upgrade_selection
+from local_ai_cli.upgrade import _adopt as upgrade_adopt
+from local_ai_cli.upgrade import _registry as upgrade_registry
+from local_ai_cli.upgrade import _selection as upgrade_selection
 class VersionAuthorityTests(unittest.TestCase):
  def test_selectability_matches_runtime_qualification_state(self):
   records=upgrade.component_records();exceptions={"stack0/platform-foundation":"non-versioned-component","stack4/runner":"local-managed","stack6/sandbox":"local-build"}

@@ -15,9 +15,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import planner
-import restore_all
-import stack4_restore_verify
+import _planner as planner
+import _restore_all as restore_all
+import _stack4_restore_verify as stack4_restore_verify
 
 POSTGRES_PREFIX = "local-hybrid-ai-dr-postgres-"
 GITEA_PREFIX = "local-hybrid-ai-dr-gitea-"

@@ -8,8 +8,8 @@ import tempfile,unittest
 from pathlib import Path
 from unittest import mock
 from local_ai_cli import upgrade
-from local_ai_cli.upgrade import policy as upgrade_policy
-from local_ai_cli.upgrade import selection as upgrade_selection
+from local_ai_cli.upgrade import _policy as upgrade_policy
+from local_ai_cli.upgrade import _selection as upgrade_selection
 class UpgradeSelectableOverrideTests(unittest.TestCase):
  def _component(self,*,selectable=False):return upgrade.Component(stack="stack5",name="dockhand",service="dockhand",container="dockhand",compose="stack5_-_dockhand/docker-compose.yml",upstream="Finsys/dockhand",selectable=selectable)
  def _record(self,*,has_apply=True):

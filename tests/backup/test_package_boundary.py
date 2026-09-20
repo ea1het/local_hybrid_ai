@@ -12,7 +12,7 @@ BACKUP_DIR = PACKAGES_ROOT / "backup"
 class BackupPackageBoundaryTests(unittest.TestCase):
     def test_backup_package_owns_execution_graph(self):
         required = {
-            "planner.py", "stack3_backup.py", "stack4_backup.py", "backup_all.py",
+            "_planner.py", "_stack3_backup.py", "_stack4_backup.py", "engine.py",
         }
         self.assertTrue(required.issubset({p.name for p in BACKUP_DIR.iterdir()}))
 

@@ -17,7 +17,7 @@ import shutil
 import sys
 from pathlib import Path
 
-import planner
+import _planner as planner
 from local_ai_cli.common import archive
 from local_ai_cli.common import postgres as pg
 

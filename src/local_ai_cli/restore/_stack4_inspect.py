@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from local_ai_cli.common import archive
-import stack4_backup
+from local_ai_cli.common import gitea_archive
 
 class Stack4InspectError(RuntimeError): pass
 
@@ -23,7 +23,7 @@ def read_metadata(backup_set: Path) -> dict:
         metadata=json.loads(path.read_text(encoding="utf-8")); archive.validate_completed_metadata(metadata)
     except (OSError,json.JSONDecodeError,archive.ArchiveBackupError) as exc:
         raise Stack4InspectError(f"cannot read valid backup.json: {exc}") from exc
-    matches=[a for a in metadata.get("artifacts",[]) if a.get("stack_id")==4 and a.get("resource_id")==stack4_backup.GITEA_RESOURCE_ID and a.get("strategy")=="gitea-native-dump"]
+    matches=[a for a in metadata.get("artifacts",[]) if a.get("stack_id")==4 and a.get("resource_id")==gitea_archive.GITEA_RESOURCE_ID and a.get("strategy")=="gitea-native-dump"]
     if len(matches)!=1:
         raise Stack4InspectError("backup set must contain exactly one Stack4 Gitea native dump")
     return metadata
@@ -58,16 +58,16 @@ def classify_members(names:list[str])->dict[str,int]:
 
 def inspect_backup_set(backup_set:Path)->dict[str,object]:
     metadata=read_metadata(backup_set); verify_checksums(backup_set)
-    artifact=next(a for a in metadata["artifacts"] if a.get("stack_id")==4 and a.get("resource_id")==stack4_backup.GITEA_RESOURCE_ID)
+    artifact=next(a for a in metadata["artifacts"] if a.get("stack_id")==4 and a.get("resource_id")==gitea_archive.GITEA_RESOURCE_ID)
     dump_path=backup_set/artifact["relative_path"]
     if not dump_path.is_file() or dump_path.stat().st_size!=artifact["size_bytes"]: raise Stack4InspectError("Gitea artifact is missing or has wrong size")
     if archive.sha256_file(dump_path)!=artifact["sha256"]: raise Stack4InspectError("Gitea artifact SHA-256 does not match metadata")
-    names=stack4_backup.validate_gitea_dump(dump_path); counts=classify_members(names); top_levels=sorted({Path(name).parts[0] for name in names if Path(name).parts})
+    names=gitea_archive.validate_gitea_dump(dump_path); counts=classify_members(names); top_levels=sorted({Path(name).parts[0] for name in names if Path(name).parts})
     return {"backup_set":str(backup_set),"gitea_dump":artifact["relative_path"],"zip_members":len(names),"top_level_entries":top_levels[:50],"categories":counts,"checksums_valid":True,"zip_integrity_valid":True,"live_runtime_modified":False,"container_restarted":False}
 def main()->int:
     parser=argparse.ArgumentParser(); parser.add_argument("backup_set"); parser.add_argument("--json",action="store_true"); args=parser.parse_args()
     try: result=inspect_backup_set(Path(args.backup_set))
-    except (Stack4InspectError,stack4_backup.Stack4BackupError,archive.ArchiveBackupError,OSError) as exc: print(f"ERROR: {exc}",file=sys.stderr); return 1
+    except (Stack4InspectError,gitea_archive.GiteaDumpError,archive.ArchiveBackupError,OSError) as exc: print(f"ERROR: {exc}",file=sys.stderr); return 1
     print(json.dumps(result,indent=2,sort_keys=True) if args.json else f"DR Stack4 Gitea native dump inspection\n- backup set: {result['backup_set']}\n- ZIP members: {result['zip_members']}\n- checksums: PASS\n- ZIP integrity: PASS\n- live runtime modified: no\n- container restarted: no")
     return 0
 if __name__=="__main__": raise SystemExit(main())

@@ -10,8 +10,8 @@ import unittest
 from pathlib import Path
 
 from local_ai_cli.common import archive
-from local_ai_cli.restore import postgres_artifact_verify
-from local_ai_cli.restore import stack4_inspect
+from local_ai_cli.restore import _postgres_artifact_verify as postgres_artifact_verify
+from local_ai_cli.restore import _stack4_inspect as stack4_inspect
 
 
 class FullBackupSetCompatibilityTests(unittest.TestCase):

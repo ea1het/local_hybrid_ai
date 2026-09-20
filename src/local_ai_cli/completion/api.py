@@ -6,7 +6,7 @@ from __future__ import annotations
 import os,re
 from pathlib import Path
 from local_ai_cli.common import manifests
-from . import upgrade_components
+from . import _upgrade_components as upgrade_components
 TOP_LEVEL=("backup","completion","doctor","install","inventory","restore","start","status","stop","upgrade");GLOBAL_OPTIONS=("--json","--yes");RESTORE_ACTIONS=("apply","drill","list-backup-sets","plan","resume");BACKUP_SET_RE=re.compile(r"^backup-\d{8}T\d{6}Z$");SCHEMA_VERSION="1"
 def _stack_ids():return [str(sid) for sid in sorted(manifests.all_manifests())]
 def _backup_sets():

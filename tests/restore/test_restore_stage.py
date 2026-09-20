@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2] / "src" / "local_ai_cli" / "restore"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import restore_stage
+import _restore_stage as restore_stage
 
 
 class RestoreStageTests(unittest.TestCase):
@@ -65,10 +65,10 @@ class RestoreStageTests(unittest.TestCase):
             self.assertGreater(count, 0)
             self.assertEqual((destination / "pki" / "cert.pem").read_text(encoding="utf-8"), "cert")
 
-    @mock.patch("restore_stage.planner.load_manifests")
-    @mock.patch("restore_stage.restore_all.read_completed_backup_set")
-    @mock.patch("restore_stage.restore_all.plan_restore_all")
-    @mock.patch("restore_stage._materialize_source")
+    @mock.patch("_restore_stage.planner.load_manifests")
+    @mock.patch("_restore_stage.restore_all.read_completed_backup_set")
+    @mock.patch("_restore_stage.restore_all.plan_restore_all")
+    @mock.patch("_restore_stage._materialize_source")
     def test_stage_restores_env_requirement_and_pki(self, materialize, plan_restore, read_metadata, load_manifests):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

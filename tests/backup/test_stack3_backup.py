@@ -16,8 +16,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import stack3_backup
-import stack3_restore_verify
+import _stack3_backup as stack3_backup
+import _stack3_restore_verify as stack3_restore_verify
 
 
 class Stack3BackupAdapterTests(unittest.TestCase):

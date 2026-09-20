@@ -5,11 +5,11 @@
 from __future__ import annotations
 import json, os, subprocess, time
 from pathlib import Path
-from . import inventory as upgrade_inventory
-from . import policy as upgrade_policy
-from . import registry as upgrade_registry
-from . import runtime as upgrade_runtime
-from . import postgres_major_upgrade as upgrade_postgres_migration
+from . import _inventory as upgrade_inventory
+from . import _policy as upgrade_policy
+from . import _registry as upgrade_registry
+from . import _runtime as upgrade_runtime
+from . import _postgres_major_upgrade as upgrade_postgres_migration
 from local_ai_cli import backup as upgrade_backup
 
 class UpgradeExecutionError(RuntimeError):

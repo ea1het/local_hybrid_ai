@@ -32,8 +32,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from local_ai_cli.common import archive
-import stack4_backup
-import stack4_inspect
+from local_ai_cli.common import gitea_archive
+import _stack4_inspect as stack4_inspect
 
 MAX_UNCOMPRESSED_BYTES = 10 * 1024 * 1024 * 1024
 
@@ -80,11 +80,11 @@ def safe_zip_kind(info: zipfile.ZipInfo) -> str:
 
 
 def safe_extract_gitea_dump(archive_path: Path, destination: Path) -> list[str]:
-    names = stack4_backup.validate_gitea_dump(archive_path)
+    names = gitea_archive.validate_gitea_dump(archive_path)
     total = 0
     with zipfile.ZipFile(archive_path, "r") as zf:
         for info in zf.infolist():
-            stack4_backup.validate_zip_member(info.filename)
+            gitea_archive.validate_zip_member(info.filename)
             total += info.file_size
             if total > MAX_UNCOMPRESSED_BYTES:
                 raise Stack4RestoreVerifyError("Gitea dump exceeds isolated restore size limit")
@@ -165,7 +165,7 @@ def verify_backup_restore(backup_set: Path) -> RestoreVerification:
     artifact = next(
         a for a in metadata["artifacts"]
         if a.get("stack_id") == 4
-        and a.get("resource_id") == stack4_backup.GITEA_RESOURCE_ID
+        and a.get("resource_id") == gitea_archive.GITEA_RESOURCE_ID
         and a.get("strategy") == "gitea-native-dump"
     )
     archive_path = backup_set / artifact["relative_path"]
@@ -211,7 +211,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = verify_backup_restore(Path(args.backup_set))
-    except (Stack4RestoreVerifyError, stack4_inspect.Stack4InspectError, stack4_backup.Stack4BackupError, archive.ArchiveBackupError, OSError) as exc:
+    except (Stack4RestoreVerifyError, stack4_inspect.Stack4InspectError, gitea_archive.GiteaDumpError, archive.ArchiveBackupError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     if args.json:

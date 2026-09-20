@@ -4,9 +4,9 @@
 """Adopt observed component image identities into the protected operational env."""
 from __future__ import annotations
 import os,re
-from . import component_state
-from . import core as upgrade
-from . import registry as upgrade_registry
+from . import _component_state as component_state
+from . import config as upgrade
+from . import _registry as upgrade_registry
 SCHEMA_VERSION="1"
 AUTHORITIES={"stack1/haproxy":{"type":"split","image_key":"HAPROXY_IMAGE","version_key":"HAPROXY_VERSION"},"stack2/searxng":{"type":"ref","ref_key":"SEARXNG_IMAGE"},"stack2/firecrawl":{"type":"ref","ref_key":"FIRECRAWL_IMAGE"},"stack2/firecrawl-playwright":{"type":"ref","ref_key":"FIRECRAWL_PLAYWRIGHT_IMAGE"},"stack2/redis":{"type":"split","image_key":"FIRECRAWL_REDIS_IMAGE","version_key":"FIRECRAWL_REDIS_VERSION"},"stack2/rabbitmq":{"type":"split","image_key":"FIRECRAWL_RABBITMQ_IMAGE","version_key":"FIRECRAWL_RABBITMQ_VERSION"},"stack2/nuq-postgres":{"type":"ref","ref_key":"FIRECRAWL_POSTGRES_IMAGE"},"stack3/postgresql":{"type":"ref","ref_key":"LITELLM_POSTGRES_IMAGE"},"stack3/litellm":{"type":"split","image_key":"LITELLM_IMAGE","version_key":"LITELLM_VERSION"},"stack4/gitea":{"type":"ref","ref_key":"GITEA_IMAGE"},"stack5/dockhand":{"type":"split","image_key":"DOCKHAND_REPOSITORY","version_key":"DOCKHAND_VERSION"},"stack6/hermes":{"type":"split","image_key":"HERMES_IMAGE","version_key":"HERMES_VERSION"},"stack7/open-webui":{"type":"split","image_key":"OPENWEBUI_IMAGE","version_key":"OPENWEBUI_VERSION"}}
 class AdoptionError(RuntimeError):

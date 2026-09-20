@@ -14,4 +14,4 @@ __version__ = "0.1.0"
 from .install import api as install_entry
 from .lifecycle import api as runtime_lifecycle
 from .upgrade import api as upgrade_entry
-from .upgrade import adopt as upgrade_adopt
+from .upgrade import _adopt as upgrade_adopt

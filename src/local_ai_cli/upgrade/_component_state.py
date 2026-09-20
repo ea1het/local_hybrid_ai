@@ -5,7 +5,7 @@
 from __future__ import annotations
 import json,re
 from pathlib import Path
-from . import registry as upgrade_registry
+from . import _registry as upgrade_registry
 class ComponentStateError(RuntimeError):pass
 def version_from_image(image):
  if not image:return "n/a"

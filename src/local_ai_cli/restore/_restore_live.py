@@ -17,12 +17,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import planner
-import restore_all
-import restore_compat
-import restore_managed
-import restore_stage
-import stack4_restore_verify
+import _planner as planner
+import _restore_all as restore_all
+import _restore_compat as restore_compat
+import _restore_managed as restore_managed
+import _restore_stage as restore_stage
+import _stack4_restore_verify as stack4_restore_verify
 
 
 class RestoreLiveError(RuntimeError):

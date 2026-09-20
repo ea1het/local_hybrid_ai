@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import restore_compat
+import _restore_compat as restore_compat
 
 
 class RestoreCompatibilityTests(unittest.TestCase):

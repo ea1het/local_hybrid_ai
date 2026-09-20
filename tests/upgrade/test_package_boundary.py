@@ -29,16 +29,16 @@ class UpgradePackageBoundaryTests(unittest.TestCase):
         self.assertTrue(callable(api.build_payload))
 
     def test_registry_is_package_owned(self):
-        from local_ai_cli.upgrade import registry
-        self.assertEqual("local_ai_cli.upgrade.registry", registry.__name__)
+        from local_ai_cli.upgrade import _registry as registry
+        self.assertEqual("local_ai_cli.upgrade._registry", registry.__name__)
         self.assertTrue(callable(registry.parse_reference))
         self.assertTrue(callable(registry.local_digest))
         self.assertTrue(hasattr(registry, "RegistryError"))
 
-    def test_core_root_is_repository_root(self):
-        from local_ai_cli.upgrade import core
+    def test_config_root_is_repository_root(self):
+        from local_ai_cli.upgrade import config
         expected = Path(__file__).resolve().parents[2]
-        self.assertEqual(expected, core.ROOT)
+        self.assertEqual(expected, config.ROOT)
 
 if __name__ == "__main__":
     unittest.main()

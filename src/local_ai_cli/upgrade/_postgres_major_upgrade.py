@@ -51,7 +51,7 @@ def _container_state(name: str) -> str:
 
 
 def _wait_healthy(name: str, *, timeout_seconds: int = 180) -> None:
-    from .executor import UpgradeExecutionError
+    from .engine import UpgradeExecutionError
     deadline = time.monotonic() + timeout_seconds
     while True:
         state = _container_state(name)
@@ -73,7 +73,7 @@ def execute(
     apply: dict, container: str, target_image_ref: str, env_path: Path,
     env_values: dict, quiet: bool,
 ) -> None:
-    from .executor import UpgradeExecutionError, _atomic_update_env
+    from .engine import UpgradeExecutionError, _atomic_update_env
 
     missing = [key for key in REQUIRED_APPLY_KEYS if not isinstance(apply.get(key), str) or not apply.get(key)]
     deploy = apply.get("deploy")

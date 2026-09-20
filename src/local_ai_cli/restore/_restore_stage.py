@@ -15,8 +15,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-import planner
-import restore_all
+import _planner as planner
+import _restore_all as restore_all
 
 DIR_MODE = 0o700
 FILE_MODE = 0o600

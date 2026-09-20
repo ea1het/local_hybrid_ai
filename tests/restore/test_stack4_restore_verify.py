@@ -16,7 +16,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-import stack4_restore_verify
+import _stack4_restore_verify as stack4_restore_verify
 
 
 class Stack4RestoreVerifyTests(unittest.TestCase):

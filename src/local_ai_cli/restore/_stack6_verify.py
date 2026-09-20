@@ -23,7 +23,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import planner
+import _planner as planner
 
 ROOT = Path(__file__).resolve().parent
 REQUIRED_FILES = ("MEMORY.md", "USER.md")

@@ -10,10 +10,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import planner
-import restore_all
-import restore_compat
-import restore_live
+import _planner as planner
+import _restore_all as restore_all
+import _restore_compat as restore_compat
+import _restore_live as restore_live
 
 
 class BootstrapError(RuntimeError):

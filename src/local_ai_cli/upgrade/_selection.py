@@ -3,10 +3,10 @@
 # License, v. 2.0.
 """Selection and stale-plan validation for guarded component upgrades."""
 from __future__ import annotations
-from . import core as upgrade
-from . import policy as upgrade_policy
-from . import postgres_major_upgrade as upgrade_postgres_migration
-from . import registry as upgrade_registry
+from . import config as upgrade
+from . import _policy as upgrade_policy
+from . import _postgres_major_upgrade as upgrade_postgres_migration
+from . import _registry as upgrade_registry
 def component_record(component):return upgrade.component_records()[upgrade.key(component)]
 def effective_policy(component):
  try:return upgrade_policy.effective_policy(upgrade.runtime_root(),upgrade.key(component),component_record(component))

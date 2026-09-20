@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from local_ai_cli.restore import restore_managed
+from local_ai_cli.restore import _restore_managed as restore_managed
 
 
 class RestoreManagedTests(unittest.TestCase):
@@ -46,7 +46,7 @@ class RestoreManagedTests(unittest.TestCase):
         with self.assertRaises(restore_managed.RestoreManagedError):
             restore_managed._artifact(metadata, strategy="postgres-custom-dump", resource_id="litellm-database")
 
-    @mock.patch("local_ai_cli.restore.restore_managed._run")
+    @mock.patch("local_ai_cli.restore._restore_managed._run")
     def test_remove_container_targets_only_supplied_name(self, run):
         run.side_effect = [mock.Mock(returncode=0), mock.Mock(returncode=0)]
         restore_managed._remove_container("local-hybrid-ai-dr-gitea-test")

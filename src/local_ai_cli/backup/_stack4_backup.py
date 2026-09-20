@@ -31,22 +31,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import posixpath
 import secrets
 import subprocess
 import sys
 import time
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-import planner
+import _planner as planner
 from local_ai_cli.common import archive
 from local_ai_cli.common import filesystem
+from local_ai_cli.common import gitea_archive
 
 ROOT = Path(__file__).resolve().parent
 STACK_ID = 4
-GITEA_RESOURCE_ID = "gitea-state"
+GITEA_RESOURCE_ID = gitea_archive.GITEA_RESOURCE_ID
 PKI_RESOURCE_ID = "platform-pki"
 GITEA_SERVICE = "gitea"
 GITEA_RELATIVE_PATH = "artifacts/stack4/gitea-state.zip"
@@ -116,33 +115,8 @@ def bounded_error(label: str, cp: subprocess.CompletedProcess[bytes]) -> Stack4B
     return Stack4BackupError(f"{label} failed (rc={cp.returncode}): {detail or 'no diagnostic output'}")
 
 
-def validate_zip_member(name: str) -> None:
-    if not name or "\\" in name:
-        raise Stack4BackupError("Gitea dump contains an invalid ZIP member path")
-    path = PurePosixPath(name)
-    if path.is_absolute():
-        raise Stack4BackupError("Gitea dump contains an absolute ZIP member path")
-    normalized = posixpath.normpath(name)
-    if normalized == ".." or normalized.startswith("../"):
-        raise Stack4BackupError("Gitea dump contains a parent-traversal ZIP member path")
-
-
-def validate_gitea_dump(path: Path) -> list[str]:
-    if not path.is_file() or path.stat().st_size <= 0:
-        raise Stack4BackupError("Gitea native dump is missing or empty")
-    try:
-        with zipfile.ZipFile(path, "r") as archive:
-            names = archive.namelist()
-            if not names:
-                raise Stack4BackupError("Gitea native dump ZIP contains no members")
-            for name in names:
-                validate_zip_member(name)
-            bad = archive.testzip()
-            if bad is not None:
-                raise Stack4BackupError(f"Gitea native dump ZIP CRC validation failed: {bad}")
-    except zipfile.BadZipFile as exc:
-        raise Stack4BackupError("Gitea native dump is not a valid ZIP archive") from exc
-    return names
+validate_zip_member = gitea_archive.validate_zip_member
+validate_gitea_dump = gitea_archive.validate_gitea_dump
 
 
 def _env_map(values: object) -> dict[str, str]:
@@ -480,7 +454,7 @@ def main() -> int:
     try:
         root, _ = planner.resolve_backup_root(args.destination)
         result = execute_stack4_backup(root)
-    except (Stack4BackupError, planner.RecoveryError, archive.ArchiveBackupError, OSError) as exc:
+    except (Stack4BackupError, gitea_archive.GiteaDumpError, planner.RecoveryError, archive.ArchiveBackupError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     if args.json:

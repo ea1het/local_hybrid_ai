@@ -14,8 +14,8 @@ import subprocess, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 from local_ai_cli.common import postgres as pg
-from local_ai_cli.upgrade import postgres_major_upgrade as pgu
-from local_ai_cli.upgrade.executor import UpgradeExecutionError
+from local_ai_cli.upgrade import _postgres_major_upgrade as pgu
+from local_ai_cli.upgrade.engine import UpgradeExecutionError
 
 
 class PostgresMajorUpgradeTests(unittest.TestCase):

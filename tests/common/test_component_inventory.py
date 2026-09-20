@@ -14,7 +14,7 @@ from unittest import mock
 
 from local_ai_cli import inventory, upgrade
 from local_ai_cli.common import component_inventory
-from local_ai_cli.inventory import component_inventory as inventory_snapshot
+from local_ai_cli.inventory import _component_inventory as inventory_snapshot
 
 
 class ComponentInventoryTests(unittest.TestCase):

@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2] / "src" / "local_ai_cli" / "restore"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import restore_all
+import _restore_all as restore_all
 
 
 class RestoreAllPlannerTests(unittest.TestCase):
@@ -98,11 +98,11 @@ class RestoreAllPlannerTests(unittest.TestCase):
             with (root/"checksums.sha256").open("a",encoding="utf-8") as handle: handle.write(f"{'f'*64}  undeclared.bin\n")
             with self.assertRaises(restore_all.RestoreAllError): restore_all.verify_checksum_index(root,metadata)
 
-    @mock.patch("restore_all.git_commit_available", return_value=True)
-    @mock.patch("restore_all.load_lifecycle")
-    @mock.patch("restore_all.planner.load_manifests")
-    @mock.patch("restore_all.verify_checksum_index", return_value=5)
-    @mock.patch("restore_all.read_completed_backup_set")
+    @mock.patch("_restore_all.git_commit_available", return_value=True)
+    @mock.patch("_restore_all.load_lifecycle")
+    @mock.patch("_restore_all.planner.load_manifests")
+    @mock.patch("_restore_all.verify_checksum_index", return_value=5)
+    @mock.patch("_restore_all.read_completed_backup_set")
     def test_plan_is_read_only_payload(self, read_meta, verify_checksums, load_manifests, load_lifecycle, git_available):
         read_meta.return_value=self.metadata(); load_manifests.return_value=self.manifests(); load_lifecycle.return_value=self.lifecycle()
         plan=restore_all.plan_restore_all(Path("/backup/test"))

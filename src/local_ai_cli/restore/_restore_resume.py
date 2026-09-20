@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib,os,sqlite3,subprocess
 from dataclasses import dataclass
 from pathlib import Path
-import planner,restore_all,restore_compat,restore_live,stack4_restore_verify
+import _planner as planner,_restore_all as restore_all,_restore_compat as restore_compat,_restore_live as restore_live,_stack4_restore_verify as stack4_restore_verify
 class ResumeError(RuntimeError): pass
 @dataclass(frozen=True)
 class ResumeContext:

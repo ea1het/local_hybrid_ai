@@ -6,7 +6,7 @@
 import datetime as dt,json,os,tempfile,unittest
 from pathlib import Path
 from local_ai_cli.common import archive as backup_archive
-from local_ai_cli.restore import archive_restore
+from local_ai_cli.restore import _archive_restore as archive_restore
 class DisasterRecoveryArchiveRestoreTests(unittest.TestCase):
  def make_source(self,parent):
   source=parent/"pki";source.mkdir(mode=0o700);(source/"tls.key").write_text("PRIVATE-KEY-TEST\n");(source/"tls.crt").write_text("CERTIFICATE-TEST\n");os.chmod(source/"tls.key",0o640);os.chmod(source/"tls.crt",0o644);return source

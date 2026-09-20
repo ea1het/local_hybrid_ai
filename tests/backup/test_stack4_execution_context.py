@@ -15,7 +15,7 @@ import json
 import unittest
 from unittest import mock
 
-import stack4_backup
+import _stack4_backup as stack4_backup
 
 
 class Stack4ExecutionContextTests(unittest.TestCase):

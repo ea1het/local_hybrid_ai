@@ -19,8 +19,8 @@ from pathlib import Path
 from unittest import mock
 
 from local_ai_cli.common import archive
-import restore_compat
-import restore_live
+import _restore_compat as restore_compat
+import _restore_live as restore_live
 
 
 class RestoreLiveTests(unittest.TestCase):

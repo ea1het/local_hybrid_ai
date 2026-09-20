@@ -23,12 +23,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import planner
+import _planner as planner
 from local_ai_cli.common import archive
 from local_ai_cli.common import filesystem
 from local_ai_cli.common import postgres
-import stack3_backup
-import stack4_backup
+import _stack3_backup as stack3_backup
+import _stack4_backup as stack4_backup
 
 ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parents[2]

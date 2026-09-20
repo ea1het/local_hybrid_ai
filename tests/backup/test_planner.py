@@ -16,7 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from local_ai_cli.backup import planner as dr_planner
+from local_ai_cli.backup import _planner as dr_planner
 
 ROOT = Path(dr_planner.__file__).resolve().parent
 

@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest import mock
-from local_ai_cli.upgrade import guard as upgrade_guard
+from local_ai_cli.upgrade import _guard as upgrade_guard
 class UpgradeGuardTests(unittest.TestCase):
  def test_non_apply_commands_are_not_locked(self):
   called=[];rc=upgrade_guard.run_guarded(["upgrade","check"],lambda:called.append(True) or 0);self.assertEqual(rc,0);self.assertEqual(called,[True])
