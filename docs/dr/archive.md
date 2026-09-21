@@ -45,7 +45,7 @@ Regular files, directories and symbolic links are supported by the archive contr
 
 ## Current relationship to the full backup path
 
-The early milestone intentionally allowed only Stack0 while PostgreSQL, Gitea and multi-stack execution were still being developed. Those restrictions are **retired**. Stack3 PostgreSQL, Stack4 Gitea and the full manifest-driven backup path are now implemented and qualified. `src/local_ai_cli/recovery/backup-all.py` is the private execution entry used by the public `./local-ai backup` command.
+The early milestone intentionally allowed only Stack0 while PostgreSQL, Gitea and multi-stack execution were still being developed. Those restrictions are **retired**. Stack3 PostgreSQL, Stack4 Gitea and the full manifest-driven backup path are now implemented and qualified. `src/local_ai_cli/backup/engine.py` is the private execution entry used by the public `./local-ai backup` command.
 
 The archive adapter continues to provide the bounded archive strategy within that larger pipeline. Its historical standalone invocation is retained only as implementation/qualification context and is not an operator interface.
 

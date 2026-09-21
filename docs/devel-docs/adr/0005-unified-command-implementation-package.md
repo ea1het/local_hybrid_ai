@@ -6,8 +6,12 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # ADR-0005 — Unified command implementation package
 
-- Status: Accepted
+- Status: **Superseded** — see [current status](#current-status) below
 - Date: 2026-09-13
+
+## Current status
+
+The package layout this ADR decided — one flat `commands/` package with modules such as `upgrade_entry.py`/`upgrade_executor.py` and a `commands/recovery/` subpackage — is not the current implementation. It was superseded by per-command packages directly under `src/local_ai_cli/` (`install/`, `backup/`, `restore/`, `status/`, `doctor/`, `inventory/`, `completion/`, `upgrade/`, `lifecycle/`), each following the `__init__.py` + `config.py`/`api.py`/`engine.py` + private-module shape described in [command package architecture](../../architecture/command-packages.md). The underlying decision this ADR still establishes — one coherent private implementation area behind the `./local-ai` boundary, with disaster recovery kept cohesive rather than flattened — remains true; only the concrete package shape below is historical. The body of this ADR is preserved as the decision record for that earlier shape and is not updated to match current paths.
 
 ## Context
 

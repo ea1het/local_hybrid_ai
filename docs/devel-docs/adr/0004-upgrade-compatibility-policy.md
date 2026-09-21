@@ -41,7 +41,7 @@ The project default is not the installation decision. An installation may overri
 
 The component form without an action shows the effective policy. `clear` removes only the installation override. It does not introduce a fourth policy and does not clear an upgrade selection; the catalog default becomes effective again. There is no public `show` action.
 
-Policy and executor capability are independent. A target may satisfy compatibility policy while the component remains `selectable: false`. Such a component cannot be selected or executed through the supported upgrade path unless the explicitly constrained administrative force path applies.
+Policy and executor capability are independent. A target may satisfy compatibility policy while the component remains non-selectable. Such a component cannot be selected or executed through the supported upgrade path unless an administrator explicitly enables a persistent selectable override for it (see [selectable overrides](../../user-docs/selectable-overrides.md)).
 
 Selection validates the exact target against the configured image registry/package, rejects a target that is not available, applies the current effective policy and refuses comparable downgrades. Availability alone is never authorization.
 

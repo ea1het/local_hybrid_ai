@@ -51,7 +51,7 @@ This is the primary human version view. `./local-ai upgrade check` remains a com
 | `POLICY` | The compatibility boundary enforced for an explicit target. |
 | `SELECTABLE` | Whether the project has qualified an automated upgrade procedure for that component. |
 | `SELECTED` | The exact target explicitly chosen by the operator. |
-| `VALID` | Whether an existing normal or explicitly forced selection still passes its applicable policy/baseline gates. |
+| `VALID` | Whether an existing selection still passes its applicable policy/baseline gates. |
 
 Component topology and upgrade semantics are declared by each owning stack's `manifest.json` and compiled by the management plane. Internal machine data may retain identities such as `stack7`; that representation is not an alternate operator selector. There is no separate central component catalog to synchronize when a stack changes.
 
@@ -110,30 +110,31 @@ With no action after the component, `policy` shows the effective policy. `set` c
 
 ## NO SELECTABLE
 
-`SELECTABLE=no` does not mean the software cannot be upgraded. It means Local Hybrid AI can see or describe the component, but the project has not qualified its automated upgrade procedure as supported.
+`SELECTABLE=no` does not mean the software cannot be upgraded. Today it applies to exactly three components: `platform-foundation` (not a versioned package), Stack4 `runner` and Stack6 `sandbox` (both built locally rather than sourced from a registry). Every other component is selectable by manifest default.
 
 | Blocker | Meaning |
 |---|---|
-| `migration-policy-required` | Updating may involve data/schema/application migrations whose compatibility and recovery rules are not yet fully qualified. |
-| `executor-not-qualified` | Version discovery works, but the component-specific mutation/readiness/verification procedure has not passed the qualification gate. |
-| `local-build` | The component is produced locally rather than upgraded from a normal registry version stream. |
-| `local-managed` | The component lifecycle is managed locally and does not expose an independent registry-version upgrade path. |
-| `non-versioned-component` | A versioned package upgrade does not meaningfully apply to this component. |
+| `non-versioned-component` | A versioned package upgrade does not meaningfully apply to this component. Currently `platform-foundation`. |
+| `local-build` | The component is produced locally rather than upgraded from a normal registry version stream. Currently Stack6 `sandbox`. |
+| `local-managed` | The component lifecycle is managed locally and does not expose an independent registry-version upgrade path. Currently Stack4 `runner`. |
+| `migration-policy-required` | Reserved for a component whose migration/compatibility/recovery semantics are not yet resolved. Not currently used by any manifest. |
+| `executor-not-qualified` | Reserved for a component with no qualified guarded-mutation procedure. Not currently used by any manifest. |
 
-A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. Knowing that an update exists and project support qualification are separate facts.
+A `NO SELECTABLE` component may still show a newer `AVAILABLE` version. Knowing that an update exists and being offered for selection are separate facts.
 
-When the owning stack manifest already defines a deterministic version-authority mutation and targeted deployment recipe, an administrator may explicitly accept the missing project qualification:
+An administrator can override the classification in either direction with a persistent, auditable override, independent from the Git-tracked manifest:
 
 ```bash
-./local-ai upgrade 5 dockhand select v1.0.48 --force
+./local-ai upgrade selectable 4 runner enable --yes
+./local-ai upgrade 4 runner select <version>
 ./local-ai upgrade --yes
 ```
 
-The forced selection remains `SELECTABLE=no`: the project has not promoted the path to supported. The stored selection records the qualification bypass and `VALID=yes` means that this explicit administrative choice still satisfies the remaining gates. `--force` does not bypass policy, target existence, immutable digest, stale-plan protection, recovery requirements, READY, VERIFY or dependency-impact checks. If no deterministic mutation recipe exists, Local Hybrid AI refuses the forced selection with `UPGRADE_FORCE_UNAVAILABLE`. [Administrator-forced upgrades](forced-upgrades.md) contains the complete boundary.
+Enabling an override changes only whether the component is offered for selection; it does not bypass policy, target existence, immutable digest, stale-plan protection, recovery requirements, READY, VERIFY or dependency-impact checks, and it still requires the component to have a manifest-declared mutation recipe (the executor otherwise refuses apply with `UPGRADE_COMPONENT_NOT_EXECUTABLE`). [Selectable overrides](selectable-overrides.md) contains the complete boundary.
 
 ### Qualification for SELECTABLE
 
-Promotion is an engineering qualification, not a manifest toggle and not a side effect of a successful forced run. The project establishes all of the following before a component becomes normally selectable:
+Most components are selectable by manifest default; the three named exceptions above are deliberate, not a qualification backlog. The gates below describe the engineering bar a component's guarded execution path is expected to meet, and are what the project checks before adding a new component's upgrade recipe or promoting a component out of the three exceptions:
 
 1. Reliable installed-version and target identity.
 2. Explicit compatibility policy.

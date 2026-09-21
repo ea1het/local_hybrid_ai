@@ -15,6 +15,10 @@ Only active or intentionally deferred work belongs here. Completed work and impl
 - Define backup encryption-at-rest, retention generations, off-host copy and verification policy.
 - Package and document the external Stack6 memory-sync SSH bootstrap required when the configured Git origin needs that credential.
 
+## P0 — Upgrade engine hardening
+
+- The `postgres-major-upgrade` apply recipe (`src/local_ai_cli/upgrade/_postgres_major_upgrade.py`, used by Stack3 `postgresql`) has been exercised only against mocked subprocess/Docker calls (`tests/upgrade/test_postgres_major_upgrade.py`). It has never run against a real deployment. Real-runtime qualification — a representative PostgreSQL major-version transition on real infrastructure, per [upgrade executor qualification](devel-docs/upgrade-qualification.md) gate 11 — is required before this recipe is trusted in production. See [PostgreSQL DR qualification](dr/postgres.md#major-version-upgrade) for what the mechanism does and what it deliberately does not clean up automatically.
+
 ## P1 — DR engine hardening
 
 - Harden recovery validation for malformed non-string `mode`, `class` and `strategy` values.
@@ -37,20 +41,16 @@ The earlier proposal to introduce a generic managed-restore adapter registry sol
 
 - Extend documentation-contract coverage from structural navigation to public-command coverage so every top-level `local-ai` command, including `completion`, is represented by the CLI command map and canonical documentation.
 
-The existing `src/local_ai_cli/common/tests/test_documentation_contract.py` already validates documentation-directory indexes, TOC backlinks, relative links, Mermaid fences, Gherkin scope documentation and publication hygiene; this item concerns semantic public-command coverage beyond those existing checks.
+The existing `tests/repository/test_documentation_contract.py` already validates documentation-directory indexes, TOC backlinks, relative links, Mermaid fences, Gherkin scope documentation and publication hygiene; this item concerns semantic public-command coverage beyond those existing checks.
 
 ## P2 — Upgrade engine hardening
 
-- Registry-driven version discovery (`upgrade/registry.py`) compares tag numbers purely arithmetically; it has no concept of versioning-scheme identity. A component under `manual` upgrade policy whose upstream registry adopts an incompatible numbering convention with a numerically larger leading segment (for example a switch from SemVer to date-based tags) can be misreported as having a newer version available, even though the two tag lineages are not comparable. `minor-series`/`major-series` policies already reject this via their own major-number check; only `manual` policy is exposed. No generic registry-side signal distinguishes versioning schemes, so this remains an accepted, narrow residual risk rather than an open defect.
-
-## P2 — Architecture cleanup
-
-- `src/local_ai_cli/context.py` declares `CommandContext`, a global-modifiers dataclass that is never imported by any runtime code path; `cli.py` resolves its own separate `CLIContext` instead. Either wire `CommandContext` into the real dispatch path it was meant to serve, or remove it.
+- Registry-driven version discovery (`upgrade/_registry.py`) compares tag numbers purely arithmetically; it has no concept of versioning-scheme identity. A component under `manual` upgrade policy whose upstream registry adopts an incompatible numbering convention with a numerically larger leading segment (for example a switch from SemVer to date-based tags) can be misreported as having a newer version available, even though the two tag lineages are not comparable. `minor-series`/`major-series` policies already reject this via their own major-number check; only `manual` policy is exposed. No generic registry-side signal distinguishes versioning schemes, so this remains an accepted, narrow residual risk rather than an open defect.
 
 ## P2 — Operations
 
 - Define retention and cleanup treatment for historical local backup sets; verified recovery evidence must not be deleted incidentally.
-- Define an operator-owned cleanup policy for migration dumps, migration markers and destructive-recovery test material without embedding host-specific absolute paths or temporary artifact names in repository documentation.
+- Define an operator-owned cleanup policy for migration dumps, migration markers and destructive-recovery test material without embedding host-specific absolute paths or temporary artifact names in repository documentation. This now has a concrete instance: a successful `postgres-major-upgrade` deliberately leaves the pre-upgrade PostgreSQL data directory (`<name>.pre-upgrade-<timestamp>`) in place indefinitely; deciding when it is safe to delete, and whether to automate that decision, is unresolved.
 
 ## P2 — Documentation maintenance
 

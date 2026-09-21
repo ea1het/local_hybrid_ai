@@ -30,7 +30,7 @@ General manifest graph/capability semantics are implemented in `stack0_-_platfor
 
 ## Disaster recovery
 
-- `DR-BACKUP-001` — OpenSpec contract test plus `tests/disaster_recovery/test_dr_backup_all.py` and qualified global backup. Planning/orchestration is owned by `src/local_ai_cli/recovery/dr.py`; source/destination preflight is owned by `src/local_ai_cli/recovery/dr_preflight.py`.
+- `DR-BACKUP-001` — OpenSpec contract test plus `tests/backup/test_backup_all.py` and qualified global backup. Planning/orchestration is owned by `src/local_ai_cli/backup/_planner.py` and `src/local_ai_cli/backup/engine.py`; source/destination preflight is owned by `src/local_ai_cli/common/preflight.py`.
 - `DR-BACKUP-002` — backup destination/preflight overlap tests plus runtime rejection of equal/descendant/ancestor protected paths.
 - `DR-RESTORE-001` — restore planning/staging/managed/live/resume tests plus qualified clean-target recovery.
 - `DR-STACK7-001` — OpenSpec contract test plus [DR status](../../dr/status.md).
@@ -81,23 +81,23 @@ General manifest graph/capability semantics are implemented in `stack0_-_platfor
 
 ### Registry discovery semantics
 
-- `CLI-REGISTRY-001` — `tests/test_registry_failure_contract.py` injects HTTP 429/401/403 and proves failure remains `available=unknown`, never `current`; positive registry families are separately runtime-qualified. OCI parsing/probing belongs to `src/local_ai_cli/upgrade_registry.py`.
+- `CLI-REGISTRY-001` — `tests/upgrade/test_registry_failure_contract.py` injects HTTP 429/401/403 and proves failure remains `available=unknown`, never `current`; positive registry families are separately runtime-qualified. OCI parsing/probing belongs to `src/local_ai_cli/upgrade/_registry.py`.
 - `CLI-REGISTRY-002` — `tests/test_registry_discovery_cache.py` verifies TTL reuse/expiry, local-digest invalidation and bounded cache size; cache ownership remains separate from registry HTTP semantics.
 
 ### Upgrade execution
 
-The refactored implementation separates orchestration (`upgrade_entry`), selection/stale-plan policy (`upgrade_selection`), runtime observation (`upgrade_runtime`), inventory/catalog/plan/cache state, OCI identity (`upgrade_registry`) and guarded mutation (`upgrade_executor`). Compatibility wrappers preserve existing public and tested seams while these responsibilities remain internal.
+The implementation separates orchestration/payload construction (`api.py`), selection/stale-plan policy (`_selection.py`), compatibility and selectable-override policy (`_policy.py`), runtime observation (`_runtime.py`), catalog/inventory/plan/cache state (`config.py`), OCI identity (`_registry.py`) and guarded mutation (`engine.py`, with `_postgres_major_upgrade.py` as the dedicated recipe for PostgreSQL major-version transitions). These responsibilities remain internal to the `upgrade` package.
 
 - `CLI-UPGRADE-001` — management CLI/version-authority tests; human output uses Installed while JSON retains stable runtime fields.
 - `CLI-UPGRADE-002` — selection-policy/version-authority tests; plan stores runtime baseline and immutable target digest.
 - `CLI-UPGRADE-003` — management CLI proves `--yes` never auto-selects available versions.
 - `CLI-UPGRADE-004` — selection/stale-plan tests fail before execution with `UPGRADE_PLAN_STALE`.
-- `CLI-UPGRADE-005` — `tests/test_upgrade_executor.py`; targeted guarded deployment, with runtime qualification required before promotion.
+- `CLI-UPGRADE-005` — `tests/upgrade/test_upgrade_executor.py`; targeted guarded deployment, with runtime qualification required before promotion.
 - `CLI-UPGRADE-006` — executor/selection/registry tests prove digest capture and moved-tag rejection.
 - `CLI-UPGRADE-007` — execution-metadata tests distinguish guarded from inventory-only components.
 - `CLI-UPGRADE-008` — [upgrade qualification](../upgrade-qualification.md), execution metadata and representative runtime qualification establish selectability as proven executor support.
 - `CLI-UPGRADE-009` — executor failure tests and human apply contract prove `UPGRADE: PASS` only on successful guarded completion.
-- `CLI-UPGRADE-010` — force-override tests prove explicit administrative qualification bypass is stored only for deterministic known mutation paths; runtime qualification includes a forced Dockhand update.
+- `CLI-UPGRADE-010` — `tests/upgrade/test_upgrade_selectable_override.py` proves the persistent selectable override changes only the effective classification, is stored in the installation's runtime area rather than the manifest, and does not substitute for a deterministic mutation recipe (apply still fails with `UPGRADE_COMPONENT_NOT_EXECUTABLE` without one).
 
 ### Compatibility policy
 
@@ -107,8 +107,8 @@ The refactored implementation separates orchestration (`upgrade_entry`), selecti
 - `CLI-POLICY-004` — manual explicit-target policy.
 - `CLI-POLICY-005` — runtime qualification of policy clear.
 - `CLI-POLICY-006` — incompatible selections become invalid without silent deletion.
-- `CLI-POLICY-007` — selectability remains independent from policy; force is recorded separately.
-- `CLI-POLICY-008` — executor revalidates policy before mutation, including forced selections.
+- `CLI-POLICY-007` — selectability remains independent from compatibility policy; selectable overrides are recorded separately from policy overrides.
+- `CLI-POLICY-008` — executor revalidates policy before mutation, including selections made through a selectable override.
 
 ### Status
 

@@ -10,7 +10,9 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 `SELECTABLE` is a support statement, not a UI convenience. Setting a manifest-declared component to `execution.mode=guarded` means the project accepts `./local-ai upgrade` as a supported mutation path for that component.
 
-A component remains inventory-only until the upgrade path satisfies every applicable gate below.
+Today the project's default stance is that a component is selectable unless it has a concrete reason not to be. Exactly three components are non-selectable by manifest default — `platform-foundation` (not a versioned package), Stack4 `runner` and Stack6 `sandbox` (both built locally, not sourced from a registry) — and every other manifest-declared component defaults to selectable. An administrator can additionally override the effective classification for any component in either direction at runtime (see [selectable overrides](../user-docs/selectable-overrides.md)), independent of the manifest default.
+
+The gates below remain the engineering bar a component's guarded execution path is expected to meet. They describe what a manifest author and the guarded engine must get right when wiring a component's `apply` recipe and what real-runtime qualification (gate 11) is expected to prove before that recipe is trusted broadly — not a per-component promotion checklist that gates whether the manifest says `selectable: true` today.
 
 ## Internal responsibility boundary
 
@@ -28,7 +30,7 @@ flowchart LR
     X --> V["READY / RECONCILE / VERIFY"]
 ```
 
-The current implementation distributes these responsibilities across `upgrade_entry`, `upgrade_selection`, `upgrade_inventory`, `upgrade_catalog`, `upgrade_plan`, `upgrade_cache`, `upgrade_registry`, `upgrade_runtime` and `upgrade_executor`. The names document the present source layout; qualification attaches to the behavioural boundaries, not to permanent module APIs. Shared runtime-image/version and OCI-reference primitives are delegated to their owning modules rather than duplicated inside the executor.
+The current implementation distributes these responsibilities across the `upgrade` package's public `api.py` (entry/orchestration) and `config.py` (catalog, inventory, plan state), and its private `_selection.py`, `_policy.py`, `_registry.py`, `_runtime.py` and the guarded `engine.py`. The names document the present source layout; qualification attaches to the behavioural boundaries, not to permanent module APIs. Shared runtime-image/version and OCI-reference primitives are delegated to their owning modules rather than duplicated inside the executor.
 
 ## Qualification gates
 
@@ -88,13 +90,13 @@ Before promotion, the procedure is executed against a representative real deploy
 
 ## Administrator override is not qualification
 
-An inventory-only component may expose a deterministic mutation recipe before that recipe is project-qualified. In that case an administrator may explicitly select a target with `--force`.
+A non-selectable component may expose a deterministic mutation recipe before that recipe has real-runtime qualification evidence behind it. In that case an administrator may explicitly enable selection with a persistent override (`./local-ai upgrade selectable <0..7> [component] enable --yes`), stored in the installation's runtime area, never in the Git-tracked manifest.
 
-This override does not change manifest-declared support status, does not set `SELECTABLE=yes`, and does not satisfy any qualification gate. It records only that the administrator accepted the missing project qualification for that one selection.
+This override does not change the manifest-declared default, does not set the manifest's `selectable` field to `true`, and does not satisfy any qualification gate. It records only that the administrator accepted selection for that component going forward, until cleared.
 
-The forced path still preserves every protection the implementation can enforce: version policy, target availability, immutable digest, stale-plan detection, exact mutation scope, declared recovery behaviour, READY/RECONCILE/VERIFY and dependency re-verification. A component with no deterministic mutation recipe cannot be made executable merely by supplying `--force`.
+The overridden path still preserves every protection the implementation can enforce: version policy, target availability, immutable digest, stale-plan detection, exact mutation scope, declared recovery behaviour, READY/RECONCILE/VERIFY and dependency re-verification. A component with no deterministic mutation recipe cannot be made executable merely by enabling the override; apply still fails with `UPGRADE_COMPONENT_NOT_EXECUTABLE`.
 
-Successful forced upgrades retain the forced marker in successful history so operational evidence cannot be mistaken for a normally supported upgrade.
+The override is a durable classification change, not a per-selection flag: `upgrade selectable <0..7> [component]` always shows whether the effective classification for a component currently comes from the manifest default or from a stored override, so operational review does not need to infer it from upgrade history.
 
 ## Promotion sequence
 
@@ -115,9 +117,9 @@ The manifest metadata change is the last step. It records an already-proven capa
 
 ## Current runtime qualification evidence
 
-Redis (`stack2/redis`) has completed a real guarded transition from `8.10.0-alpine3.23` to `8.10.1-alpine3.23`. The executor recorded `success=true`, immutable target identity, dependent-stack re-verification, and post-upgrade status converged with no drift. Redis therefore remains `SELECTABLE=yes`.
+Redis (`stack2/redis`) has completed a real guarded transition from `8.10.0-alpine3.23` to `8.10.1-alpine3.23`. The executor recorded `success=true`, immutable target identity, dependent-stack re-verification, and post-upgrade status converged with no drift.
 
-HAProxy, RabbitMQ and Dockhand have deterministic executor recipes but remain `SELECTABLE=no` until equivalent real-runtime qualification is completed. They may be exercised deliberately through the administrator `--force` path without changing that support statement.
+HAProxy, RabbitMQ, Dockhand and every other component outside the three named exceptions are `SELECTABLE=yes` by manifest default under the project's current selectable policy, with a deterministic executor recipe (`env-version` for most; a dedicated dump/restore recipe for Stack3 PostgreSQL's major-version path), but without individual real-runtime qualification evidence equivalent to Redis's recorded transition. Being selectable by default does not claim that evidence exists for every component; it is a deliberate policy stance that most components should be offered rather than gated behind an evidence backlog. Gate 11 remains the bar for trusting a specific component's recipe once it has actually been exercised.
 
 ## Demotion
 

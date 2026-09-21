@@ -18,7 +18,7 @@ The project contains Python modules, shell scripts, Compose files and DR tools. 
 
 Human consumers use normal CLI output. Machine consumers use the same commands with `--json` where the command exposes a stable machine contract. JSON contracts carry an independent `schema_version` and structured error codes.
 
-Private management implementation lives under `commands/`; stack-owned lifecycle scripts remain in stack directories. Those implementation paths may be invoked internally and by tests, but external automation must not depend on their paths, language, filenames or argument contracts. The internal package organization is defined more specifically by ADR-0005.
+Private management implementation lives under `src/local_ai_cli/`; stack-owned lifecycle scripts remain in stack directories. Those implementation paths may be invoked internally and by tests, but external automation must not depend on their paths, language, filenames or argument contracts. The internal package organization is described by [command package architecture](../../architecture/command-packages.md); ADR-0005 records the superseded earlier layout.
 
 ## Consequences
 

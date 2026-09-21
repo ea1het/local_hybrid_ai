@@ -31,7 +31,7 @@ Feature: Single management CLI anticorruption boundary
     Scenario: Private management implementation has one coherent package root
       Given `./local-ai` is the sole supported management boundary
       Then installation, status and upgrade implementation live under `src/local_ai_cli/`
-      And disaster-recovery implementation lives under `src/local_ai_cli/recovery/`
+      And disaster-recovery implementation lives under `src/local_ai_cli/backup/` and `src/local_ai_cli/restore/`
       And no top-level `internal/`, `installer/` or `bkp-dr/` implementation root is required
       And historical recovery paths may be recognized only for restoring recorded source revisions
 
@@ -197,16 +197,18 @@ Feature: Single management CLI anticorruption boundary
       And successful upgrade history is not appended unless the guarded operation completes
 
     @CLI-UPGRADE-010
-    Scenario: An administrator may explicitly accept an unqualified upgrade path
-      Given a component is not selectable
-      And the catalog already defines a deterministic version-authority mutation and targeted deploy recipe
-      When the administrator selects an exact target with "--force"
-      Then the selection records that project qualification was bypassed
-      And the catalog remains non-selectable
-      And policy, target existence and immutable digest validation still apply
+    Scenario: An administrator may explicitly override a non-selectable classification
+      Given a component is not selectable by manifest default
+      When the administrator enables a persistent selectable override for that component
+      Then the effective classification becomes selectable while the manifest default is unchanged
+      And the override is stored in the installation's runtime area, not in the manifest
+      Given the catalog already defines a deterministic version-authority mutation and targeted deploy recipe
+      When the administrator selects an exact target for that component
+      Then policy, target existence and immutable digest validation still apply
       And apply revalidates stale runtime, recovery, READY, VERIFY and dependency-impact gates
-      And successful history preserves that the operation was forced
-      And a component without a deterministic mutation recipe fails with UPGRADE_FORCE_UNAVAILABLE
+      Given the catalog defines no deterministic mutation recipe for a non-selectable component
+      When the administrator enables the override and selects a target for that component
+      Then apply fails with UPGRADE_COMPONENT_NOT_EXECUTABLE
 
   Rule: Operational status is distinct from version maintenance and environment diagnosis
 

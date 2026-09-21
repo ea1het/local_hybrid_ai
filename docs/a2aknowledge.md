@@ -28,7 +28,7 @@ This compact reference supports AI-assisted maintenance and contributor continui
 
 ## Management and version invariants
 
-`./local-ai` is the sole supported management/automation boundary. `src/local_ai_cli/`, `src/local_ai_cli/recovery/`, stack scripts and Compose files are private implementation surfaces.
+`./local-ai` is the sole supported management/automation boundary. `src/local_ai_cli/`, stack scripts and Compose files are private implementation surfaces.
 
 The management plane separates lifecycle, upgrade and Recovery responsibilities. Upgrade keeps command orchestration, selection/stale-plan policy, inventory/catalog/plan/cache state, runtime observation, OCI registry handling and guarded mutation distinct. Recovery keeps planning/orchestration separate from destination/runtime-source preflight and from mutating backup/restore phases. These boundaries support auditability; they are not public Python APIs.
 
@@ -46,7 +46,7 @@ Git/Compose is the bootstrap source baseline. After adoption, version intent is 
 
 Public stack selectors are numeric `0` through `7`. Internal identities such as `stack7` remain machine/manifests data and are not alternate public selectors.
 
-`upgrade adopt` records existing runtime identities without pulling or restarting. Normal selection requires a qualified executor. `--force` is only an explicit administrator qualification bypass when a deterministic mutation recipe exists; it does not bypass target, digest, policy, stale-plan, recovery, READY, VERIFY or consumer gates. Compatibility seams used by status/tests remain intentional unless a concrete functional change removes their consumers.
+`upgrade adopt` records existing runtime identities without pulling or restarting. Exactly three components (`platform-foundation`, Stack4 `runner`, Stack6 `sandbox`) are non-selectable by manifest default; every other component is selectable by default. An administrator can override the effective classification in either direction with a persistent, installation-owned override (`upgrade selectable ... enable|disable|clear`), independent from the Git-tracked manifest; it does not bypass target, digest, policy, stale-plan, recovery, READY, VERIFY or consumer gates, and apply still requires the component to have a manifest-declared mutation recipe. Compatibility seams used by status/tests remain intentional unless a concrete functional change removes their consumers.
 
 ## Security invariants
 

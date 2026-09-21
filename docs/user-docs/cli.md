@@ -35,10 +35,11 @@ Every public command identifying a stack uses the numeric id shown by `status` a
 ├── status
 ├── doctor
 ├── completion bash|zsh|install|status
-└── upgrade
+└── upgrade [--confirm-data-migration]
     ├── [check] [--offline]
     ├── policy [0..7 [component] [set POLICY|clear]]
-    ├── 0..7 [component] select VERSION [--force]
+    ├── selectable [0..7 [component] [enable|disable|clear]]
+    ├── 0..7 [component] select VERSION
     ├── 0..7 [component] clear
     └── adopt
 ```
@@ -55,7 +56,7 @@ Every public command identifying a stack uses the numeric id shown by `status` a
 Shell completion follows the same public grammar. Every branch exposes `--json` and `--yes`, numeric stack selectors remain numeric, and private Python/script names are never completion candidates. `completion bash|zsh` emits adapters; `completion install` installs the appropriate adapter after operator consent and `completion status` verifies it.
 
 ## Upgrade
-`upgrade` remains the guarded version-management workflow. Check and policy display are read-only structured domain results rendered by `local-ai`. Selection, selection clearing and policy changes mutate persisted management state and therefore require operator consent: interactive use prompts, while automation supplies `--yes`. Applying selected upgrades also requires global `--yes`; it revalidates baseline, policy, target identity/digest, executor eligibility, recovery requirements, READY, VERIFY and dependent consumers. Administrator `--force` remains a selection-specific risk acknowledgement and does not replace global consent.
+`upgrade` remains the guarded version-management workflow. Check, policy display and selectable display are read-only structured domain results rendered by `local-ai`. Selection, selection clearing, policy changes and selectable overrides mutate persisted management state and therefore require operator consent: interactive use prompts, while automation supplies `--yes`. Applying selected upgrades also requires global `--yes`; it revalidates baseline, policy, target identity/digest, executor eligibility, recovery requirements, READY, VERIFY and dependent consumers. A selection that performs a data migration (for example a PostgreSQL major-version upgrade) additionally requires `--confirm-data-migration` in the same apply invocation; global `--yes` alone is not sufficient for that class of mutation.
 
 Typical automated flow:
 ```bash

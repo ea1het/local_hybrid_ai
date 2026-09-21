@@ -30,9 +30,9 @@ The supported management types are:
 
 A component may include an `upgrade` block when it belongs in the operator upgrade inventory. That block carries compatibility policy, availability semantics, executor qualification state and any deterministic mutation recipe. Components without an `upgrade` block remain part of stack topology but are intentionally absent from normal version maintenance.
 
-`commands/component_inventory.py` compiles and validates the component topology from the manifests returned by the existing Stack0 manifest resolver. It verifies that every owned container is classified, that a container is not classified twice, and that declared Compose services exist.
+`src/local_ai_cli/common/component_inventory.py` compiles and validates the component topology from the manifests returned by the existing Stack0 manifest resolver. It verifies that every owned container is classified, that a container is not classified twice, and that declared Compose services exist.
 
-There is no hand-maintained central upgrade component catalog. `commands/upgrade.py` consumes a compatibility-shaped view compiled from manifests on every invocation. The compiled view is an implementation adapter, not another authority.
+There is no hand-maintained central upgrade component catalog. `src/local_ai_cli/upgrade/config.py` consumes a compatibility-shaped view compiled from manifests on every invocation. The compiled view is an implementation adapter, not another authority.
 
 ## Rescan and source changes
 

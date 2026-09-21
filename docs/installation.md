@@ -116,7 +116,7 @@ sudo ./local-ai upgrade --yes
 
 Before mutation the executor revalidates runtime baseline, compatibility policy, target existence, immutable digest and executor eligibility. Required recovery, targeted deployment, READY, reconciliation, VERIFY, final runtime identity and prepared dependent-consumer checks remain part of guarded execution. A selection is cleared only after successful completion and `UPGRADE: PASS`.
 
-An administrator may use `select ... --force` only when an inventory-only component already has a deterministic mutation recipe. Force bypasses project qualification, not the remaining safety gates.
+An administrator may select a non-selectable component by first enabling a persistent override (`./local-ai upgrade selectable <0..7> [component] enable --yes`); this requires the component to already have a deterministic mutation recipe, and it bypasses only the selectable classification, not the remaining safety gates. See [selectable overrides](user-docs/selectable-overrides.md).
 
 On late failure the executor does not perform a destructive automatic rollback. It preserves explicit state/evidence and reports a recovery point where applicable so recovery remains an operator decision.
 

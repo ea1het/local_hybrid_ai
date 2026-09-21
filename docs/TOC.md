@@ -53,7 +53,7 @@ A reader looking for the deployed system begins with **Current state**. An opera
 - [Operator CLI](user-docs/cli.md) — supported `./local-ai` commands and machine contracts.
 - [Shell completion](user-docs/completion.md) — Bash/Zsh generation, automatic persistent installation and status.
 - [Upgrade workflow](user-docs/upgrade.md) — installed/available/selectable workflow, explicit selection and guarded apply.
-- [Administrator-forced upgrades](user-docs/forced-upgrades.md) — explicit risk acceptance for deterministic but unqualified mutation paths.
+- [Selectable overrides](user-docs/selectable-overrides.md) — administrator override of a component's default selectable classification.
 - [Component version authority](user-docs/version-authority.md) — installation-owned version intent and migration from older deployments.
 - [Configuration and secrets](configuration/README.md) — protected `.env`, generated secrets and ownership rules.
 - [Disaster recovery](dr/README.md) — backup/restore model, operating procedure and qualification status.
@@ -84,7 +84,7 @@ A reader looking for the deployed system begins with **Current state**. An opera
 - [CLI reference](user-docs/cli.md)
 - [Shell completion](user-docs/completion.md)
 - [Upgrade workflow](user-docs/upgrade.md)
-- [Administrator-forced upgrades](user-docs/forced-upgrades.md)
+- [Selectable overrides](user-docs/selectable-overrides.md)
 - [Component version authority](user-docs/version-authority.md)
 - [Integrations](user-docs/integrations/README.md)
 - [Configuration](configuration/README.md)

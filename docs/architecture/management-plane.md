@@ -29,7 +29,7 @@ flowchart TB
 
 The boundary deliberately separates facts from presentation. Every stack owns a `cli_contract.py` module whose `json_payload()` returns a JSON-compatible Python object. A stack contract never prints, serializes JSON, adds terminal decoration or interprets global automation flags. The management CLI composes those objects and is the only layer that renders human or machine output.
 
-`src/local_ai_cli/render.py` is the presentation boundary. Its JSON renderer emits one machine document without banners or prose. Its human renderer can prepend a configurable text banner/header. Consequently, presentation changes cannot alter stack logic and stack changes cannot silently change JSON serialization.
+`src/local_ai_cli/common/render.py` is the presentation boundary. Its JSON renderer emits one machine document without banners or prose. Its human renderer can prepend a configurable text banner/header. Consequently, presentation changes cannot alter stack logic and stack changes cannot silently change JSON serialization.
 
 ## Global automation context
 `--json` and `--yes` are properties of `local-ai`, not stack-specific options. The public boundary normalizes them independently of position and passes explicit context to operations. `--json` selects machine presentation. `--yes` supplies non-interactive consent; it is accepted as a no-op by read-only operations. Operation-specific assertions remain independent safety gates. In particular, `restore apply --execute` requires the DR-specific `--confirm-clean-target` assertion in addition to global execution consent.
@@ -89,7 +89,7 @@ flowchart LR
     R --> Q[READY + VERIFY]
 ```
 
-`src/local_ai_cli/backup/planner.py` and `src/local_ai_cli/restore/planner.py` own planning/orchestration for their respective package, and `src/local_ai_cli/common/preflight.py` owns the shared destination/runtime-source preflight. Mutation phases remain separate because their safety properties differ.
+`src/local_ai_cli/backup/_planner.py` and `src/local_ai_cli/restore/_planner.py` own planning/orchestration for their respective package, and `src/local_ai_cli/common/preflight.py` owns the shared destination/runtime-source preflight. Mutation phases remain separate because their safety properties differ.
 
 ## Lifecycle boundary
 ```mermaid

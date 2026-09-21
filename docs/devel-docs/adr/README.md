@@ -16,7 +16,7 @@ ADRs preserve architectural choices that are expensive to rediscover from implem
 | [0002](0002-single-management-cli.md) | Accepted | `local-ai` is the sole supported management interface and anticorruption boundary |
 | [0003](0003-human-version-vs-image-digest.md) | Accepted | Discover container versions from the configured image registry while retaining immutable digest identity |
 | [0004](0004-upgrade-compatibility-policy.md) | Accepted | Separate registry availability from installation-owned upgrade compatibility policy |
-| [0005](0005-unified-command-implementation-package.md) | Accepted | Organize all private management implementation under `commands/`, with recovery as a cohesive subpackage |
+| [0005](0005-unified-command-implementation-package.md) | Superseded | Organize all private management implementation under `commands/`, with recovery as a cohesive subpackage — superseded by per-command packages under `src/local_ai_cli/`; see [command package architecture](../../architecture/command-packages.md) |
 | [0006](0006-operational-version-authority.md) | Accepted | Keep operational component version intent outside moving Compose channels and adopt existing runtime non-disruptively |
 | [0007](0007-manifest-component-inventory.md) | Accepted | Make stack manifests authoritative for component semantics and derive CLI inventory/rescan state from them |
 
