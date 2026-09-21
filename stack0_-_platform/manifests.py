@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Validate stack manifests and resolve dependency/capability plans."""
+
 import argparse
 import importlib.util
 import json
@@ -154,13 +155,17 @@ def validate_contracts(manifests: dict[int, dict], target: bool) -> None:
             if not candidates:
                 fail(f"stack{stack_id}: required capability {capability} has no provider")
             if not candidates & required:
-                fail(f"stack{stack_id}: required capability {capability} is not provided by its required dependency closure")
+                fail(
+                    f"stack{stack_id}: required capability {capability} is not provided by its required dependency closure"
+                )
         for capability in data.get("optional_consumes", []):
             candidates = providers.get(capability, set())
             if not candidates:
                 fail(f"stack{stack_id}: optional capability {capability} has no provider")
             if not candidates & (required | optional):
-                fail(f"stack{stack_id}: optional capability {capability} is not reachable through required/optional dependencies")
+                fail(
+                    f"stack{stack_id}: optional capability {capability} is not reachable through required/optional dependencies"
+                )
 
 
 def resolve_token(token: str, manifests: dict[int, dict]) -> int:

@@ -14,6 +14,7 @@ This verifier does not fetch, pull, commit, push, reset or modify the working
 tree. It proves that the local externalized memory checkout is clean and aligned
 with its configured remote-tracking branch.
 """
+
 from __future__ import annotations
 
 import argparse

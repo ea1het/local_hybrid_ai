@@ -10,6 +10,7 @@ exposed for the duration of that migration. Restore no longer depends on
 backup's internals (shared Gitea dump validation lives in
 ``local_ai_cli.common.gitea_archive``), so backup's directory is not exposed here.
 """
+
 from pathlib import Path
 import sys
 

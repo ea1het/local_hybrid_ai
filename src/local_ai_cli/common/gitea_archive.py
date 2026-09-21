@@ -11,6 +11,7 @@ validates what it just produced, restore validates what it is about to trust.
 This module is the single, shared definition so neither package depends on
 the other's internals for it.
 """
+
 from __future__ import annotations
 
 import posixpath

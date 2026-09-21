@@ -87,31 +87,42 @@ class RestoreStageTests(unittest.TestCase):
             plan_restore.return_value = mock.Mock(source_commit="a" * 40, resolved_stacks=(0, 3))
             read_metadata.return_value = {
                 "global_artifacts": [{"relative_path": "artifacts/global/operational.env"}],
-                "artifacts": [{
-                    "stack_id": 0,
-                    "resource_id": "platform-pki",
-                    "strategy": "archive",
-                    "restore_phase": "pre-prepare",
-                    "relative_path": "artifacts/stack0/platform-pki.tar",
-                }],
-                "prerequisites": [{
-                    "stack_id": 3,
-                    "resource_id": "litellm-salt",
-                    "kind": "REQUIRE",
-                    "strategy": "external-config",
-                }],
+                "artifacts": [
+                    {
+                        "stack_id": 0,
+                        "resource_id": "platform-pki",
+                        "strategy": "archive",
+                        "restore_phase": "pre-prepare",
+                        "relative_path": "artifacts/stack0/platform-pki.tar",
+                    }
+                ],
+                "prerequisites": [
+                    {
+                        "stack_id": 3,
+                        "resource_id": "litellm-salt",
+                        "kind": "REQUIRE",
+                        "strategy": "external-config",
+                    }
+                ],
             }
             load_manifests.return_value = {
                 0: {"recovery": {"resources": []}},
-                3: {"recovery": {"resources": [{
-                    "id": "litellm-salt",
-                    "config": {"source": {"key": "LITELLM_SALT_KEY"}},
-                }]}},
+                3: {
+                    "recovery": {
+                        "resources": [
+                            {
+                                "id": "litellm-salt",
+                                "config": {"source": {"key": "LITELLM_SALT_KEY"}},
+                            }
+                        ]
+                    }
+                },
             }
 
             def create_source(commit, destination):
                 destination.mkdir(mode=0o700)
                 (destination / "README.md").write_text("source", encoding="utf-8")
+
             materialize.side_effect = create_source
 
             destination = root / "stage"

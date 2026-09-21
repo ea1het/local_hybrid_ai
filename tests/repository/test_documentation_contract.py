@@ -22,7 +22,6 @@ import unittest
 import urllib.parse
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 
@@ -32,11 +31,7 @@ class DocumentationContractTests(unittest.TestCase):
 
     def test_every_python_module_has_module_docstring(self):
         excluded_parts = {".git", "__pycache__"}
-        python_files = [
-            path
-            for path in ROOT.rglob("*.py")
-            if not any(part in excluded_parts for part in path.parts)
-        ]
+        python_files = [path for path in ROOT.rglob("*.py") if not any(part in excluded_parts for part in path.parts)]
         self.assertTrue(python_files)
         missing: list[str] = []
         for path in sorted(python_files):
@@ -114,7 +109,22 @@ class DocumentationContractTests(unittest.TestCase):
             text = markdown.read_text(encoding="utf-8")
             for block in fence.findall(text):
                 first = next((line.strip() for line in block.splitlines() if line.strip()), "")
-                if not first.startswith(("flowchart ", "graph ", "sequenceDiagram", "stateDiagram", "classDiagram", "erDiagram", "journey", "gantt", "pie ", "mindmap", "timeline", "gitGraph")):
+                if not first.startswith(
+                    (
+                        "flowchart ",
+                        "graph ",
+                        "sequenceDiagram",
+                        "stateDiagram",
+                        "classDiagram",
+                        "erDiagram",
+                        "journey",
+                        "gantt",
+                        "pie ",
+                        "mindmap",
+                        "timeline",
+                        "gitGraph",
+                    )
+                ):
                     invalid.append(f"{markdown.relative_to(ROOT)}: {first or '<empty>'}")
         self.assertEqual(invalid, [], f"Unsupported/undocumented Mermaid block starts: {invalid}")
 

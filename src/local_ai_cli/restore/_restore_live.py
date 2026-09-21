@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Clean-target destructive restore executor for a complete DR recovery point."""
+
 from __future__ import annotations
 
 import json
@@ -69,7 +70,9 @@ class RestoreContext:
     base_path: Path
 
 
-def _run(cmd: list[str], *, cwd: Path | None = None, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+def _run(
+    cmd: list[str], *, cwd: Path | None = None, input_bytes: bytes | None = None
+) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(cmd, cwd=cwd, input=input_bytes, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
 
@@ -83,7 +86,9 @@ def _require_ok(cp: subprocess.CompletedProcess[bytes], label: str) -> None:
 
 
 def _read_env_artifact(backup_set: Path, metadata: dict) -> tuple[Path, dict[str, str]]:
-    matches = [a for a in metadata.get("global_artifacts", []) if a.get("resource_id", a.get("id")) == "operational-env"]
+    matches = [
+        a for a in metadata.get("global_artifacts", []) if a.get("resource_id", a.get("id")) == "operational-env"
+    ]
     if len(matches) != 1:
         raise RestoreLiveError("backup set must contain exactly one operational-env global artifact")
     env_path = backup_set / matches[0]["relative_path"]
@@ -109,7 +114,9 @@ def _require_clean_path(path: Path, label: str) -> None:
     raise RestoreLiveError(f"{label} must be absent or an empty real directory: {path}")
 
 
-def _owned_objects(manifests: dict[int, dict], plan: list[int] | tuple[int, ...]) -> tuple[set[str], set[str], set[str]]:
+def _owned_objects(
+    manifests: dict[int, dict], plan: list[int] | tuple[int, ...]
+) -> tuple[set[str], set[str], set[str]]:
     containers: set[str] = set()
     volumes: set[str] = set()
     networks: set[str] = set()
@@ -132,7 +139,9 @@ def _require_absent_docker_objects(kind: str, names: set[str]) -> None:
             raise RestoreLiveError(f"clean-target preflight found existing platform {kind}: {name}")
 
 
-def require_clean_target(stacks_root: Path, base_path: Path, manifests: dict[int, dict], plan: list[int] | tuple[int, ...]) -> None:
+def require_clean_target(
+    stacks_root: Path, base_path: Path, manifests: dict[int, dict], plan: list[int] | tuple[int, ...]
+) -> None:
     if stacks_root == base_path or stacks_root in base_path.parents or base_path in stacks_root.parents:
         raise RestoreLiveError("STACKS_ROOT and BASE_PATH must be disjoint paths")
     _require_clean_path(stacks_root, "STACKS_ROOT")
@@ -193,7 +202,9 @@ def _load_target_lifecycle(stacks_root: Path) -> dict:
     return data
 
 
-def _run_lifecycle_commands(stacks_root: Path, lifecycle: dict, manifests: dict[int, dict], plan: list[int], phase: str) -> None:
+def _run_lifecycle_commands(
+    stacks_root: Path, lifecycle: dict, manifests: dict[int, dict], plan: list[int], phase: str
+) -> None:
     for sid in plan:
         entry = lifecycle["stacks"].get(str(sid))
         if not isinstance(entry, dict) or entry.get("directory") != manifests[sid]["directory"]:
@@ -206,7 +217,9 @@ def _run_lifecycle_commands(stacks_root: Path, lifecycle: dict, manifests: dict[
 
 
 def _find_resource(manifests: dict[int, dict], sid: int, resource_id: str) -> dict:
-    resource = next((r for r in manifests[sid].get("recovery", {}).get("resources", []) if r.get("id") == resource_id), None)
+    resource = next(
+        (r for r in manifests[sid].get("recovery", {}).get("resources", []) if r.get("id") == resource_id), None
+    )
     if resource is None:
         raise RestoreLiveError(f"missing recovery resource for stack{sid}/{resource_id}")
     return resource
@@ -241,7 +254,9 @@ def _restore_managed_archive(backup_set: Path, artifact: dict, resource: dict, b
         raise RestoreLiveError(f"managed archive target must be empty before restore: {target}")
     parent = target.parent
     target.rmdir()
-    restored = restore_stage._extract_tar_safely(backup_set / artifact["relative_path"], parent, expected_root=target.name)
+    restored = restore_stage._extract_tar_safely(
+        backup_set / artifact["relative_path"], parent, expected_root=target.name
+    )
     if restored <= 0 or not target.is_dir() or target.is_symlink():
         raise RestoreLiveError(f"managed archive restore produced no usable target: {target}")
 
@@ -255,12 +270,16 @@ def _wait_postgres(service: str, timeout: int = 120) -> None:
     raise RestoreLiveError(f"PostgreSQL service did not become ready: {service}")
 
 
-def _restore_postgres(backup_set: Path, artifact: dict, resource: dict, stacks_root: Path, manifest: dict, values: dict[str, str]) -> int:
+def _restore_postgres(
+    backup_set: Path, artifact: dict, resource: dict, stacks_root: Path, manifest: dict, values: dict[str, str]
+) -> int:
     source = resource["config"]["source"]
     service = source["service"]
     db_name = planner.require_env_value(values, source["database_env"], label="PostgreSQL database")
     user = planner.require_env_value(values, source["user_env"], label="PostgreSQL application role")
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", db_name) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", user):
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", db_name) or not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]{0,62}", user
+    ):
         raise RestoreLiveError("unsafe PostgreSQL database/role identifier")
     stack_dir = stacks_root / manifest["directory"]
     if not (stack_dir / "02-postgres.sh").is_file():
@@ -269,11 +288,42 @@ def _restore_postgres(backup_set: Path, artifact: dict, resource: dict, stacks_r
     _wait_postgres(service)
     with (backup_set / artifact["relative_path"]).open("rb") as handle:
         cp = subprocess.run(
-            ["docker", "exec", "-i", service, "pg_restore", "--no-owner", "--no-privileges", f"--role={user}", "-U", "postgres", "-d", db_name],
-            stdin=handle, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            [
+                "docker",
+                "exec",
+                "-i",
+                service,
+                "pg_restore",
+                "--no-owner",
+                "--no-privileges",
+                f"--role={user}",
+                "-U",
+                "postgres",
+                "-d",
+                db_name,
+            ],
+            stdin=handle,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
     _require_ok(cp, "PostgreSQL pg_restore")
-    count_cp = _run(["docker", "exec", "-i", service, "psql", "-At", "-U", "postgres", "-d", db_name, "-c", "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema');"])
+    count_cp = _run(
+        [
+            "docker",
+            "exec",
+            "-i",
+            service,
+            "psql",
+            "-At",
+            "-U",
+            "postgres",
+            "-d",
+            db_name,
+            "-c",
+            "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema');",
+        ]
+    )
     _require_ok(count_cp, "PostgreSQL restored table count")
     try:
         count = int(count_cp.stdout.decode().strip())
@@ -313,7 +363,14 @@ def _restore_gitea(backup_set: Path, artifact: dict, base_path: Path, values: di
     return tables, len(repositories)
 
 
-def _restore_managed(backup_set: Path, metadata: dict, stacks_root: Path, base_path: Path, manifests: dict[int, dict], values: dict[str, str]) -> tuple[int, int, int]:
+def _restore_managed(
+    backup_set: Path,
+    metadata: dict,
+    stacks_root: Path,
+    base_path: Path,
+    manifests: dict[int, dict],
+    values: dict[str, str],
+) -> tuple[int, int, int]:
     pg_tables = gitea_tables = gitea_repos = 0
     for artifact in metadata.get("artifacts", []):
         if artifact.get("restore_phase") != "post-prepare-pre-deploy":
@@ -377,7 +434,17 @@ def _prepare_restore_context(backup_set: Path) -> RestoreContext:
     target_root = stacks_root.resolve()
     if recovery_root == target_root or target_root in recovery_root.parents or recovery_root in target_root.parents:
         raise RestoreLiveError("recovery tooling must run from a checkout outside STACKS_ROOT")
-    return RestoreContext(backup_set, metadata, plan_obj.source_commit, tuple(plan_obj.resolved_stacks), manifests, env_source, values, stacks_root, base_path)
+    return RestoreContext(
+        backup_set,
+        metadata,
+        plan_obj.source_commit,
+        tuple(plan_obj.resolved_stacks),
+        manifests,
+        env_source,
+        values,
+        stacks_root,
+        base_path,
+    )
 
 
 def _materialize_restore_target(context: RestoreContext) -> tuple[dict[int, dict], dict]:
@@ -399,10 +466,14 @@ def _partition_external_stacks(metadata: dict, plan: tuple[int, ...]) -> tuple[l
     return [sid for sid in plan if sid not in external], [sid for sid in plan if sid in external]
 
 
-def _execute_restore_pipeline(context: RestoreContext, target_manifests: dict[int, dict], lifecycle: dict) -> tuple[int, int, int, int]:
+def _execute_restore_pipeline(
+    context: RestoreContext, target_manifests: dict[int, dict], lifecycle: dict
+) -> tuple[int, int, int, int]:
     base_stacks, external_stacks = _partition_external_stacks(context.metadata, context.plan)
     _run_lifecycle_commands(context.stacks_root, lifecycle, target_manifests, base_stacks, "prepare")
-    pg_tables, gitea_tables, gitea_repos = _restore_managed(context.backup_set, context.metadata, context.stacks_root, context.base_path, target_manifests, context.values)
+    pg_tables, gitea_tables, gitea_repos = _restore_managed(
+        context.backup_set, context.metadata, context.stacks_root, context.base_path, target_manifests, context.values
+    )
     _install(context.stacks_root, base_stacks, label="base restore deployment")
 
     _run_lifecycle_commands(context.stacks_root, lifecycle, target_manifests, external_stacks, "prepare")
@@ -417,7 +488,9 @@ def execute_restore_all(backup_set: Path, *, confirm_clean_target: bool = False)
     _validate_execution_environment(confirm_clean_target)
     context = _prepare_restore_context(backup_set)
     target_manifests, lifecycle = _materialize_restore_target(context)
-    pg_tables, gitea_tables, gitea_repos, external_restored = _execute_restore_pipeline(context, target_manifests, lifecycle)
+    pg_tables, gitea_tables, gitea_repos, external_restored = _execute_restore_pipeline(
+        context, target_manifests, lifecycle
+    )
     return RestoreLiveResult(
         backup_set=context.backup_set,
         source_commit=context.source_commit,

@@ -16,7 +16,6 @@ import os
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 LIFECYCLE = ROOT / "src" / "local_ai_cli" / "install-lifecycle.json"
 WAIT_SCRIPT = ROOT / "stack6_-_hermes" / "07-wait-ready.sh"

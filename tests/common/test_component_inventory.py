@@ -29,9 +29,7 @@ class ComponentInventoryTests(unittest.TestCase):
     def test_upgrade_catalog_is_derived_from_manifest_metadata(self):
         catalog = component_inventory.compile_upgrade_catalog()
         expected = {
-            f"{stack['id']}/{component['id']}"
-            for stack in catalog["stacks"]
-            for component in stack["components"]
+            f"{stack['id']}/{component['id']}" for stack in catalog["stacks"] for component in stack["components"]
         }
         self.assertEqual(set(upgrade.component_records()), expected)
         self.assertIn("stack4/runner", expected)
@@ -40,8 +38,9 @@ class ComponentInventoryTests(unittest.TestCase):
         self.assertNotIn("stack6/sandbox-cleanup", expected)
 
     def test_rescan_snapshot_is_derived_metadata_not_runtime_authority(self):
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
-            "os.environ", {"LOCAL_AI_RUNTIME_ROOT": tmp}, clear=False
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict("os.environ", {"LOCAL_AI_RUNTIME_ROOT": tmp}, clear=False),
         ):
             rc = inventory.main(["rescan"])
             self.assertEqual(rc, 0)
@@ -63,11 +62,14 @@ class ComponentInventoryTests(unittest.TestCase):
                 {"stack": "stack3", "id": "new", "management_type": "local"},
             ]
         }
-        self.assertEqual(inventory_snapshot.diff(previous, current), {
-            "added": ["stack3/new"],
-            "removed": ["stack1/old"],
-            "changed": ["stack2/same"],
-        })
+        self.assertEqual(
+            inventory_snapshot.diff(previous, current),
+            {
+                "added": ["stack3/new"],
+                "removed": ["stack1/old"],
+                "changed": ["stack2/same"],
+            },
+        )
 
 
 if __name__ == "__main__":

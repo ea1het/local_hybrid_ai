@@ -42,10 +42,7 @@ class RecoveryContractTests(unittest.TestCase):
             6: "reconstructable",
             7: "mixed",
         }
-        actual = {
-            stack_id: data["recovery"]["contract"]["mode"]
-            for stack_id, data in self.manifests.items()
-        }
+        actual = {stack_id: data["recovery"]["contract"]["mode"] for stack_id, data in self.manifests.items()}
         self.assertEqual(actual, expected)
 
     def test_current_and_target_graphs_still_validate(self):

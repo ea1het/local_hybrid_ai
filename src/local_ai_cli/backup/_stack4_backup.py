@@ -26,6 +26,7 @@ always removed, including dump failure paths. The backup is validated before
 atomic publication. Repositories and the live application database are never
 modified intentionally by this tool.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -82,8 +83,21 @@ class CompletedStack4Backup:
         return {
             "backup_set": str(self.path),
             "artifacts": [
-                {"stack_id": 0, "resource_id": PKI_RESOURCE_ID, "relative_path": PKI_RELATIVE_PATH, "sha256": self.pki_sha256, "size_bytes": self.pki_size_bytes},
-                {"stack_id": 4, "resource_id": GITEA_RESOURCE_ID, "relative_path": GITEA_RELATIVE_PATH, "sha256": self.gitea_sha256, "size_bytes": self.gitea_size_bytes, "zip_members": self.gitea_zip_members},
+                {
+                    "stack_id": 0,
+                    "resource_id": PKI_RESOURCE_ID,
+                    "relative_path": PKI_RELATIVE_PATH,
+                    "sha256": self.pki_sha256,
+                    "size_bytes": self.pki_size_bytes,
+                },
+                {
+                    "stack_id": 4,
+                    "resource_id": GITEA_RESOURCE_ID,
+                    "relative_path": GITEA_RELATIVE_PATH,
+                    "sha256": self.gitea_sha256,
+                    "size_bytes": self.gitea_size_bytes,
+                    "zip_members": self.gitea_zip_members,
+                },
             ],
             "consistency_mode": "controlled-offline",
             "gitea_was_stopped": self.gitea_was_stopped,
@@ -95,8 +109,16 @@ class CompletedStack4Backup:
 def select_resources(manifests: dict[int, dict], plan: list[int]) -> tuple[dict, dict]:
     if plan != [0, 4]:
         raise Stack4BackupError(f"unexpected Stack4 dependency plan: {plan}")
-    pki = [r for r in manifests[0]["recovery"].get("resources", []) if r.get("id") == PKI_RESOURCE_ID and r.get("strategy") == "archive"]
-    gitea = [r for r in manifests[4]["recovery"].get("resources", []) if r.get("id") == GITEA_RESOURCE_ID and r.get("strategy") == "gitea-native-dump"]
+    pki = [
+        r
+        for r in manifests[0]["recovery"].get("resources", [])
+        if r.get("id") == PKI_RESOURCE_ID and r.get("strategy") == "archive"
+    ]
+    gitea = [
+        r
+        for r in manifests[4]["recovery"].get("resources", [])
+        if r.get("id") == GITEA_RESOURCE_ID and r.get("strategy") == "gitea-native-dump"
+    ]
     if len(pki) != 1:
         raise Stack4BackupError("Stack0 must declare exactly one platform-pki archive resource")
     if len(gitea) != 1:
@@ -141,10 +163,12 @@ def _candidate_config_paths(config: dict, mounts: object) -> list[str]:
 
     custom = env.get("GITEA_CUSTOM", "").strip()
     if custom.startswith("/"):
-        candidates.extend([
-            f"{custom.rstrip('/')}/app.ini",
-            f"{custom.rstrip('/')}/conf/app.ini",
-        ])
+        candidates.extend(
+            [
+                f"{custom.rstrip('/')}/app.ini",
+                f"{custom.rstrip('/')}/conf/app.ini",
+            ]
+        )
 
     if isinstance(mounts, list):
         for mount in mounts:
@@ -153,10 +177,12 @@ def _candidate_config_paths(config: dict, mounts: object) -> list[str]:
             destination = str(mount.get("Destination") or "").strip()
             if destination.startswith("/"):
                 destination = destination.rstrip("/")
-                candidates.extend([
-                    f"{destination}/app.ini",
-                    f"{destination}/conf/app.ini",
-                ])
+                candidates.extend(
+                    [
+                        f"{destination}/app.ini",
+                        f"{destination}/conf/app.ini",
+                    ]
+                )
 
     unique: list[str] = []
     seen: set[str] = set()
@@ -243,7 +269,15 @@ def wait_gitea_healthy(timeout: int = HEALTH_TIMEOUT_SECONDS) -> None:
     deadline = time.monotonic() + timeout
     last = "unknown"
     while time.monotonic() < deadline:
-        cp = run_command(["docker", "inspect", "-f", "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}", GITEA_SERVICE])
+        cp = run_command(
+            [
+                "docker",
+                "inspect",
+                "-f",
+                "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
+                GITEA_SERVICE,
+            ]
+        )
         if cp.returncode == 0:
             last = cp.stdout.decode("utf-8", errors="replace").strip().lower()
             if last in {"healthy", "running"}:
@@ -263,10 +297,14 @@ def remove_helper(helper: str) -> None:
 def build_helper_create_command(context: GiteaExecutionContext, helper: str, helper_dump: str) -> list[str]:
     """Build a helper command from the currently deployed execution context."""
     command = [
-        "docker", "create",
-        "--name", helper,
-        "--network", "none",
-        "--volumes-from", GITEA_SERVICE,
+        "docker",
+        "create",
+        "--name",
+        helper,
+        "--network",
+        "none",
+        "--volumes-from",
+        GITEA_SERVICE,
     ]
     if context.user:
         command.extend(["--user", context.user])
@@ -282,13 +320,19 @@ def build_helper_create_command(context: GiteaExecutionContext, helper: str, hel
         command.extend(["--work-path", context.work_path])
     if context.custom_path:
         command.extend(["--custom-path", context.custom_path])
-    command.extend([
-        "--config", context.config_path,
-        "dump",
-        "--tempdir", GITEA_TEMP_PATH,
-        "--file", helper_dump,
-        "--type", "zip",
-    ])
+    command.extend(
+        [
+            "--config",
+            context.config_path,
+            "dump",
+            "--tempdir",
+            GITEA_TEMP_PATH,
+            "--file",
+            helper_dump,
+            "--type",
+            "zip",
+        ]
+    )
     return command
 
 
@@ -418,8 +462,26 @@ def execute_stack4_backup(backup_root: Path) -> CompletedStack4Backup:
             "requested": ["4"],
             "resolved_stacks": plan,
             "artifacts": [
-                {"stack_id": 0, "resource_id": PKI_RESOURCE_ID, "strategy": "archive", "sensitive": bool(pki_resource["sensitive"]), "restore_phase": pki_resource["config"].get("restore", {}).get("phase"), "relative_path": PKI_RELATIVE_PATH, "sha256": pki_hash, "size_bytes": pki_size},
-                {"stack_id": 4, "resource_id": GITEA_RESOURCE_ID, "strategy": "gitea-native-dump", "sensitive": bool(gitea_resource["sensitive"]), "restore_phase": gitea_resource["config"].get("restore", {}).get("phase"), "relative_path": GITEA_RELATIVE_PATH, "sha256": gitea_hash, "size_bytes": gitea_size},
+                {
+                    "stack_id": 0,
+                    "resource_id": PKI_RESOURCE_ID,
+                    "strategy": "archive",
+                    "sensitive": bool(pki_resource["sensitive"]),
+                    "restore_phase": pki_resource["config"].get("restore", {}).get("phase"),
+                    "relative_path": PKI_RELATIVE_PATH,
+                    "sha256": pki_hash,
+                    "size_bytes": pki_size,
+                },
+                {
+                    "stack_id": 4,
+                    "resource_id": GITEA_RESOURCE_ID,
+                    "strategy": "gitea-native-dump",
+                    "sensitive": bool(gitea_resource["sensitive"]),
+                    "restore_phase": gitea_resource["config"].get("restore", {}).get("phase"),
+                    "relative_path": GITEA_RELATIVE_PATH,
+                    "sha256": gitea_hash,
+                    "size_bytes": gitea_size,
+                },
             ],
             "prerequisites": [],
         }
@@ -427,9 +489,18 @@ def execute_stack4_backup(backup_root: Path) -> CompletedStack4Backup:
         metadata_path = temp / "backup.json"
         archive.write_private(metadata_path, (json.dumps(metadata, indent=2, sort_keys=True) + "\n").encode("utf-8"))
         metadata_hash = archive.sha256_file(metadata_path)
-        archive.write_private(temp / "checksums.sha256", (f"{pki_hash}  {PKI_RELATIVE_PATH}\n{gitea_hash}  {GITEA_RELATIVE_PATH}\n{metadata_hash}  backup.json\n").encode("utf-8"))
+        archive.write_private(
+            temp / "checksums.sha256",
+            (
+                f"{pki_hash}  {PKI_RELATIVE_PATH}\n{gitea_hash}  {GITEA_RELATIVE_PATH}\n{metadata_hash}  backup.json\n"
+            ).encode("utf-8"),
+        )
 
-        for relative, expected in ((PKI_RELATIVE_PATH, pki_hash), (GITEA_RELATIVE_PATH, gitea_hash), ("backup.json", metadata_hash)):
+        for relative, expected in (
+            (PKI_RELATIVE_PATH, pki_hash),
+            (GITEA_RELATIVE_PATH, gitea_hash),
+            ("backup.json", metadata_hash),
+        ):
             if archive.sha256_file(temp / relative) != expected:
                 raise Stack4BackupError(f"pre-publication checksum mismatch: {relative}")
         for directory in (stack0_dir, stack4_dir, artifacts, temp):
@@ -437,7 +508,9 @@ def execute_stack4_backup(backup_root: Path) -> CompletedStack4Backup:
 
         archive.rename_noreplace(temp, final)
         archive.fsync_directory(backup_root)
-        return CompletedStack4Backup(final, pki_hash, pki_size, gitea_hash, gitea_size, len(members), stopped, restarted)
+        return CompletedStack4Backup(
+            final, pki_hash, pki_size, gitea_hash, gitea_size, len(members), stopped, restarted
+        )
     except Exception:
         archive.cleanup_temp(temp)
         raise
@@ -454,7 +527,13 @@ def main() -> int:
     try:
         root, _ = planner.resolve_backup_root(args.destination)
         result = execute_stack4_backup(root)
-    except (Stack4BackupError, gitea_archive.GiteaDumpError, planner.RecoveryError, archive.ArchiveBackupError, OSError) as exc:
+    except (
+        Stack4BackupError,
+        gitea_archive.GiteaDumpError,
+        planner.RecoveryError,
+        archive.ArchiveBackupError,
+        OSError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     if args.json:

@@ -12,6 +12,7 @@ This milestone creates a dependency-complete backup set for requested Stack3:
 
 Gitea and generic `planner.py backup all` execution remain blocked.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -81,7 +82,9 @@ def select_resources(manifests: dict[int, dict], plan: list[int]) -> tuple[dict,
         raise Stack3BackupError("Stack0 must declare exactly one platform-pki archive resource")
 
     stack3_resources = manifests[3]["recovery"].get("resources", [])
-    database = [r for r in stack3_resources if r.get("id") == DB_RESOURCE_ID and r.get("strategy") == "postgres-custom-dump"]
+    database = [
+        r for r in stack3_resources if r.get("id") == DB_RESOURCE_ID and r.get("strategy") == "postgres-custom-dump"
+    ]
     salt = [r for r in stack3_resources if r.get("id") == "litellm-salt" and r.get("strategy") == "external-config"]
     if len(database) != 1:
         raise Stack3BackupError("Stack3 must declare exactly one litellm-database postgres-custom-dump resource")
@@ -94,9 +97,12 @@ def create_postgres_dump(database: str, destination: Path) -> None:
     postgres.validate_identifier(database, "database")
     command = postgres.docker_admin_prefix() + [
         "pg_dump",
-        "-h", "127.0.0.1",
-        "-U", postgres.ADMIN_USER,
-        "-d", database,
+        "-h",
+        "127.0.0.1",
+        "-U",
+        postgres.ADMIN_USER,
+        "-d",
+        database,
         "--format=custom",
         "--no-owner",
         "--no-acl",
@@ -114,7 +120,8 @@ def create_postgres_dump(database: str, destination: Path) -> None:
     if cp_list.returncode != 0:
         postgres.fail_command("pg_restore --list", cp_list)
     catalog_entries = [
-        line for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
+        line
+        for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
         if line and not line.startswith(";")
     ]
     if not catalog_entries:
@@ -144,6 +151,7 @@ def execute_stack3_backup(backup_root: Path) -> CompletedStack3Backup:
         raise Stack3BackupError(f"final backup-set name already exists: {final}")
 
     import secrets
+
     temp = backup_root / f".{final_name}.tmp-{secrets.token_hex(8)}"
     old_umask = os.umask(0o077)
     try:
@@ -216,9 +224,7 @@ def execute_stack3_backup(backup_root: Path) -> CompletedStack3Backup:
 
         checksums_path = temp / "checksums.sha256"
         checksum_text = (
-            f"{pki_hash}  {PKI_RELATIVE_PATH}\n"
-            f"{db_hash}  {DB_RELATIVE_PATH}\n"
-            f"{metadata_hash}  backup.json\n"
+            f"{pki_hash}  {PKI_RELATIVE_PATH}\n" f"{db_hash}  {DB_RELATIVE_PATH}\n" f"{metadata_hash}  backup.json\n"
         ).encode("utf-8")
         archive.write_private(checksums_path, checksum_text)
 
@@ -262,7 +268,13 @@ def main() -> int:
     try:
         root, _ = planner.resolve_backup_root(args.destination)
         result = execute_stack3_backup(root)
-    except (Stack3BackupError, planner.RecoveryError, archive.ArchiveBackupError, postgres.PostgresVerifyError, OSError) as exc:
+    except (
+        Stack3BackupError,
+        planner.RecoveryError,
+        archive.ArchiveBackupError,
+        postgres.PostgresVerifyError,
+        OSError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 

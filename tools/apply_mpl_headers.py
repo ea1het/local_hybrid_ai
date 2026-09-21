@@ -31,8 +31,21 @@ NOTICE_LINES = (
 NOTICE_MARKER = NOTICE_LINES[0]
 
 HASH_SUFFIXES = {
-    ".py", ".sh", ".bash", ".zsh", ".fish", ".yaml", ".yml", ".toml",
-    ".ini", ".cfg", ".conf", ".env", ".properties", ".feature", ".tf",
+    ".py",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".fish",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".env",
+    ".properties",
+    ".feature",
+    ".tf",
     ".hcl",
 }
 HTML_SUFFIXES = {".md", ".markdown", ".html", ".htm"}
@@ -42,16 +55,44 @@ DASH_SUFFIXES = {".sql", ".lua"}
 XML_SUFFIXES = {".xml", ".svg"}
 JINJA_SUFFIXES = {".j2", ".jinja", ".jinja2"}
 KNOWN_HASH_NAMES = {
-    "Dockerfile", "Makefile", "Procfile", "requirements.txt", "constraints.txt",
-    "Pipfile", "tox.ini", "pytest.ini", ".flake8", ".coveragerc", ".gitignore",
-    ".dockerignore", ".gitattributes", ".editorconfig",
+    "Dockerfile",
+    "Makefile",
+    "Procfile",
+    "requirements.txt",
+    "constraints.txt",
+    "Pipfile",
+    "tox.ini",
+    "pytest.ini",
+    ".flake8",
+    ".coveragerc",
+    ".gitignore",
+    ".dockerignore",
+    ".gitattributes",
+    ".editorconfig",
 }
 PURE_JSON_SUFFIXES = {".json"}
 CRYPTO_SUFFIXES = {".pem", ".crt", ".cer", ".key", ".p12", ".pfx", ".der"}
 BINARY_SUFFIXES = {
-    ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".zip",
-    ".gz", ".tgz", ".bz2", ".xz", ".tar", ".7z", ".woff", ".woff2",
-    ".ttf", ".otf", ".sqlite", ".db",
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".zip",
+    ".gz",
+    ".tgz",
+    ".bz2",
+    ".xz",
+    ".tar",
+    ".7z",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".sqlite",
+    ".db",
 }
 
 
@@ -222,7 +263,9 @@ def scan(check_only: bool) -> int:
         if relative == REPORT.relative_to(ROOT).as_posix():
             continue
         if path.is_symlink():
-            exceptions.append((relative, "symbolic link; modifying content would replace or alter the link target contract"))
+            exceptions.append(
+                (relative, "symbolic link; modifying content would replace or alter the link target contract")
+            )
             continue
         try:
             data = path.read_bytes()

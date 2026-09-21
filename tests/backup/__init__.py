@@ -9,6 +9,7 @@ Production DR modules under ``src/local_ai_cli/backup`` and
 ``sys.path``. Historical tests do the same, so both package roots are
 exposed for the duration of that migration.
 """
+
 from pathlib import Path
 import sys
 

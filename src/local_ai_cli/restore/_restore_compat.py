@@ -15,6 +15,7 @@ Recovery must not rewrite the historical source tree. This helper therefore
 accepts only that exact transient failure class, waits for the target lifecycle's
 required containers, and fails closed for every other installer error.
 """
+
 from __future__ import annotations
 
 import json
@@ -78,11 +79,15 @@ def _installer_path(stacks_root: Path) -> Path:
 
 
 def _container_state(name: str) -> tuple[str, str]:
-    cp = _run([
-        "docker", "inspect", "-f",
-        "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}",
-        name,
-    ])
+    cp = _run(
+        [
+            "docker",
+            "inspect",
+            "-f",
+            "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}",
+            name,
+        ]
+    )
     if cp.returncode != 0:
         return "absent", ""
     text = cp.stdout.decode("utf-8", errors="replace").strip()
@@ -108,26 +113,16 @@ def _required_containers(lifecycle: dict, selectors: list[int]) -> list[str]:
 
 
 def _runtime_ready(states: dict[str, tuple[str, str]]) -> bool:
-    return all(
-        status == "running" and health in {"", "healthy"}
-        for status, health in states.values()
-    )
+    return all(status == "running" and health in {"", "healthy"} for status, health in states.values())
 
 
 def _terminal_states(states: dict[str, tuple[str, str]]) -> dict[str, tuple[str, str]]:
     terminal_statuses = {"absent", "dead", "exited", "removing"}
-    return {
-        name: state
-        for name, state in states.items()
-        if state[0] in terminal_statuses
-    }
+    return {name: state for name, state in states.items() if state[0] in terminal_statuses}
 
 
 def _state_summary(states: dict[str, tuple[str, str]]) -> str:
-    return ", ".join(
-        f"{name}={status}/{health or 'none'}"
-        for name, (status, health) in states.items()
-    )
+    return ", ".join(f"{name}={status}/{health or 'none'}" for name, (status, health) in states.items())
 
 
 def wait_required_runtime(stacks_root: Path, selectors: list[int], timeout: int = 240) -> None:
@@ -142,13 +137,9 @@ def wait_required_runtime(stacks_root: Path, selectors: list[int], timeout: int 
 
         terminal = _terminal_states(states)
         if terminal:
-            raise RestoreCompatibilityError(
-                f"required runtime entered terminal state: {_state_summary(terminal)}"
-            )
+            raise RestoreCompatibilityError(f"required runtime entered terminal state: {_state_summary(terminal)}")
         if time.monotonic() >= deadline:
-            raise RestoreCompatibilityError(
-                f"required runtime readiness timeout: {_state_summary(states)}"
-            )
+            raise RestoreCompatibilityError(f"required runtime readiness timeout: {_state_summary(states)}")
         time.sleep(2)
 
 

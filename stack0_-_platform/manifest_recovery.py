@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Recovery-contract validation used by the Stack0 manifest registry."""
+
 from __future__ import annotations
 
 import json

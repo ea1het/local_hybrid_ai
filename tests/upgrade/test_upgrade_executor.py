@@ -209,10 +209,16 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             (root / ".env").write_text("LITELLM_POSTGRES_IMAGE=postgres:17.10-alpine\n", encoding="utf-8")
             (root / "src" / "local_ai_cli").mkdir(parents=True)
             (root / "src" / "local_ai_cli" / "install-lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
-            other_selection = {"stack": "stack7", "component": "open-webui", "current_at_selection": "v0.11.3", "version": "v0.11.4"}
+            other_selection = {
+                "stack": "stack7",
+                "component": "open-webui",
+                "current_at_selection": "v0.11.3",
+                "version": "v0.11.4",
+            }
             with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
                 upgrade_executor.execute(
-                    root=root, runtime_root=root / "runtime",
+                    root=root,
+                    runtime_root=root / "runtime",
                     selections=[self._postgres_selection(), other_selection],
                     components={"stack3/postgresql": self._postgres_component()},
                     plan_path=root / "runtime" / "platform" / "upgrade-plan.json",
@@ -228,7 +234,8 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             (root / "src" / "local_ai_cli" / "install-lifecycle.json").write_text('{"stacks":{}}', encoding="utf-8")
             with self.assertRaises(upgrade_executor.UpgradeExecutionError) as ctx:
                 upgrade_executor.execute(
-                    root=root, runtime_root=root / "runtime",
+                    root=root,
+                    runtime_root=root / "runtime",
                     selections=[self._postgres_selection()],
                     components={"stack3/postgresql": self._postgres_component()},
                     plan_path=root / "runtime" / "platform" / "upgrade-plan.json",
@@ -243,9 +250,21 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
     @mock.patch("local_ai_cli.upgrade.engine._running_image", return_value="postgres:17.11-alpine")
     @mock.patch("local_ai_cli.upgrade.engine._run_commands")
     @mock.patch("local_ai_cli.upgrade.engine._wait_ready")
-    @mock.patch("local_ai_cli.upgrade.engine._load_manifests", return_value={3: {"provides": [], "requires": [], "optional": [], "consumes": [], "optional_consumes": []}})
+    @mock.patch(
+        "local_ai_cli.upgrade.engine._load_manifests",
+        return_value={3: {"provides": [], "requires": [], "optional": [], "consumes": [], "optional_consumes": []}},
+    )
     def test_data_migration_dispatches_to_dedicated_module(
-        self, _load_manifests, _wait_ready, _run_commands, _running_image, _version_from_image, manifest_probe, subprocess_run, migration_execute, _geteuid,
+        self,
+        _load_manifests,
+        _wait_ready,
+        _run_commands,
+        _running_image,
+        _version_from_image,
+        manifest_probe,
+        subprocess_run,
+        migration_execute,
+        _geteuid,
     ):
         manifest_probe.return_value = upgrade_registry.RemoteProbe("sha256:" + "a" * 64, "ok")
         subprocess_run.return_value = subprocess.CompletedProcess([], 0, "", "")
@@ -253,16 +272,31 @@ class UpgradeExecutorSafetyTests(unittest.TestCase):
             root = Path(tmp)
             (root / ".env").write_text("LITELLM_POSTGRES_IMAGE=postgres:17.10-alpine\n", encoding="utf-8")
             (root / "src" / "local_ai_cli").mkdir(parents=True)
-            lifecycle = {"stacks": {"3": {"directory": "stack3_-_litellm", "required_containers": ["litellm-postgres"], "reconcile": [], "verify": []}}}
-            (root / "src" / "local_ai_cli" / "install-lifecycle.json").write_text(json.dumps(lifecycle), encoding="utf-8")
+            lifecycle = {
+                "stacks": {
+                    "3": {
+                        "directory": "stack3_-_litellm",
+                        "required_containers": ["litellm-postgres"],
+                        "reconcile": [],
+                        "verify": [],
+                    }
+                }
+            }
+            (root / "src" / "local_ai_cli" / "install-lifecycle.json").write_text(
+                json.dumps(lifecycle), encoding="utf-8"
+            )
             runtime_root = root / "runtime"
             plan_path = runtime_root / "platform" / "upgrade-plan.json"
-            plan_path.parent.mkdir(parents=True); plan_path.write_text('{"schema_version":1,"selected":{}}', encoding="utf-8")
+            plan_path.parent.mkdir(parents=True)
+            plan_path.write_text('{"schema_version":1,"selected":{}}', encoding="utf-8")
             result = upgrade_executor.execute(
-                root=root, runtime_root=runtime_root,
+                root=root,
+                runtime_root=runtime_root,
                 selections=[self._postgres_selection()],
                 components={"stack3/postgresql": self._postgres_component()},
-                plan_path=plan_path, quiet=True, confirm_data_migration=True,
+                plan_path=plan_path,
+                quiet=True,
+                confirm_data_migration=True,
             )
         migration_execute.assert_called_once()
         _, kwargs = migration_execute.call_args

@@ -102,8 +102,7 @@ class Stack3BackupAdapterTests(unittest.TestCase):
             (root / "backup.json").write_text(json.dumps(metadata), encoding="utf-8")
             metadata_hash = hashlib.sha256((root / "backup.json").read_bytes()).hexdigest()
             (root / "checksums.sha256").write_text(
-                f"{artifact_hash}  artifacts/stack3/litellm-database.dump\n"
-                f"{metadata_hash}  backup.json\n",
+                f"{artifact_hash}  artifacts/stack3/litellm-database.dump\n" f"{metadata_hash}  backup.json\n",
                 encoding="utf-8",
             )
             stack3_restore_verify.verify_checksums(root, metadata)
@@ -126,8 +125,7 @@ class Stack3BackupAdapterTests(unittest.TestCase):
             (root / "backup.json").write_text("{}", encoding="utf-8")
             metadata_hash = hashlib.sha256((root / "backup.json").read_bytes()).hexdigest()
             (root / "checksums.sha256").write_text(
-                f"{artifact_hash}  artifacts/stack3/litellm-database.dump\n"
-                f"{metadata_hash}  backup.json\n",
+                f"{artifact_hash}  artifacts/stack3/litellm-database.dump\n" f"{metadata_hash}  backup.json\n",
                 encoding="utf-8",
             )
             artifact.write_bytes(b"tampered")

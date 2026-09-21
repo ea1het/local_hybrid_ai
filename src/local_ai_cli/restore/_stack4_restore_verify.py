@@ -16,6 +16,7 @@ The verifier never restores into the live Gitea runtime. It:
 This proves the durable database and Git repositories can be reconstructed from
 the stored backup artifact without modifying or restarting the live service.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -156,14 +157,17 @@ def verify_repository(repo: Path) -> None:
         detail = cp.stderr.decode("utf-8", errors="replace").strip()
         if len(detail) > 1000:
             detail = detail[:1000] + "..."
-        raise Stack4RestoreVerifyError(f"git fsck failed for restored repository {repo.name}: {detail or 'no diagnostic output'}")
+        raise Stack4RestoreVerifyError(
+            f"git fsck failed for restored repository {repo.name}: {detail or 'no diagnostic output'}"
+        )
 
 
 def verify_backup_restore(backup_set: Path) -> RestoreVerification:
     metadata = stack4_inspect.read_metadata(backup_set)
     stack4_inspect.verify_checksums(backup_set)
     artifact = next(
-        a for a in metadata["artifacts"]
+        a
+        for a in metadata["artifacts"]
         if a.get("stack_id") == 4
         and a.get("resource_id") == gitea_archive.GITEA_RESOURCE_ID
         and a.get("strategy") == "gitea-native-dump"
@@ -205,13 +209,21 @@ def verify_backup_restore(backup_set: Path) -> RestoreVerification:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify a Stack4 Gitea backup by isolated database/repository reconstruction")
+    parser = argparse.ArgumentParser(
+        description="Verify a Stack4 Gitea backup by isolated database/repository reconstruction"
+    )
     parser.add_argument("backup_set")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:
         result = verify_backup_restore(Path(args.backup_set))
-    except (Stack4RestoreVerifyError, stack4_inspect.Stack4InspectError, gitea_archive.GiteaDumpError, archive.ArchiveBackupError, OSError) as exc:
+    except (
+        Stack4RestoreVerifyError,
+        stack4_inspect.Stack4InspectError,
+        gitea_archive.GiteaDumpError,
+        archive.ArchiveBackupError,
+        OSError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     if args.json:

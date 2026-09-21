@@ -2,8 +2,10 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Package-boundary tests for the upgrade command package."""
+
 from pathlib import Path
 import unittest
+
 
 class UpgradePackageBoundaryTests(unittest.TestCase):
     def test_package_does_not_import_legacy_upgrade_modules(self):
@@ -25,11 +27,13 @@ class UpgradePackageBoundaryTests(unittest.TestCase):
 
     def test_public_api_is_package_owned(self):
         from local_ai_cli.upgrade import api
+
         self.assertEqual("local_ai_cli.upgrade.api", api.__name__)
         self.assertTrue(callable(api.build_payload))
 
     def test_registry_is_package_owned(self):
         from local_ai_cli.upgrade import _registry as registry
+
         self.assertEqual("local_ai_cli.upgrade._registry", registry.__name__)
         self.assertTrue(callable(registry.parse_reference))
         self.assertTrue(callable(registry.local_digest))
@@ -37,8 +41,10 @@ class UpgradePackageBoundaryTests(unittest.TestCase):
 
     def test_config_root_is_repository_root(self):
         from local_ai_cli.upgrade import config
+
         expected = Path(__file__).resolve().parents[2]
         self.assertEqual(expected, config.ROOT)
+
 
 if __name__ == "__main__":
     unittest.main()

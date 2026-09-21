@@ -10,6 +10,7 @@ configured backup root with restrictive permissions and performs a transient,
 non-secret probe of the same-parent atomic publication primitive that the future
 backup engine will use.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -118,13 +119,9 @@ def validate_existing_root(root: Path) -> None:
     st = root.stat()
     actual_mode = stat.S_IMODE(st.st_mode)
     if st.st_uid != os.geteuid():
-        raise FilesystemContractError(
-            f"backup root must be owned by the executing uid {os.geteuid()}: {root}"
-        )
+        raise FilesystemContractError(f"backup root must be owned by the executing uid {os.geteuid()}: {root}")
     if actual_mode != ROOT_MODE:
-        raise FilesystemContractError(
-            f"backup root must have mode 0700; found {actual_mode:04o}: {root}"
-        )
+        raise FilesystemContractError(f"backup root must have mode 0700; found {actual_mode:04o}: {root}")
     if not os.access(root, os.W_OK | os.X_OK):
         raise FilesystemContractError(f"backup root is not writable/executable: {root}")
 
@@ -216,9 +213,7 @@ def probe_atomic_publication(root: Path) -> tuple[int, int, bool, bool]:
         fsync_directory(root)
 
         atomic_ok = (
-            published.is_dir()
-            and (published / marker_name).is_file()
-            and published.stat().st_ino == before_inode
+            published.is_dir() and (published / marker_name).is_file() and published.stat().st_ino == before_inode
         )
         if not atomic_ok:
             raise FilesystemContractError("same-parent atomic publication probe failed")
@@ -271,10 +266,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Prepare and validate the DR backup filesystem contract")
     parser.add_argument(
         "--destination",
-        help=(
-            "backup root directory; precedence: --destination, DR_BACKUP_ROOT, "
-            f"default {DEFAULT_BACKUP_ROOT}"
-        ),
+        help=("backup root directory; precedence: --destination, DR_BACKUP_ROOT, " f"default {DEFAULT_BACKUP_ROOT}"),
     )
     parser.add_argument(
         "--prepare",

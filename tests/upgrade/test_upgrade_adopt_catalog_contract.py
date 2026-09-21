@@ -2,6 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Regression contracts for the runtime version-authority catalog."""
+
 from __future__ import annotations
 
 import unittest

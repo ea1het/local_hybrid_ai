@@ -9,6 +9,7 @@ The installer orchestrates stack-owned lifecycle operations. Dependency and
 capability truth stays in manifest.json; stack lifecycle entry points stay in
 src/local_ai_cli/install-lifecycle.json.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -142,9 +143,7 @@ def validate_registry(manifests: dict[int, dict], lifecycle: dict) -> None:
             raise InstallerError(f"stack{sid}: lifecycle directory disagrees with manifest")
 
         owned_containers = {
-            value.split(":", 1)[1]
-            for value in manifest.get("owns", [])
-            if value.startswith("container:")
+            value.split(":", 1)[1] for value in manifest.get("owns", []) if value.startswith("container:")
         }
         required_containers = entry.get("required_containers")
         if not isinstance(required_containers, list) or not all(
@@ -157,9 +156,7 @@ def validate_registry(manifests: dict[int, dict], lifecycle: dict) -> None:
         for phase in ("prepare", "deploy", "reconcile", "verify"):
             commands = entry.get(phase, [])
             if not isinstance(commands, list) or not all(
-                isinstance(command, list)
-                and command
-                and all(isinstance(value, str) and value for value in command)
+                isinstance(command, list) and command and all(isinstance(value, str) and value for value in command)
                 for command in commands
             ):
                 raise InstallerError(f"stack{sid}: invalid {phase} command registry")
@@ -207,11 +204,7 @@ def is_runtime_healthy(state: str) -> bool:
 
 
 def stack_state(manifest: dict) -> dict:
-    containers = [
-        value.split(":", 1)[1]
-        for value in manifest.get("owns", [])
-        if value.startswith("container:")
-    ]
+    containers = [value.split(":", 1)[1] for value in manifest.get("owns", []) if value.startswith("container:")]
     return {
         "prepared": stack_prepared(manifest["directory"]),
         "containers": {name: container_state(name) for name in containers},
@@ -219,10 +212,7 @@ def stack_state(manifest: dict) -> dict:
 
 
 def deployment_ready(entry: dict, state: dict) -> bool:
-    return all(
-        is_running(state["containers"].get(name, "absent"))
-        for name in entry["required_containers"]
-    )
+    return all(is_running(state["containers"].get(name, "absent")) for name in entry["required_containers"])
 
 
 def wait_required_runtime(
@@ -267,8 +257,7 @@ def wait_required_runtime(
         if time.monotonic() >= deadline:
             detail = ", ".join(f"{name}={state}" for name, state in last.items())
             raise InstallerError(
-                f"stack{sid} required runtime did not become READY within "
-                f"{timeout_seconds}s: {detail}"
+                f"stack{sid} required runtime did not become READY within " f"{timeout_seconds}s: {detail}"
             )
 
         time.sleep(RUNTIME_READY_POLL_SECONDS)
@@ -457,19 +446,12 @@ def print_plan(
     for sid in plan:
         state = stack_state(manifests[sid])
         prepared = "PREPARED" if state["prepared"] else "ABSENT/UNPREPARED"
-        containers = ", ".join(
-            f"{name}={value}" for name, value in state["containers"].items()
-        ) or "no owned containers"
-        deployed = (
-            "DEPLOYED"
-            if deployment_ready(lifecycle["stacks"][str(sid)], state)
-            else "NOT-DEPLOYED"
+        containers = (
+            ", ".join(f"{name}={value}" for name, value in state["containers"].items()) or "no owned containers"
         )
+        deployed = "DEPLOYED" if deployment_ready(lifecycle["stacks"][str(sid)], state) else "NOT-DEPLOYED"
         transition = "; WILL-CHANGE" if sid in changed_stack_ids else ""
-        print(
-            f"  {sid}: {manifests[sid]['directory']} "
-            f"[{prepared}; {deployed}{transition}; {containers}]"
-        )
+        print(f"  {sid}: {manifests[sid]['directory']} " f"[{prepared}; {deployed}{transition}; {containers}]")
 
     if reconcile_ids:
         print("Reconcile consumers:")
@@ -502,9 +484,7 @@ def execute(actions: list[Action], lifecycle: dict) -> None:
         try:
             run(command, cwd=cwd)
         except subprocess.CalledProcessError as exc:
-            raise InstallerError(
-                f"failed: {action.display()} (rc={exc.returncode})"
-            ) from exc
+            raise InstallerError(f"failed: {action.display()} (rc={exc.returncode})") from exc
 
 
 def validate_runtime(plan: list[int], manifests: dict[int, dict], lifecycle: dict) -> None:
@@ -516,22 +496,14 @@ def validate_runtime(plan: list[int], manifests: dict[int, dict], lifecycle: dic
             if not is_runtime_healthy(state):
                 failures.append(f"stack{sid}:{name}={state}")
     if failures:
-        raise InstallerError(
-            "required runtime validation failed: " + ", ".join(failures)
-        )
+        raise InstallerError("required runtime validation failed: " + ", ".join(failures))
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Manifest-driven local_hybrid_ai installer"
-    )
-    parser.add_argument(
-        "stacks", nargs="+", help="stack ids, stackN, directory names, or all"
-    )
+    parser = argparse.ArgumentParser(description="Manifest-driven local_hybrid_ai installer")
+    parser.add_argument("stacks", nargs="+", help="stack ids, stackN, directory names, or all")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
-        "--plan", action="store_true", help="resolve and print plan only"
-    )
+    mode.add_argument("--plan", action="store_true", help="resolve and print plan only")
     mode.add_argument(
         "--dry-run",
         action="store_true",
@@ -582,9 +554,7 @@ def main() -> int:
             print("\nNo changes made.")
             return 0
         if not args.yes:
-            raise InstallerError(
-                "refusing execution without --yes; inspect --plan/--dry-run first"
-            )
+            raise InstallerError("refusing execution without --yes; inspect --plan/--dry-run first")
 
         execute(actions, lifecycle)
         validate_runtime(plan, manifests, lifecycle)

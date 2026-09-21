@@ -2,6 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Public Backup API backed exclusively by package-owned implementation."""
+
 from __future__ import annotations
 
 import importlib
@@ -34,7 +35,12 @@ def _envelope(result: dict[str, object]) -> dict[str, object]:
 
 
 def _failure(exc: Exception) -> dict[str, object]:
-    return {"schema_version": SCHEMA_VERSION, "command": "backup", "success": False, "error": {"code": "BACKUP_FAILED", "message": str(exc)}}
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "command": "backup",
+        "success": False,
+        "error": {"code": "BACKUP_FAILED", "message": str(exc)},
+    }
 
 
 def backup_payload(destination: str | Path | None = None) -> dict[str, object]:
@@ -59,7 +65,14 @@ def cli_text(payload: dict[str, object]) -> str:
     if not isinstance(result, dict):
         return str(result)
     path = result.get("backup_set", result.get("path", "-"))
-    return "\n".join(["DR BACKUP: PASS", f"- backup set: {path}", f"- artifacts: {result.get('artifact_count','-')}", "- publication: atomic"])
+    return "\n".join(
+        [
+            "DR BACKUP: PASS",
+            f"- backup set: {path}",
+            f"- artifacts: {result.get('artifact_count','-')}",
+            "- publication: atomic",
+        ]
+    )
 
 
 __all__ = ["SCHEMA_VERSION", "backup_payload", "cli_text"]

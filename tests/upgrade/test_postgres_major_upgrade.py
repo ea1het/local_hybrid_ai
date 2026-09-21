@@ -9,6 +9,7 @@ docker/pg_dump/pg_restore call is mocked. Only filesystem effects (the data
 directory move, the .env rewrite, the staging directory) run for real
 against a temporary directory tree.
 """
+
 from __future__ import annotations
 import subprocess, tempfile, unittest
 from pathlib import Path
@@ -32,10 +33,14 @@ class PostgresMajorUpgradeTests(unittest.TestCase):
         }
 
     def _fixture(self, tmp):
-        root = Path(tmp) / "project"; (root / "stack3_-_litellm").mkdir(parents=True)
+        root = Path(tmp) / "project"
+        (root / "stack3_-_litellm").mkdir(parents=True)
         runtime_root = Path(tmp) / "runtime"
-        base_path = Path(tmp) / "base"; data_dir = base_path / "service_-_litellm-postgres" / "data"; data_dir.mkdir(parents=True)
-        env_path = root / ".env"; env_path.write_text("LITELLM_POSTGRES_IMAGE=postgres:17.10-alpine\n")
+        base_path = Path(tmp) / "base"
+        data_dir = base_path / "service_-_litellm-postgres" / "data"
+        data_dir.mkdir(parents=True)
+        env_path = root / ".env"
+        env_path.write_text("LITELLM_POSTGRES_IMAGE=postgres:17.10-alpine\n")
         env_values = {"LITELLM_DB_NAME": "litellm", "LITELLM_DB_USER": "litellm", "BASE_PATH": str(base_path)}
         return root, runtime_root, data_dir, env_path, env_values
 
@@ -43,19 +48,32 @@ class PostgresMajorUpgradeTests(unittest.TestCase):
         def fake_run(cmd, *, cwd=None, capture=True):
             calls.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, "", "")
+
         def fake_dump(cmd, destination):
             destination.write_bytes(b"fake-custom-dump")
             return subprocess.CompletedProcess(cmd, 0, "", "")
-        with mock.patch.object(pgu, "_run", side_effect=fake_run), \
-             mock.patch.object(pgu, "_container_state", return_value="running/healthy"), \
-             mock.patch.object(pgu, "_wait_healthy"), \
-             mock.patch.object(pg, "list_user_tables", side_effect=[["public.a"], ["public.a"]]), \
-             mock.patch.object(pg, "run_binary_to_file", side_effect=fake_dump), \
-             mock.patch.object(pg, "run_binary_stdin", return_value=subprocess.CompletedProcess([], 0, "", "")) as restore:
+
+        with (
+            mock.patch.object(pgu, "_run", side_effect=fake_run),
+            mock.patch.object(pgu, "_container_state", return_value="running/healthy"),
+            mock.patch.object(pgu, "_wait_healthy"),
+            mock.patch.object(pg, "list_user_tables", side_effect=[["public.a"], ["public.a"]]),
+            mock.patch.object(pg, "run_binary_to_file", side_effect=fake_dump),
+            mock.patch.object(
+                pg, "run_binary_stdin", return_value=subprocess.CompletedProcess([], 0, "", "")
+            ) as restore,
+        ):
             pgu.execute(
-                root=root, runtime_root=runtime_root, stack_directory="stack3_-_litellm",
-                component_key="stack3/postgresql", apply=self._apply(), container="litellm-postgres",
-                target_image_ref="postgres:18.0-alpine", env_path=env_path, env_values=env_values, quiet=True,
+                root=root,
+                runtime_root=runtime_root,
+                stack_directory="stack3_-_litellm",
+                component_key="stack3/postgresql",
+                apply=self._apply(),
+                container="litellm-postgres",
+                target_image_ref="postgres:18.0-alpine",
+                env_path=env_path,
+                env_values=env_values,
+                quiet=True,
             )
         return restore
 
@@ -81,19 +99,33 @@ class PostgresMajorUpgradeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root, runtime_root, data_dir, env_path, env_values = self._fixture(tmp)
             calls = []
+
             def fake_run(cmd, *, cwd=None, capture=True):
-                calls.append(cmd); return subprocess.CompletedProcess(cmd, 0, "", "")
+                calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
             def empty_dump(cmd, destination):
-                destination.write_bytes(b""); return subprocess.CompletedProcess(cmd, 0, "", "")
-            with mock.patch.object(pgu, "_run", side_effect=fake_run), \
-                 mock.patch.object(pgu, "_container_state", return_value="running/healthy"), \
-                 mock.patch.object(pg, "list_user_tables", return_value=["public.a"]), \
-                 mock.patch.object(pg, "run_binary_to_file", side_effect=empty_dump):
+                destination.write_bytes(b"")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            with (
+                mock.patch.object(pgu, "_run", side_effect=fake_run),
+                mock.patch.object(pgu, "_container_state", return_value="running/healthy"),
+                mock.patch.object(pg, "list_user_tables", return_value=["public.a"]),
+                mock.patch.object(pg, "run_binary_to_file", side_effect=empty_dump),
+            ):
                 with self.assertRaises(UpgradeExecutionError) as ctx:
                     pgu.execute(
-                        root=root, runtime_root=runtime_root, stack_directory="stack3_-_litellm",
-                        component_key="stack3/postgresql", apply=self._apply(), container="litellm-postgres",
-                        target_image_ref="postgres:18.0-alpine", env_path=env_path, env_values=env_values, quiet=True,
+                        root=root,
+                        runtime_root=runtime_root,
+                        stack_directory="stack3_-_litellm",
+                        component_key="stack3/postgresql",
+                        apply=self._apply(),
+                        container="litellm-postgres",
+                        target_image_ref="postgres:18.0-alpine",
+                        env_path=env_path,
+                        env_values=env_values,
+                        quiet=True,
                     )
             self.assertEqual(ctx.exception.code, "UPGRADE_BACKUP_INVALID")
             self.assertTrue(data_dir.is_dir())
@@ -104,21 +136,35 @@ class PostgresMajorUpgradeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root, runtime_root, data_dir, env_path, env_values = self._fixture(tmp)
             calls = []
+
             def fake_run(cmd, *, cwd=None, capture=True):
-                calls.append(cmd); return subprocess.CompletedProcess(cmd, 0, "", "")
+                calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
             def fake_dump(cmd, destination):
-                destination.write_bytes(b"fake-custom-dump"); return subprocess.CompletedProcess(cmd, 0, "", "")
-            with mock.patch.object(pgu, "_run", side_effect=fake_run), \
-                 mock.patch.object(pgu, "_container_state", return_value="running/healthy"), \
-                 mock.patch.object(pgu, "_wait_healthy"), \
-                 mock.patch.object(pg, "list_user_tables", side_effect=[["public.a", "public.b"], ["public.a"]]), \
-                 mock.patch.object(pg, "run_binary_to_file", side_effect=fake_dump), \
-                 mock.patch.object(pg, "run_binary_stdin", return_value=subprocess.CompletedProcess([], 0, "", "")):
+                destination.write_bytes(b"fake-custom-dump")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            with (
+                mock.patch.object(pgu, "_run", side_effect=fake_run),
+                mock.patch.object(pgu, "_container_state", return_value="running/healthy"),
+                mock.patch.object(pgu, "_wait_healthy"),
+                mock.patch.object(pg, "list_user_tables", side_effect=[["public.a", "public.b"], ["public.a"]]),
+                mock.patch.object(pg, "run_binary_to_file", side_effect=fake_dump),
+                mock.patch.object(pg, "run_binary_stdin", return_value=subprocess.CompletedProcess([], 0, "", "")),
+            ):
                 with self.assertRaises(UpgradeExecutionError) as ctx:
                     pgu.execute(
-                        root=root, runtime_root=runtime_root, stack_directory="stack3_-_litellm",
-                        component_key="stack3/postgresql", apply=self._apply(), container="litellm-postgres",
-                        target_image_ref="postgres:18.0-alpine", env_path=env_path, env_values=env_values, quiet=True,
+                        root=root,
+                        runtime_root=runtime_root,
+                        stack_directory="stack3_-_litellm",
+                        component_key="stack3/postgresql",
+                        apply=self._apply(),
+                        container="litellm-postgres",
+                        target_image_ref="postgres:18.0-alpine",
+                        env_path=env_path,
+                        env_values=env_values,
+                        quiet=True,
                     )
             self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_NOT_RUNNING")
             self.assertNotIn(["docker", "start", "litellm"], calls)
@@ -129,13 +175,22 @@ class PostgresMajorUpgradeTests(unittest.TestCase):
     def test_source_not_running_is_rejected_before_any_dump(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, runtime_root, data_dir, env_path, env_values = self._fixture(tmp)
-            with mock.patch.object(pgu, "_container_state", return_value="exited"), \
-                 mock.patch.object(pg, "list_user_tables") as list_tables:
+            with (
+                mock.patch.object(pgu, "_container_state", return_value="exited"),
+                mock.patch.object(pg, "list_user_tables") as list_tables,
+            ):
                 with self.assertRaises(UpgradeExecutionError) as ctx:
                     pgu.execute(
-                        root=root, runtime_root=runtime_root, stack_directory="stack3_-_litellm",
-                        component_key="stack3/postgresql", apply=self._apply(), container="litellm-postgres",
-                        target_image_ref="postgres:18.0-alpine", env_path=env_path, env_values=env_values, quiet=True,
+                        root=root,
+                        runtime_root=runtime_root,
+                        stack_directory="stack3_-_litellm",
+                        component_key="stack3/postgresql",
+                        apply=self._apply(),
+                        container="litellm-postgres",
+                        target_image_ref="postgres:18.0-alpine",
+                        env_path=env_path,
+                        env_values=env_values,
+                        quiet=True,
                     )
             self.assertEqual(ctx.exception.code, "UPGRADE_TARGET_NOT_RUNNING")
             list_tables.assert_not_called()
@@ -143,12 +198,20 @@ class PostgresMajorUpgradeTests(unittest.TestCase):
     def test_incomplete_recipe_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root, runtime_root, data_dir, env_path, env_values = self._fixture(tmp)
-            apply = self._apply(); del apply["role_env"]
+            apply = self._apply()
+            del apply["role_env"]
             with self.assertRaises(UpgradeExecutionError) as ctx:
                 pgu.execute(
-                    root=root, runtime_root=runtime_root, stack_directory="stack3_-_litellm",
-                    component_key="stack3/postgresql", apply=apply, container="litellm-postgres",
-                    target_image_ref="postgres:18.0-alpine", env_path=env_path, env_values=env_values, quiet=True,
+                    root=root,
+                    runtime_root=runtime_root,
+                    stack_directory="stack3_-_litellm",
+                    component_key="stack3/postgresql",
+                    apply=apply,
+                    container="litellm-postgres",
+                    target_image_ref="postgres:18.0-alpine",
+                    env_path=env_path,
+                    env_values=env_values,
+                    quiet=True,
                 )
             self.assertEqual(ctx.exception.code, "UPGRADE_INTERNAL_CONFIG")
 

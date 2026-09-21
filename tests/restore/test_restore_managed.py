@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Protect isolated restoration of managed PostgreSQL and Gitea state."""
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,8 +22,10 @@ class RestoreManagedTests(unittest.TestCase):
 
     def test_stage_overlapping_live_base_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp); stage = root / "live" / "child"
-            (stage / "source").mkdir(parents=True); (stage / "runtime").mkdir()
+            root = Path(tmp)
+            stage = root / "live" / "child"
+            (stage / "source").mkdir(parents=True)
+            (stage / "runtime").mkdir()
             (stage / "source" / ".env").write_text(f"BASE_PATH={root / 'live'}\n", encoding="utf-8")
             with self.assertRaises(restore_managed.RestoreManagedError):
                 restore_managed._require_stage(stage)
@@ -32,17 +35,21 @@ class RestoreManagedTests(unittest.TestCase):
             source = Path(tmp)
             compose = source / "stack3_-_litellm" / "docker-compose.yml"
             compose.parent.mkdir(parents=True)
-            compose.write_text("services:\n  db:\n    image: postgres:17.10-alpine@sha256:" + "a" * 64 + "\n", encoding="utf-8")
+            compose.write_text(
+                "services:\n  db:\n    image: postgres:17.10-alpine@sha256:" + "a" * 64 + "\n", encoding="utf-8"
+            )
             self.assertEqual(
                 restore_managed._postgres_image(source, {}),
                 "postgres:17.10-alpine@sha256:" + "a" * 64,
             )
 
     def test_artifact_selection_rejects_ambiguity(self):
-        metadata = {"artifacts": [
-            {"strategy": "postgres-custom-dump", "resource_id": "litellm-database"},
-            {"strategy": "postgres-custom-dump", "resource_id": "litellm-database"},
-        ]}
+        metadata = {
+            "artifacts": [
+                {"strategy": "postgres-custom-dump", "resource_id": "litellm-database"},
+                {"strategy": "postgres-custom-dump", "resource_id": "litellm-database"},
+            ]
+        }
         with self.assertRaises(restore_managed.RestoreManagedError):
             restore_managed._artifact(metadata, strategy="postgres-custom-dump", resource_id="litellm-database")
 
@@ -53,4 +60,5 @@ class RestoreManagedTests(unittest.TestCase):
         self.assertEqual(run.call_args_list[-1].args[0], ["docker", "rm", "-f", "local-hybrid-ai-dr-gitea-test"])
 
 
-if __name__ == "__main__": unittest.main()
+if __name__ == "__main__":
+    unittest.main()

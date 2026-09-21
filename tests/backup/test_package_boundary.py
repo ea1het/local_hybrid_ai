@@ -2,6 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Package-boundary tests for the backup command package."""
+
 from pathlib import Path
 import unittest
 
@@ -12,7 +13,10 @@ BACKUP_DIR = PACKAGES_ROOT / "backup"
 class BackupPackageBoundaryTests(unittest.TestCase):
     def test_backup_package_owns_execution_graph(self):
         required = {
-            "_planner.py", "_stack3_backup.py", "_stack4_backup.py", "engine.py",
+            "_planner.py",
+            "_stack3_backup.py",
+            "_stack4_backup.py",
+            "engine.py",
         }
         self.assertTrue(required.issubset({p.name for p in BACKUP_DIR.iterdir()}))
 
@@ -28,6 +32,7 @@ class BackupPackageBoundaryTests(unittest.TestCase):
 
     def test_backup_payload_is_package_owned(self):
         from local_ai_cli.backup import api
+
         self.assertEqual("local_ai_cli.backup.api", api.__name__)
         self.assertTrue(callable(api.backup_payload))
 

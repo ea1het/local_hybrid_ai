@@ -65,7 +65,7 @@ class DisasterRecoveryPostgresVerifyTests(unittest.TestCase):
         self.assertIn("pg_restore", command)
         self.assertIn("--exit-on-error", command)
         self.assertNotEqual(command[-1], "-")
-        self.assertNotIn("-", command[command.index("pg_restore") + 1:])
+        self.assertNotIn("-", command[command.index("pg_restore") + 1 :])
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ import textwrap
 CONTAINER = "open-webui"
 MODEL_ID = "basic_autorouter"
 
-INNER = r'''
+INNER = r"""
 import asyncio
 from sqlalchemy import select
 
@@ -84,7 +84,7 @@ async def main():
 
 
 asyncio.run(main())
-'''
+"""
 
 
 def main() -> int:

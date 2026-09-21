@@ -13,6 +13,7 @@ them. Stack0 is the mandatory platform base and is always included.
 
 The operational .env is a global sensitive artifact by ADR-0001.
 """
+
 from __future__ import annotations
 
 import json
@@ -69,11 +70,7 @@ def load_lifecycle() -> dict:
 
 
 def _owned_containers(manifest: dict) -> set[str]:
-    return {
-        value.split(":", 1)[1]
-        for value in manifest.get("owns", [])
-        if value.startswith("container:")
-    }
+    return {value.split(":", 1)[1] for value in manifest.get("owns", []) if value.startswith("container:")}
 
 
 def _required_containers(sid: int, manifest: dict, lifecycle: dict) -> list[str]:
@@ -110,9 +107,7 @@ def detect_deployed_stacks(manifests: dict[int, dict], runner=planner.run_comman
 
 def _resource_map(manifests, plan):
     return {
-        (sid, resource["id"]): resource
-        for sid in plan
-        for resource in manifests[sid]["recovery"].get("resources", [])
+        (sid, resource["id"]): resource for sid in plan for resource in manifests[sid]["recovery"].get("resources", [])
     }
 
 
@@ -241,9 +236,7 @@ def _create_archive_artifact(resource: dict, manifest: dict, base_path: Path, de
             restart_error = exc
 
     if archive_error is not None and restart_error is not None:
-        raise BackupAllError(
-            f"archive failed and {quiesce} could not be restored: {restart_error}"
-        ) from archive_error
+        raise BackupAllError(f"archive failed and {quiesce} could not be restored: {restart_error}") from archive_error
     if restart_error is not None:
         raise restart_error
     if archive_error is not None:
@@ -318,9 +311,7 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
         for artifact in artifacts:
             resource = resources.get((artifact.stack_id, artifact.resource_id))
             if resource is None:
-                raise BackupAllError(
-                    f"manifest resource disappeared: stack{artifact.stack_id} {artifact.resource_id}"
-                )
+                raise BackupAllError(f"manifest resource disappeared: stack{artifact.stack_id} {artifact.resource_id}")
             path = temp / artifact.relative_path
             _create_manifest_artifact(
                 artifact,
@@ -331,9 +322,7 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
                 path,
             )
             if not path.is_file() or path.stat().st_size <= 0:
-                raise BackupAllError(
-                    f"backup adapter produced missing/empty artifact: {artifact.relative_path}"
-                )
+                raise BackupAllError(f"backup adapter produced missing/empty artifact: {artifact.relative_path}")
             completed.append(_artifact_metadata(artifact, path))
 
         globals_ = [
@@ -370,8 +359,7 @@ def execute_backup_all(backup_root: Path) -> CompletedBackupAll:
             (json.dumps(metadata, indent=2, sort_keys=True) + "\n").encode(),
         )
         items = [(ENV_RELATIVE_PATH, archive.sha256_file(env_path))] + [
-            (str(artifact["relative_path"]), str(artifact["sha256"]))
-            for artifact in completed
+            (str(artifact["relative_path"]), str(artifact["sha256"])) for artifact in completed
         ]
         items.append(("backup.json", archive.sha256_file(metadata_path)))
         archive.write_private(

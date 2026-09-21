@@ -9,6 +9,7 @@ This module intentionally duplicates the DR surface consumed by restore while
 command packages are being closed. It must not import another command package
 implementation.
 """
+
 from __future__ import annotations
 
 import json
@@ -57,7 +58,14 @@ def run_command(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 
 def run_manifest_tool(*args: str) -> object:
     try:
-        cp = subprocess.run([sys.executable, str(MANIFEST_TOOL), *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        cp = subprocess.run(
+            [sys.executable, str(MANIFEST_TOOL), *args],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or str(exc)).strip()
         raise RecoveryError(f"manifest resolver failed: {detail}") from exc

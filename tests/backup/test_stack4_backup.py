@@ -47,14 +47,16 @@ class Stack4BackupAdapterTests(unittest.TestCase):
                 stack4_backup.validate_gitea_dump(path)
 
     def test_classify_members_finds_recovery_categories(self):
-        counts = stack4_inspect.classify_members([
-            "gitea-db.sql",
-            "repos/u/r.git/HEAD",
-            "data/lfs/objects/x",
-            "data/attachments/y",
-            "data/packages/z",
-            "custom/conf/app.ini",
-        ])
+        counts = stack4_inspect.classify_members(
+            [
+                "gitea-db.sql",
+                "repos/u/r.git/HEAD",
+                "data/lfs/objects/x",
+                "data/attachments/y",
+                "data/packages/z",
+                "custom/conf/app.ini",
+            ]
+        )
         self.assertGreaterEqual(counts["database_like"], 1)
         self.assertGreaterEqual(counts["repositories_like"], 1)
         self.assertGreaterEqual(counts["lfs_like"], 1)

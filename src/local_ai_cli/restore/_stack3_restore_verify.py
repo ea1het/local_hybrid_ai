@@ -9,6 +9,7 @@ The verifier never restores into the live LiteLLM database. It creates a
 throw-away database in the existing Stack3 PostgreSQL service, compares the
 restored table inventory with the live source database, and removes the test DB.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,10 +48,7 @@ def verify_checksums(backup_set: Path, metadata: dict) -> None:
     if not checksums_path.is_file():
         raise Stack3RestoreVerifyError("checksums.sha256 is missing")
 
-    expected: dict[str, str] = {
-        artifact["relative_path"]: artifact["sha256"]
-        for artifact in metadata["artifacts"]
-    }
+    expected: dict[str, str] = {artifact["relative_path"]: artifact["sha256"] for artifact in metadata["artifacts"]}
     expected["backup.json"] = archive.sha256_file(backup_set / "backup.json")
 
     try:
@@ -81,7 +79,8 @@ def verify_checksums(backup_set: Path, metadata: dict) -> None:
 
 def select_database_artifact(backup_set: Path, metadata: dict) -> Path:
     matches = [
-        artifact for artifact in metadata["artifacts"]
+        artifact
+        for artifact in metadata["artifacts"]
         if artifact["stack_id"] == STACK_ID
         and artifact["resource_id"] == RESOURCE_ID
         and artifact["strategy"] == "postgres-custom-dump"
@@ -124,10 +123,13 @@ def verify_restore(backup_set: Path) -> dict[str, object]:
     )
     if cp_list.returncode != 0:
         postgres.fail_command("pg_restore --list", cp_list)
-    catalog_entries = len([
-        line for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
-        if line and not line.startswith(";")
-    ])
+    catalog_entries = len(
+        [
+            line
+            for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
+            if line and not line.startswith(";")
+        ]
+    )
     if catalog_entries <= 0:
         raise Stack3RestoreVerifyError("custom dump catalog is empty")
 
@@ -148,8 +150,7 @@ def verify_restore(backup_set: Path) -> dict[str, object]:
             raise Stack3RestoreVerifyError("generated restore database already exists")
 
         create_sql = (
-            f"CREATE DATABASE {postgres.quote_identifier(restore_db)} "
-            f"OWNER {postgres.quote_identifier(app_owner)};"
+            f"CREATE DATABASE {postgres.quote_identifier(restore_db)} " f"OWNER {postgres.quote_identifier(app_owner)};"
         )
         cp_create = postgres.admin_psql("postgres", create_sql)
         if cp_create.returncode != 0:
@@ -213,7 +214,13 @@ def main() -> int:
 
     try:
         result = verify_restore(Path(args.backup_set))
-    except (Stack3RestoreVerifyError, planner.RecoveryError, archive.ArchiveBackupError, postgres.PostgresVerifyError, OSError) as exc:
+    except (
+        Stack3RestoreVerifyError,
+        planner.RecoveryError,
+        archive.ArchiveBackupError,
+        postgres.PostgresVerifyError,
+        OSError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
@@ -227,7 +234,9 @@ def main() -> int:
         print(f"- source/restored tables: {result['source_tables']}/{result['restored_tables']}")
         print(f"- table inventory match: {'PASS' if result['table_set_match'] else 'FAIL'}")
         print(f"- restored non-empty tables: {result['restored_nonempty_tables']}")
-        print(f"- temporary restore database removed: {'PASS' if result['temporary_restore_database_removed'] else 'FAIL'}")
+        print(
+            f"- temporary restore database removed: {'PASS' if result['temporary_restore_database_removed'] else 'FAIL'}"
+        )
         print("- live LiteLLM database modified by tool: no")
         print("- container restarted: no")
     return 0

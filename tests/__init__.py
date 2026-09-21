@@ -12,6 +12,7 @@ stack-owned behaviour) that exercise no local_ai_cli code at all.
 local_ai_cli is not pip-installed; it is imported straight from ``src/`` by
 adding that directory to sys.path here, once, before any test module runs.
 """
+
 from pathlib import Path
 import sys
 

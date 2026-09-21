@@ -43,9 +43,15 @@ class RestoreCompatibilityTests(unittest.TestCase):
     def test_install_accepts_only_exact_transient_failure_after_independent_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             stacks = self._target(Path(td))
-            failed = mock.Mock(returncode=1, stdout=b"", stderr=b"INSTALLER ERROR: required runtime validation failed: stack6:hermes=running/starting")
-            with mock.patch.object(restore_compat, "_run", return_value=failed) as run, \
-                 mock.patch.object(restore_compat, "wait_required_runtime") as wait:
+            failed = mock.Mock(
+                returncode=1,
+                stdout=b"",
+                stderr=b"INSTALLER ERROR: required runtime validation failed: stack6:hermes=running/starting",
+            )
+            with (
+                mock.patch.object(restore_compat, "_run", return_value=failed) as run,
+                mock.patch.object(restore_compat, "wait_required_runtime") as wait,
+            ):
                 restore_compat.install_with_readiness_compat(stacks, [6], label="stack6")
             self.assertEqual(run.call_args.args[0][:2], ["python3", "commands/install.py"])
             wait.assert_called_once_with(stacks, [6])
@@ -93,8 +99,10 @@ class RestoreCompatibilityTests(unittest.TestCase):
                 values = states[name]
                 return values.pop(0) if len(values) > 1 else values[0]
 
-            with mock.patch.object(restore_compat, "_container_state", side_effect=state), \
-                 mock.patch.object(restore_compat.time, "sleep"):
+            with (
+                mock.patch.object(restore_compat, "_container_state", side_effect=state),
+                mock.patch.object(restore_compat.time, "sleep"),
+            ):
                 restore_compat.wait_required_runtime(stacks, [6], timeout=5)
 
 

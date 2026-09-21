@@ -38,8 +38,7 @@ class Stack4RestoreVerifyTests(unittest.TestCase):
             sql_path = Path(td) / "gitea-db.sql"
             db_path = Path(td) / "gitea.db"
             sql_path.write_text(
-                "CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT);"
-                "INSERT INTO user(name) VALUES ('alice');",
+                "CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT);" "INSERT INTO user(name) VALUES ('alice');",
                 encoding="utf-8",
             )
             tables, nonempty = stack4_restore_verify.restore_sqlite(sql_path, db_path)

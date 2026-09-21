@@ -45,7 +45,7 @@ class ImageReference:
         prefix = "" if self.registry == "docker.io" else f"{self.registry}/"
         repository = self.repository
         if self.registry == "docker.io" and repository.startswith("library/"):
-            repository = repository[len("library/"):]
+            repository = repository[len("library/") :]
         return prefix, repository
 
     def with_tag(self, tag: str) -> str:
@@ -105,17 +105,17 @@ class RegistryState:
         return self.local_digest != self.remote_digest
 
 
-_VERSION_RE = re.compile(
-    r"^(?P<prefix>v?)(?P<numbers>\d+(?:\.\d+)+)(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$"
-)
+_VERSION_RE = re.compile(r"^(?P<prefix>v?)(?P<numbers>\d+(?:\.\d+)+)(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$")
 _AUTH_PARAM_RE = re.compile(r'(\w+)="([^"]*)"')
 _LINK_RE = re.compile(r'<([^>]+)>\s*;\s*rel="?next"?', re.IGNORECASE)
-_MANIFEST_ACCEPT = ", ".join((
-    "application/vnd.oci.image.index.v1+json",
-    "application/vnd.oci.image.manifest.v1+json",
-    "application/vnd.docker.distribution.manifest.list.v2+json",
-    "application/vnd.docker.distribution.manifest.v2+json",
-))
+_MANIFEST_ACCEPT = ", ".join(
+    (
+        "application/vnd.oci.image.index.v1+json",
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.docker.distribution.manifest.v2+json",
+    )
+)
 _TOKEN_CACHE: dict[tuple[str, str], str] = {}
 
 
@@ -454,7 +454,11 @@ def _version_parts(tag: str) -> tuple[tuple[int, ...], str | None, bool] | None:
     match = _VERSION_RE.fullmatch(tag)
     if not match:
         return None
-    return tuple(int(value) for value in match.group("numbers").split(".")), match.group("suffix"), bool(match.group("prefix"))
+    return (
+        tuple(int(value) for value in match.group("numbers").split(".")),
+        match.group("suffix"),
+        bool(match.group("prefix")),
+    )
 
 
 def _version_sort_key(tag: str) -> tuple:
@@ -525,7 +529,7 @@ def _channel_candidates(tags: tuple[str, ...], source_tag: str | None) -> list[s
     matching = []
     for candidate in candidates:
         parsed = _version_parts(candidate)
-        if parsed and len(parsed[0]) > len(prefix) and parsed[0][:len(prefix)] == prefix:
+        if parsed and len(parsed[0]) > len(prefix) and parsed[0][: len(prefix)] == prefix:
             matching.append(candidate)
     return matching or candidates
 
@@ -541,12 +545,18 @@ def _is_channel_tag(tag: str | None, tags: tuple[str, ...]) -> bool:
     numbers = parsed[0]
     for candidate in _release_candidates(tags, tag):
         candidate_parsed = _version_parts(candidate)
-        if candidate_parsed and len(candidate_parsed[0]) > len(numbers) and candidate_parsed[0][:len(numbers)] == numbers:
+        if (
+            candidate_parsed
+            and len(candidate_parsed[0]) > len(numbers)
+            and candidate_parsed[0][: len(numbers)] == numbers
+        ):
             return True
     return False
 
 
-def _best_tag_for_digest(reference: ImageReference, digest: str | None, candidates: list[str], *, max_probes: int = 500) -> tuple[str | None, str]:
+def _best_tag_for_digest(
+    reference: ImageReference, digest: str | None, candidates: list[str], *, max_probes: int = 500
+) -> tuple[str | None, str]:
     if not digest:
         return None, "local_unknown"
     status = "not_found"

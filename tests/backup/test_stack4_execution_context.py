@@ -23,18 +23,20 @@ class Stack4ExecutionContextTests(unittest.TestCase):
         return stack4_backup.subprocess.CompletedProcess(args, rc, stdout=stdout, stderr=stderr)
 
     def test_rootless_context_is_discovered_not_hardcoded(self):
-        inspect_doc = [{
-            "Config": {
-                "Image": "docker.gitea.com/gitea:1.27.1-rootless",
-                "User": "1000:1000",
-                "WorkingDir": "/var/lib/gitea",
-                "Env": ["GITEA_CUSTOM=/etc/gitea", "TZ=Europe/Madrid"],
-            },
-            "Mounts": [
-                {"Destination": "/etc/gitea"},
-                {"Destination": "/var/lib/gitea"},
-            ],
-        }]
+        inspect_doc = [
+            {
+                "Config": {
+                    "Image": "docker.gitea.com/gitea:1.27.1-rootless",
+                    "User": "1000:1000",
+                    "WorkingDir": "/var/lib/gitea",
+                    "Env": ["GITEA_CUSTOM=/etc/gitea", "TZ=Europe/Madrid"],
+                },
+                "Mounts": [
+                    {"Destination": "/etc/gitea"},
+                    {"Destination": "/var/lib/gitea"},
+                ],
+            }
+        ]
 
         def fake_run(args):
             if args[:2] == ["docker", "inspect"]:
@@ -52,15 +54,17 @@ class Stack4ExecutionContextTests(unittest.TestCase):
         self.assertEqual(ctx.config_path, "/etc/gitea/app.ini")
 
     def test_rootful_context_uses_image_default_user_and_dynamic_paths(self):
-        inspect_doc = [{
-            "Config": {
-                "Image": "docker.gitea.com/gitea:1.28",
-                "User": "",
-                "WorkingDir": "/data",
-                "Env": ["GITEA_CUSTOM=/data/gitea"],
-            },
-            "Mounts": [{"Destination": "/data"}],
-        }]
+        inspect_doc = [
+            {
+                "Config": {
+                    "Image": "docker.gitea.com/gitea:1.28",
+                    "User": "",
+                    "WorkingDir": "/data",
+                    "Env": ["GITEA_CUSTOM=/data/gitea"],
+                },
+                "Mounts": [{"Destination": "/data"}],
+            }
+        ]
 
         def fake_run(args):
             if args[:2] == ["docker", "inspect"]:
@@ -77,9 +81,7 @@ class Stack4ExecutionContextTests(unittest.TestCase):
         self.assertEqual(ctx.custom_path, "/data/gitea")
         self.assertEqual(ctx.config_path, "/data/gitea/conf/app.ini")
 
-        command = stack4_backup.build_helper_create_command(
-            ctx, "helper", "/tmp/gitea-state.zip"
-        )
+        command = stack4_backup.build_helper_create_command(ctx, "helper", "/tmp/gitea-state.zip")
         self.assertNotIn("--user", command)
         self.assertIn("/data/gitea/conf/app.ini", command)
         self.assertNotIn("1000:1000", command)
@@ -93,23 +95,23 @@ class Stack4ExecutionContextTests(unittest.TestCase):
             custom_path="/srv/gitea/custom",
             config_path="/srv/gitea/custom/conf/app.ini",
         )
-        command = stack4_backup.build_helper_create_command(
-            ctx, "helper", "/tmp/gitea-state.zip"
-        )
+        command = stack4_backup.build_helper_create_command(ctx, "helper", "/tmp/gitea-state.zip")
         user_index = command.index("--user")
         self.assertEqual(command[user_index + 1], "1234:5678")
         self.assertNotIn("1000:1000", command)
 
     def test_context_discovery_fails_closed_when_config_is_not_found(self):
-        inspect_doc = [{
-            "Config": {
-                "Image": "gitea:test",
-                "User": "",
-                "WorkingDir": "",
-                "Env": [],
-            },
-            "Mounts": [{"Destination": "/data"}],
-        }]
+        inspect_doc = [
+            {
+                "Config": {
+                    "Image": "gitea:test",
+                    "User": "",
+                    "WorkingDir": "",
+                    "Env": [],
+                },
+                "Mounts": [{"Destination": "/data"}],
+            }
+        ]
 
         def fake_run(args):
             if args[:2] == ["docker", "inspect"]:

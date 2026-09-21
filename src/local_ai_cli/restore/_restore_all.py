@@ -12,6 +12,7 @@ future executing restore engine must follow.
 
 It never writes .env, runtime state, databases, Git repositories or containers.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -148,7 +149,9 @@ def verify_checksum_index(backup_set: Path, metadata: dict) -> int:
     if set(expected) != set(declared):
         missing = sorted(set(declared) - set(expected))
         extra = sorted(set(expected) - set(declared))
-        raise RestoreAllError(f"checksum index does not exactly cover declared files (missing={missing}, extra={extra})")
+        raise RestoreAllError(
+            f"checksum index does not exactly cover declared files (missing={missing}, extra={extra})"
+        )
 
     for relative, digest in expected.items():
         target = backup_set / _safe_relative(relative)
@@ -213,7 +216,10 @@ def validate_manifest_correspondence(metadata: dict, manifests: dict[int, dict])
     if len(globals_) != 1:
         raise RestoreAllError("complete restore currently requires exactly one global artifact")
     global_artifact = globals_[0]
-    if global_artifact.get("resource_id") != "operational-env" or global_artifact.get("strategy") not in SUPPORTED_GLOBAL_STRATEGIES:
+    if (
+        global_artifact.get("resource_id") != "operational-env"
+        or global_artifact.get("strategy") not in SUPPORTED_GLOBAL_STRATEGIES
+    ):
         raise RestoreAllError("complete restore requires the operational-env file-copy global artifact")
     if global_artifact.get("restore_phase") != "pre-prepare":
         raise RestoreAllError("operational-env must restore before PREPARE")
@@ -278,10 +284,7 @@ def _lifecycle_actions(stacks: tuple[int, ...], phase: str) -> list[RestoreActio
         detail = "VERIFY/readiness"
     else:
         raise RestoreAllError(f"unsupported lifecycle restore phase: {phase}")
-    return [
-        RestoreAction(phase, "lifecycle", sid, None, None, f"run Stack{sid} {detail} lifecycle")
-        for sid in stacks
-    ]
+    return [RestoreAction(phase, "lifecycle", sid, None, None, f"run Stack{sid} {detail} lifecycle") for sid in stacks]
 
 
 def _prerequisite_actions(metadata: dict) -> list[RestoreAction]:

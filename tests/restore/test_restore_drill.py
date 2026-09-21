@@ -56,9 +56,7 @@ class RestoreDrillTests(unittest.TestCase):
     @mock.patch("_restore_drill.restore_all.read_completed_backup_set")
     def test_external_git_verification_is_strategy_driven(self, read_meta, verify):
         read_meta.return_value = {
-            "prerequisites": [
-                {"stack_id": 6, "resource_id": "hermes-knowledge", "kind": "EXTERNAL", "strategy": "git"}
-            ]
+            "prerequisites": [{"stack_id": 6, "resource_id": "hermes-knowledge", "kind": "EXTERNAL", "strategy": "git"}]
         }
         count = restore_drill._verify_external_prerequisites(Path("/backup"), Path("/stage/.env"))
         self.assertEqual(count, 1)
@@ -67,9 +65,7 @@ class RestoreDrillTests(unittest.TestCase):
     @mock.patch("_restore_drill.restore_all.read_completed_backup_set")
     def test_unknown_external_strategy_fails_closed(self, read_meta):
         read_meta.return_value = {
-            "prerequisites": [
-                {"stack_id": 9, "resource_id": "x", "kind": "EXTERNAL", "strategy": "unknown"}
-            ]
+            "prerequisites": [{"stack_id": 9, "resource_id": "x", "kind": "EXTERNAL", "strategy": "unknown"}]
         }
         with self.assertRaises(restore_drill.RestoreDrillError):
             restore_drill._verify_external_prerequisites(Path("/backup"), Path("/stage/.env"))

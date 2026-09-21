@@ -2,6 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0.
 """Package-boundary tests for the restore command package."""
+
 from __future__ import annotations
 
 import inspect
@@ -46,7 +47,7 @@ class RestorePackageBoundaryTests(unittest.TestCase):
     def test_restore_dr_uses_repository_root(self):
         root = Path(inspect.getfile(api)).resolve().parent
         source = (root / "_planner.py").read_text(encoding="utf-8")
-        self.assertIn('Path(__file__).resolve().parents[3]', source)
+        self.assertIn("Path(__file__).resolve().parents[3]", source)
         self.assertIn('ROOT / "stack0_-_platform" / "manifests.py"', source)
 
     def test_public_surface_is_complete(self):

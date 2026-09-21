@@ -57,11 +57,13 @@ class UpgradeExecutionMetadataTests(unittest.TestCase):
             "execution": {"mode": "not-applicable", "blocked_by": "non-versioned-component"},
         }
         policy_state = {"effective_policy": "manual", "selection_valid": None}
-        with mock.patch("local_ai_cli.upgrade.load_catalog", return_value=[component]), \
-             mock.patch("local_ai_cli.upgrade.component_records", return_value={"stack0/platform-foundation": record}), \
-             mock.patch("local_ai_cli.upgrade.read_env", return_value={}), \
-             mock.patch("local_ai_cli.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}), \
-             mock.patch("local_ai_cli.upgrade.upgrade_policy.selection_status", return_value=policy_state):
+        with (
+            mock.patch("local_ai_cli.upgrade.load_catalog", return_value=[component]),
+            mock.patch("local_ai_cli.upgrade.component_records", return_value={"stack0/platform-foundation": record}),
+            mock.patch("local_ai_cli.upgrade.read_env", return_value={}),
+            mock.patch("local_ai_cli.upgrade.load_plan", return_value={"schema_version": 1, "selected": {}}),
+            mock.patch("local_ai_cli.upgrade.upgrade_policy.selection_status", return_value=policy_state),
+        ):
             rows = upgrade.inventory(query_upstream=False)
         self.assertEqual(rows[0]["execution"], record["execution"])
 

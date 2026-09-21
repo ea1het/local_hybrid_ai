@@ -33,19 +33,15 @@ class Stack7WebCapabilityTests(unittest.TestCase):
         compose = (STACK7 / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn('WEB_SEARCH_ENGINE: "searxng"', compose)
         self.assertIn('WEB_LOADER_ENGINE: "firecrawl"', compose)
-        self.assertIn('http://searxng:8080', compose)
-        self.assertIn('http://firecrawl-api:3002', compose)
+        self.assertIn("http://searxng:8080", compose)
+        self.assertIn("http://firecrawl-api:3002", compose)
         self.assertNotIn("\n  searxng:\n", compose)
         self.assertNotIn("\n  firecrawl-api:\n", compose)
 
     def test_stack2_searxng_contract_enables_json(self):
-        settings = (
-            ROOT
-            / "stack2_-_searxng_firecrawl"
-            / "config"
-            / "searxng"
-            / "settings.yml"
-        ).read_text(encoding="utf-8")
+        settings = (ROOT / "stack2_-_searxng_firecrawl" / "config" / "searxng" / "settings.yml").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("- json", settings)
 
 

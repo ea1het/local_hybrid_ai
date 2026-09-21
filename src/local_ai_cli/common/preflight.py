@@ -4,6 +4,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Read-only destination and runtime-source preflight for disaster recovery."""
+
 from __future__ import annotations
 
 import os
@@ -164,7 +165,7 @@ def expand_runtime_path(raw: str, base_path: Path) -> Path:
     if raw == token:
         expanded = str(base_path)
     elif raw.startswith(token + "/"):
-        expanded = str(base_path) + raw[len(token):]
+        expanded = str(base_path) + raw[len(token) :]
     elif "$" in raw:
         raise RecoveryError("runtime recovery path contains unsupported variable expansion")
     else:
@@ -180,7 +181,9 @@ def owned_container(manifest: dict, service: str) -> bool:
 
 
 def docker_state(service: str, runner: CommandRunner) -> str | None:
-    cp = runner(["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}", service])
+    cp = runner(
+        ["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}", service]
+    )
     if cp.returncode != 0:
         return None
     return cp.stdout.strip() or None
@@ -198,7 +201,9 @@ def runtime_resources(manifests: dict[int, dict], plan: list[int]):
 
 
 def ensure_docker_preflight(manifests: dict[int, dict], plan: list[int], docker_available: bool | None) -> None:
-    needs_docker = any(resource["strategy"] in DOCKER_RUNTIME_STRATEGIES for _, _, resource in runtime_resources(manifests, plan))
+    needs_docker = any(
+        resource["strategy"] in DOCKER_RUNTIME_STRATEGIES for _, _, resource in runtime_resources(manifests, plan)
+    )
     available = shutil.which("docker") is not None if docker_available is None else docker_available
     if needs_docker and not available:
         raise RecoveryError("Docker CLI is required for runtime recovery preflight")
@@ -223,7 +228,9 @@ def preflight_archive_source(sid: int, rid: str, source: dict, base_path: Path) 
 def preflight_external_config_source(sid: int, rid: str, source: dict, values: dict[str, str]) -> RuntimeCheck:
     if not values.get(source["key"], "").strip():
         raise RecoveryError(f"stack{sid} {rid}: required protected configuration is missing or empty")
-    return RuntimeCheck(sid, rid, "external-config", "OK", True, "required protected value is present; value not displayed")
+    return RuntimeCheck(
+        sid, rid, "external-config", "OK", True, "required protected value is present; value not displayed"
+    )
 
 
 def preflight_git_source(sid: int, rid: str, source: dict, values: dict[str, str]) -> RuntimeCheck:
@@ -231,8 +238,22 @@ def preflight_git_source(sid: int, rid: str, source: dict, values: dict[str, str
     if repository_env:
         if not values.get(repository_env, "").strip():
             raise RecoveryError(f"stack{sid} {rid}: declared Git repository configuration is missing")
-        return RuntimeCheck(sid, rid, "externalized-git", "OK", True, "declared Git repository configuration is present; value not displayed")
-    return RuntimeCheck(sid, rid, "externalized-git", "DECLARED", False, "externalized Git source declared without repository_env; contract presence only")
+        return RuntimeCheck(
+            sid,
+            rid,
+            "externalized-git",
+            "OK",
+            True,
+            "declared Git repository configuration is present; value not displayed",
+        )
+    return RuntimeCheck(
+        sid,
+        rid,
+        "externalized-git",
+        "DECLARED",
+        False,
+        "externalized Git source declared without repository_env; contract presence only",
+    )
 
 
 def preflight_docker_service(sid: int, rid: str, manifest: dict, source: dict, runner: CommandRunner) -> RuntimeCheck:
@@ -247,14 +268,18 @@ def preflight_docker_service(sid: int, rid: str, manifest: dict, source: dict, r
     return RuntimeCheck(sid, rid, "docker-service", "OK", True, f"{service}={state}")
 
 
-def preflight_postgres_source(sid: int, rid: str, source: dict, values: dict[str, str], runner: CommandRunner) -> RuntimeCheck:
+def preflight_postgres_source(
+    sid: int, rid: str, source: dict, values: dict[str, str], runner: CommandRunner
+) -> RuntimeCheck:
     db = require_env_value(values, source["database_env"], label="database configuration")
     user_env = source.get("user_env")
     user = require_env_value(values, user_env, label="database user configuration") if user_env else "postgres"
     cp = runner(["docker", "exec", source["service"], "pg_isready", "-d", db, "-U", user])
     if cp.returncode != 0:
         raise RecoveryError(f"stack{sid} {rid}: PostgreSQL source did not pass pg_isready")
-    return RuntimeCheck(sid, rid, "postgres-source", "OK", True, "configured database/user resolved and PostgreSQL accepts connections")
+    return RuntimeCheck(
+        sid, rid, "postgres-source", "OK", True, "configured database/user resolved and PostgreSQL accepts connections"
+    )
 
 
 def preflight_gitea_source(sid: int, rid: str, source: dict, runner: CommandRunner) -> RuntimeCheck:
@@ -267,10 +292,19 @@ def preflight_gitea_source(sid: int, rid: str, source: dict, runner: CommandRunn
         raise RecoveryError(f"stack{sid} {rid}: gitea dump --help is unavailable")
     flags = gitea_help_flags(help_cp.stdout + "\n" + help_cp.stderr)
     version = version_cp.stdout.strip().splitlines()[0]
-    return RuntimeCheck(sid, rid, "gitea-native-dump", "OK", True, f"version={version}; dump help available; flags={','.join(flags) if flags else '(none parsed)'}")
+    return RuntimeCheck(
+        sid,
+        rid,
+        "gitea-native-dump",
+        "OK",
+        True,
+        f"version={version}; dump help available; flags={','.join(flags) if flags else '(none parsed)'}",
+    )
 
 
-def preflight_runtime_resource(sid: int, manifest: dict, resource: dict, *, values: dict[str, str], base_path: Path, runner: CommandRunner) -> list[RuntimeCheck]:
+def preflight_runtime_resource(
+    sid: int, manifest: dict, resource: dict, *, values: dict[str, str], base_path: Path, runner: CommandRunner
+) -> list[RuntimeCheck]:
     rid, strategy, source = resource["id"], resource["strategy"], resource["config"]["source"]
     if strategy == "archive":
         return [preflight_archive_source(sid, rid, source, base_path)]
@@ -279,17 +313,35 @@ def preflight_runtime_resource(sid: int, manifest: dict, resource: dict, *, valu
     if strategy == "git":
         return [preflight_git_source(sid, rid, source, values)]
     if strategy == "postgres-custom-dump":
-        return [preflight_docker_service(sid, rid, manifest, source, runner), preflight_postgres_source(sid, rid, source, values, runner)]
+        return [
+            preflight_docker_service(sid, rid, manifest, source, runner),
+            preflight_postgres_source(sid, rid, source, values, runner),
+        ]
     if strategy == "gitea-native-dump":
-        return [preflight_docker_service(sid, rid, manifest, source, runner), preflight_gitea_source(sid, rid, source, runner)]
+        return [
+            preflight_docker_service(sid, rid, manifest, source, runner),
+            preflight_gitea_source(sid, rid, source, runner),
+        ]
     return []
 
 
-def preflight_runtime_sources(manifests: dict[int, dict], plan: list[int], *, env_path: Path = ROOT / ".env", runner: CommandRunner = run_command, docker_available: bool | None = None) -> list[RuntimeCheck]:
+def preflight_runtime_sources(
+    manifests: dict[int, dict],
+    plan: list[int],
+    *,
+    env_path: Path = ROOT / ".env",
+    runner: CommandRunner = run_command,
+    docker_available: bool | None = None,
+) -> list[RuntimeCheck]:
     values = read_dotenv_presence(env_path)
     base_path = resolve_base_path(values)
-    checks = [RuntimeCheck(None, None, "operational-env", "OK", True, "present and readable"), RuntimeCheck(None, None, "base-path", "OK", True, f"resolved to {base_path}")]
+    checks = [
+        RuntimeCheck(None, None, "operational-env", "OK", True, "present and readable"),
+        RuntimeCheck(None, None, "base-path", "OK", True, f"resolved to {base_path}"),
+    ]
     ensure_docker_preflight(manifests, plan, docker_available)
     for sid, manifest, resource in runtime_resources(manifests, plan):
-        checks.extend(preflight_runtime_resource(sid, manifest, resource, values=values, base_path=base_path, runner=runner))
+        checks.extend(
+            preflight_runtime_resource(sid, manifest, resource, values=values, base_path=base_path, runner=runner)
+        )
     return checks

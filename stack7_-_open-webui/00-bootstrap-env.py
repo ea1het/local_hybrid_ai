@@ -11,6 +11,7 @@ It adds only missing/placeholder Stack7 values, never prints secrets, and asks
 LiteLLM itself to issue a dedicated virtual key scoped to the model ids visible
 at bootstrap time.
 """
+
 from __future__ import annotations
 
 import json
@@ -95,7 +96,7 @@ def litellm_running() -> None:
 
 def issue_litellm_key() -> tuple[str, list[str]]:
     """Issue a model-scoped key without exposing the LiteLLM master key on host stdout."""
-    script = r'''
+    script = r"""
 import json, os, sys, urllib.request
 master = os.environ.get("LITELLM_MASTER_KEY", "")
 if not master:
@@ -125,7 +126,7 @@ visible = sorted({item.get("id") for item in verified.get("data", []) if isinsta
 if not visible:
     raise SystemExit("generated Stack7 key cannot see any models")
 print(json.dumps({"key": key, "models": models}, separators=(",", ":")))
-'''
+"""
     cp = run(["docker", "exec", "-i", "litellm", "python3", "-c", script])
     if cp.returncode != 0:
         detail = (cp.stderr or cp.stdout or "").strip()

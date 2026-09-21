@@ -23,7 +23,7 @@ class Stack4RestoreVerifyTests(unittest.TestCase):
     def test_safe_zip_kind_rejects_symlink(self):
         info = zipfile.ZipInfo("repos/u/r.git/link")
         info.create_system = 3
-        info.external_attr = (0o120777 << 16)
+        info.external_attr = 0o120777 << 16
         with self.assertRaises(stack4_restore_verify.Stack4RestoreVerifyError):
             stack4_restore_verify.safe_zip_kind(info)
 

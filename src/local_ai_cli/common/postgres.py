@@ -10,6 +10,7 @@ restore-database helpers used by both the backup dump path and the restore
 verification path. Neither path modifies the production LiteLLM database or
 restarts containers.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -46,7 +47,12 @@ def docker_admin_prefix() -> list[str]:
     # shell reads the Stack3-managed secret and exports it only to the child
     # PostgreSQL client process. TCP loopback forces password authentication.
     return [
-        "docker", "exec", "-i", SERVICE, "sh", "-c",
+        "docker",
+        "exec",
+        "-i",
+        SERVICE,
+        "sh",
+        "-c",
         'export PGPASSWORD="$(cat /run/secrets/postgres_admin_password)"; exec "$@"',
         "sh",
     ]
@@ -107,8 +113,18 @@ def admin_psql(database: str, sql: str) -> subprocess.CompletedProcess[str]:
     return run_text(
         docker_admin_prefix()
         + [
-            "psql", "-h", "127.0.0.1", "-U", ADMIN_USER,
-            "-d", database, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql,
+            "psql",
+            "-h",
+            "127.0.0.1",
+            "-U",
+            ADMIN_USER,
+            "-d",
+            database,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-At",
+            "-c",
+            sql,
         ]
     )
 
@@ -167,7 +183,16 @@ def pg_restore_database_command(database: str, app_owner: str) -> list[str]:
     validate_identifier(database, "restore database")
     validate_identifier(app_owner, "role")
     return docker_admin_prefix() + [
-        "pg_restore", "-h", "127.0.0.1", "-U", ADMIN_USER,
-        "-d", database, "--no-owner", "--no-acl", "--role", app_owner,
+        "pg_restore",
+        "-h",
+        "127.0.0.1",
+        "-U",
+        ADMIN_USER,
+        "-d",
+        database,
+        "--no-owner",
+        "--no-acl",
+        "--role",
+        app_owner,
         "--exit-on-error",
     ]

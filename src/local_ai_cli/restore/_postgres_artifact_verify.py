@@ -9,6 +9,7 @@ Unlike the older postgres.py milestone, this verifier consumes the
 artifact already present in a completed backup set. It never creates a fresh
 backup and never modifies the live LiteLLM database.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,7 +36,13 @@ def locate_artifact(backup_set: Path) -> tuple[dict, Path]:
         archive.validate_completed_metadata(metadata)
     except (OSError, json.JSONDecodeError, archive.ArchiveBackupError) as exc:
         raise PostgresArtifactVerifyError(f"invalid backup metadata: {exc}") from exc
-    matches = [a for a in metadata.get("artifacts", []) if a.get("stack_id") == 3 and a.get("resource_id") == "litellm-database" and a.get("strategy") == "postgres-custom-dump"]
+    matches = [
+        a
+        for a in metadata.get("artifacts", [])
+        if a.get("stack_id") == 3
+        and a.get("resource_id") == "litellm-database"
+        and a.get("strategy") == "postgres-custom-dump"
+    ]
     if len(matches) != 1:
         raise PostgresArtifactVerifyError("backup set must contain exactly one Stack3 litellm-database dump")
     artifact = backup_set / matches[0]["relative_path"]
@@ -52,8 +59,12 @@ def verify_backup_set(backup_set: Path) -> dict[str, object]:
     plan = planner.resolve_plan(["3"])
     planner.preflight_runtime_sources(manifests, plan)
     values = planner.read_dotenv_presence(Path(__file__).resolve().parent / ".env")
-    source_db = pg.validate_identifier(planner.require_env_value(values, "LITELLM_DB_NAME", label="LITELLM_DB_NAME"), "database")
-    app_owner = pg.validate_identifier(planner.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"), "role")
+    source_db = pg.validate_identifier(
+        planner.require_env_value(values, "LITELLM_DB_NAME", label="LITELLM_DB_NAME"), "database"
+    )
+    app_owner = pg.validate_identifier(
+        planner.require_env_value(values, "LITELLM_DB_USER", label="LITELLM_DB_USER"), "role"
+    )
     source_tables = pg.list_user_tables(source_db)
     if not source_tables:
         raise PostgresArtifactVerifyError("source LiteLLM database contains no user tables")
@@ -61,11 +72,18 @@ def verify_backup_set(backup_set: Path) -> dict[str, object]:
     cp_list = pg.run_binary_stdin(pg.pg_restore_list_command(), dump_path)
     if cp_list.returncode != 0:
         pg.fail_command("pg_restore --list", cp_list)
-    catalog_entries = len([line for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines() if line and not line.startswith(";")])
+    catalog_entries = len(
+        [
+            line
+            for line in cp_list.stdout.decode("utf-8", errors="replace").splitlines()
+            if line and not line.startswith(";")
+        ]
+    )
     if catalog_entries <= 0:
         raise PostgresArtifactVerifyError("stored dump catalog is empty")
 
     import secrets
+
     restore_db = pg.validate_identifier("dr_restore_" + secrets.token_hex(6), "restore database")
     restore_created = False
     restored_tables: list[str] = []
@@ -73,7 +91,9 @@ def verify_backup_set(backup_set: Path) -> dict[str, object]:
     try:
         if pg.database_exists(restore_db):
             raise PostgresArtifactVerifyError("generated restore database already exists")
-        cp = pg.admin_psql("postgres", f"CREATE DATABASE {pg.quote_identifier(restore_db)} OWNER {pg.quote_identifier(app_owner)};")
+        cp = pg.admin_psql(
+            "postgres", f"CREATE DATABASE {pg.quote_identifier(restore_db)} OWNER {pg.quote_identifier(app_owner)};"
+        )
         if cp.returncode != 0:
             pg.fail_command("restore database creation", cp)
         restore_created = True
@@ -86,7 +106,11 @@ def verify_backup_set(backup_set: Path) -> dict[str, object]:
         nonempty = pg.count_nonempty_tables(restore_db, restored_tables)
     finally:
         if restore_created:
-            pg.admin_psql("postgres", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND pid <> pg_backend_pid();" % restore_db)
+            pg.admin_psql(
+                "postgres",
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND pid <> pg_backend_pid();"
+                % restore_db,
+            )
             cp_drop = pg.admin_psql("postgres", f"DROP DATABASE {pg.quote_identifier(restore_db)};")
             if cp_drop.returncode != 0:
                 pg.fail_command("restore database removal", cp_drop)
@@ -132,6 +156,7 @@ def main() -> int:
         print("- live LiteLLM database modified: no")
         print("- container restarted: no")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
