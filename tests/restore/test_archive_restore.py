@@ -43,6 +43,9 @@ class DisasterRecoveryArchiveRestoreTests(unittest.TestCase):
             now=dt.datetime(2026, 9, 10, 15, 0, 0, tzinfo=dt.timezone.utc),
         ).path
 
+    @unittest.skipUnless(
+        backup_archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)"
+    )
     def test_restore_verification_matches_source_and_cleans_temp(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)
@@ -52,6 +55,9 @@ class DisasterRecoveryArchiveRestoreTests(unittest.TestCase):
             self.assertTrue(result.temporary_cleanup)
             self.assertEqual(result.member_count, 3)
 
+    @unittest.skipUnless(
+        backup_archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)"
+    )
     def test_checksum_tampering_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)
@@ -63,6 +69,9 @@ class DisasterRecoveryArchiveRestoreTests(unittest.TestCase):
             with self.assertRaises(archive_restore.ArchiveRestoreError):
                 archive_restore.verify_restore(backup, compare_source=source)
 
+    @unittest.skipUnless(
+        backup_archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)"
+    )
     def test_source_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)
@@ -81,6 +90,9 @@ class DisasterRecoveryArchiveRestoreTests(unittest.TestCase):
         with self.assertRaises(archive_restore.ArchiveRestoreError):
             archive_restore.validate_symlink_target(archive_restore.PurePosixPath("pki/link"), "/etc/passwd")
 
+    @unittest.skipUnless(
+        backup_archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)"
+    )
     def test_result_json_never_claims_live_restore(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)

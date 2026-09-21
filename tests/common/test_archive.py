@@ -58,6 +58,7 @@ class DisasterRecoveryArchiveTests(unittest.TestCase):
             now=when or dt.datetime(2026, 9, 10, 15, 0, 0, tzinfo=dt.timezone.utc),
         )
 
+    @unittest.skipUnless(archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)")
     def test_completed_set_has_expected_private_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)
@@ -69,6 +70,7 @@ class DisasterRecoveryArchiveTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(result.path.stat().st_mode), 0o700)
             self.assertEqual(stat.S_IMODE(result.artifact_path.stat().st_mode), 0o600)
 
+    @unittest.skipUnless(archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)")
     def test_archive_contains_bounded_source_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)
@@ -79,6 +81,7 @@ class DisasterRecoveryArchiveTests(unittest.TestCase):
             self.assertIn("pki/tls.key", names)
             self.assertTrue(all(not n.startswith("/") and ".." not in Path(n).parts for n in names))
 
+    @unittest.skipUnless(archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)")
     def test_metadata_and_checksum_index_match_real_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)
@@ -101,6 +104,7 @@ class DisasterRecoveryArchiveTests(unittest.TestCase):
                 self.execute(root, source)
             self.assertEqual((existing / "sentinel").read_text(), "keep")
 
+    @unittest.skipUnless(archive.has_renameat2(), "atomic no-replace publication requires renameat2 (Linux only)")
     def test_source_files_are_not_modified(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)

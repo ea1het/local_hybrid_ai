@@ -254,6 +254,11 @@ def validate_completed_metadata(metadata: dict, schema_path: Path = BACKUP_SCHEM
             raise ArchiveBackupError(f"prerequisite {index} strategy is invalid")
 
 
+def has_renameat2() -> bool:
+    """Report whether this host's libc exposes renameat2 (Linux only, not macOS)."""
+    return getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None) is not None
+
+
 def rename_noreplace(source: Path, destination: Path) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
