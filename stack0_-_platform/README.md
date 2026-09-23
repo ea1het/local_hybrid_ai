@@ -6,44 +6,40 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack0 — Platform foundation
 
-[Documentation TOC](../docs/TOC.md) · [Stack map](../docs/stacks/README.md) · [OpenSpec contract](../docs/devel-docs/openspec/stacks/stack0.feature)
+Stack0 is the mandatory foundation for every other stack. It owns the shared platform resources so application stacks do not duplicate or mutate them.
 
-Stack0 is the mandatory foundation for every other stack. It owns shared platform resources instead of letting application stacks duplicate or mutate them independently.
+## What it provides
 
-```mermaid
-flowchart LR
-    Stack0[Stack0 Platform] --> Network[redlocal Docker bridge]
-    Stack0 --> PKI[Platform PKI]
-    Stack0 --> Runtime[Shared runtime foundation]
-    Stack0 --> Manifest[Manifest / environment compatibility]
-    Network --> Consumers[Stacks 1-7]
-    PKI --> Ingress[Stack1 HAProxy]
+- **`redlocal`**: the shared external Docker bridge network (`NETWORK_NAME`).
+- **Platform PKI**: wildcard certificate for `ROOT_HOSTNAME` at `${BASE_PATH}/service_-_platform/pki/{tls.crt,tls.key}`, readable by the `local-hybrid-pki` group (`PLATFORM_PKI_GID`). Stack1 consumes it read-only.
+- **Runtime directory**: `${BASE_PATH}/service_-_platform/{pki,state,logs}`.
+- **Environment links**: `stackN_-_*/.env -> ../.env` for stacks 1–7, so `docker compose` in each stack reads the central `.env`.
+- **`.lock`**: written after a successful prepare. It means PREPARED only, not deployed or healthy.
+
+Stack0 has no application container.
+
+## Usage
+
+Run as root, from a worktree located at `STACKS_ROOT`, with the operational `.env` at `${STACKS_ROOT}/.env` (root:root 0600).
+
+```bash
+cd /opt/docker/stacks/stack0_-_platform
+./01-prepare.sh     # network, PKI group, runtime dirs, PKI, .env links, .lock
+./verify.sh         # read-only check of the above
+./install.sh        # 01-prepare.sh followed by verify.sh
 ```
 
-## Contract
+`01-prepare.sh` never regenerates or overwrites the root `.env`, and refuses to replace an existing non-symlink `.env` inside a stack.
 
-- **Requires:** none.
-- **Provides:** shared platform foundation.
-- **Owns:** `redlocal`, platform PKI/runtime prerequisites and common manifest/environment compatibility plumbing.
-- **Persistent DR state:** platform PKI and other explicitly declared Stack0 recovery artifacts.
-- **Lifecycle:** establish shared prerequisites before dependent stack deployment, then verify foundation invariants.
+## Files
 
-Stack0 has no ordinary application container whose running state represents the stack. For that reason selective runtime `start/stop` is not meaningful for Stack0 and the management CLI rejects it rather than pretending there is a container lifecycle to manage.
+| File | Purpose |
+|---|---|
+| `01-prepare.sh` | Idempotent preparation of the shared foundation. |
+| `pki.sh` | Create, import or inspect the platform certificate (`create`, `import`, `status`). Validity from `PLATFORM_CERT_DAYS`. |
+| `verify.sh` | Read-only verification; prints `Stack0 READY`. |
+| `install.sh` | Runs prepare, then verify. |
 
-`.lock` means **PREPARED only**. It records successful preparation of the shared foundation; it is not a substitute for runtime/health verification of dependent stacks.
+## Variables
 
-## Ownership invariants
-
-Application stacks consume Stack0 resources but do not take ownership of them. In particular, Stack1 consumes PKI read-only and all containerized stacks attach to `redlocal` under their own manifests.
-
-The protected root `.env` is installation-owned operational configuration. PREPARE validates it and stack-specific environment linkage, but must not silently regenerate or overwrite it.
-
-## Related decisions
-
-- [ADR-0001 — backup operational environment](../docs/devel-docs/adr/0001-backup-operational-env.md)
-- [ADR-0002 — single management CLI](../docs/devel-docs/adr/0002-single-management-cli.md)
-- [SDR-0001 — protected operational config in backups](../docs/devel-docs/sdr/0001-protected-operational-config-in-backups.md)
-- [Installation lifecycle](../docs/installation.md)
-- [Disaster recovery](../docs/dr/README.md)
-
-Key implementation files: `manifest.json`, `01-prepare.sh`, `pki.sh`, `manifests.py`, and `verify.sh`.
+`STACKS_ROOT`, `BASE_PATH`, `NETWORK_NAME`, `ROOT_HOSTNAME`, `PLATFORM_PKI_GID`, `PLATFORM_CERT_DAYS` — see the platform block of [`.env.template`](../.env.template).

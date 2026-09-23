@@ -10,14 +10,13 @@ STACK_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT_DIR="$(cd -- "${STACK_DIR}/.." && pwd -P)"
 ENV_FILE="${ROOT_DIR}/.env"
 LOCK_FILE="${STACK_DIR}/.lock"
-MANIFEST_TOOL="${STACK_DIR}/manifests.py"
 PKI_TOOL="${STACK_DIR}/pki.sh"
 
 log() { printf '  %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "run as root"
-for cmd in docker python3 openssl readlink stat; do
+for cmd in docker openssl readlink stat; do
   command -v "${cmd}" >/dev/null 2>&1 || die "missing required command: ${cmd}"
 done
 [[ -f "${ENV_FILE}" && ! -L "${ENV_FILE}" ]] || die "missing root operational environment: ${ENV_FILE}"
@@ -34,15 +33,11 @@ for key in STACKS_ROOT BASE_PATH NETWORK_NAME ROOT_HOSTNAME; do
 done
 [[ "${ROOT_DIR}" == "${STACKS_ROOT%/}" ]] || die "worktree path does not match STACKS_ROOT"
 
-python3 "${MANIFEST_TOOL}" validate >/dev/null
-python3 "${MANIFEST_TOOL}" validate --target >/dev/null
-log "manifest graphs: OK"
-
 while IFS= read -r directory; do
   env_link="${ROOT_DIR}/${directory}/.env"
   [[ -L "${env_link}" ]] || die "missing managed symlink: ${env_link}"
   [[ "$(readlink "${env_link}")" == "../.env" ]] || die "unexpected target for ${env_link}"
-done < <(python3 "${MANIFEST_TOOL}" directories)
+done < <(find "${ROOT_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'stack[0-9]*_-_*' ! -name 'stack0_-_*' -printf '%f\n' | LC_ALL=C sort)
 log "central .env symlinks: OK"
 
 PLATFORM_ROOT="${BASE_PATH%/}/service_-_platform"

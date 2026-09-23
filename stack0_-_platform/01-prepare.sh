@@ -10,7 +10,6 @@ STACK_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT_DIR="$(cd -- "${STACK_DIR}/.." && pwd -P)"
 ENV_FILE="${ROOT_DIR}/.env"
 LOCK_FILE="${STACK_DIR}/.lock"
-MANIFEST_TOOL="${STACK_DIR}/manifests.py"
 PKI_TOOL="${STACK_DIR}/pki.sh"
 
 log()  { printf '  %s\n' "$*"; }
@@ -18,11 +17,10 @@ step() { printf '\n== %s\n' "$*"; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(id -u)" -eq 0 ]] || die "run as root"
-for cmd in docker python3 openssl install ln readlink stat chmod chown getent groupadd cut; do
+for cmd in docker openssl install ln readlink stat chmod chown getent groupadd cut; do
   command -v "${cmd}" >/dev/null 2>&1 || die "missing required command: ${cmd}"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
-[[ -x "${MANIFEST_TOOL}" || -f "${MANIFEST_TOOL}" ]] || die "missing ${MANIFEST_TOOL}"
 [[ -x "${PKI_TOOL}" || -f "${PKI_TOOL}" ]] || die "missing ${PKI_TOOL}"
 [[ -f "${ENV_FILE}" && ! -L "${ENV_FILE}" ]] || die "missing root operational environment: ${ENV_FILE}"
 
@@ -47,16 +45,10 @@ PLATFORM_PKI_GID="${PLATFORM_PKI_GID:-1999}"
 [[ "${PLATFORM_PKI_GID}" =~ ^[0-9]+$ && "${PLATFORM_PKI_GID}" -gt 0 ]] || \
   die "PLATFORM_PKI_GID must be a positive integer"
 
-step "Manifest registry"
-python3 "${MANIFEST_TOOL}" validate
-python3 "${MANIFEST_TOOL}" validate --target
-log "current and target dependency graphs are valid"
-
 step "Central environment compatibility links"
 while IFS= read -r directory; do
   stack_path="${ROOT_DIR}/${directory}"
   env_link="${stack_path}/.env"
-  [[ -d "${stack_path}" ]] || die "manifest directory does not exist: ${stack_path}"
 
   if [[ -L "${env_link}" ]]; then
     target="$(readlink "${env_link}")"
@@ -68,7 +60,7 @@ while IFS= read -r directory; do
     ln -s ../.env "${env_link}"
     log "created ${directory}/.env -> ../.env"
   fi
-done < <(python3 "${MANIFEST_TOOL}" directories)
+done < <(find "${ROOT_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'stack[0-9]*_-_*' ! -name 'stack0_-_*' -printf '%f\n' | LC_ALL=C sort)
 
 step "Platform PKI consumer group"
 if group_line="$(getent group "${PLATFORM_PKI_GROUP}" 2>/dev/null)"; then
