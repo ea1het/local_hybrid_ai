@@ -34,6 +34,27 @@ def shown(tag: str | None, digest: str | None) -> str:
     return tag or "-"
 
 
+def compare(repo, env_path: Path, template_path: Path) -> list[dict]:
+    """Return one entry per component: component, old, new, action."""
+    installed = repo.read_env(env_path)
+    template = repo.read_env(template_path)
+    entries = []
+    for component in repo.COMPONENTS:
+        old_tag, old_digest = repo.current_tag(component, installed)
+        new_tag, new_digest = repo.current_tag(component, template)
+        old, new = shown(old_tag, old_digest), shown(new_tag, new_digest)
+        if component.var not in installed:
+            action, old = "MISSING in .env", "-"
+        elif component.manual or old_digest or new_digest:
+            action = "Manual update only"
+        elif old == new:
+            action = "OK"
+        else:
+            action = "UPDATE"
+        entries.append({"component": component, "old": old, "new": new, "action": action})
+    return entries
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--env", type=Path, default=REPO_ROOT / ".env",
@@ -48,26 +69,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     repo = load_checkrepo()
-    installed = repo.read_env(args.env)
-    template = repo.read_env(args.template)
-
+    entries = compare(repo, args.env, args.template)
     rows = [("COMPONENT", "VARIABLE", "INSTALLED", "NEW", "ACTION")]
-    pending = 0
-    for component in repo.COMPONENTS:
-        old_tag, old_digest = repo.current_tag(component, installed)
-        new_tag, new_digest = repo.current_tag(component, template)
-        old, new = shown(old_tag, old_digest), shown(new_tag, new_digest)
-        if component.var not in installed:
-            action, old = "MISSING in .env", "-"
-            pending += 1
-        elif component.manual or old_digest or new_digest:
-            action = "Manual update only"
-        elif old == new:
-            action = "OK"
-        else:
-            action = "UPDATE"
-            pending += 1
-        rows.append((component.name, component.var, old, new, action))
+    rows += [(e["component"].name, e["component"].var, e["old"], e["new"], e["action"])
+             for e in entries]
+    pending = sum(e["action"] in ("UPDATE", "MISSING in .env") for e in entries)
 
     widths = [max(len(row[col]) for row in rows) for col in range(5)]
     for index, row in enumerate(rows):
