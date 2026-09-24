@@ -8,7 +8,7 @@
 The tool is deliberately conservative: it only edits formats where a comment
 can be embedded without changing runtime semantics. Files that are binary,
 symlinks, pure JSON, cryptographic material or otherwise ambiguous are recorded
-in ``docs/license-header-exceptions.md`` for explicit manual review instead of
+in ``OBSOLETE-docs/license-header-exceptions.md`` for explicit manual review instead of
 being modified speculatively.
 """
 
@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORT = ROOT / "docs" / "license-header-exceptions.md"
+REPORT = ROOT / "OBSOLETE-docs" / "license-header-exceptions.md"
 NOTICE_LINES = (
     "This Source Code Form is subject to the terms of the Mozilla Public",
     "License, v. 2.0. If a copy of the MPL was not distributed with this",

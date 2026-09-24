@@ -9,6 +9,9 @@
 .claude
 .codex
 
+# Operational environment backups (contain secrets)
+.env--*
+
 
 
 ### C ###
