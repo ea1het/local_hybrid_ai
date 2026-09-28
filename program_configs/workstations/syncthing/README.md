@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Obsidian Second Brain with Syncthing
 
 Sync one Obsidian vault between a macOS, iPhone, or iPad client user device and the local AI (container) server infrastructure so agents can read the same Markdown notes. This is a setup guide; the repository does not install Syncthing or grant agents access automatically. The server commands below assume Linux.

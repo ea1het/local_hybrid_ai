@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # MKCert (CA)
 
 The `mkcert` package is used to create a self-signed CA (certificate authority) for the certificates to be used in the local domain `*.casa.lan`, as an example. You can configure any other.

@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Install oMLX on a headless Mac mini
 
 [Configuration and operations](README.md) · [Installer script](install.sh) · [Caddy TLS setup](../caddy/README.md) · [mkcert and CA setup](../mkcert/README.md)

@@ -1,3 +1,9 @@
+<!--
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+
 # Root CA installation
 
 The CA is created with mkcert on the inference server (Mac mini), see [../../inference_server/mkcert/README.md](../../inference_server/mkcert/README.md).
