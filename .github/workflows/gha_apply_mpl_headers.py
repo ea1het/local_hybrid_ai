@@ -8,7 +8,7 @@
 The tool is deliberately conservative: it only edits formats where a comment
 can be embedded without changing runtime semantics. Files that are binary,
 symlinks, pure JSON, cryptographic material or otherwise ambiguous are recorded
-in ``OBSOLETE-docs/license-header-exceptions.md`` for explicit manual review instead of
+in ``docs/license-header-exceptions.md`` for explicit manual review instead of
 being modified speculatively.
 """
 
@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REPORT = ROOT / "OBSOLETE-docs" / "license-header-exceptions.md"
+REPORT = ROOT / "docs" / "license-header-exceptions.md"
 NOTICE_LINES = (
     "This Source Code Form is subject to the terms of the Mozilla Public",
     "License, v. 2.0. If a copy of the MPL was not distributed with this",
@@ -53,12 +53,13 @@ HASH_SUFFIXES = {
 }
 HTML_SUFFIXES = {".md", ".markdown", ".html", ".htm"}
 C_BLOCK_SUFFIXES = {".css", ".c", ".h", ".cc", ".cpp", ".hpp", ".java"}
-SLASH_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go", ".rs"}
+SLASH_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go", ".rs", ".jsonc"}
 DASH_SUFFIXES = {".sql", ".lua"}
 XML_SUFFIXES = {".xml", ".svg"}
 JINJA_SUFFIXES = {".j2", ".jinja", ".jinja2"}
 KNOWN_HASH_NAMES = {
     "Dockerfile",
+    "Caddyfile",
     "Makefile",
     "Procfile",
     "requirements.txt",
@@ -261,9 +262,16 @@ def scan(check_only: bool) -> int:
     exceptions: list[tuple[str, str]] = []
     changed: list[str] = []
 
+    if REPORT.is_symlink():
+        print(f"Refusing symlinked exception report: {rel(REPORT)}")
+        return 1
+
     for path in git_files():
         relative = rel(path)
         if relative == REPORT.relative_to(ROOT).as_posix():
+            continue
+        if not path.exists() and not path.is_symlink():
+            missing.append(relative)
             continue
         if path.is_symlink():
             exceptions.append(
@@ -297,22 +305,29 @@ def scan(check_only: bool) -> int:
             path.write_text(updated, encoding="utf-8", newline="")
             changed.append(relative)
 
+    if missing and not check_only:
+        print("Tracked files missing from the worktree:")
+        for item in sorted(missing):
+            print(f"  - {item}")
+        return 1
+
+    report = render_report(sorted(exceptions))
     if check_only:
-        if not REPORT.exists():
+        try:
+            report_matches = REPORT.is_file() and REPORT.read_text(encoding="utf-8") == report
+        except (OSError, UnicodeError):
+            report_matches = False
+        if not report_matches:
             missing.append(rel(REPORT))
-        else:
-            report_text = REPORT.read_text(encoding="utf-8")
-            if NOTICE_MARKER not in report_text[:4096]:
-                missing.append(rel(REPORT))
         if missing:
-            print("Files missing MPL headers:")
+            print("Files missing MPL headers or with a stale exception report:")
             for item in sorted(missing):
                 print(f"  - {item}")
             return 1
         print(f"MPL header check passed; {len(exceptions)} explicit exceptions remain for manual review.")
         return 0
 
-    report = render_report(sorted(exceptions))
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(report, encoding="utf-8", newline="")
     print(f"Added/updated MPL headers in {len(changed)} tracked files.")
     print(f"Recorded {len(exceptions)} exceptions in {rel(REPORT)}.")
