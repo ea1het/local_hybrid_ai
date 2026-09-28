@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 70 Open WebUI bootstrap, preparation, and policy wrappers."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -18,6 +20,7 @@ STACK = "stack-70_-_open-webui"
 
 
 def test_bootstrap_updates_only_missing_values_and_keeps_secrets_private(tmp_path, monkeypatch, capsys):
+    """Fill missing settings without replacing custom values or printing secrets."""
     module = load_module(STACK, "00-bootstrap.py")
     env_file = tmp_path / ".env"
     env_file.write_text("OTHER=keep\nOPENWEBUI_IMAGE=custom/image\n"
@@ -42,6 +45,7 @@ def test_bootstrap_updates_only_missing_values_and_keeps_secrets_private(tmp_pat
 
 
 def test_bootstrap_rejects_duplicate_keys_before_issuing_key(monkeypatch, capsys):
+    """Reject duplicate settings before issuing an API key."""
     module = load_module(STACK, "00-bootstrap.py")
     monkeypatch.setattr(module, "require_env_file", lambda: "OPENWEBUI_IMAGE=a\nOPENWEBUI_IMAGE=b\n")
     monkeypatch.setattr(module, "litellm_running", lambda: pytest.fail("unexpected Docker probe"))
@@ -50,6 +54,7 @@ def test_bootstrap_rejects_duplicate_keys_before_issuing_key(monkeypatch, capsys
 
 
 def test_bootstrap_validates_issued_key_and_model_scope(monkeypatch):
+    """Reject issued keys without an allowed model scope."""
     module = load_module(STACK, "00-bootstrap.py")
     monkeypatch.setattr(module, "run", lambda command: SimpleNamespace(
         returncode=0, stdout=json.dumps({"key": "sk-test", "models": []}), stderr=""))
@@ -58,6 +63,7 @@ def test_bootstrap_validates_issued_key_and_model_scope(monkeypatch):
 
 
 def test_prepare_validates_gateway_and_writes_lock(tmp_path, monkeypatch):
+    """Validate the gateway and Compose config before writing the lock."""
     module = load_module(STACK, "01-prepare.py")
     stack_dir = tmp_path / STACK
     stack_dir.mkdir()
@@ -76,10 +82,12 @@ def test_prepare_validates_gateway_and_writes_lock(tmp_path, monkeypatch):
     commands = []
 
     def fake_run(command, **kwargs):
+        """Record subprocess calls and report success."""
         commands.append(command)
         return SimpleNamespace(returncode=0)
 
     def fake_checked(*command, **kwargs):
+        """Return Docker network and container state for preparation."""
         commands.append(command)
         if "{{.Driver}}" in command:
             return "bridge"
@@ -105,6 +113,7 @@ def test_prepare_validates_gateway_and_writes_lock(tmp_path, monkeypatch):
 
 
 def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch):
+    """Reject placeholder secrets before inspecting Docker state."""
     module = load_module(STACK, "01-prepare.py")
     stack_dir = tmp_path / STACK
     stack_dir.mkdir()
@@ -116,6 +125,7 @@ def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch
     calls = []
 
     def fake_run(command, **kwargs):
+        """Record subprocess calls and report success."""
         calls.append(command)
         return SimpleNamespace(returncode=0)
 
@@ -133,12 +143,14 @@ def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch
 
 
 def test_wait_ready_retries_until_healthy(monkeypatch, capsys):
+    """Retry while health is starting and succeed once healthy."""
     module = load_module(STACK, "wait-ready.py")
     states = iter([("true", "running", "starting"), ("true", "running", "healthy")])
     current = [None]
     sleeps = []
 
     def fake_run(command, **kwargs):
+        """Return successive container states and health probe values."""
         if len(command) == 3:
             current[0] = next(states)
             return SimpleNamespace(returncode=0)
@@ -159,6 +171,7 @@ def test_wait_ready_retries_until_healthy(monkeypatch, capsys):
 
 @pytest.mark.parametrize("timeout", ["-1", "not-a-number"])
 def test_wait_ready_rejects_invalid_timeout(monkeypatch, timeout):
+    """Reject negative and nonnumeric readiness timeouts."""
     module = load_module(STACK, "wait-ready.py")
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setenv("OPENWEBUI_READY_TIMEOUT", timeout)
@@ -169,10 +182,12 @@ def test_wait_ready_rejects_invalid_timeout(monkeypatch, timeout):
 
 @pytest.mark.parametrize("filename", ["reconcile-model-policy.py", "verify-model-policy.py"])
 def test_policy_wrapper_requires_running_container(filename, monkeypatch, capsys):
+    """Refuse policy operations when the container is stopped."""
     module = load_module(STACK, filename)
     commands = []
 
     def fake_run(command, **kwargs):
+        """Report that the policy container is stopped."""
         commands.append(command)
         return SimpleNamespace(returncode=0, stdout="false\n")
 
@@ -184,10 +199,12 @@ def test_policy_wrapper_requires_running_container(filename, monkeypatch, capsys
 
 @pytest.mark.parametrize("filename", ["reconcile-model-policy.py", "verify-model-policy.py"])
 def test_policy_wrapper_executes_expected_inner_script(filename, monkeypatch):
+    """Execute the matching inner policy script and return its exit code."""
     module = load_module(STACK, filename)
     calls = []
 
     def fake_run(command, **kwargs):
+        """Pass inspection and return the inner script's failure code."""
         calls.append((command, kwargs))
         if command[1] == "inspect":
             return SimpleNamespace(returncode=0, stdout="true\n")

@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 30 LiteLLM preparation and input validation."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -14,6 +16,7 @@ from tests.helpers import load_module
 
 
 def test_prepare_creates_secret_and_lock_in_temporary_tree(tmp_path, monkeypatch):
+    """Generate the database secret and lock after preparing LiteLLM."""
     module = load_module("stack-30_-_litellm", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
     base = tmp_path / "runtime"
@@ -45,10 +48,12 @@ def test_prepare_creates_secret_and_lock_in_temporary_tree(tmp_path, monkeypatch
     commands = []
 
     def fake_subprocess(command, **kwargs):
+        """Record subprocess calls and report success."""
         commands.append(command)
         return SimpleNamespace(returncode=0)
 
     def fake_run(command, **kwargs):
+        """Simulate network inspection, secret generation, and other commands."""
         commands.append(command)
         if command[:2] == ["docker", "network"]:
             return SimpleNamespace(stdout="bridge\n")
@@ -73,6 +78,7 @@ def test_prepare_creates_secret_and_lock_in_temporary_tree(tmp_path, monkeypatch
     ("LITELLM_DB_USER", "bad-user", "no es valido"),
 ])
 def test_prepare_rejects_unsafe_settings(tmp_path, monkeypatch, key, value, message):
+    """Reject mutable image tags and invalid database user names."""
     module = load_module("stack-30_-_litellm", "01-prepare.py")
     monkeypatch.setattr(module, "STACK_DIR", tmp_path / module.STACK_NAME)
     monkeypatch.setattr(module, "LOCK_FILE", tmp_path / ".lock")

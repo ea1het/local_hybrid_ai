@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Verify Stack0 paths, network, CA trust, and HAProxy TLS material."""
+
 from __future__ import annotations
 
 import grp
@@ -18,14 +20,17 @@ from ops_common import die, load_env, log, require, require_commands, require_ro
 
 
 def real_directory(path: Path) -> bool:
+    """Return whether path is a directory and not a symbolic link."""
     return path.is_dir() and not path.is_symlink()
 
 
 def real_nonempty_file(path: Path) -> bool:
+    """Return whether path is a nonempty regular file and not a symlink."""
     return path.is_file() and not path.is_symlink() and path.stat().st_size > 0
 
 
 def main() -> None:
+    """Validate the prepared platform and exit on the first failed check."""
     stack_dir = Path(__file__).resolve().parent
     root_dir = stack_dir.parent
     env_file = root_dir / ".env"

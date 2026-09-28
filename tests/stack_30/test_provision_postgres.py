@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 30 PostgreSQL provisioning for LiteLLM."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -15,6 +17,7 @@ from tests.helpers import load_module
 
 @pytest.mark.parametrize("database_exists", [False, True])
 def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, database_exists):
+    """Create a database only when absent and keep the admin secret private."""
     module = load_module("stack-30_-_litellm", "provision-postgres.py")
     env_file = tmp_path / ".env"
     lock_file = tmp_path / ".lock"
@@ -35,12 +38,14 @@ def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, dat
     commands = []
 
     def fake_subprocess(command, **kwargs):
+        """Return sourced environment data for Bash and success otherwise."""
         commands.append((command, kwargs))
         if command[0] == "bash":
             return SimpleNamespace(stdout=b"\0".join(f"{key}={value}".encode() for key, value in env.items()) + b"\0")
         return SimpleNamespace(returncode=0)
 
     def fake_run(command, **kwargs):
+        """Simulate database existence and record provisioning commands."""
         commands.append((command, kwargs))
         if kwargs.get("capture"):
             return SimpleNamespace(stdout="1\n" if database_exists else "")
@@ -59,6 +64,7 @@ def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, dat
 
 
 def test_provision_rejects_symlinked_admin_secret(tmp_path, monkeypatch):
+    """Reject a symlinked admin secret before provisioning starts."""
     module = load_module("stack-30_-_litellm", "provision-postgres.py")
     env_file = tmp_path / ".env"
     lock_file = tmp_path / ".lock"
@@ -77,6 +83,7 @@ def test_provision_rejects_symlinked_admin_secret(tmp_path, monkeypatch):
            "LITELLM_DB_USER": "app_user", "LITELLM_DB_PASSWORD": "app_password"}
 
     def fake_subprocess(command, **kwargs):
+        """Return sourced environment data for Bash and success otherwise."""
         if command[0] == "bash":
             return SimpleNamespace(stdout=b"\0".join(f"{key}={value}".encode() for key, value in env.items()) + b"\0")
         return SimpleNamespace(returncode=0)

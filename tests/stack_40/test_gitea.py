@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 40 Gitea preparation and deployment."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -19,6 +21,7 @@ STACK = "stack-40_-_gitea"
 
 
 def test_prepare_renders_configuration_and_preserves_runner_token(tmp_path, monkeypatch):
+    """Render Gitea configuration while preserving the runner token."""
     module = load_module(STACK, "01-prepare.py")
     stack_dir = tmp_path / STACK
     stack_dir.mkdir()
@@ -50,6 +53,7 @@ def test_prepare_renders_configuration_and_preserves_runner_token(tmp_path, monk
     commands = []
 
     def fake_run(command, **kwargs):
+        """Supply sourced settings and a bridge network response."""
         commands.append(command)
         if command[0] == "bash":
             return SimpleNamespace(returncode=0, stdout=b"\0".join(
@@ -79,6 +83,7 @@ def test_prepare_renders_configuration_and_preserves_runner_token(tmp_path, monk
 
 
 def test_prepare_rejects_unresolved_template_without_target_write(tmp_path):
+    """Reject unresolved placeholders without writing the rendered target."""
     module = load_module(STACK, "01-prepare.py")
     source = tmp_path / "app.ini"
     target = tmp_path / "rendered.ini"
@@ -89,6 +94,7 @@ def test_prepare_rejects_unresolved_template_without_target_write(tmp_path):
 
 
 def test_deploy_creates_missing_admin_and_waits_for_runner(tmp_path, monkeypatch):
+    """Create a missing admin and wait for runner registration."""
     module = load_module(STACK, "deploy-gitea.py")
     stack_dir = tmp_path / STACK
     stack_dir.mkdir()
@@ -110,6 +116,7 @@ def test_deploy_creates_missing_admin_and_waits_for_runner(tmp_path, monkeypatch
     inspections = iter(["false", "true"])
 
     def fake_run(command, **kwargs):
+        """Supply sourced settings and advance the runner readiness probe."""
         commands.append(command)
         if command[0] == "bash":
             return SimpleNamespace(returncode=0, stdout=b"\0".join(
@@ -138,6 +145,7 @@ def test_deploy_creates_missing_admin_and_waits_for_runner(tmp_path, monkeypatch
 
 
 def test_deploy_rejects_missing_runtime_token(tmp_path, monkeypatch):
+    """Stop deployment when the runtime runner token is missing."""
     module = load_module(STACK, "deploy-gitea.py")
     stack_dir = tmp_path / STACK
     stack_dir.mkdir()
@@ -158,6 +166,7 @@ def test_deploy_rejects_missing_runtime_token(tmp_path, monkeypatch):
     monkeypatch.setattr(module.shutil, "which", lambda _: "/fake/docker")
     monkeypatch.setattr(module.os, "environ", os.environ.copy())
     def fake_run(command, **kwargs):
+        """Permit environment and Compose checks but reject later commands."""
         if command[0] == "bash":
             return SimpleNamespace(stdout=b"\0".join(f"{key}={value}".encode() for key, value in env.items()) + b"\0")
         if command[:3] == ["docker", "compose", "version"]:

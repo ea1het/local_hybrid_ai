@@ -27,49 +27,60 @@ MEMORY_FILES = ("MEMORY.md", "USER.md")
 
 
 def log(message: str) -> None:
+    """Print an indented progress message."""
     print(f"  {message}")
 
 
 def step(message: str) -> None:
+    """Print a section heading."""
     print(f"\n== {message}")
 
 
 def fail(message: str) -> None:
+    """Report a Git memory preparation error and exit."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def run(*args: str, capture: bool = False, quiet: bool = False) -> subprocess.CompletedProcess[bytes]:
+    """Run a command, with optional stdout capture or output suppression."""
     return subprocess.run(args, check=True, stdout=subprocess.PIPE if capture else subprocess.DEVNULL if quiet else None,
                           stderr=subprocess.DEVNULL if quiet else None)
 
 
 def git(tree: Path, *args: str, capture: bool = False, quiet: bool = False) -> subprocess.CompletedProcess[bytes]:
+    """Run Git against a tree while explicitly marking it as safe."""
     return run("git", "-c", f"safe.directory={tree}", "-C", str(tree), *args, capture=capture, quiet=quiet)
 
 
 def git_text(tree: Path, *args: str) -> str:
+    """Return trimmed text output from a Git command."""
     return git(tree, *args, capture=True).stdout.decode().strip()
 
 
 def sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def regular(path: Path) -> bool:
+    """Check that a path is a nonsymlink regular file."""
     return path.is_file() and not path.is_symlink()
 
 
 def same_content(first: Path, second: Path) -> bool:
+    """Compare the bytes of two files."""
     return first.read_bytes() == second.read_bytes()
 
 
 def tracked_paths(tree: Path) -> list[str]:
+    """List tracked paths using NUL-delimited Git output."""
     entries = git(tree, "ls-files", "-z", capture=True).stdout.split(b"\0")
     return sorted(os.fsdecode(entry) for entry in entries if entry)
 
 
 def validate_static_path(tree: Path, relative: str) -> Path:
+    """Reject unsafe or nonregular tracked paths before copying static content."""
     parts = PurePosixPath(relative).parts
     if not parts or any(part in (".", "..", ".git") for part in parts) or PurePosixPath(relative).is_absolute():
         fail(f"fichero estatico versionado no admitido: {relative} debe ser fichero normal")
@@ -85,6 +96,7 @@ def validate_static_path(tree: Path, relative: str) -> Path:
 
 
 def validate_identity(tree: Path, repository: str, expected_branch: str) -> tuple[str, str]:
+    """Verify remote, branch, and both tracked memory files."""
     origin = git_text(tree, "remote", "get-url", "origin")
     if not origin:
         fail("el working tree no tiene remote origin")
@@ -104,6 +116,7 @@ def validate_identity(tree: Path, repository: str, expected_branch: str) -> tupl
 
 
 def adopt(memory_root: Path, data: Path, legacy: Path, repository: str, branch: str, uid: int, gid: int) -> None:
+    """Adopt validated Git metadata while preserving the persistent memory directory."""
     if (data / ".git").is_dir() and not (data / ".git").is_symlink():
         log("working tree existente conservado")
         return
@@ -114,6 +127,7 @@ def adopt(memory_root: Path, data: Path, legacy: Path, repository: str, branch: 
         fail(f"memoria local contiene entradas no gestionadas antes de adoptar Git: {chr(10).join(unexpected)}")
 
     with tempfile.TemporaryDirectory(prefix=".gitmem-adopt.", dir=memory_root) as temporary:
+        # Validate the clone and every content conflict before copying into persistent memory.
         clone = Path(temporary)
         log(f"clonando temporalmente {repository} ({branch}) para validar adopcion")
         run("git", "clone", "--single-branch", "--branch", branch, "--", repository, str(clone))
@@ -163,6 +177,7 @@ def adopt(memory_root: Path, data: Path, legacy: Path, repository: str, branch: 
 
 
 def changed_paths(tree: Path) -> list[str]:
+    """List staged, unstaged, and untracked paths in a working tree."""
     changes = set()
     for args in (("diff", "--name-only", "-z"), ("diff", "--cached", "--name-only", "-z"),
                  ("ls-files", "--others", "--exclude-standard", "-z")):
@@ -171,6 +186,7 @@ def changed_paths(tree: Path) -> list[str]:
 
 
 def main() -> None:
+    """Validate prerequisites, adopt memory, and audit the resulting working tree."""
     if os.geteuid() != 0:
         fail("ejecutar como root")
     for command in ("git", "docker"):

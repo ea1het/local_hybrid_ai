@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 20 service readiness probes and retry behavior."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -14,10 +16,12 @@ from tests.helpers import load_module
 
 
 def test_probes_interpret_docker_results(monkeypatch):
+    """Interpret successful and failed Docker readiness probes."""
     module = load_module("stack-20_-_searxng_firecrawl", "wait-ready.py")
     calls = []
 
     def fake_run(command, **kwargs):
+        """Record Docker probes and return a successful response."""
         calls.append(command)
         return SimpleNamespace(returncode=0, stdout=b"true\n")
 
@@ -32,6 +36,7 @@ def test_probes_interpret_docker_results(monkeypatch):
 
 
 def test_wait_ready_retries_until_both_endpoints_pass(tmp_path, monkeypatch, capsys):
+    """Retry until SearXNG and Firecrawl endpoints are both ready."""
     module = load_module("stack-20_-_searxng_firecrawl", "wait-ready.py")
     monkeypatch.setattr(module, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setattr(module, "LOCK_FILE", tmp_path / ".lock")
@@ -44,6 +49,7 @@ def test_wait_ready_retries_until_both_endpoints_pass(tmp_path, monkeypatch, cap
     monkeypatch.setattr(module, "running", lambda name: True)
 
     def tcp_ready(host, port):
+        """Become ready after the first two TCP probe attempts."""
         probes.append((host, port))
         return len(probes) > 2
 
@@ -59,6 +65,7 @@ def test_wait_ready_retries_until_both_endpoints_pass(tmp_path, monkeypatch, cap
 
 
 def test_wait_ready_times_out_without_sleeping(tmp_path, monkeypatch, capsys):
+    """Fail immediately when the configured readiness timeout is zero."""
     module = load_module("stack-20_-_searxng_firecrawl", "wait-ready.py")
     monkeypatch.setattr(module, "ENV_FILE", tmp_path / ".env")
     monkeypatch.setattr(module, "LOCK_FILE", tmp_path / ".lock")

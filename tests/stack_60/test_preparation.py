@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Hermes preparation, Buzz setup, sidecars, and Git memory safety."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -20,12 +22,14 @@ git_memory = load_module("stack-60_-_hermes", "prepare-git-memory.py")
 
 
 def test_prepare_model_default_only_uses_model_section():
+    """Read the model default only from its YAML section."""
     text = "other:\n  default: wrong\nmodel:\n  default: ${HERMES_MODEL}\nother:\n  default: later\n"
     assert prepare.model_default(text) == "${HERMES_MODEL}"
     assert prepare.model_default("model:\n  sibling: value\nnext:\n  default: wrong\n") == ""
 
 
 def test_prepare_rejects_missing_dependency_before_writing(tmp_path, monkeypatch, capsys):
+    """Reject a missing stack dependency before creating files."""
     stack = tmp_path / "stack-60_-_hermes"
     stack.mkdir()
     (tmp_path / "stack-00_-_platform").mkdir()
@@ -49,6 +53,7 @@ def test_prepare_rejects_missing_dependency_before_writing(tmp_path, monkeypatch
 
 
 def test_buzz_rejects_unsafe_base_before_install(tmp_path, monkeypatch, capsys):
+    """Reject a root runtime path before installing Buzz."""
     env_file = tmp_path / ".env"
     dockerfile = tmp_path / "Dockerfile"
     env_file.touch()
@@ -71,6 +76,7 @@ def test_buzz_rejects_unsafe_base_before_install(tmp_path, monkeypatch, capsys):
 
 
 def test_buzz_regular_rejects_symlink(tmp_path):
+    """Accept a regular Buzz binary but reject a symlink."""
     binary = tmp_path / "buzz"
     binary.write_text("binary")
     link = tmp_path / "linked"
@@ -80,6 +86,7 @@ def test_buzz_regular_rejects_symlink(tmp_path):
 
 
 def test_sidecars_require_dedicated_ssh_material(tmp_path, monkeypatch, capsys):
+    """Require dedicated SSH material for maintenance sidecars."""
     env_file = tmp_path / ".env"
     lock_file = tmp_path / ".lock"
     env_file.touch()
@@ -94,6 +101,7 @@ def test_sidecars_require_dedicated_ssh_material(tmp_path, monkeypatch, capsys):
     commands = []
 
     def fake_install(command, **kwargs):
+        """Record install commands and create their requested directories."""
         commands.append(command)
         if command[0] == "install":
             path = tmp_path / command[-1]
@@ -109,11 +117,13 @@ def test_sidecars_require_dedicated_ssh_material(tmp_path, monkeypatch, capsys):
 
 @pytest.mark.parametrize("relative", ["../escape", ".git/config", "/outside"])
 def test_git_memory_rejects_unsafe_tracked_paths(tmp_path, relative):
+    """Reject tracked paths that escape or enter Git metadata."""
     with pytest.raises(SystemExit, match="1"):
         git_memory.validate_static_path(tmp_path, relative)
 
 
 def test_git_memory_rejects_symlinked_static_file(tmp_path):
+    """Reject symlinked Git memory static files."""
     (tmp_path / "real").write_text("data")
     (tmp_path / "linked").symlink_to(tmp_path / "real")
     with pytest.raises(SystemExit, match="1"):
@@ -121,6 +131,7 @@ def test_git_memory_rejects_symlinked_static_file(tmp_path):
 
 
 def test_git_memory_adoption_rejects_unmanaged_local_file_before_clone(tmp_path, monkeypatch):
+    """Preserve unmanaged local files and refuse adoption before cloning."""
     memory_root = tmp_path / "memory"
     data = memory_root / "data"
     data.mkdir(parents=True)

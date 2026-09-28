@@ -19,6 +19,7 @@ SCRIPT = ROOT / ".github/workflows/gha_apply_mpl_headers.py"
 
 
 def load_script():
+    """Load the MPL header tool as an isolated test module."""
     spec = importlib.util.spec_from_file_location("gha_apply_mpl_headers_test", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -27,6 +28,7 @@ def load_script():
 
 
 def test_supported_comments_and_true_exceptions():
+    """Check supported comment styles and genuine header exceptions."""
     module = load_script()
     assert module.classify(ROOT / "program_configs/inference_server/caddy/Caddyfile", "site {}").style == "hash"
     assert module.classify(ROOT / "program_configs/workstations/opencode/opencode.jsonc", "{}").style == "slash"
@@ -35,6 +37,7 @@ def test_supported_comments_and_true_exceptions():
 
 
 def test_check_requires_exact_exception_report(tmp_path, monkeypatch, capsys):
+    """Require the generated exception report to match the file scan."""
     module = load_script()
     source = tmp_path / "source.py"
     source.write_text("print('hello')\n")
@@ -58,6 +61,7 @@ def test_check_requires_exact_exception_report(tmp_path, monkeypatch, capsys):
 
 
 def test_refuses_symlinked_report_and_missing_tracked_file(tmp_path, monkeypatch):
+    """Reject unsafe reports and missing tracked paths without modifying targets."""
     module = load_script()
     report = tmp_path / "docs/license-header-exceptions.md"
     report.parent.mkdir()

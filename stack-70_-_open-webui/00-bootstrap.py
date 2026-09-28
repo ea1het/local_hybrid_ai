@@ -43,10 +43,12 @@ ASSIGNMENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 
 class BootstrapError(RuntimeError):
+    """Report an invalid bootstrap prerequisite or failed key issuance."""
     pass
 
 
 def run(cmd: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run a command and capture its output without raising for its exit code."""
     return subprocess.run(
         cmd,
         input=input_text,
@@ -58,6 +60,7 @@ def run(cmd: list[str], *, input_text: str | None = None) -> subprocess.Complete
 
 
 def require_env_file() -> str:
+    """Read the root-owned operational environment after checking its mode."""
     if os.geteuid() != 0:
         raise BootstrapError("run as root so the protected operational .env remains root-owned")
     if not ENV_FILE.is_file() or ENV_FILE.is_symlink():
@@ -71,6 +74,7 @@ def require_env_file() -> str:
 
 
 def parse_values(text: str) -> tuple[dict[str, str], dict[str, int]]:
+    """Extract Stack7 assignments and reject duplicate managed keys."""
     values: dict[str, str] = {}
     counts: dict[str, int] = {}
     for raw in text.splitlines():
@@ -88,17 +92,19 @@ def parse_values(text: str) -> tuple[dict[str, str], dict[str, int]]:
 
 
 def missing_or_placeholder(value: str | None) -> bool:
+    """Return whether a value is absent, empty, or a standard placeholder."""
     return value is None or value == "" or bool(PLACEHOLDER_RE.fullmatch(value))
 
 
 def litellm_running() -> None:
+    """Require the LiteLLM container to be running before key issuance."""
     cp = run(["docker", "inspect", "-f", "{{.State.Running}}", "litellm"])
     if cp.returncode != 0 or cp.stdout.strip() != "true":
         raise BootstrapError("LiteLLM must be running before issuing the Stack7 virtual key")
 
 
 def issue_litellm_key() -> tuple[str, list[str]]:
-    """Issue a model-scoped key without exposing the LiteLLM master key on host stdout."""
+    """Issue a model-scoped key using the master key inside LiteLLM."""
     script = r"""
 import json, os, sys, urllib.request
 master = os.environ.get("LITELLM_MASTER_KEY", "")
@@ -150,6 +156,7 @@ print(json.dumps({"key": key, "models": models}, separators=(",", ":")))
 
 
 def render_updated(text: str, replacements: dict[str, str]) -> str:
+    """Replace managed assignments and append missing ones in key order."""
     seen: set[str] = set()
     output: list[str] = []
     for raw in text.splitlines():
@@ -171,6 +178,7 @@ def render_updated(text: str, replacements: dict[str, str]) -> str:
 
 
 def atomic_write(payload: str) -> None:
+    """Replace the operational environment with a synced root-owned file."""
     fd, tmp_name = tempfile.mkstemp(prefix=".env.stack7.", dir=ROOT)
     tmp = Path(tmp_name)
     try:
@@ -181,6 +189,7 @@ def atomic_write(payload: str) -> None:
             os.fsync(handle.fileno())
         os.chown(tmp, 0, 0)
         os.replace(tmp, ENV_FILE)
+        # Sync the directory so the replacement survives a sudden power loss.
         directory_fd = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(directory_fd)
@@ -191,6 +200,7 @@ def atomic_write(payload: str) -> None:
 
 
 def main() -> int:
+    """Fill missing Stack7 values and return an operator-facing exit code."""
     try:
         text = require_env_file()
         values, _ = parse_values(text)

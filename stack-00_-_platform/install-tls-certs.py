@@ -72,19 +72,23 @@ SAN_NAME_RE = re.compile(r"^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$")
 
 
 def die(message: str, code: int = 1) -> None:
+    """Muestra un error y termina con el código indicado."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def log(message: str) -> None:
+    """Muestra un detalle de progreso con sangría."""
     print(f"  {message}")
 
 
 def step(message: str) -> None:
+    """Muestra el encabezado de una fase."""
     print(f"\n== {message}")
 
 
 def openssl(*args: str) -> subprocess.CompletedProcess:
+    """Ejecuta OpenSSL y devuelve código de salida y salida capturada."""
     return subprocess.run(["openssl", *args], text=True, capture_output=True, check=False)
 
 
@@ -108,6 +112,7 @@ def load_env(env_file: Path) -> dict[str, str]:
 
 
 def parse_args() -> argparse.Namespace:
+    """Lee rutas de certificado, clave, CA y la opción de renovación."""
     parser = argparse.ArgumentParser(
         description="Instala tls.crt / tls.key en la carpeta de servicio de HAProxy.",
     )
@@ -138,6 +143,7 @@ def local_ca_path(env: dict[str, str]) -> Path:
 
 
 def parse_san_domains(raw: str) -> list[str]:
+    """Separa y valida los nombres DNS requeridos en TLS_SAN_DOMAINS."""
     names = raw.replace(",", " ").split()
     if not names:
         die(f"TLS_SAN_DOMAINS está vacío en {ENV_FILE}")
@@ -148,11 +154,13 @@ def parse_san_domains(raw: str) -> list[str]:
 
 
 def require_regular_file(path: Path, label: str) -> None:
+    """Exige un fichero regular no vacío que no sea un symlink."""
     if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
         die(f"falta o no es un fichero regular no vacío ({label}): {path}")
 
 
 def validate_pair(cert: Path, key: Path, ca: Path, san_domains: list[str]) -> None:
+    """Comprueba clave, cadena CA, SAN y vigencia del certificado TLS."""
     step("1/2 Validando certificado y clave")
 
     if openssl("x509", "-in", str(cert), "-noout").returncode != 0:
@@ -216,6 +224,7 @@ def install_atomic(source: Path, target: Path, mode: int, gid: int) -> bool:
 
 
 def haproxy_running() -> bool:
+    """Indica si existe un contenedor HAProxy en ejecución."""
     if shutil.which("docker") is None:
         return False
     result = subprocess.run(
@@ -228,6 +237,7 @@ def haproxy_running() -> bool:
 
 
 def main() -> None:
+    """Valida e instala el par TLS y avisa si HAProxy necesita recarga."""
     args = parse_args()
 
     if os.geteuid() != 0:

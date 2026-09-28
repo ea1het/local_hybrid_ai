@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 50 Dockhand preparation and Docker volume handling."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -15,6 +17,7 @@ from tests.helpers import load_module
 
 
 def test_prepare_creates_volume_then_lock(tmp_path, monkeypatch):
+    """Create a missing Docker volume before writing the stack lock."""
     module = load_module("stack-50_-_dockhand", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
     stack_dir.mkdir()
@@ -28,6 +31,7 @@ def test_prepare_creates_volume_then_lock(tmp_path, monkeypatch):
     volume_inspects = iter([1, 0])
 
     def fake_run(command, **kwargs):
+        """Simulate environment loading, volume creation, and network checks."""
         commands.append(command)
         if command[0] == "bash":
             return SimpleNamespace(stdout=b"\0".join(
@@ -56,6 +60,7 @@ def test_prepare_creates_volume_then_lock(tmp_path, monkeypatch):
 
 
 def test_prepare_rejects_non_bridge_network_before_volume_creation(tmp_path, monkeypatch):
+    """Reject a non-bridge network before creating a volume or lock."""
     module = load_module("stack-50_-_dockhand", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
     stack_dir.mkdir()
@@ -68,6 +73,7 @@ def test_prepare_rejects_non_bridge_network_before_volume_creation(tmp_path, mon
     commands = []
 
     def fake_run(command, **kwargs):
+        """Return an overlay network before any volume operation."""
         commands.append(command)
         if command[0] == "bash":
             return SimpleNamespace(stdout=b"\0".join(

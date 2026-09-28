@@ -64,6 +64,8 @@ DRY_RUN = False
 
 @dataclass(frozen=True)
 class Dir:
+    """Describe la ruta, permisos y propietario deseados de un directorio."""
+
     path: Path
     mode: int
     uid: int | None = 0          # None: no cambiar propietario (se crea como root)
@@ -73,19 +75,23 @@ class Dir:
 
 
 def die(message: str, code: int = 1) -> None:
+    """Muestra un error y termina con el código indicado."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def warn(message: str) -> None:
+    """Muestra una advertencia sin interrumpir la ejecución."""
     print(f"WARNING: {message}", file=sys.stderr)
 
 
 def log(message: str) -> None:
+    """Muestra un detalle de progreso con sangría."""
     print(f"  {message}")
 
 
 def step(message: str) -> None:
+    """Muestra el encabezado de una fase."""
     print(f"\n== {message}")
 
 
@@ -109,6 +115,7 @@ def load_env(env_file: Path) -> dict[str, str]:
 
 
 def require(env: dict[str, str], key: str) -> str:
+    """Devuelve una variable no vacía o termina con un error."""
     value = env.get(key, "")
     if not value:
         die(f"falta {key} en {ENV_FILE}")
@@ -116,6 +123,7 @@ def require(env: dict[str, str], key: str) -> str:
 
 
 def require_int(env: dict[str, str], key: str, default: str | None = None) -> int:
+    """Obtiene un entero no negativo de la variable o su valor por defecto."""
     raw = env.get(key) or default or ""
     if not raw.isdigit():
         die(f"{key} debe ser un entero no negativo (valor: {raw!r})")
@@ -123,6 +131,7 @@ def require_int(env: dict[str, str], key: str, default: str | None = None) -> in
 
 
 def require_service_name(env: dict[str, str], key: str) -> str:
+    """Valida y devuelve el nombre de servicio configurado."""
     value = require(env, key)
     if not SERVICE_NAME_RE.match(value):
         die(f"{key} debe seguir el patrón service_-_*: {value}")
@@ -130,6 +139,7 @@ def require_service_name(env: dict[str, str], key: str) -> str:
 
 
 def image_ref(env: dict[str, str], image_key: str, version_key: str) -> str:
+    """Construye una referencia imagen:versión si ambos valores existen."""
     image, version = env.get(image_key, ""), env.get(version_key, "")
     return f"{image}:{version}" if image and version else ""
 
@@ -155,6 +165,7 @@ def image_owner(image: str) -> tuple[int, int] | None:
 
 
 def ensure_group(name: str, gid: int) -> None:
+    """Comprueba o crea el grupo local con el GID esperado."""
     step(f"Grupo {name}")
     try:
         existing = grp.getgrnam(name)
@@ -179,12 +190,14 @@ def ensure_group(name: str, gid: int) -> None:
 
 
 def chown_tree(root: Path, uid: int, gid: int) -> None:
+    """Reconcilia el propietario del contenido de un directorio, sin seguir enlaces."""
     for current, dirs, files in os.walk(root):
         for name in dirs + files:
             os.lchown(os.path.join(current, name), uid, gid)
 
 
 def ensure_dir(spec: Dir) -> None:
+    """Crea o reconcilia un directorio según la especificación y el modo dry-run."""
     path = spec.path
     if path.is_symlink():
         die(f"la ruta de servicio no puede ser un symlink: {path}")
@@ -220,9 +233,11 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
     base = Path(env["BASE_PATH"].rstrip("/"))
 
     def svc(name: str) -> Path:
+        """Devuelve la ruta de servicio bajo BASE_PATH."""
         return base / name
 
     def stack0() -> list[Dir]:
+        """Define los directorios de estado y registros de la plataforma."""
         platform = svc("service_-_platform")
         return [
             Dir(base, 0o750),
@@ -232,6 +247,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack1() -> list[Dir]:
+        """Define los directorios de HAProxy y la web con acceso PKI."""
         # HAProxy (uid 99) lee config/ (haproxy.cfg + tls.crt + tls.key) gracias
         # al grupo suplementario PLATFORM_PKI_GID.
         pki_gid = require_int(env, "PLATFORM_PKI_GID", "1999")
@@ -243,7 +259,9 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack2() -> list[Dir]:
+        """Define los datos persistentes de SearXNG y Firecrawl."""
         def image_dir(path: Path, image: str, label: str) -> Dir:
+            """Usa el UID/GID de la imagen o conserva el propietario si se desconoce."""
             owner = image_owner(image)
             if owner is None:
                 warn(f"{label}: no se pudo determinar UID/GID de la imagen '{image}'; se conserva el propietario")
@@ -274,6 +292,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack3() -> list[Dir]:
+        """Define configuración de LiteLLM y datos y secretos de PostgreSQL."""
         litellm = svc("service_-_litellm")
         litellm_postgres = svc("service_-_litellm-postgres")
         return [
@@ -285,6 +304,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack4() -> list[Dir]:
+        """Define los directorios de Gitea y su runner."""
         gitea_uid = require_int(env, "GITEA_UID")
         gitea_gid = require_int(env, "GITEA_GID")
         gitea = svc("service_-_gitea")
@@ -303,6 +323,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
     # carpetas en BASE_PATH; lo gestiona su propio 01-prepare.py.
 
     def stack6() -> list[Dir]:
+        """Define los directorios de Hermes, memoria y sandbox."""
         hermes_owner = (require_int(env, "HERMES_UID"), require_int(env, "HERMES_GID"))
         sandbox_owner = (require_int(env, "SANDBOX_UID"), require_int(env, "SANDBOX_GID"))
         names = {
@@ -337,6 +358,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack7() -> list[Dir]:
+        """Define el directorio de datos de Open WebUI."""
         openwebui = svc("service_-_open-webui")
         return [
             Dir(openwebui, 0o750),
@@ -355,6 +377,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
 
 
 def parse_args() -> argparse.Namespace:
+    """Lee la opción --dry-run de la línea de comandos."""
     parser = argparse.ArgumentParser(
         description="Crea el árbol de carpetas de servicio de todos los stacks y fija sus permisos.",
     )
@@ -363,6 +386,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Valida el entorno y reconcilia solo los stacks sin .lock."""
     global DRY_RUN
     sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()

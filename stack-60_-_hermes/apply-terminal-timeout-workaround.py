@@ -24,21 +24,25 @@ TIMEOUT_LINE = re.compile(r"^(?:export\s+)?TERMINAL_TIMEOUT=(.*)$")
 
 
 def fail(message: str) -> None:
+    """Report a timeout workaround error and exit."""
     print(f"[issue-74116] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def run(*args: str, capture: bool = False) -> str:
+    """Run a stack-local command and optionally return its trimmed stdout."""
     result = subprocess.run(args, cwd=STACK_DIR, check=True, text=True, capture_output=capture)
     return result.stdout.strip() if capture else ""
 
 
 def timeout_values(path: Path) -> list[str]:
+    """Extract exact TERMINAL_TIMEOUT assignments from a runtime env file."""
     return [match.group(1) for line in path.read_text().splitlines()
             if (match := TIMEOUT_LINE.fullmatch(line))]
 
 
 def main() -> None:
+    """Synchronize the runtime timeout with the container, restart, and verify health."""
     if os.geteuid() != 0:
         fail("Run this script as root.")
     if not ENV_FILE.is_file():

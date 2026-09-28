@@ -19,6 +19,7 @@ from tests.helpers import ROOT
 
 
 def python_modules():
+    """List repository Python modules covered by the bytecode policy."""
     return sorted(
         [
             *ROOT.glob("stack-*/**/*.py"),
@@ -31,6 +32,7 @@ def python_modules():
 
 @pytest.mark.parametrize("path", python_modules(), ids=lambda path: str(path.relative_to(ROOT)))
 def test_module_disables_bytecode_before_local_import(path):
+    """Require bytecode suppression before imports of local helpers."""
     tree = ast.parse(path.read_text(), filename=str(path))
     disable_line = next(
         (
@@ -66,6 +68,7 @@ def test_module_disables_bytecode_before_local_import(path):
     ],
 )
 def test_local_import_does_not_create_pycache(tmp_path, script, helper):
+    """Run entrypoints in isolation and assert they create no bytecode."""
     for name in (script, helper):
         destination = tmp_path / name
         destination.parent.mkdir(parents=True, exist_ok=True)

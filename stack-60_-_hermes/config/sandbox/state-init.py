@@ -33,10 +33,12 @@ RESET_HINT = "run cleanup.py --reset-sandbox"
 
 
 def now_utc() -> str:
+    """Return an ISO 8601 UTC timestamp with a Z suffix."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def connect() -> sqlite3.Connection:
+    """Open the lifecycle database with WAL and integrity-related SQLite settings."""
     conn = sqlite3.connect(DB, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -46,6 +48,7 @@ def connect() -> sqlite3.Connection:
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
+    """Create the lifecycle metadata and object tracking schema."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS metadata (
@@ -73,16 +76,19 @@ def create_schema(conn: sqlite3.Connection) -> None:
 
 
 def integrity_ok(conn: sqlite3.Connection) -> bool:
+    """Check SQLite database integrity."""
     row = conn.execute("PRAGMA integrity_check").fetchone()
     return bool(row and row[0] == "ok")
 
 
 def metadata_value(conn: sqlite3.Connection, key: str) -> str | None:
+    """Read a metadata value, or return None when absent."""
     row = conn.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
     return row[0] if row else None
 
 
 def set_metadata(conn: sqlite3.Connection, **values: str) -> None:
+    """Upsert lifecycle metadata values."""
     conn.executemany(
         "INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)",
         values.items(),
@@ -90,6 +96,7 @@ def set_metadata(conn: sqlite3.Connection, **values: str) -> None:
 
 
 def read_marker() -> str:
+    """Read a valid workspace generation marker or fail closed."""
     if MARKER.is_symlink() or not MARKER.is_file():
         raise RuntimeError(f"sandbox generation marker missing/invalid; {RESET_HINT}")
     value = MARKER.read_text(encoding="utf-8").strip()
@@ -99,6 +106,7 @@ def read_marker() -> str:
 
 
 def protect(conn: sqlite3.Connection, name: str, inode: int | None, created: str) -> None:
+    """Record a top-level workspace object as protected."""
     conn.execute(
         """
         INSERT OR REPLACE INTO objects
@@ -111,11 +119,13 @@ def protect(conn: sqlite3.Connection, name: str, inode: int | None, created: str
 
 
 def remove_state_files() -> None:
+    """Remove database and WAL sidecar files after failed initialization."""
     for path in STATE_FILES:
         path.unlink(missing_ok=True)
 
 
 def protect_workspace_baseline(conn: sqlite3.Connection, created: str) -> None:
+    """Protect all objects present when a generation is created."""
     for entry in WORKSPACE.iterdir():
         if entry.name.startswith(".sandbox-generation.tmp."):
             continue
@@ -124,10 +134,12 @@ def protect_workspace_baseline(conn: sqlite3.Connection, created: str) -> None:
 
 
 def generation_presence() -> tuple[bool, bool]:
+    """Report whether the state database and marker each exist."""
     return DB.exists() or DB.is_symlink(), MARKER.exists() or MARKER.is_symlink()
 
 
 def initialize_new() -> None:
+    """Create a new generation, database, and protected workspace baseline."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 
     db_present, marker_present = generation_presence()
@@ -149,6 +161,7 @@ def initialize_new() -> None:
     try:
         conn = connect()
         try:
+            # Commit the database before publishing the marker; either partial state fails closed.
             create_schema(conn)
             set_metadata(
                 conn,
@@ -186,6 +199,7 @@ def initialize_new() -> None:
 
 
 def validate_existing() -> None:
+    """Validate an existing generation against database integrity and metadata."""
     marker_generation = read_marker()
 
     if not DB.is_file() or DB.is_symlink():
@@ -216,6 +230,7 @@ def validate_existing() -> None:
 
 
 def main() -> int:
+    """Initialize or validate generation-bound sandbox state."""
     if not WORKSPACE.is_dir() or WORKSPACE.is_symlink():
         raise RuntimeError(f"invalid workspace: {WORKSPACE}")
 

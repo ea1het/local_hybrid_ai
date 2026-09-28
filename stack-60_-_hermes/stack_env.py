@@ -18,6 +18,7 @@ VARIABLE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]
 
 
 def strip_comment(raw: str) -> str:
+    """Remove an unquoted, unescaped inline comment from an assignment value."""
     quote = None
     escaped = False
     for index, character in enumerate(raw):
@@ -35,6 +36,7 @@ def strip_comment(raw: str) -> str:
 
 
 def load_env(path: Path) -> dict[str, str]:
+    """Parse simple shell assignments over the process environment without executing shell code."""
     values = dict(os.environ)
     for number, line in enumerate(path.read_text().splitlines(), 1):
         line = line.strip()

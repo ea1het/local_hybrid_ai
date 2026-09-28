@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Espera a que los contenedores y endpoints TCP de Stack2 estén disponibles."""
+
 import os
 import re
 import shutil
@@ -30,26 +32,31 @@ socket.once("error", () => finish(false));
 
 
 def log(message):
+    """Muestra un mensaje de progreso de la comprobación de disponibilidad."""
     print(f"[stack2-ready] {message}")
 
 
 def die(message):
+    """Muestra un error de disponibilidad y termina."""
     print(f"[stack2-ready] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def running(name):
+    """Indica si Docker informa que el contenedor está en ejecución."""
     result = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", name],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     return result.returncode == 0 and result.stdout.rstrip(b"\n") == b"true"
 
 
 def tcp_ready(host, port):
+    """Prueba una conexión TCP desde firecrawl-api con el runtime Node."""
     return subprocess.run(["docker", "exec", "firecrawl-api", "node", "-e", TCP_PROBE, host, port],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
 def main():
+    """Sondea ambos servicios hasta que respondan o venza el timeout."""
     timeout = os.environ.get("STACK2_READY_TIMEOUT_SECONDS") or "90"
     if os.geteuid() != 0:
         die("run as root")

@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Validate Open WebUI prerequisites and mark Stack7 prepared."""
+
 
 import os
 import shutil
@@ -27,15 +29,18 @@ REQUIRED_KEYS = (
 
 
 class PrepareError(Exception):
+    """Report a failed Stack7 preparation prerequisite."""
     pass
 
 
 def require(condition, message):
+    """Raise ``PrepareError`` when a prerequisite is false."""
     if not condition:
         raise PrepareError(message)
 
 
 def run(*command, env=None, quiet=False):
+    """Run a command and return captured stdout when ``quiet`` is true."""
     try:
         result = subprocess.run(
             command, env=env, text=True, capture_output=quiet, check=False
@@ -47,6 +52,7 @@ def run(*command, env=None, quiet=False):
 
 
 def load_env():
+    """Source the central environment with Bash and return exported values."""
     result = subprocess.run(
         ("bash", "-c", 'set -a; source "$1" || exit; env -0', "bash", str(ENV_FILE)),
         stdout=subprocess.PIPE, check=False,
@@ -56,6 +62,7 @@ def load_env():
 
 
 def main():
+    """Check Stack0, LiteLLM, and runtime paths before writing the lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

@@ -19,6 +19,7 @@ SCRIPT = ROOT / ".github/workflows/gha_apply_python_shebangs.py"
 
 
 def load_script():
+    """Load the shebang policy tool as an isolated test module."""
     spec = importlib.util.spec_from_file_location("gha_apply_python_shebangs_test", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -27,6 +28,7 @@ def load_script():
 
 
 def test_selects_only_executable_tracked_python(monkeypatch, tmp_path):
+    """Select tracked executable Python files while excluding other entries."""
     module = load_script()
     monkeypatch.setattr(module, "ROOT", tmp_path)
     entries = (
@@ -40,6 +42,7 @@ def test_selects_only_executable_tracked_python(monkeypatch, tmp_path):
 
 
 def test_check_and_apply_only_required_shebangs(monkeypatch, tmp_path, capsys):
+    """Add missing shebangs only in apply mode and pass a subsequent check."""
     module = load_script()
     executable = tmp_path / "prepare.py"
     executable.write_text("print('ready')\n")
@@ -54,6 +57,7 @@ def test_check_and_apply_only_required_shebangs(monkeypatch, tmp_path, capsys):
 
 
 def test_preserves_incompatible_or_unsafe_files(monkeypatch, tmp_path):
+    """Leave symlinks, incompatible shebangs, and BOM files untouched."""
     module = load_script()
     monkeypatch.setattr(module, "ROOT", tmp_path)
     target = tmp_path / "target.py"

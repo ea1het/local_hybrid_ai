@@ -20,10 +20,12 @@ STACK = "stack-00_-_platform"
 
 
 def module(filename: str):
+    """Load a Stack 00 module for isolated behavior checks."""
     return load_module(STACK, filename)
 
 
 def test_bootstrap_validates_numbers_and_refuses_symlink(tmp_path):
+    """Validate numeric settings and reject symlinked directories."""
     bootstrap = module("00-bootstrap.py")
     assert bootstrap.require_int({"UID": "42"}, "UID") == 42
     with pytest.raises(SystemExit):
@@ -37,6 +39,7 @@ def test_bootstrap_validates_numbers_and_refuses_symlink(tmp_path):
 
 
 def test_prepare_with_lock_does_not_call_external_commands(tmp_path, monkeypatch):
+    """Skip preparation when the stack lock already exists."""
     prepare = module("01-prepare.py")
     stack = tmp_path / STACK
     stack.mkdir()
@@ -47,6 +50,7 @@ def test_prepare_with_lock_does_not_call_external_commands(tmp_path, monkeypatch
 
 
 def test_ca_installer_validates_name_and_rejects_symlink(tmp_path, monkeypatch):
+    """Validate CA names and refuse symlinked certificate sources."""
     ca = module("install-ca-cert.py")
     monkeypatch.setattr(ca, "SYSTEM_CA_DIR", tmp_path)
     assert ca.local_ca_path({"LOCAL_CA_NAME": "local-ai"}) == tmp_path / "local-ai.crt"
@@ -61,6 +65,7 @@ def test_ca_installer_validates_name_and_rejects_symlink(tmp_path, monkeypatch):
 
 
 def test_tls_installer_checks_domains_and_atomic_copy(tmp_path, monkeypatch):
+    """Validate SAN names and avoid replacing unchanged TLS files."""
     tls = module("install-tls-certs.py")
     assert tls.parse_san_domains("one.local, two.local") == ["one.local", "two.local"]
     with pytest.raises(SystemExit):
@@ -79,6 +84,7 @@ def test_tls_installer_checks_domains_and_atomic_copy(tmp_path, monkeypatch):
 
 
 def test_installer_creates_lock_only_after_success(tmp_path, monkeypatch):
+    """Write the installation lock only after every step succeeds."""
     installer = module("install.py")
     stack = tmp_path / STACK
     stack.mkdir()
@@ -86,6 +92,7 @@ def test_installer_creates_lock_only_after_success(tmp_path, monkeypatch):
     calls = []
 
     def run(command, **_kwargs):
+        """Record installer steps and fail the simulated verification step."""
         calls.append(Path(command[-1]).name)
         return SimpleNamespace(returncode=2 if command[-1].endswith("verify.py") else 0)
 
@@ -108,6 +115,7 @@ def test_installer_creates_lock_only_after_success(tmp_path, monkeypatch):
 
 
 def test_common_env_loading_and_required_values(tmp_path):
+    """Parse quoted environment values and reject missing required keys."""
     common = module("ops_common.py")
     env_file = tmp_path / ".env"
     env_file.write_text("TEST_STACK_VALUE='two words'\n")
@@ -117,6 +125,7 @@ def test_common_env_loading_and_required_values(tmp_path):
 
 
 def test_verifier_rejects_symlinks_and_missing_env(tmp_path, monkeypatch):
+    """Reject symlinked inputs and incomplete verification environments."""
     verify = module("verify.py")
     regular = tmp_path / "regular"
     regular.write_text("data")

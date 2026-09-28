@@ -46,31 +46,38 @@ MODEL_REFERENCE = "${HERMES_MODEL}"
 
 
 def log(message: str) -> None:
+    """Print an indented preparation message."""
     print(f"  {message}")
 
 
 def step(message: str) -> None:
+    """Print a preparation section heading."""
     print(f"\n== {message}")
 
 
 def warn(message: str) -> None:
+    """Print a preparation warning to stderr."""
     print(f"  AVISO: {message}", file=sys.stderr)
 
 
 def die(message: str) -> None:
+    """Report a preparation error and exit."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def present(path: Path) -> bool:
+    """Check for a path, including a dangling symlink."""
     return path.exists() or path.is_symlink()
 
 
 def model_default(text: str) -> str:
+    """Extract the default model from the model section of YAML text."""
     in_model = False
     for line in text.splitlines():
         if re.fullmatch(r"model:\s*", line):
@@ -86,13 +93,16 @@ def model_default(text: str) -> str:
 
 
 def tree_entries(root: Path, recursive: bool) -> list[str]:
+    """List immediate or recursive entries relative to a root."""
     if not recursive:
         return sorted(child.name for child in root.iterdir())
     return sorted(str(child.relative_to(root)) for child in root.rglob("*"))
 
 
 class Prepare:
+    """Validate, provision, and audit a stopped Hermes stack."""
     def __init__(self):
+        """Validate stack settings and derive managed persistent paths."""
         self.env_hash = sha256(ENV_FILE)
         step("Validacion de .env (solo lectura)")
         lines = ENV_FILE.read_text().splitlines()
@@ -174,11 +184,13 @@ class Prepare:
 
     def run(self, *args: str, capture: bool = False, quiet: bool = False,
             check: bool = True) -> subprocess.CompletedProcess[str]:
+        """Run a command in the stack directory with the validated environment."""
         return subprocess.run(args, cwd=STACK_DIR, env=self.env, text=True, check=check,
                               stdout=subprocess.PIPE if capture else subprocess.DEVNULL if quiet else None,
                               stderr=subprocess.DEVNULL if quiet else None)
 
     def sources(self) -> None:
+        """Validate required sources and managed model references."""
         step("Ficheros fuente del stack")
         self.config_source = STACK_DIR / "config/hermes/config.yaml"
         self.sandbox_dockerfile = STACK_DIR / "config/sandbox/Dockerfile"
@@ -216,6 +228,7 @@ class Prepare:
         log("fuentes presentes y coherentes")
 
     def docker_preflight(self) -> None:
+        """Require the shared bridge network and stopped Hermes containers."""
         name = self.env["NETWORK_NAME"]
         step(f"Red Docker {name}")
         if self.run("docker", "network", "inspect", name, quiet=True, check=False).returncode:
@@ -236,6 +249,7 @@ class Prepare:
                 log(f"{container}: no creado")
 
     def persistent_filesystem(self) -> None:
+        """Verify bootstrapped directories and preserve or create memory files."""
         step("Creacion/verificacion del arbol objetivo")
         paths = (self.hermes_root, self.hermes_config, self.hermes_config / "ssh", self.hermes_data,
                  self.hermes_logs, self.memory_root, self.memory_data, self.sandbox_root,
@@ -264,6 +278,7 @@ class Prepare:
         log("Git memory-sync es opcional y no forma parte del Stack6 minimo")
 
     def audit_shadow(self) -> None:
+        """Reject shadow config and runtime overrides of managed environment keys."""
         runtime_env = self.hermes_data / ".env"
         runtime_config = self.hermes_data / "config.yaml"
         shadow = self.hermes_data / ".hermes"
@@ -293,6 +308,7 @@ class Prepare:
         log("shadow config: OK")
 
     def deploy_config(self, rendered: Path) -> None:
+        """Render and install the managed Hermes and sandbox configuration."""
         step("Configuracion gestionada")
         model = self.env["HERMES_MODEL"]
         lines = self.config_source.read_text().splitlines()
@@ -315,6 +331,7 @@ class Prepare:
         log(f"configuracion sincronizada; HERMES_MODEL renderizado como {model}")
 
     def keypair(self, private: Path, public: Path, comment: str, uid: str, gid: str) -> None:
+        """Preserve a valid SSH keypair or generate one with expected permissions."""
         if private.exists() or public.exists():
             if not private.is_file() or not public.is_file() or not private.stat().st_size or not public.stat().st_size:
                 die(f"pareja SSH incompleta: {private} / {public}")
@@ -329,6 +346,7 @@ class Prepare:
         self.run("chmod", "0644", str(public))
 
     def ssh_keys(self) -> None:
+        """Provision Hermes-to-sandbox authorization and sandbox host keys."""
         step("Claves SSH")
         self.keypair(self.ssh_private, self.ssh_public, "hermes-sandbox",
                      self.env["HERMES_UID"], self.env["HERMES_GID"])
@@ -339,6 +357,7 @@ class Prepare:
         log(f"host key sandbox: {self.host_private}")
 
     def dependencies(self) -> None:
+        """Require a running LiteLLM container on the shared network."""
         step("Dependencias existentes")
         container = "litellm"
         if self.run("docker", "inspect", container, quiet=True, check=False).returncode:
@@ -356,6 +375,7 @@ class Prepare:
 
     def assert_node(self, path: Path, uid: str, gid: str, mode: int,
                     directory: bool = False, nonempty: bool = True) -> None:
+        """Verify a managed file or directory's type, owner, group, and mode."""
         valid = path.is_dir() if directory else path.is_file()
         if not valid or path.is_symlink() or (not directory and nonempty and not path.stat().st_size):
             kind = ("directorio ausente o invalido" if directory else
@@ -368,6 +388,7 @@ class Prepare:
             die(f"permisos/propietario incorrectos en {path}: {actual} esperado {expected}")
 
     def assert_tree(self, root: Path, expected: list[str], recursive: bool) -> None:
+        """Verify the exact expected entries under a managed directory."""
         actual = tree_entries(root, recursive)
         if actual != expected:
             kind = "arbol" if recursive else "top-level"
@@ -375,12 +396,14 @@ class Prepare:
                 + "\n--- real ---\n" + "\n".join(actual))
 
     def assert_keypair(self, private: Path, public: Path, label: str) -> None:
+        """Verify that a public key matches its private key."""
         derived = self.run("ssh-keygen", "-y", "-f", str(private), capture=True).stdout.split()
         actual = public.read_text().split()
         if derived[:2] != actual[:2]:
             die(label)
 
     def audit(self, rendered: Path) -> None:
+        """Audit managed trees, permissions, content, keys, and env immutability."""
         step("Auditoria final del filesystem")
         top = ["config", "data", "logs"]
         self.assert_tree(self.hermes_root, top, False)
@@ -443,6 +466,7 @@ class Prepare:
         log(".env inmutable: OK")
 
     def execute(self) -> None:
+        """Prepare and audit the stack before writing its prepared-state lock."""
         self.sources()
         self.docker_preflight()
         self.persistent_filesystem()
@@ -461,6 +485,7 @@ class Prepare:
         finally:
             rendered.unlink(missing_ok=True)
         step("Lock")
+        # The lock represents completed preparation only after all audits pass.
         self.run("install", "-m", "0600", "-o", "0", "-g", "0", "/dev/null", str(LOCK_FILE))
         log(f"creado {LOCK_FILE}")
         print(f"""
@@ -499,6 +524,7 @@ IMPORTANTE:
 
 
 def main() -> None:
+    """Run preparation unless already locked, after root and tool checks."""
     if LOCK_FILE.is_file():
         print(f"LOCK: {LOCK_FILE} existe. No se valida ni se modifica nada.")
         return

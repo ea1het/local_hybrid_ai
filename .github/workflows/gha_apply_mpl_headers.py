@@ -102,11 +102,14 @@ BINARY_SUFFIXES = {
 
 @dataclass(frozen=True)
 class Decision:
+    """Whether a tracked text format supports a safe header, or why it does not."""
+
     style: str | None
     reason: str | None = None
 
 
 def git_files() -> list[Path]:
+    """List tracked paths, including worktree-missing files, without invoking a shell."""
     result = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=ROOT,
@@ -117,10 +120,12 @@ def git_files() -> list[Path]:
 
 
 def rel(path: Path) -> str:
+    """Render a repository-relative POSIX path for stable reports."""
     return path.relative_to(ROOT).as_posix()
 
 
 def is_binary_bytes(data: bytes) -> bool:
+    """Reject NUL-containing or non-UTF-8 content before attempting text edits."""
     if b"\0" in data[:8192]:
         return True
     try:
@@ -131,6 +136,7 @@ def is_binary_bytes(data: bytes) -> bool:
 
 
 def classify(path: Path, text: str) -> Decision:
+    """Select a comment syntax, conservatively excluding semantic or opaque formats."""
     name = path.name
     suffix = path.suffix.lower()
     relative = rel(path)
@@ -169,30 +175,37 @@ def classify(path: Path, text: str) -> Decision:
 
 
 def hash_header() -> str:
+    """Render the MPL notice using hash-line comments."""
     return "\n".join(f"# {line}" for line in NOTICE_LINES) + "\n\n"
 
 
 def html_header() -> str:
+    """Render the MPL notice as an HTML-compatible comment."""
     return "<!--\n" + "\n".join(NOTICE_LINES) + "\n-->\n\n"
 
 
 def cblock_header() -> str:
+    """Render the MPL notice as a C-style block comment."""
     return "/*\n * " + "\n * ".join(NOTICE_LINES) + "\n */\n\n"
 
 
 def slash_header() -> str:
+    """Render the MPL notice using slash-line comments."""
     return "\n".join(f"// {line}" for line in NOTICE_LINES) + "\n\n"
 
 
 def dash_header() -> str:
+    """Render the MPL notice using SQL-style line comments."""
     return "\n".join(f"-- {line}" for line in NOTICE_LINES) + "\n\n"
 
 
 def jinja_header() -> str:
+    """Render the MPL notice using Jinja comment delimiters."""
     return "{#\n" + "\n".join(NOTICE_LINES) + "\n#}\n\n"
 
 
 def insert_after_prefix(text: str, header: str, style: str) -> str:
+    """Keep shebangs, encoding declarations, and XML prologs before a new notice."""
     if style == "hash":
         lines = text.splitlines(keepends=True)
         index = 0
@@ -219,6 +232,7 @@ def insert_after_prefix(text: str, header: str, style: str) -> str:
 
 
 def apply_header(path: Path, text: str, style: str) -> str:
+    """Insert one notice for a classified file, leaving existing notices untouched."""
     del path
     if NOTICE_MARKER in text[:4096]:
         return text
@@ -240,6 +254,7 @@ def apply_header(path: Path, text: str, style: str) -> str:
 
 
 def render_report(exceptions: list[tuple[str, str]]) -> str:
+    """Build the deterministic Markdown report of files that need manual review."""
     rendered_rows: list[str] = []
     for path, reason in exceptions:
         safe_reason = reason.replace("|", "\\|")
@@ -258,6 +273,7 @@ def render_report(exceptions: list[tuple[str, str]]) -> str:
 
 
 def scan(check_only: bool) -> int:
+    """Audit tracked files and either check or safely update notices and exceptions."""
     missing: list[str] = []
     exceptions: list[tuple[str, str]] = []
     changed: list[str] = []
@@ -335,6 +351,7 @@ def scan(check_only: bool) -> int:
 
 
 def main() -> int:
+    """Parse the check-only switch and return the audit status."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="verify instead of modifying files")
     args = parser.parse_args()

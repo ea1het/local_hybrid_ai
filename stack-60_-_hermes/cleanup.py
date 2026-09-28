@@ -53,27 +53,33 @@ Options:
 
 
 def log(message: str) -> None:
+    """Print a cleanup progress message."""
     print(f"[cleanup] {message}")
 
 
 def warn(message: str) -> None:
+    """Print a cleanup warning to stderr."""
     print(f"[cleanup] WARNING: {message}", file=sys.stderr)
 
 
 def die(message: str) -> None:
+    """Report a cleanup error and exit."""
     print(f"[cleanup] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def present(path: Path) -> bool:
+    """Check for a path, including a dangling symlink."""
     return path.exists() or path.is_symlink()
 
 
 def children(path: Path) -> list[Path]:
+    """List immediate children of a real directory without following symlinks."""
     if not path.is_dir() or path.is_symlink():
         return []
     with os.scandir(path) as entries:
@@ -81,7 +87,9 @@ def children(path: Path) -> list[Path]:
 
 
 class Cleanup:
+    """Validate cleanup scope and execute the selected cleanup mode."""
     def __init__(self, mode: str, dry_run: bool, assume_yes: bool):
+        """Load cleanup settings and reject unsafe paths or running containers."""
         self.mode = mode
         self.dry_run = dry_run
         self.assume_yes = assume_yes
@@ -125,6 +133,7 @@ class Cleanup:
 
     @staticmethod
     def container_running(name: str) -> bool:
+        """Check whether Docker reports a container as running."""
         result = subprocess.run(["docker", "inspect", name], capture_output=True, check=False)
         if result.returncode:
             return False
@@ -133,11 +142,13 @@ class Cleanup:
         return result.returncode == 0 and result.stdout.strip() == "true"
 
     def assert_within(self, path: Path) -> None:
+        """Reject paths whose resolved location lies outside the service trees."""
         resolved = Path(os.path.realpath(path))
         if not any(resolved == root or root in resolved.parents for root in (self.hermes_root, self.sandbox_root)):
             die(f"Refusing to touch path outside Hermes service trees: {resolved}")
 
     def audit_runtime_env_safety(self) -> None:
+        """Reject runtime env symlinks and stack-managed variable overrides."""
         runtime_env = self.hermes_data / ".env"
         if not present(runtime_env):
             return
@@ -154,6 +165,8 @@ class Cleanup:
                     die(f"Runtime .env redefines stack-managed variable: {key}")
 
     def remove_path(self, path: Path) -> None:
+        """Remove one scoped path unless this is a dry run."""
+        # Resolve the target again at deletion time so cleanup stays inside service roots.
         self.assert_within(path)
         if not present(path):
             return
@@ -166,17 +179,20 @@ class Cleanup:
             subprocess.run(["rm", "-rf", "--", str(path)], check=True)
 
     def wipe_contents(self, path: Path) -> None:
+        """Remove the immediate contents of a scoped directory."""
         self.assert_within(path)
         for child in children(path):
             self.remove_path(child)
 
     def cleanup_runtime(self) -> None:
+        """Remove shadow configuration and transient Hermes runtime artifacts."""
         log("Removing shadow configuration and stale runtime artifacts.")
         self.audit_runtime_env_safety()
         for name in RUNTIME_ARTIFACTS:
             self.remove_path(self.hermes_data / name)
 
     def reset_sandbox(self) -> None:
+        """Clear the workspace and lifecycle state for a new sandbox generation."""
         log("Resetting sandbox generation: workspace + lifecycle state.")
         self.wipe_contents(self.sandbox_workspace)
         self.wipe_contents(self.sandbox_state)
@@ -192,6 +208,7 @@ class Cleanup:
         log("Next sandbox boot will create a new generation and state.db.")
 
     def cleanup_state(self) -> None:
+        """Remove runtime artifacts plus Hermes auth, session, and routing state."""
         self.cleanup_runtime()
         log("Removing Hermes auth/session/routing state.")
         for name in ("auth.json", "auth.lock"):
@@ -203,6 +220,7 @@ class Cleanup:
             self.remove_path(self.hermes_data / name)
 
     def factory_reset(self) -> None:
+        """Clear mutable Hermes and sandbox state while retaining managed config and binaries."""
         log("Factory reset: removing all mutable Hermes data except data/bin/.")
         for child in children(self.hermes_data):
             if child.name == "bin":
@@ -221,6 +239,7 @@ class Cleanup:
             print(f"  KEEP    {path}")
 
     def confirm(self) -> None:
+        """Require explicit interactive confirmation for destructive modes."""
         if self.mode == "runtime" or self.assume_yes or self.dry_run:
             return
         if not sys.stdin.isatty():
@@ -243,6 +262,7 @@ class Cleanup:
             die("Cancelled.")
 
     def audit(self) -> None:
+        """Verify the selected cleanup mode's expected filesystem state."""
         if self.dry_run:
             return
         failures = []
@@ -279,6 +299,7 @@ class Cleanup:
         log("Post-cleanup audit: OK")
 
     def execute(self) -> None:
+        """Show the cleanup plan, perform the selected mode, and audit it."""
         print()
         log("Hermes cleanup plan")
         for label, value in (
@@ -298,6 +319,7 @@ class Cleanup:
 
 
 def main(args: list[str]) -> None:
+    """Parse cleanup options, validate prerequisites, and run the selected mode."""
     mode = "runtime"
     dry_run = False
     assume_yes = False

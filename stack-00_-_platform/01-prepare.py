@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Prepare Stack0 environment links and its shared Docker bridge network."""
+
 from __future__ import annotations
 
 import os
@@ -17,6 +19,7 @@ from ops_common import die, load_env, log, require, require_commands, require_ro
 
 
 def main() -> None:
+    """Validate platform prerequisites and prepare links and network if unlocked."""
     stack_dir = Path(__file__).resolve().parent
     root_dir = stack_dir.parent
     env_file = root_dir / ".env"

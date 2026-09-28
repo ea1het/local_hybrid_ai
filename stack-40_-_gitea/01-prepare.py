@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Validate prerequisites and prepare Gitea and runner runtime configuration."""
+
 import datetime
 import os
 import re
@@ -21,23 +23,28 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
+    """Abort preparation with a runtime error containing ``message``."""
     raise RuntimeError(message)
 
 
 def log(message):
+    """Print an indented progress message."""
     print(f"  {message}")
 
 
 def step(message):
+    """Print a preparation step heading."""
     print(f"\n== {message}")
 
 
 def run(command, env=None, capture=False):
+    """Run a command, optionally capturing stdout, and raise on failure."""
     return subprocess.run(command, env=env, check=True, text=True,
                           stdout=subprocess.PIPE if capture else None)
 
 
 def render(source, target, values):
+    """Replace template markers and atomically install the rendered file."""
     content = source.read_text()
     for key, value in values.items():
         content = content.replace(f"@@{key}@@", value)
@@ -49,6 +56,7 @@ def render(source, target, values):
 
 
 def main():
+    """Check Stack0 and prepare persistent Gitea and runner files once."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return
@@ -149,6 +157,7 @@ def main():
     elif default_target.exists():
         die(f"{default_target} existe y no es el alias gestionado esperado")
     else:
+        # Gitea reads custom/conf/app.ini; keep it linked to the rendered bind file.
         default_target.symlink_to("../app.ini")
     os.chown(default_target, int(env["GITEA_UID"]), int(env["GITEA_GID"]), follow_symlinks=False)
     log("config bind preservado; app.ini disponible tambien en custom/conf/app.ini")

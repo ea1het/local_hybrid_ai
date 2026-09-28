@@ -19,6 +19,7 @@ STACK = "stack-60_-_hermes"
 
 
 def sandbox_modules(tmp_path, monkeypatch):
+    """Load sandbox modules and bind them to an isolated workspace."""
     state = load_module(STACK, "config/sandbox/state-init.py")
     cleaner = load_module(STACK, "config/sandbox-cleanup/cleanup.py")
     workspace = tmp_path / "workspace"
@@ -39,6 +40,7 @@ def sandbox_modules(tmp_path, monkeypatch):
 
 
 def test_state_initializer_creates_and_validates_generation(tmp_path, monkeypatch):
+    """Initialize a generation and preserve protected baseline objects."""
     state, cleaner, workspace, marker = sandbox_modules(tmp_path, monkeypatch)
     (workspace / "baseline.txt").write_text("preserve")
     assert state.main() == 0
@@ -57,6 +59,7 @@ def test_state_initializer_creates_and_validates_generation(tmp_path, monkeypatc
 
 
 def test_state_initializer_rejects_partial_and_mismatched_state(tmp_path, monkeypatch):
+    """Reject incomplete or mismatched sandbox generation state."""
     state, cleaner, _workspace, marker = sandbox_modules(tmp_path, monkeypatch)
     marker.write_text("orphan")
     with pytest.raises(RuntimeError, match="incomplete"):
@@ -71,6 +74,7 @@ def test_state_initializer_rejects_partial_and_mismatched_state(tmp_path, monkey
 
 
 def test_cleanup_sidecar_quarantines_then_deletes_unprotected_file(tmp_path, monkeypatch):
+    """Quarantine and delete an expired unprotected workspace file."""
     state, cleaner, workspace, _marker = sandbox_modules(tmp_path, monkeypatch)
     state.main()
     payload = workspace / "stale.txt"
@@ -95,6 +99,7 @@ def test_cleanup_sidecar_quarantines_then_deletes_unprotected_file(tmp_path, mon
 
 
 def test_cleanup_sidecar_rejects_marker_symlink_and_outside_path(tmp_path, monkeypatch):
+    """Reject symlinked markers and paths outside the workspace."""
     _state, cleaner, workspace, marker = sandbox_modules(tmp_path, monkeypatch)
     outside = tmp_path / "outside"
     outside.write_text("not a marker")

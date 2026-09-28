@@ -21,11 +21,13 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def fail(message: str) -> None:
+    """Report a sidecar preparation error and exit."""
     print(f"[maintenance-prepare] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def main() -> None:
+    """Check prepared state, create sidecar directories, and verify dedicated SSH material."""
     if os.geteuid() != 0:
         fail("run as root")
     if not ENV_FILE.is_file():

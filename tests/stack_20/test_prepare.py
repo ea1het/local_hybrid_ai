@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 20 SearXNG and Firecrawl preparation."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -14,6 +16,7 @@ from tests.helpers import load_module
 
 
 def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeypatch):
+    """Preserve the database secret while installing config and a lock."""
     module = load_module("stack-20_-_searxng_firecrawl", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
     base = tmp_path / "runtime"
@@ -48,6 +51,7 @@ def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeyp
     commands = []
 
     def fake_run(command, **kwargs):
+        """Record installation and Docker commands as successful."""
         commands.append(command)
         return SimpleNamespace(returncode=0)
 
@@ -69,6 +73,7 @@ def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeyp
 ])
 def test_prepare_rejects_invalid_database_and_url_settings(tmp_path, monkeypatch, capsys,
                                                            key, value, message):
+    """Reject insecure URL or incompatible database settings."""
     module = load_module("stack-20_-_searxng_firecrawl", "01-prepare.py")
     monkeypatch.setattr(module, "STACK_DIR", tmp_path / module.STACK_NAME)
     monkeypatch.setattr(module, "LOCK_FILE", tmp_path / ".lock")

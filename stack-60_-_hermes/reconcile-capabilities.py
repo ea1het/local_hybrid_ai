@@ -27,15 +27,18 @@ SOURCE_CONFIG = STACK_DIR / "config/hermes/config.yaml"
 
 
 def log(message: str) -> None:
+    """Print a capability reconciliation message."""
     print(f"[capabilities] {message}")
 
 
 def die(message: str) -> None:
+    """Report an error and exit unsuccessfully."""
     print(f"[capabilities] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def run(*command: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run a stack-local command, failing with context unless check is disabled."""
     result = subprocess.run(command, cwd=STACK_DIR, text=True, capture_output=capture, check=False)
     if check and result.returncode:
         if capture and result.stderr:
@@ -45,16 +48,19 @@ def run(*command: str, capture: bool = False, check: bool = True) -> subprocess.
 
 
 def digest(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def container_running(name: str) -> bool:
+    """Check whether Docker reports a container as running."""
     if run("docker", "inspect", name, capture=True, check=False).returncode:
         return False
     return run("docker", "inspect", "-f", "{{.State.Running}}", name, capture=True).stdout.strip() == "true"
 
 
 def container_ready_on_network(name: str, network: str) -> bool:
+    """Check that a running container belongs to the requested network."""
     if not container_running(name):
         return False
     template = '{{if index .NetworkSettings.Networks "' + network + '"}}yes{{else}}no{{end}}'
@@ -62,12 +68,14 @@ def container_ready_on_network(name: str, network: str) -> bool:
 
 
 def stop_memory_sync_if_running(name: str) -> None:
+    """Stop only the Git memory sidecar when it is running."""
     if container_running(name):
         run("docker", "stop", name, capture=True)
         log("Git-memory sidecar stopped; no other Stack6 service was changed")
 
 
 def write_git_memory_state(path: Path, state: str, uid: int, gid: int) -> None:
+    """Atomically write the operator's desired Git memory state."""
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w") as output:
         output.write(state + "\n")
@@ -77,6 +85,7 @@ def write_git_memory_state(path: Path, state: str, uid: int, gid: int) -> None:
 
 
 def read_git_memory_state(path: Path) -> str:
+    """Read and validate the desired Git memory state, defaulting to disabled."""
     state = "disabled"
     if path.is_file() and not path.is_symlink():
         state = path.read_text().splitlines()[0] if path.stat().st_size else ""
@@ -86,6 +95,7 @@ def read_git_memory_state(path: Path) -> str:
 
 
 def render_config(model: str, web_enabled: bool) -> bytes:
+    """Render the selected model and web tool availability into managed config."""
     rendered = SOURCE_CONFIG.read_text().replace("${HERMES_MODEL}", model)
     if web_enabled:
         rendered = re.sub(r"(?m)^([ \t]*disabled_toolsets:[ \t]*)\[web\]([ \t]*)$", r"\1[]\2", rendered)
@@ -100,6 +110,7 @@ def render_config(model: str, web_enabled: bool) -> bytes:
 
 
 def main() -> None:
+    """Reconcile optional providers and Git memory against prepared stack state."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--restart", action="store_true", help="recreate running Hermes only when config changes")
     intent = parser.add_mutually_exclusive_group()
@@ -206,6 +217,7 @@ def main() -> None:
             log("Git-memory: enabled and sidecar already running")
         else:
             git = ("git", "-c", f"safe.directory={memory_dir}", "-C", str(memory_dir))
+            # A dirty tree or divergent heads require operator reconciliation before sync starts.
             local_head = run(*git, "rev-parse", "HEAD", capture=True).stdout.strip()
             if run(*git, "status", "--porcelain", capture=True).stdout.strip():
                 die("Git-memory working tree is dirty; refusing to start sidecar automatically")

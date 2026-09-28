@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Validate Stack0 and prepare Dockhand's persistent Docker volume."""
+
 import datetime
 import os
 import shutil
@@ -21,23 +23,28 @@ VOLUME = "dockhand_data"
 
 
 def die(message):
+    """Abort preparation with a runtime error containing ``message``."""
     raise RuntimeError(message)
 
 
 def log(message):
+    """Print an indented progress message."""
     print(f"  {message}")
 
 
 def step(message):
+    """Print a preparation step heading."""
     print(f"\n== {message}")
 
 
 def run(command, env=None, capture=False):
+    """Run a command, optionally capturing stdout, and raise on failure."""
     return subprocess.run(command, env=env, check=True, text=True,
                           stdout=subprocess.PIPE if capture else None)
 
 
 def main():
+    """Check prerequisites, preserve or create the volume, and write the lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

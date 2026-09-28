@@ -87,6 +87,7 @@ def split_raw(raw: str) -> tuple[str, str]:
 
 
 def unquote(value: str) -> str:
+    """Remove one matching pair of shell-style quote characters, if present."""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         return value[1:-1]
     return value
@@ -94,6 +95,8 @@ def unquote(value: str) -> str:
 
 @dataclass
 class Assignment:
+    """One parsed dotenv assignment, retaining its source location and formatting."""
+
     lineno: int
     prefix: str
     key: str
@@ -103,6 +106,8 @@ class Assignment:
 
 @dataclass
 class DotEnv:
+    """Parsed dotenv lines with insertion order and all occurrences of each key."""
+
     path: Path
     lines: list[str]
     order: list[str] = field(default_factory=list)
@@ -110,6 +115,7 @@ class DotEnv:
 
     @classmethod
     def load(cls, path: Path) -> DotEnv:
+        """Read assignments while preserving comments and non-assignment lines."""
         if not path.is_file():
             raise SyncError(f"not found: {path}")
         env = cls(path, path.read_text(encoding="utf-8").splitlines())
@@ -133,9 +139,11 @@ class DotEnv:
         }
 
     def repeated(self) -> list[str]:
+        """List all keys occurring more than once, even when values agree."""
         return [key for key, items in self.entries.items() if len(items) > 1]
 
     def last(self, key: str) -> Assignment:
+        """Return the effective final assignment for a key."""
         return self.entries[key][-1]
 
 
@@ -145,6 +153,8 @@ class DotEnv:
 
 @dataclass
 class SyncResult:
+    """Proposed dotenv text and the categories of differences to report."""
+
     current: str
     text: str
     new: list[str]
@@ -154,10 +164,12 @@ class SyncResult:
 
     @property
     def changed(self) -> bool:
+        """Whether applying this plan would change the local file."""
         return self.text != self.current
 
 
 def _describe(key: str, items: list[Assignment], path: Path) -> str:
+    """Format duplicate assignments with their source line numbers."""
     where = ", ".join(f"line {item.lineno}: {item.value!r}" for item in items)
     return f"  {key} ({path.name}) -> {where}"
 
@@ -215,6 +227,7 @@ def backup_env(env_path: Path) -> Path:
 
 
 def write_atomic(path: Path, text: str) -> None:
+    """Replace a dotenv file via a temporary sibling, retaining mode and root-owned UID."""
     existing = path.stat()
     handle = tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False, encoding="utf-8")
     try:
@@ -239,6 +252,7 @@ def apply(env_path: Path, result: SyncResult) -> Path | None:
 
 
 def report(result: SyncResult, out=sys.stdout) -> None:
+    """Describe proposed changes, warning separately about placeholder values."""
     if result.new:
         print(f"New variables taken from the template ({len(result.new)}): {', '.join(result.new)}", file=out)
     if result.extra:
@@ -256,6 +270,7 @@ def report(result: SyncResult, out=sys.stdout) -> None:
 # --------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
+    """Run check, diff, or backed-up synchronization according to CLI options."""
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,

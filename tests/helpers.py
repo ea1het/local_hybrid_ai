@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_module(stack: str, filename: str):
+    """Import a stack script by path while temporarily exposing sibling imports."""
     path = ROOT / stack / filename
     qualified = filename.removesuffix(".py").replace("/", "_").replace("-", "_")
     name = f"test_{stack.split('_')[0]}_{qualified}"

@@ -48,6 +48,7 @@ REQUIRED_CAPABILITIES = {
 
 
 async def main():
+    '''Check required model capabilities, defaults, and public access.'''
     async with get_async_db_context() as db:
         admin_result = await db.execute(
             select(User).where(User.role == "admin").order_by(User.created_at.asc())
@@ -91,6 +92,7 @@ asyncio.run(main())
 
 
 def main() -> int:
+    """Run read-only policy verification inside the Open WebUI container."""
     probe = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER],
         text=True,

@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Provisiona el rol y la base de datos PostgreSQL dedicados a LiteLLM."""
+
 import os
 import shutil
 import subprocess
@@ -19,23 +21,28 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
+    """Interrumpe el provisionado con un error de ejecución."""
     raise RuntimeError(message)
 
 
 def step(message):
+    """Muestra el encabezado de una fase."""
     print(f"\n== {message}")
 
 
 def log(message):
+    """Muestra un detalle de progreso con sangría."""
     print(f"  {message}")
 
 
 def run(command, *, env=None, input_text=None, capture=False):
+    """Ejecuta un comando con entrada opcional y posible captura de salida."""
     return subprocess.run(command, env=env, input=input_text, text=True, check=True,
                           stdout=subprocess.PIPE if capture else None)
 
 
 def main():
+    """Arranca PostgreSQL, crea o actualiza rol y base, y verifica acceso."""
     if os.geteuid() != 0:
         die("ejecuta este script como root")
     if not shutil.which("docker"):

@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Stack 10 HAProxy and web preparation in temporary trees."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -14,6 +16,7 @@ from tests.helpers import load_module
 
 
 def test_sourced_environment_rejects_redacted_values(tmp_path, monkeypatch, capsys):
+    """Reject redacted environment values before invoking Bash."""
     module = load_module("stack-10_-_haproxy_web", "01-prepare.py")
     env_file = tmp_path / ".env"
     env_file.write_text("WEB_TARGET=<REDACTED>\n")
@@ -26,6 +29,7 @@ def test_sourced_environment_rejects_redacted_values(tmp_path, monkeypatch, caps
 
 
 def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monkeypatch):
+    """Validate TLS setup and write the preparation lock after success."""
     module = load_module("stack-10_-_haproxy_web", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
     base = tmp_path / "runtime"
@@ -55,10 +59,12 @@ def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monke
     commands = []
 
     def fake_subprocess(command, **kwargs):
+        """Record subprocess calls and simulate successful commands."""
         commands.append(command)
         return SimpleNamespace(returncode=0)
 
     def fake_output(command, **kwargs):
+        """Return a bridge driver or matching TLS public key for probes."""
         return b"bridge\n" if command[:2] == ["docker", "network"] else b"matching-public-key"
 
     monkeypatch.setattr(module.subprocess, "run", fake_subprocess)
@@ -74,6 +80,7 @@ def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monke
 
 
 def test_prepare_rejects_invalid_pki_group_before_network_access(tmp_path, monkeypatch, capsys):
+    """Reject an invalid PKI group before any network access."""
     module = load_module("stack-10_-_haproxy_web", "01-prepare.py")
     monkeypatch.setattr(module, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(module, "ENV_FILE", tmp_path / ".env")

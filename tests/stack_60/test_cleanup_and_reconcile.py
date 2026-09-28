@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Check Hermes cleanup, capability reconciliation, and timeout settings."""
+
 import sys
 
 sys.dont_write_bytecode = True
@@ -19,6 +21,7 @@ workaround = load_module("stack-60_-_hermes", "apply-terminal-timeout-workaround
 
 
 def test_cleanup_rejects_managed_runtime_override(tmp_path, monkeypatch):
+    """Reject runtime environment overrides of managed Hermes values."""
     env_file = tmp_path / ".env"
     env_file.write_text("BASE_PATH=/runtime\nHERMES_MODEL=original\n")
     runtime = tmp_path / "data"
@@ -35,6 +38,7 @@ def test_cleanup_rejects_managed_runtime_override(tmp_path, monkeypatch):
 
 
 def test_cleanup_dry_run_preserves_files_and_rejects_escape(tmp_path, monkeypatch):
+    """Preserve files in dry-run mode and reject paths outside managed roots."""
     root = tmp_path / "service_-_hermes"
     root.mkdir()
     target = root / "state.db"
@@ -55,6 +59,7 @@ def test_cleanup_dry_run_preserves_files_and_rejects_escape(tmp_path, monkeypatc
 
 
 def test_reconcile_config_toggles_web_only_when_available(tmp_path, monkeypatch):
+    """Enable web tools in rendered config only when available."""
     source = tmp_path / "config.yaml"
     source.write_text("model: ${HERMES_MODEL}\ndisabled_toolsets: [web]\n")
     monkeypatch.setattr(reconcile, "SOURCE_CONFIG", source)
@@ -64,6 +69,7 @@ def test_reconcile_config_toggles_web_only_when_available(tmp_path, monkeypatch)
 
 
 def test_reconcile_state_defaults_disabled_and_rejects_invalid(tmp_path):
+    """Default Git memory to disabled and reject unknown states."""
     state = tmp_path / "desired-state"
     assert reconcile.read_git_memory_state(state) == "disabled"
     state.write_text("enabled\n")
@@ -74,6 +80,7 @@ def test_reconcile_state_defaults_disabled_and_rejects_invalid(tmp_path):
 
 
 def test_reconcile_stops_only_running_memory_sidecar(monkeypatch):
+    """Stop only the running memory sync container."""
     commands = []
     monkeypatch.setattr(reconcile, "container_running", lambda name: name == "sync")
     monkeypatch.setattr(reconcile, "run", lambda *args, **kwargs: commands.append(args))
@@ -83,12 +90,14 @@ def test_reconcile_stops_only_running_memory_sidecar(monkeypatch):
 
 
 def test_timeout_values_require_exact_assignment(tmp_path):
+    """Read timeout assignments while ignoring comments and other keys."""
     path = tmp_path / ".env"
     path.write_text("TERMINAL_TIMEOUT=20\nexport TERMINAL_TIMEOUT=30\n# TERMINAL_TIMEOUT=40\nOTHER=50\n")
     assert workaround.timeout_values(path) == ["20", "30"]
 
 
 def test_workaround_rejects_invalid_container_timeout_before_rewrite(tmp_path, monkeypatch, capsys):
+    """Reject an invalid container timeout without rewriting runtime config."""
     env_file = tmp_path / ".env"
     env_file.touch()
     runtime = tmp_path / "service_-_hermes" / "data" / ".env"
@@ -103,6 +112,7 @@ def test_workaround_rejects_invalid_container_timeout_before_rewrite(tmp_path, m
     calls = []
 
     def fake_run(*args, **kwargs):
+        """Record Docker calls and return an unsafe timeout from the container."""
         calls.append(args)
         return "true" if "{{.State.Running}}" in args else "0; rm -rf /"
 

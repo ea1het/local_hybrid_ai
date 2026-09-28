@@ -52,6 +52,7 @@ REQUIRED_CAPABILITIES = {
 
 
 async def main():
+    '''Create or update the model policy and grant public read access.'''
     async with get_async_db_context() as db:
         admin_result = await db.execute(
             select(User).where(User.role == "admin").order_by(User.created_at.asc())
@@ -115,6 +116,7 @@ asyncio.run(main())
 
 
 def main() -> int:
+    """Run policy reconciliation inside the running Open WebUI container."""
     probe = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER],
         text=True,

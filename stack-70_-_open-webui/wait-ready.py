@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Wait for the Open WebUI container to report healthy status."""
+
 
 import os
 import re
@@ -17,10 +19,12 @@ CONTAINER = "open-webui"
 
 
 class WaitError(Exception):
+    """Report a missing, failed, or overdue Open WebUI container."""
     pass
 
 
 def inspect(template):
+    """Return a Docker inspect template's stripped output for Open WebUI."""
     result = subprocess.run(("docker", "inspect", "-f", template, CONTAINER),
                             text=True, capture_output=True, check=False)
     if result.returncode:
@@ -29,6 +33,7 @@ def inspect(template):
 
 
 def main():
+    """Poll Docker health until ready, terminal failure, or timeout."""
     if os.geteuid() != 0:
         raise WaitError("ejecuta este script como root")
     timeout_text = os.environ.get("OPENWEBUI_READY_TIMEOUT", "240")

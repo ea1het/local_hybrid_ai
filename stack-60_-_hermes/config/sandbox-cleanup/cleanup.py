@@ -41,18 +41,22 @@ _LOCK = threading.Lock()
 
 
 def now_utc() -> datetime:
+    """Return the current timezone-aware UTC time."""
     return datetime.now(timezone.utc)
 
 
 def iso(dt: datetime | None = None) -> str:
+    """Format a UTC timestamp using a Z suffix."""
     return (dt or now_utc()).isoformat().replace("+00:00", "Z")
 
 
 def parse_iso(value: str) -> datetime:
+    """Parse a stored ISO timestamp into a datetime."""
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def connect() -> sqlite3.Connection:
+    """Open the sandbox lifecycle database with a busy timeout."""
     conn = sqlite3.connect(STATE_DB, timeout=30)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=30000")
@@ -60,6 +64,7 @@ def connect() -> sqlite3.Connection:
 
 
 def read_marker() -> str:
+    """Read a valid workspace generation marker or fail closed."""
     if MARKER.is_symlink() or not MARKER.is_file():
         raise RuntimeError(
             "sandbox generation marker missing/invalid; run cleanup.py --reset-sandbox"
@@ -73,6 +78,7 @@ def read_marker() -> str:
 
 
 def validate_state() -> str:
+    """Verify database integrity, schema, and generation against the marker."""
     marker_generation = read_marker()
     if STATE_DB.is_symlink() or not STATE_DB.is_file():
         raise RuntimeError(f"state database missing/invalid: {STATE_DB}")
@@ -93,6 +99,7 @@ def validate_state() -> str:
 
 
 def top_level(path: Path) -> str | None:
+    """Return the first workspace-relative path component, if any."""
     try:
         rel = path.relative_to(WORKSPACE)
     except ValueError:
@@ -103,6 +110,7 @@ def top_level(path: Path) -> str | None:
 
 
 def latest_activity(path: Path) -> datetime:
+    """Find the latest modification time under a workspace object."""
     latest_ns = path.lstat().st_mtime_ns
     if path.is_dir() and not path.is_symlink():
         for root, dirs, files in os.walk(path, followlinks=False):
@@ -116,6 +124,7 @@ def latest_activity(path: Path) -> datetime:
 
 
 def reconcile_top_level(conn: sqlite3.Connection) -> None:
+    """Discover current top-level objects and mark missing ones deleted."""
     seen: set[str] = set()
     now = now_utc()
     for entry in WORKSPACE.iterdir():
@@ -159,6 +168,7 @@ def reconcile_top_level(conn: sqlite3.Connection) -> None:
 
 
 def mark_activity(name: str) -> None:
+    """Record filesystem activity for an unprotected top-level object."""
     if name == ".cleanup-quarantine":
         return
     path = WORKSPACE / name
@@ -190,6 +200,7 @@ def mark_activity(name: str) -> None:
 
 
 def mark_deleted_if_missing(name: str) -> None:
+    """Mark an unprotected object deleted when it no longer exists."""
     path = WORKSPACE / name
     if path.exists() or path.is_symlink():
         return
@@ -209,6 +220,7 @@ def mark_deleted_if_missing(name: str) -> None:
 
 
 def watcher() -> None:
+    """Monitor recursive inotify events and update top-level lifecycle state."""
     cmd = [
         "inotifywait", "-m", "-r", "-q",
         "-e", "create", "-e", "modify", "-e", "close_write",
@@ -234,6 +246,7 @@ def watcher() -> None:
 
 
 def safe_remove(path: Path) -> None:
+    """Remove a quarantined file, symlink, or directory."""
     if path.is_symlink() or path.is_file():
         path.unlink(missing_ok=True)
     elif path.is_dir():
@@ -243,6 +256,7 @@ def safe_remove(path: Path) -> None:
 
 
 def quarantine_candidate(conn: sqlite3.Connection, name: str, last_activity: str) -> bool:
+    """Move an inactive object to quarantine after checking for recent changes."""
     src = WORKSPACE / name
     if not src.exists() and not src.is_symlink():
         conn.execute("UPDATE objects SET state='DELETED', deleted_at=? WHERE path=?", (iso(), name))
@@ -253,6 +267,7 @@ def quarantine_candidate(conn: sqlite3.Connection, name: str, last_activity: str
         return False
 
     before = latest_activity(src)
+    # Give concurrent writers a chance to change mtime before moving the object.
     time.sleep(0.05)
     try:
         after = latest_activity(src)
@@ -276,6 +291,7 @@ def quarantine_candidate(conn: sqlite3.Connection, name: str, last_activity: str
 
 
 def quarantine_matches(name: str) -> list[Path]:
+    """Find quarantine entries matching a tracked object name."""
     if not QUARANTINE.is_dir() or QUARANTINE.is_symlink():
         return []
     matches: list[Path] = []
@@ -297,6 +313,7 @@ def quarantine_matches(name: str) -> list[Path]:
 
 
 def delete_quarantined(conn: sqlite3.Connection) -> int:
+    """Delete expired quarantine entries and mark their objects deleted."""
     cutoff = now_utc() - timedelta(days=QUARANTINE_DAYS)
     rows = conn.execute(
         "SELECT path, quarantined_at FROM objects WHERE state='QUARANTINED' AND quarantined_at IS NOT NULL"
@@ -317,6 +334,7 @@ def delete_quarantined(conn: sqlite3.Connection) -> int:
 
 
 def audit(conn: sqlite3.Connection) -> None:
+    """Print workspace size and lifecycle counts without modifying tracked objects."""
     total_bytes = 0
     count = 0
     for root, dirs, files in os.walk(WORKSPACE, followlinks=False):
@@ -343,6 +361,7 @@ def audit(conn: sqlite3.Connection) -> None:
 
 
 def sweep() -> None:
+    """Validate state, reconcile objects, and apply two-phase retention cleanup."""
     generation = validate_state()
     QUARANTINE.mkdir(parents=True, exist_ok=True)
     with _LOCK:
@@ -375,6 +394,7 @@ def sweep() -> None:
 
 
 def next_sweep_delay() -> float:
+    """Return seconds until the next configured local-time sweep."""
     now = datetime.now().astimezone()
     target = now.replace(hour=SWEEP_HOUR, minute=SWEEP_MINUTE, second=0, microsecond=0)
     if target <= now:
@@ -383,6 +403,7 @@ def next_sweep_delay() -> float:
 
 
 def scheduler() -> None:
+    """Run daily sweeps, logging failures and continuing."""
     while True:
         time.sleep(next_sweep_delay())
         try:
@@ -392,6 +413,7 @@ def scheduler() -> None:
 
 
 def validate_settings() -> None:
+    """Require positive retention periods."""
     settings = {
         "RETENTION_DAYS": RETENTION_DAYS,
         "QUARANTINE_DAYS": QUARANTINE_DAYS,
@@ -403,6 +425,7 @@ def validate_settings() -> None:
 
 
 def main() -> int:
+    """Validate state, sweep once, and start the watcher and scheduler."""
     validate_settings()
     generation = validate_state()
     print(f"[sandbox-cleanup] start generation={generation}")

@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Prepara HAProxy y la web tras validar la red y los certificados de Stack0."""
+
 import datetime
 import os
 import re
@@ -33,24 +35,29 @@ HAPROXY_VARS = (
 
 
 def log(message):
+    """Muestra un detalle de progreso con sangría."""
     print(f"  {message}")
 
 
 def step(message):
+    """Muestra el encabezado de una fase."""
     print(f"\n== {message}")
 
 
 def die(message):
+    """Muestra un error y termina la preparación."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def run(*command, env=None, quiet=False):
+    """Ejecuta un comando y, si se solicita, silencia su salida."""
     return subprocess.run(command, env=env, stdout=subprocess.DEVNULL if quiet else None,
                           stderr=subprocess.DEVNULL if quiet else None, check=True)
 
 
 def sourced_environment():
+    """Rechaza valores saneados y devuelve las variables del .env cargadas por Bash."""
     content = ENV_FILE.read_text()
     if re.search(r"^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})", content, re.MULTILINE):
         die(f"{ENV_FILE} contiene valores saneados/incompletos")
@@ -62,6 +69,7 @@ def sourced_environment():
 
 
 def main():
+    """Verifica requisitos, instala configuración y web, y crea el lock."""
     if LOCK_FILE.exists():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

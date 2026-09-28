@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Prepara SearXNG y Firecrawl sobre los directorios y la red de Stack0."""
+
 import datetime
 import os
 import re
@@ -23,19 +25,23 @@ REQUIRED = ("STACKS_ROOT BASE_PATH NETWORK_NAME SEARXNG_SECRET SEARXNG_BASE_URL 
 
 
 def log(message):
+    """Muestra un detalle de progreso con sangría."""
     print(f"  {message}")
 
 
 def step(message):
+    """Muestra el encabezado de una fase."""
     print(f"\n== {message}")
 
 
 def die(message):
+    """Muestra un error y termina la preparación."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def sourced_environment():
+    """Rechaza valores saneados y devuelve las variables del .env cargadas por Bash."""
     if re.search(r"^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})", ENV_FILE.read_text(), re.MULTILINE):
         die(f"{ENV_FILE} contiene valores saneados/incompletos")
     result = subprocess.run(["bash", "-c", 'set -Eeuo pipefail; set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
@@ -44,6 +50,7 @@ def sourced_environment():
 
 
 def main():
+    """Valida dependencias, conserva o crea el secreto y prepara la configuración."""
     if LOCK_FILE.exists():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

@@ -22,11 +22,13 @@ ENV_FILE = STACK_DIR / ".env"
 
 
 def fail(message: str) -> None:
+    """Report a readiness error and exit unsuccessfully."""
     print(f"[stack6-ready] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def container_state(name: str) -> str:
+    """Return Docker's status and health fields, or an absent sentinel."""
     result = subprocess.run(
         ["docker", "inspect", "-f", "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}", name],
         text=True,
@@ -37,6 +39,7 @@ def container_state(name: str) -> str:
 
 
 def main() -> None:
+    """Wait until every required container is running and healthy, or fail on exit or timeout."""
     if not ENV_FILE.is_file():
         fail(f"missing {ENV_FILE}")
     if shutil.which("docker") is None:

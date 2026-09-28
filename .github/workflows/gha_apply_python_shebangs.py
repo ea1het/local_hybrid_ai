@@ -25,6 +25,7 @@ SHEBANG = "#!/usr/bin/env python3\n"
 
 
 def git_executable_python_files() -> list[Path]:
+    """Find Python files marked executable in Git's index, not by worktree mode."""
     result = subprocess.run(
         ["git", "ls-files", "--stage", "-z"],
         cwd=ROOT,
@@ -43,10 +44,12 @@ def git_executable_python_files() -> list[Path]:
 
 
 def rel(path: Path) -> str:
+    """Format a path relative to the repository for diagnostics."""
     return path.relative_to(ROOT).as_posix()
 
 
 def is_binary_bytes(data: bytes) -> bool:
+    """Reject NUL-containing or non-UTF-8 content before editing."""
     if b"\0" in data[:8192]:
         return True
     try:
@@ -57,6 +60,7 @@ def is_binary_bytes(data: bytes) -> bool:
 
 
 def scan(check_only: bool) -> int:
+    """Check or add shebangs without overwriting BOMs, links, or other interpreters."""
     missing: list[str] = []
     changed: list[str] = []
     invalid: list[str] = []
@@ -108,6 +112,7 @@ def scan(check_only: bool) -> int:
 
 
 def main() -> int:
+    """Parse CLI options and return the shebang audit result."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="verify instead of modifying files")
     args = parser.parse_args()

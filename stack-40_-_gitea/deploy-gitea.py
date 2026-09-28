@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Deploy the prepared Gitea stack and verify runner registration."""
+
 import os
 import shutil
 import subprocess
@@ -20,23 +22,28 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
+    """Abort deployment with a runtime error containing ``message``."""
     raise RuntimeError(message)
 
 
 def step(message):
+    """Print a deployment step heading."""
     print(f"\n== {message}")
 
 
 def log(message):
+    """Print an indented progress message."""
     print(f"  {message}")
 
 
 def run(command, env=None, capture=False):
+    """Run a command, optionally capturing stdout, and raise on failure."""
     return subprocess.run(command, env=env, check=True, text=True,
                           stdout=subprocess.PIPE if capture else None)
 
 
 def main():
+    """Migrate Gitea, ensure an administrator, and start the stack."""
     if not shutil.which("docker"):
         die("docker no esta instalado")
     if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,

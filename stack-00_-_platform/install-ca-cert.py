@@ -61,11 +61,13 @@ LOCAL_CA_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def die(message: str, code: int = 1) -> None:
+    """Muestra un error y termina con el código indicado."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def run(cmd: list[str], *, capture: bool = False) -> subprocess.CompletedProcess:
+    """Ejecuta un comando y termina si falla; puede capturar su salida."""
     print("+", " ".join(cmd))
     try:
         return subprocess.run(cmd, text=True, check=True, capture_output=capture)
@@ -109,11 +111,13 @@ def local_ca_path(env: dict[str, str]) -> Path:
 
 
 def require_root() -> None:
+    """Exige privilegios de root antes de modificar el almacén de CA."""
     if os.geteuid() != 0:
         die("Ejecuta el script con sudo/root.")
 
 
 def require_commands() -> None:
+    """Comprueba que estén disponibles los comandos de instalación y validación."""
     required = ("openssl", "install", "update-ca-certificates")
     missing = [cmd for cmd in required if shutil.which(cmd) is None]
     if missing:
@@ -121,6 +125,7 @@ def require_commands() -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Lee la ruta de CA opcional y el permiso explícito para sustituirla."""
     parser = argparse.ArgumentParser(
         description="Instala la CA local (rootCA.pem) en el trust store del host.",
     )
@@ -139,6 +144,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def find_ca(path: Path) -> Path:
+    """Devuelve la ruta resuelta de un certificado CA regular, sin symlink."""
     source = path.resolve()
     if not source.is_file() or path.is_symlink():
         die(f"No existe el certificado CA (o es un symlink): {path}. Cópialo desde la CA mkcert.")
@@ -146,6 +152,7 @@ def find_ca(path: Path) -> Path:
 
 
 def validate_ca(source: Path) -> None:
+    """Comprueba CA:TRUE y muestra los datos del certificado origen."""
     print("\n== 1/3 Validando CA ==")
     result = run(["openssl", "x509", "-in", str(source), "-noout", "-text"], capture=True)
     if "CA:TRUE" not in result.stdout:
@@ -162,6 +169,7 @@ def validate_ca(source: Path) -> None:
 
 
 def install_ca_on_host(source: Path, dest: Path) -> None:
+    """Instala la CA pública y actualiza el bundle de confianza del host."""
     print("\n== 2/3 Instalando CA en el host ==")
     dest.parent.mkdir(parents=True, exist_ok=True)
     run(["install", "-m", "0644", "-o", "0", "-g", "0", str(source), str(dest)])
@@ -169,6 +177,7 @@ def install_ca_on_host(source: Path, dest: Path) -> None:
 
 
 def verify_bundle(dest: Path) -> None:
+    """Verifica la CA instalada frente al bundle de certificados del host."""
     print("\n== 3/3 Verificando bundle del host ==")
     if not HOST_CA_BUNDLE.is_file():
         die(f"No existe el bundle del sistema esperado: {HOST_CA_BUNDLE}")
@@ -177,6 +186,7 @@ def verify_bundle(dest: Path) -> None:
 
 
 def main() -> None:
+    """Valida, instala y verifica la CA salvo que el lock impida cambios."""
     args = parse_args()
 
     if LOCK_FILE.exists() and not args.force:

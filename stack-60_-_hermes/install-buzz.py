@@ -28,20 +28,24 @@ CONTAINER_PATH = "/opt/data/bin/buzz"
 
 
 def fail(message: str) -> None:
+    """Report a Buzz installation error and exit."""
     print(f"[buzz-prepare] ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def run(*args: str, quiet: bool = False, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run a stack-local command, optionally suppressing output or nonzero failure."""
     return subprocess.run(args, cwd=STACK_DIR, text=True, stdout=subprocess.DEVNULL if quiet else None,
                           stderr=subprocess.DEVNULL if quiet else None, check=check)
 
 
 def regular(path: Path) -> bool:
+    """Check that a path is a nonsymlink regular file."""
     return path.is_file() and not path.is_symlink()
 
 
 def main() -> None:
+    """Install and validate the pinned Buzz binary in Hermes persistent data."""
     if os.geteuid() != 0:
         fail("run as root")
     if not ENV_FILE.is_file():
@@ -77,6 +81,7 @@ def main() -> None:
     run("install", "-d", "-m", "0750", "-o", uid, "-g", gid, str(bin_dir))
 
     def validates(container_binary: str) -> bool:
+        """Check whether a Buzz binary runs inside the configured Hermes image."""
         return run("docker", "run", "--rm", "--network", "none", "--read-only",
                    "-v", f"{bin_dir}:/opt/data/bin:ro", "--entrypoint", container_binary,
                    f"{env['HERMES_IMAGE']}:{env['HERMES_VERSION']}", "--help",

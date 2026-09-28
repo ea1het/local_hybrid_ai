@@ -3,6 +3,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+"""Prepara LiteLLM y su PostgreSQL dedicado tras verificar Stack0."""
+
 import datetime
 import os
 import re
@@ -21,23 +23,28 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
+    """Interrumpe la preparación con un error de ejecución."""
     raise RuntimeError(message)
 
 
 def log(message):
+    """Muestra un detalle de progreso con sangría."""
     print(f"  {message}")
 
 
 def step(message):
+    """Muestra el encabezado de una fase."""
     print(f"\n== {message}")
 
 
 def run(command, env=None, capture=False):
+    """Ejecuta un comando y, opcionalmente, captura su salida de texto."""
     return subprocess.run(command, env=env, check=True, text=True,
                           stdout=subprocess.PIPE if capture else None)
 
 
 def load_env():
+    """Carga con Bash el .env del stack y devuelve las variables exportadas."""
     result = subprocess.run(
         ["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
         check=True, stdout=subprocess.PIPE,
@@ -46,12 +53,14 @@ def load_env():
 
 
 def require(env, keys):
+    """Exige cada variable nombrada en la cadena separada por espacios."""
     for key in keys.split():
         if not env.get(key):
             die(f"falta {key} en {ENV_FILE}")
 
 
 def main():
+    """Verifica dependencias, prepara secreto y configuración, y crea el lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return
