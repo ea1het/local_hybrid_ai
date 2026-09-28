@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+import datetime
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+
+STACK_NAME = "stack-40_-_gitea"
+STACK_DIR = Path(__file__).resolve().parent
+ENV_FILE = STACK_DIR / ".env"
+COMPOSE_FILE = STACK_DIR / "docker-compose.yml"
+LOCK_FILE = STACK_DIR / ".lock"
+
+
+def die(message):
+    raise RuntimeError(message)
+
+
+def log(message):
+    print(f"  {message}")
+
+
+def step(message):
+    print(f"\n== {message}")
+
+
+def run(command, env=None, capture=False):
+    return subprocess.run(command, env=env, check=True, text=True,
+                          stdout=subprocess.PIPE if capture else None)
+
+
+def render(source, target, values):
+    content = source.read_text()
+    for key, value in values.items():
+        content = content.replace(f"@@{key}@@", value)
+    if re.search(r"@@[A-Za-z0-9_]+@@", content):
+        die(f"placeholders sin resolver en {source}")
+    temporary = target.with_name(f"{target.name}.tmp.{os.getpid()}")
+    temporary.write_text(content)
+    temporary.replace(target)
+
+
+def main():
+    if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
+        print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
+        return
+    if os.geteuid() != 0:
+        die("ejecuta este script como root")
+    for command in ("docker", "openssl"):
+        if not shutil.which(command):
+            die(f"falta el comando requerido: {command}")
+    if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL).returncode:
+        die("Docker Compose v2 no esta disponible")
+    for path in (ENV_FILE, COMPOSE_FILE):
+        if not path.is_file():
+            die(f"falta {path}")
+    if re.search(r"^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})",
+                 ENV_FILE.read_text(), re.MULTILINE):
+        die(f"{ENV_FILE} contiene valores saneados/incompletos")
+    loaded = subprocess.run(["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
+                            check=True, stdout=subprocess.PIPE).stdout
+    env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)
+    os.environ.update(env)
+    required = ("STACKS_ROOT BASE_PATH NETWORK_NAME GITEA_IMAGE GITEA_CONTAINER_NAME GITEA_UID GITEA_GID "
+                "GITEA_SSH_BIND GITEA_SSH_PORT GITEA_DOCKER_NETWORK GITEA_DOMAIN GITEA_ROOT_URL "
+                "GITEA_SSH_DOMAIN GITEA_TIMEZONE GITEA_INTERNAL_TOKEN GITEA_JWT_SECRET "
+                "GITEA_ADMIN_USERNAME GITEA_ADMIN_EMAIL GITEA_ADMIN_PASSWORD "
+                "GITEA_RUNNER_NAME GITEA_RUNNER_INSTANCE_URL")
+    for key in required.split():
+        if not env.get(key):
+            die(f"falta {key} en {ENV_FILE}")
+    stacks_root = env["STACKS_ROOT"].rstrip("/")
+    base_path = env["BASE_PATH"].rstrip("/")
+    if not env["STACKS_ROOT"].startswith("/") or not env["BASE_PATH"].startswith("/"):
+        die("STACKS_ROOT y BASE_PATH deben ser rutas absolutas")
+    if str(STACK_DIR) != f"{stacks_root}/{STACK_NAME}":
+        die(f"este stack debe residir en {stacks_root}/{STACK_NAME}; ruta actual: {STACK_DIR}")
+    if stacks_root == base_path:
+        die("STACKS_ROOT y BASE_PATH deben ser distintos")
+    if env["GITEA_ROOT_URL"] != f"https://{env['GITEA_DOMAIN']}/":
+        die(f"GITEA_ROOT_URL debe ser https://{env['GITEA_DOMAIN']}/")
+    if env["GITEA_RUNNER_INSTANCE_URL"] != "http://gitea:3000/":
+        die("GITEA_RUNNER_INSTANCE_URL debe ser http://gitea:3000/")
+    if env["GITEA_DOCKER_NETWORK"] != env["NETWORK_NAME"]:
+        die(f"GITEA_DOCKER_NETWORK debe coincidir con NETWORK_NAME ({env['NETWORK_NAME']})")
+    stack0_lock = Path(stacks_root) / "stack-00_-_platform/.lock"
+    if not stack0_lock.is_file():
+        die(f"Stack0 no esta preparado: falta {stack0_lock}")
+    gitea_service = Path(base_path) / "service_-_gitea"
+    runner_service = Path(base_path) / "service_-_gitea-runner"
+    token_file = runner_service / "secret/registration-token"
+    app_source = STACK_DIR / "config/gitea/app.ini"
+    runner_source = STACK_DIR / "config/gitea-runner/config.yaml"
+    app_target = gitea_service / "config/app.ini"
+    default_target = gitea_service / "config/conf/app.ini"
+    runner_target = runner_service / "data/config.yaml"
+    for source in (app_source, runner_source):
+        if not source.is_file():
+            die(f"falta {source}")
+    for directory in (gitea_service / "config", gitea_service / "config/conf",
+                      gitea_service / "data", runner_service / "data", runner_service / "secret"):
+        if not directory.is_dir() or directory.is_symlink():
+            die(f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
+    network = env["GITEA_DOCKER_NETWORK"]
+    step(f"Red Docker compartida {network}")
+    if subprocess.run(["docker", "network", "inspect", network], stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL).returncode:
+        die(f"falta {network}; instala/prepara primero Stack0")
+    driver = run(["docker", "network", "inspect", "-f", "{{.Driver}}", network], capture=True).stdout.strip()
+    if driver != "bridge":
+        die(f"{network} usa driver {driver}, no bridge")
+    log("red de Stack0 verificada")
+    step("Token persistente del runner")
+    if token_file.is_file() and token_file.stat().st_size:
+        log("token existente preservado")
+    else:
+        token = env.get("GITEA_RUNNER_REGISTRATION_TOKEN", "")
+        if token and not token.startswith("PUT_YOUR_"):
+            token += "\n"
+            log("token legacy de .env adoptado en runtime")
+        else:
+            token = run(["openssl", "rand", "-hex", "24"], capture=True).stdout
+            log("token generado una vez en runtime")
+        descriptor = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w") as secret:
+            secret.write(token)
+    if not token_file.stat().st_size:
+        die(f"no se pudo preparar {token_file}")
+    os.chown(token_file, 0, int(env["GITEA_GID"]))
+    os.chmod(token_file, 0o440)
+    step("Configuracion de Gitea")
+    app_keys = ("GITEA_DOMAIN", "GITEA_ROOT_URL", "GITEA_SSH_DOMAIN", "GITEA_SSH_PORT",
+                "GITEA_INTERNAL_TOKEN", "GITEA_JWT_SECRET")
+    render(app_source, app_target, {key: env[key] for key in app_keys})
+    os.chown(app_target, int(env["GITEA_UID"]), int(env["GITEA_GID"]))
+    os.chmod(app_target, 0o640)
+    if default_target.is_symlink():
+        if os.readlink(default_target) != "../app.ini":
+            die(f"{default_target} es un symlink inesperado")
+    elif default_target.exists():
+        die(f"{default_target} existe y no es el alias gestionado esperado")
+    else:
+        default_target.symlink_to("../app.ini")
+    os.chown(default_target, int(env["GITEA_UID"]), int(env["GITEA_GID"]), follow_symlinks=False)
+    log("config bind preservado; app.ini disponible tambien en custom/conf/app.ini")
+    step("Configuracion del runner")
+    for obsolete in ("ca-certificates.crt", "certificates.txt"):
+        (runner_service / "data" / obsolete).unlink(missing_ok=True)
+    render(runner_source, runner_target, {"GITEA_DOCKER_NETWORK": network})
+    os.chown(runner_target, int(env["GITEA_UID"]), int(env["GITEA_GID"]))
+    os.chmod(runner_target, 0o640)
+    step("Validacion de Docker Compose")
+    run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
+    log("compose valido")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
+    step("Preparacion terminada")
+    log(f"lock creado: {LOCK_FILE}")
+    log("runner token: runtime persistente, no requerido en .env")
+    log("ejecuta ./deploy-gitea.py para migrar Gitea, asegurar el administrador y arrancar el stack")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+        message = (f"fallo {error.cmd[0]} (exit {error.returncode})"
+                   if isinstance(error, subprocess.CalledProcessError) else str(error))
+        print(f"ERROR: {message}", file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,132 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+_config_version: 38
+# =============================================================================
+# Hermes Agent - managed configuration
+# Source: stack-60_-_hermes/config/hermes/config.yaml
+# Installed by 01-prepare.py into service_-_hermes/config/config.yaml
+# Reconciled by reconcile-capabilities.py when optional providers change.
+# =============================================================================
+
+model:
+  default: ${HERMES_MODEL}
+  provider: custom
+  base_url: ${LITELLM_BASE_URL}
+  api_key: ${LITELLM_API_KEY}
+
+agent:
+  # Safe minimum: web tools are disabled until the optional web.search and
+  # web.extract capabilities are both verified. reconcile-capabilities.py
+  # is the only Stack6 operation allowed to switch this managed value to [].
+  disabled_toolsets: [web]
+  system_prompt: |
+    <deferred_work_policy>
+    When work cannot or should not be completed now because successful execution depends on a future time, future event, expected availability, follow-up deadline, or an explicit user request to perform it later, consider deferring it with the native cronjob tool.
+    Use cron only when waiting or revisiting later materially improves correctness or completion; do not create cron jobs merely because a current attempt failed.
+    Use one-shot scheduling unless recurrence is genuinely required.
+    Before creating an implicit follow-up, check existing cron jobs when duplication is plausible.
+    Future cron prompts must be self-contained: preserve the user's intent, relevant context, success criteria, and how to retrieve any durable inputs required by the future run.
+    Never rely on the future cron run having the current conversation history.
+    Tell the user what was scheduled and when it will run.
+    </deferred_work_policy>
+
+    <sandbox_lifecycle_policy>
+    The execution sandbox is ephemeral scratch space, not persistent storage.
+    Files and directories left in the sandbox may be automatically quarantined after 7 days without activity and deleted later.
+    If an artifact, repository, dataset, report, intermediate result, or other file will be needed beyond the current work or by a future scheduled task, persist it to an available durable storage location before finishing the current task.
+    Do not assume an old sandbox path will still exist when a future cron job runs.
+    A future cron task must contain enough information to retrieve required durable artifacts from persistent storage.
+    </sandbox_lifecycle_policy>
+
+terminal:
+  backend: ssh
+  cwd: /workspace
+  timeout: ${TERMINAL_TIMEOUT}
+  persistent_shell: true
+  env_passthrough: []
+
+# These backend selections are inert while the web toolset is disabled.
+# Stack6 never falls back to an alternate provider: reconciliation enables the
+# toolset only after the configured local SearXNG + Firecrawl provider is valid.
+web:
+  search_backend: searxng
+  extract_backend: firecrawl
+
+mcp_servers:
+  litellm_gateway:
+    url: ${LITELLM_MCP_URL}
+    headers:
+      Authorization: "Bearer ${LITELLM_MCP_API_KEY}"
+    enabled: true
+    timeout: 120
+    connect_timeout: 60
+    supports_parallel_tool_calls: false
+    trust: untrusted
+    tools:
+      resources: false
+      prompts: false
+
+tool_loop_guardrails:
+  hard_stop_enabled: true
+  hard_stop_after:
+    exact_failure: 5
+    idempotent_no_progress: 5
+
+fallback_providers: []
+
+moa:
+  default_preset: local-only
+  active_preset: ""
+  presets:
+    default:
+      reference_models:
+        - provider: custom
+          model: ${HERMES_MODEL}
+      aggregator:
+        provider: custom
+        model: ${HERMES_MODEL}
+      enabled: false
+
+    local-only:
+      reference_models:
+        - provider: custom
+          model: ${HERMES_MODEL}
+      aggregator:
+        provider: custom
+        model: ${HERMES_MODEL}
+      enabled: false
+
+auxiliary:
+  vision:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  web_extract:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  approval:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  session_search:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  skills_hub:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  mcp:
+    provider: main
+    model: ${HERMES_MODEL}
+
+  flush_memories:
+    provider: main
+    model: ${HERMES_MODEL}
+
+compression:
+  summary_provider: main
+  summary_model: ${HERMES_MODEL}

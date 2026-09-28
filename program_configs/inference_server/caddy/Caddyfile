@@ -1,0 +1,4 @@
+mlx.casa.lan {
+    tls /Users/norai/Documents/MKCert/tls.crt /Users/norai/Documents/MKCert/tls.key
+    reverse_proxy 127.0.0.1:8000
+}

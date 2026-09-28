@@ -1,0 +1,319 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  /////////////////////////////////////////////////////////////////////////////
+  //
+  // DEFAULT MODEL AND AGENT
+  //
+  /////////////////////////////////////////////////////////////////////////////
+
+  "model": "local/agent",
+  "default_agent": "agent",
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  //
+  // ALL INFERENCE GOES THROUGH LITELLM
+  //
+  /////////////////////////////////////////////////////////////////////////////
+
+  "providers": {
+    // 
+    // PROVIDER DEFINITION FOR LOCAL AI GATEWAY (LITELLM)
+    //
+    "local": {
+      "name": "Local AI Gateway",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://gwia.casa.lan/v1",
+        "apiKey": "{file:~/.config/opencode/litellm.key}"
+      },
+      
+
+      //
+      // MODELS DEFINED FOR LOCAL AI GATEWAY
+      //
+      "models": {
+        //
+        // AGENT + REASONING
+        // Maps to oMLX "agent" profile
+        //
+        "agent": {
+          "modelID": "mlx/local-agent",
+          "name": "Local agent",
+          "capabilities": {
+            "tools": true,
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          }
+        },  // end of agent model
+
+        //
+        // CODING + REASONING
+        // Maps to oMLX "coding" profile
+        //
+        "coding": {
+          "modelID": "mlx/local-coding",
+          "name": "Local coding",
+          "capabilities": {
+            "tools": true,
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          }
+        },  // end of coding model
+
+        //
+        // GENERAL, FAST RESPONSE, NO REASONING
+        // Maps to oMLX "general" profile
+        //
+        "general": {
+          "modelID": "mlx/local-general",
+          "name": "Local general",
+          "capabilities": {
+            "tools": true,
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 2048
+          }
+        }  // end of general model
+
+
+      }  // end of models
+    }  // end of local provider
+  },  // end of providers
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  //
+  // MCP EXPOSED THROUGH LITELLM AI GATEWAY
+  //
+  /////////////////////////////////////////////////////////////////////////////
+
+  "mcp": {
+    "servers": {
+      "LiteLLM": {
+        "type": "remote",
+        "url": "https://gwia.casa.lan/mcp",
+        "oauth": false,
+        "disabled": false,
+        "codemode": false,
+        "headers": {
+          "x-litellm-api-key": "Bearer {file:~/.config/opencode/litellm.key}",
+          "Accept": "application/json, text/event-stream"
+        }
+      }
+    }
+  },  // end of mcp
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  //
+  // AGENT PROFILES
+  //
+  /////////////////////////////////////////////////////////////////////////////
+
+  "agents": {
+
+    //
+    // DISABLING BUILT-IN CODING AGENT; USE CUSTOM CODING AGENT INSTEAD
+    //
+    "build": {
+      "disabled": true
+    },
+
+    //
+    // AGENTIC WORK + TOOLS + REASONING 
+    //
+    "agent": {
+      "description": "Agentic work, reasoning and creativity work",
+      "mode": "primary",
+      "model": "local/agent",
+      "permissions": [
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "LiteLLM_*",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "external_directory",
+          "resource": "*",
+          "effect": "allow"
+        }
+      ]
+    },
+
+    //
+    // CODING + TOOLS + REASONING
+    //
+    "coding": {
+      "description": "Coding and software engineering",
+      "mode": "primary",
+      "model": "local/coding",
+      "permissions": [
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "glob",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "grep",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "LiteLLM_*",
+          "resource": "*",
+          "effect": "ask"
+        },
+        {
+          "action": "external_directory",
+          "resource": "*",
+          "effect": "allow"
+        }
+      ]
+    },
+
+    //
+    // GENERAL ASSISTANT (FAST RESPONSE, SIMPLE, NO REASONING)
+    //
+    "consulta-local": {
+      "description": "General-purpose local AI assistant",
+      "mode": "primary",
+      "model": "local/general",
+      "permissions": [
+        {
+          "action": "*",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "LiteLLM_*",
+          "resource": "*",
+          "effect": "ask"
+        }
+      ]
+    }
+
+  },
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  //
+  // EXPLICIT AGENT + MODEL SELECTION
+  //
+  /////////////////////////////////////////////////////////////////////////////
+  "commands": {
+
+    "agent": {
+      "description": "Local agentic work",
+      "agent": "agent",
+      "model": "local/agent",
+      "template": "$ARGUMENTS"
+    },
+
+    "coding": {
+      "description": "Local coding",
+      "agent": "coding",
+      "model": "local/coding",
+      "template": "$ARGUMENTS"
+    },
+
+    "consulta-local": {
+      "description": "Local general-purpose assistant",
+      "agent": "consulta-local",
+      "model": "local/general",
+      "template": "$ARGUMENTS"
+    }
+
+  },  // end of commands
+
+
+  //
+  // AUTOCOMPACT CONFIGURATION
+  // This is a global configuration for all models and agents. It keeps 
+  // approximately the last 24000 tokens of conversation without summarizing; 
+  // the buffer reserves 20000 tokens so that compaction is triggered before 
+  // the window is exhausted.
+  //
+  "compaction": {
+    "auto": true,
+    "keep": {
+      "tokens": 24000
+    },
+    "buffer": 20000
+  },
+
+
+  //
+  // EXPERIMENTAL FEATURES
+  //
+  "experimental": {
+
+    "policies": [
+      {
+        "action": "provider.use",
+        "resource": "*",
+        "effect": "deny"
+      },
+      {
+        "action": "provider.use",
+        "resource": "local",
+        "effect": "allow"
+      }
+    ]
+
+  }  // end of experimental
+
+
+}  // end of config

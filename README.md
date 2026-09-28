@@ -56,7 +56,7 @@ Stack0 is the shared foundation. Stack3 is a **required** AI dependency for Herm
 
 | Stack | Purpose |
 |---|---|
-| **0 · Platform** | Shared Docker network, PKI and platform foundation |
+| **0 · Platform** | Shared Docker network, service directory tree, local CA trust and HAProxy TLS material |
 | **1 · HAProxy/Web** | HTTPS ingress and static landing page |
 | **2 · SearXNG/Firecrawl** | Local web search and extraction |
 | **3 · LiteLLM** | OpenAI-compatible model/MCP gateway and policy boundary |
@@ -137,7 +137,7 @@ src/local_ai_cli/                private management implementation package
 src/local_ai_cli/backup/         backup engine
 src/local_ai_cli/restore/        restore engine
 src/local_ai_cli/common/         shared primitives (manifests, DR archive/filesystem/postgres, render)
-stack0_-_* … stack7_-_*         atomic stack implementations
+stack-00_-_* … stack-70_-_*         atomic stack implementations
 docs/                           documentation and decision records
 tests/                          automated verification, mirroring src/local_ai_cli/
 ```
