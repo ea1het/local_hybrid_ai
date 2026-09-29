@@ -44,6 +44,7 @@ def test_existing_lock_skips_bootstrap_and_prepare(tmp_path, monkeypatch, capsys
     output = capsys.readouterr().out
     assert "bootstrap and prepare were not run" in output
     assert "Removing .lock manually" in output
+    assert "\n\nStack 70 is PREPARED" in output
     assert "docker compose --env-file .env -f docker-compose.yml up -d --build" in output
 
 
@@ -72,7 +73,7 @@ def test_fresh_stack_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):
     assert all(options["stdin"] == wrapper.subprocess.DEVNULL for _, options in calls)
     assert all(options["cwd"] == tmp_path for _, options in calls)
     assert str(ROOT) in calls[0][1]["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert "Open WebUI has not been started" in capsys.readouterr().out
+    assert "audit passed\n\nStack 70 is PREPARED" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("failed_module", ["bootstrap", "prepare"])

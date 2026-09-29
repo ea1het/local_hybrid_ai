@@ -51,8 +51,8 @@ def run(*command, env=None, quiet=False):
             command, env=env, text=True, capture_output=quiet, check=False
         )
     except OSError as exc:
-        raise PrepareError(f"no se pudo ejecutar {command[0]}: {exc}") from exc
-    require(result.returncode == 0, f"fallo: {' '.join(command)}")
+        raise PrepareError(f"could not execute {command[0]}: {exc}") from exc
+    require(result.returncode == 0, f"command failed: {' '.join(command)}")
     return result.stdout.strip() if quiet else ""
 
 
@@ -62,82 +62,82 @@ def load_env():
         ("bash", "-c", 'set -a; source "$1" || exit; env -0', "bash", str(ENV_FILE)),
         stdout=subprocess.PIPE, check=False,
     )
-    require(result.returncode == 0, f"no se pudo cargar {ENV_FILE}")
+    require(result.returncode == 0, f"could not load {ENV_FILE}")
     return dict(entry.decode().split("=", 1) for entry in result.stdout.split(b"\0") if entry)
 
 
 def main():
     """Check Stack0, LiteLLM, and runtime paths before writing the lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
-        print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
+        print(f"Stack already prepared. {LOCK_FILE} exists; no changes made.")
         return
 
-    require(os.geteuid() == 0, "ejecuta este script como root")
-    require(shutil.which("docker") is not None, "docker no esta instalado")
+    require(os.geteuid() == 0, "run this command as root")
+    require(shutil.which("docker") is not None, "docker is not installed")
     require(subprocess.run(("docker", "compose", "version"), stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False).returncode == 0,
-            "Docker Compose v2 no esta disponible")
-    require(ENV_FILE.is_symlink(), f"falta el symlink gestionado {ENV_FILE}")
-    require(os.readlink(ENV_FILE) == "../.env", f"{ENV_FILE} debe apuntar exactamente a ../.env")
-    require(ENV_FILE.is_file(), "falta el .env central")
-    require(COMPOSE_FILE.is_file(), f"falta {COMPOSE_FILE}")
+            "Docker Compose v2 is not available")
+    require(ENV_FILE.is_symlink(), f"missing managed symlink {ENV_FILE}")
+    require(os.readlink(ENV_FILE) == "../.env", f"{ENV_FILE} must point exactly to ../.env")
+    require(ENV_FILE.is_file(), "missing central .env")
+    require(COMPOSE_FILE.is_file(), f"missing {COMPOSE_FILE}")
 
     env = load_env()
     for key in REQUIRED_KEYS:
-        require(bool(env.get(key)), f"falta {key} en {ENV_FILE}")
+        require(bool(env.get(key)), f"missing {key} in {ENV_FILE}")
     for key in ("OPENWEBUI_LITELLM_API_KEY", "OPENWEBUI_SECRET_KEY"):
-        require(not env[key].startswith("PUT_YOUR_"), f"{key} conserva un placeholder")
+        require(not env[key].startswith("PUT_YOUR_"), f"{key} still contains a placeholder")
     version = env["OPENWEBUI_VERSION"]
     require(version not in ("latest", "main", "dev"),
-            f"OPENWEBUI_VERSION debe ser una version estable fijada, no {version}")
+            f"OPENWEBUI_VERSION must be a pinned stable version, not {version}")
     stacks_root = env["STACKS_ROOT"]
     base_path = env["BASE_PATH"]
     require(stacks_root.startswith("/") and base_path.startswith("/"),
-            "STACKS_ROOT y BASE_PATH deben ser rutas absolutas")
+            "STACKS_ROOT and BASE_PATH must be absolute paths")
     require(str(STACK_DIR) == f"{stacks_root.rstrip('/')}/{STACK_NAME}",
-            f"este stack debe residir en {stacks_root.rstrip('/')}/{STACK_NAME}; ruta actual: {STACK_DIR}")
+            f"this stack must reside in {stacks_root.rstrip('/')}/{STACK_NAME}; current path: {STACK_DIR}")
     require(stacks_root.rstrip("/") != base_path.rstrip("/"),
-            "STACKS_ROOT y BASE_PATH deben ser distintos")
+            "STACKS_ROOT and BASE_PATH must differ")
 
-    for stack, label in (("stack-00_-_platform", "Stack0"), ("stack-30_-_litellm", "Stack3")):
+    for stack, label in (("stack-00_-_platform", "Stack 00"), ("stack-30_-_litellm", "Stack 30")):
         lock = Path(stacks_root.rstrip("/")) / stack / ".lock"
-        require(lock.is_file(), f"{label} no esta preparado: falta {lock}")
+        require(lock.is_file(), f"{label} is not prepared: missing {lock}")
 
     network = env["NETWORK_NAME"]
     print(f"\n== Shared Docker network {network}")
     require(subprocess.run(("docker", "network", "inspect", network),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            check=False).returncode == 0,
-            f"falta {network}; instala/prepara primero Stack0")
+            f"missing {network}; install or prepare Stack 00 first")
     driver = run("docker", "network", "inspect", "-f", "{{.Driver}}", network, quiet=True)
-    require(driver == "bridge", f"{network} usa driver {driver}, no bridge")
-    print("  red de Stack0 verificada")
+    require(driver == "bridge", f"{network} uses driver {driver}, not bridge")
+    print("  Stack 00 network verified")
 
     print("\n== Gateway LiteLLM")
     require(subprocess.run(("docker", "inspect", "litellm"), stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False).returncode == 0,
-            "falta el contenedor litellm; despliega primero Stack3")
+            "missing litellm container; deploy Stack 30 first")
     running = run("docker", "inspect", "-f", "{{.State.Running}}", "litellm", quiet=True)
-    require(running == "true", "litellm no esta en ejecucion")
-    print("  LiteLLM disponible")
+    require(running == "true", "litellm is not running")
+    print("  LiteLLM is available")
 
     print("\n== Persistent Open WebUI runtime")
     data_dir = Path(base_path.rstrip("/")) / "service_-_open-webui" / "data"
     for directory in (data_dir.parent, data_dir):
         require(directory.is_dir() and not directory.is_symlink(),
-                f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
-    print(f"  datos persistentes: {data_dir}")
+                f"missing {directory}; run Stack 00 bootstrap first")
+    print(f"  persistent data: {data_dir}")
 
     print("\n== Docker Compose validation")
     run("docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE),
         "config", "--quiet", env=env)
-    print("  compose valido")
+    print("  Docker Compose configuration valid")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
     LOCK_FILE.chmod(0o644)
-    print(f"\n== Preparation complete\n  lock creado: {LOCK_FILE}")
-    print("  Open WebUI usara exclusivamente el gateway OpenAI-compatible de Stack3")
+    print(f"\n== Preparation complete\n  lock created: {LOCK_FILE}")
+    print("  Open WebUI uses only the OpenAI-compatible gateway provided by Stack 30")
 
 
 if __name__ == "__main__":

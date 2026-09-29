@@ -111,7 +111,7 @@ def test_bootstrap_rejects_duplicate_keys_before_issuing_key(monkeypatch, capsys
     monkeypatch.setattr(module, "require_env_file", lambda: "OPENWEBUI_IMAGE=a\nOPENWEBUI_IMAGE=b\n")
     monkeypatch.setattr(module, "litellm_running", lambda: pytest.fail("unexpected Docker probe"))
     assert module.main() == 1
-    assert "duplicate Stack7 variables" in capsys.readouterr().err
+    assert "duplicate Stack 70 variables" in capsys.readouterr().err
 
 
 def test_bootstrap_validates_issued_key_and_model_scope(monkeypatch):
@@ -198,7 +198,7 @@ def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch
     monkeypatch.setattr(module.shutil, "which", lambda _: "/fake/docker")
     monkeypatch.setattr(module.subprocess, "run", fake_run)
     monkeypatch.setattr(module, "load_env", lambda: env)
-    with pytest.raises(module.PrepareError, match="conserva un placeholder"):
+    with pytest.raises(module.PrepareError, match="still contains a placeholder"):
         module.main()
     assert calls == [("docker", "compose", "version")]
 

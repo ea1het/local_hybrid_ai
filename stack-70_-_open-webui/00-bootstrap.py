@@ -88,7 +88,7 @@ def parse_values(text: str) -> tuple[dict[str, str], dict[str, int]]:
             values[key] = value
     duplicates = [key for key, count in counts.items() if count != 1]
     if duplicates:
-        raise BootstrapError("duplicate Stack7 variables in .env: " + ", ".join(sorted(duplicates)))
+        raise BootstrapError("duplicate Stack 70 variables in .env: " + ", ".join(sorted(duplicates)))
     return values, counts
 
 
@@ -101,7 +101,7 @@ def litellm_running() -> None:
     """Require the LiteLLM container to be running before key issuance."""
     cp = run(["docker", "inspect", "-f", "{{.State.Running}}", "litellm"])
     if cp.returncode != 0 or cp.stdout.strip() != "true":
-        raise BootstrapError("LiteLLM must be running before issuing the Stack7 virtual key")
+        raise BootstrapError("LiteLLM must be running before issuing the Stack 70 virtual key")
 
 
 def issue_litellm_key() -> tuple[str, list[str]]:
@@ -134,7 +134,7 @@ with urllib.request.urlopen(req, timeout=15) as response:
     verified = json.load(response)
 visible = sorted({item.get("id") for item in verified.get("data", []) if isinstance(item, dict) and item.get("id")})
 if not visible:
-    raise SystemExit("generated Stack7 key cannot see any models")
+    raise SystemExit("generated Stack 70 key cannot see any models")
 print(json.dumps({"key": key, "models": models}, separators=(",", ":")))
 """
     cp = run(["docker", "exec", "-i", "litellm", "python3", "-c", script])
@@ -260,7 +260,7 @@ def main() -> int:
             litellm_running()
 
         if not replacements and not needs_key:
-            print("Stack7 environment already bootstrapped; no changes made.")
+            print("Stack 70 environment already bootstrapped; no changes made.")
             return 0
 
         backup = backup_env(text)
@@ -271,7 +271,7 @@ def main() -> int:
 
         updated = render_updated(text, replacements)
         atomic_write(updated, text)
-        print("Stack7 environment bootstrap: PASS")
+        print("Stack 70 environment bootstrap: PASS")
         print(f"- protected backup: {backup}")
         print(f"- updated variables: {len(replacements)}")
         if issued_models:
@@ -279,7 +279,7 @@ def main() -> int:
         print("- secret values were not printed")
         return 0
     except (BootstrapError, OSError, ValueError) as exc:
-        print(f"STACK7 BOOTSTRAP ERROR: {exc}", file=sys.stderr)
+        print(f"Stack 70 bootstrap error: {exc}", file=sys.stderr)
         return 1
 
 

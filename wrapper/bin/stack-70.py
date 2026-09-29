@@ -35,8 +35,9 @@ PREPARE_MODULE = "stack-70_-_open-webui.01-prepare"
 
 def show_next_steps() -> None:
     """Print the manual deployment command after preparation."""
-    print("Stack 70 is PREPARED; Open WebUI has not been started.")
-    print("To start the stack manually, run:")
+    print()
+    print("Stack 70 is PREPARED; this wrapper did not start Open WebUI.")
+    print("If Open WebUI is not already running, start it manually with:")
     print(f"  cd {shlex.quote(str(STACK_DIR))}")
     print("  docker compose --env-file .env -f docker-compose.yml up -d --build")
 
