@@ -71,9 +71,9 @@ def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("key,value,message", [
-    ("SEARXNG_BASE_URL", "http://search.example", "debe ser HTTPS"),
-    ("FIRECRAWL_DB_USER", "postgres", "no puede ser postgres"),
-    ("FIRECRAWL_DB_NAME", "firecrawl", "debe ser postgres"),
+    ("SEARXNG_BASE_URL", "http://search.example", "must use HTTPS"),
+    ("FIRECRAWL_DB_USER", "postgres", "cannot be postgres"),
+    ("FIRECRAWL_DB_NAME", "firecrawl", "must be postgres"),
 ])
 def test_prepare_rejects_invalid_database_and_url_settings(tmp_path, monkeypatch, capsys,
                                                            key, value, message):

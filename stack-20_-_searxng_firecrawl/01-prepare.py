@@ -49,7 +49,7 @@ def die(message):
 def sourced_environment():
     """Rechaza valores saneados y devuelve las variables del .env cargadas por Bash."""
     if re.search(r"^[A-Za-z_][A-Za-z0-9_]*=.*(<REDACT|\.{5,})", ENV_FILE.read_text(), re.MULTILINE):
-        die(f"{ENV_FILE} contiene valores saneados/incompletos")
+        die(f"{ENV_FILE} contains redacted or incomplete values")
     result = subprocess.run(["bash", "-c", 'set -Eeuo pipefail; set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
                             stdout=subprocess.PIPE, check=True)
     return dict(os.fsdecode(item).split("=", 1) for item in result.stdout.split(b"\0") if item)
@@ -58,46 +58,46 @@ def sourced_environment():
 def main():
     """Validate dependencies, preserve or create the secret, and prepare configuration."""
     if LOCK_FILE.exists():
-        print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
+        print(f"Stack already prepared. {LOCK_FILE} exists; no changes made.")
         return
     if os.geteuid() != 0:
-        die("ejecuta este script como root")
+        die("run this command as root")
     for command in ("docker", "openssl", "install", "stat"):
         if shutil.which(command) is None:
-            die(f"{command} no esta instalado")
+            die(f"{command} is not installed")
     if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die("Docker Compose v2 no esta disponible")
+        die("Docker Compose v2 is not available")
     for path in (ENV_FILE, COMPOSE_FILE):
         if not path.is_file():
-            die(f"falta {path}")
+            die(f"missing {path}")
     env = sourced_environment()
     for key in REQUIRED:
         if not env.get(key):
-            die(f"falta {key} en {ENV_FILE}")
+            die(f"missing {key} in {ENV_FILE}")
     stacks_root, base_path = env["STACKS_ROOT"].rstrip("/"), env["BASE_PATH"].rstrip("/")
     if not env["STACKS_ROOT"].startswith("/") or not env["BASE_PATH"].startswith("/"):
-        die("STACKS_ROOT y BASE_PATH deben ser rutas absolutas")
+        die("STACKS_ROOT and BASE_PATH must be absolute paths")
     if str(STACK_DIR) != f"{stacks_root}/{STACK_NAME}":
-        die(f"este stack debe residir en {stacks_root}/{STACK_NAME}; ruta actual: {STACK_DIR}")
+        die(f"this stack must reside in {stacks_root}/{STACK_NAME}; current path: {STACK_DIR}")
     if stacks_root == base_path:
-        die("STACKS_ROOT y BASE_PATH deben ser distintos")
+        die("STACKS_ROOT and BASE_PATH must differ")
     if not env["SEARXNG_BASE_URL"].startswith("https://"):
-        die("SEARXNG_BASE_URL debe ser HTTPS")
+        die("SEARXNG_BASE_URL must use HTTPS")
     db_user = env["FIRECRAWL_DB_USER"]
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", db_user):
-        die("FIRECRAWL_DB_USER no es valido")
+        die("FIRECRAWL_DB_USER is invalid")
     if db_user == "postgres":
-        die("FIRECRAWL_DB_USER no puede ser postgres")
+        die("FIRECRAWL_DB_USER cannot be postgres")
     if env["FIRECRAWL_DB_NAME"] != "postgres":
-        die("FIRECRAWL_DB_NAME debe ser postgres para NUQ/pg_cron")
+        die("FIRECRAWL_DB_NAME must be postgres for NUQ/pg_cron")
     stack0_lock = Path(stacks_root) / "stack-00_-_platform/.lock"
     settings = STACK_DIR / "config/searxng/settings.yml"
     limiter = STACK_DIR / "config/searxng/limiter.toml"
     postgres_init = STACK_DIR / "config/postgres/020-firecrawl-app-role.sh"
     for path in (stack0_lock, settings, limiter, postgres_init):
         if not path.is_file():
-            die(f"falta {path}" + ("; prepara primero Stack0" if path == stack0_lock else ""))
+            die(f"missing {path}" + ("; prepare Stack 00 first" if path == stack0_lock else ""))
     searxng_service = Path(base_path) / "service_-_searxng"
     searxng_config = searxng_service / "config"
     postgres_service = Path(base_path) / "service_-_firecrawl-postgres"
@@ -107,11 +107,11 @@ def main():
     step(f"Shared Docker network {network}")
     if subprocess.run(["docker", "network", "inspect", network], env=env, stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die(f"falta {network}; instala/prepara primero Stack0")
+        die(f"missing {network}; install or prepare Stack 00 first")
     driver = subprocess.check_output(["docker", "network", "inspect", "-f", "{{.Driver}}", network], env=env).decode().rstrip("\n")
     if driver != "bridge":
-        die(f"{network} usa driver {driver}, no bridge")
-    log("existe, es bridge y permanece propiedad de Stack0")
+        die(f"{network} uses driver {driver}, not bridge")
+    log("exists, uses the bridge driver, and remains owned by Stack 00")
 
     step("Persistent directories")
     for directory in (searxng_service, searxng_config, searxng_service / "data",
@@ -119,45 +119,45 @@ def main():
                       Path(base_path) / "service_-_firecrawl-rabbitmq/data", postgres_service,
                       postgres_service / "data", postgres_service / "secret"):
         if not directory.is_dir() or directory.is_symlink():
-            die(f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
-    log("carpetas y permisos gestionados por Stack0 (00-bootstrap.py)")
+            die(f"missing {directory}; run Stack 00 bootstrap first")
+    log("directories and permissions managed by Stack 00")
 
     step("PostgreSQL administrator secret")
     if postgres_secret.exists():
         if not postgres_secret.is_file() or postgres_secret.is_symlink() or not postgres_secret.stat().st_size:
-            die(f"estado invalido del secreto PostgreSQL: {postgres_secret}")
+            die(f"invalid PostgreSQL secret state: {postgres_secret}")
         os.chown(postgres_secret, 0, 0)
         os.chmod(postgres_secret, 0o600)
-        log("secreto administrativo PostgreSQL existente: preservado")
+        log("existing PostgreSQL administrator secret preserved")
     else:
         os.umask(0o077)
         with postgres_secret.open("wb") as output:
             subprocess.run(["openssl", "rand", "-hex", "32"], stdout=output, check=True)
         os.chown(postgres_secret, 0, 0)
         os.chmod(postgres_secret, 0o600)
-        log("secreto administrativo PostgreSQL: generado una vez")
+        log("PostgreSQL administrator secret generated once")
 
     step("SearXNG configuration")
     for source in (settings, limiter):
         target = searxng_config / source.name
         if target.is_dir() and not target.is_symlink():
-            die(f"ruta de configuracion no puede ser un directorio: {target}")
+            die(f"configuration path cannot be a directory: {target}")
     owner, group = searxng_config.stat().st_uid, searxng_config.stat().st_gid
     for source in (settings, limiter):
         subprocess.run(["install", "-m", "0644", "-o", str(owner), "-g", str(group),
                         str(source), str(searxng_config / source.name)], check=True)
-    log("directorio bind-mounted preservado; solo se reconcilian ficheros gestionados")
+    log("bind-mounted directory preserved; only managed files reconciled")
 
     step("Docker Compose validation")
     subprocess.run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE),
                     "config", "--quiet"], env=env, check=True)
-    log("compose valido")
+    log("Docker Compose configuration valid")
     os.umask(0o022)
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}\n")
     step("Preparation complete")
-    log(f"lock creado: {LOCK_FILE}")
-    log(f"postgres queda reservado como rol administrativo; Firecrawl usa {db_user}")
-    log("red compartida consumida desde Stack0; no se crea ni se modifica")
+    log(f"lock created: {LOCK_FILE}")
+    log(f"postgres remains the administrator role; Firecrawl uses {db_user}")
+    log("shared network provided by Stack 00; not created or modified")
 
 
 if __name__ == "__main__":
