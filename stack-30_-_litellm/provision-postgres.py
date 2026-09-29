@@ -49,29 +49,29 @@ def run(command, *, env=None, input_text=None, capture=False):
 def main():
     """Arranca PostgreSQL, crea o actualiza rol y base, y verifica acceso."""
     if os.geteuid() != 0:
-        die("ejecuta este script como root")
+        die("run this command as root")
     if not shutil.which("docker"):
-        die("docker no esta instalado")
+        die("docker is not installed")
     if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die("Docker Compose v2 no esta disponible")
+        die("Docker Compose v2 is not available")
     if not ENV_FILE.is_file():
-        die(f"falta {ENV_FILE}")
+        die(f"missing {ENV_FILE}")
     if not LOCK_FILE.is_file():
-        die(f"Stack3 no esta preparado: falta {LOCK_FILE}; ejecuta primero ./01-prepare.py")
+        die(f"Stack 30 is not prepared: missing {LOCK_FILE}; run preparation first")
     loaded = subprocess.run(["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
                             check=True, stdout=subprocess.PIPE).stdout
     env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)
     os.environ.update(env)
     for key in ("BASE_PATH", "LITELLM_DB_NAME", "LITELLM_DB_USER", "LITELLM_DB_PASSWORD"):
         if not env.get(key):
-            die(f"falta {key} en {ENV_FILE}")
+            die(f"missing {key} in {ENV_FILE}")
     secret_file = Path(env["BASE_PATH"].rstrip("/")) / "service_-_litellm-postgres/secret/postgres_admin_password"
     if not secret_file.is_file() or secret_file.is_symlink() or not secret_file.stat().st_size:
-        die("falta el secreto administrativo PostgreSQL; ejecuta primero ./01-prepare.py")
+        die("missing PostgreSQL administrator secret; run preparation first")
     admin_password = secret_file.read_text().rstrip("\n")
     if not admin_password:
-        die("el secreto administrativo PostgreSQL esta vacio")
+        die("PostgreSQL administrator secret is empty")
     compose = ["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE)]
     step("Starting dedicated PostgreSQL")
     run(compose + ["up", "-d", "litellm-postgres"], env=env)
@@ -80,9 +80,9 @@ def main():
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             break
         if attempt == 39:
-            die("litellm-postgres no esta disponible")
+            die("litellm-postgres is not available")
         time.sleep(2)
-    log("litellm-postgres disponible")
+    log("litellm-postgres is available")
     admin = ["docker", "exec", "-i", "-e", f"PGPASSWORD={admin_password}", "litellm-postgres",
              "psql", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-U", "postgres", "-d", "postgres"]
     step("LiteLLM PostgreSQL user")
@@ -105,19 +105,19 @@ SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCRE
     run(["docker", "exec", "-e", f"PGPASSWORD={env['LITELLM_DB_PASSWORD']}", "litellm-postgres", "psql",
          "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-U", env["LITELLM_DB_USER"],
          "-d", env["LITELLM_DB_NAME"], "-tAc", "SELECT 1;"], capture=True)
-    log("conexion PostgreSQL: OK")
+    log("PostgreSQL connection: OK")
     step("Docker Compose validation")
     run(compose + ["config", "--quiet"], env=env)
-    log("compose valido")
+    log("Docker Compose configuration valid")
     step("Provisioning complete")
-    log("PostgreSQL dedicado de Stack3 provisionado y validado")
+    log("Stack 30 dedicated PostgreSQL provisioned and validated")
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-        message = (f"fallo {error.cmd[0]} (exit {error.returncode})"
+        message = (f"{error.cmd[0]} failed (exit {error.returncode})"
                    if isinstance(error, subprocess.CalledProcessError) else str(error))
         print(f"ERROR: {message}", file=sys.stderr)
         sys.exit(1)

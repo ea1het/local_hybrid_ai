@@ -77,9 +77,9 @@ def test_prepare_creates_secret_and_lock_in_temporary_tree(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("key,value,message", [
-    ("LITELLM_IMAGE", "image:latest", "no debe usar :latest"),
-    ("LITELLM_VERSION", "latest", "no puede ser latest"),
-    ("LITELLM_DB_USER", "bad-user", "no es valido"),
+    ("LITELLM_IMAGE", "image:latest", "must not use :latest"),
+    ("LITELLM_VERSION", "latest", "cannot be latest"),
+    ("LITELLM_DB_USER", "bad-user", "is invalid"),
 ])
 def test_prepare_rejects_unsafe_settings(tmp_path, monkeypatch, key, value, message):
     """Reject mutable image tags and invalid database user names."""

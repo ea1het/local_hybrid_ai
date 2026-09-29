@@ -34,8 +34,9 @@ PREPARE_MODULE = "stack-30_-_litellm.01-prepare"
 
 def show_next_steps() -> None:
     """Explain the separate database provisioning and startup commands."""
+    print()
     print("Stack 30 is PREPARED; PostgreSQL is not provisioned by this wrapper.")
-    print("To continue manually, run:")
+    print("For a new database only, continue manually with:")
     print(f"  cd {shlex.quote(str(STACK_DIR))}")
     print("  python3 -B provision-postgres.py")
     print("  docker compose --env-file .env -f docker-compose.yml up -d")

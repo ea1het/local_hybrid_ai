@@ -95,5 +95,5 @@ def test_provision_rejects_symlinked_admin_secret(tmp_path, monkeypatch):
     monkeypatch.setattr(module.subprocess, "run", fake_subprocess)
     monkeypatch.setattr(module, "run", lambda *args, **kwargs: pytest.fail("provisioning must not start"))
 
-    with pytest.raises(RuntimeError, match="secreto administrativo"):
+    with pytest.raises(RuntimeError, match="administrator secret"):
         module.main()

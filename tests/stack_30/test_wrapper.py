@@ -43,6 +43,8 @@ def test_existing_lock_prevents_prepare_and_describes_next_steps(tmp_path, monke
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "Removing .lock manually" in output
+    assert "\n\nStack 30 is PREPARED" in output
+    assert "For a new database only" in output
     assert "python3 -B provision-postgres.py" in output
     assert "docker compose --env-file .env -f docker-compose.yml up -d" in output
 
@@ -69,7 +71,7 @@ def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
     assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert "prepared\n" in capsys.readouterr().out
+    assert "prepared\n\nStack 30 is PREPARED" in capsys.readouterr().out
 
 
 def test_failed_prepare_does_not_claim_database_is_ready(tmp_path, monkeypatch, capsys):
