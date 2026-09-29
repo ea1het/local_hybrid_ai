@@ -3,14 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Reconcile Stack7-owned Open WebUI policy for basic_autorouter.
+"""Reconcile the Stack 70 basic_autorouter policy inside Open WebUI.
 
-The operation is intentionally safe before the first administrator exists: in
-that bootstrap state it reports DEFER and exits successfully. Once an
-administrator exists it is idempotent, uses Open WebUI's own ORM/data layer
-inside the pinned container, never touches LiteLLM, and never writes SQLite
-directly.
-"""
+The host wrapper executes an embedded script in the pinned container and
+uses Open WebUI's ORM rather than modifying SQLite directly. If no admin
+exists yet, it reports DEFER successfully; otherwise it idempotently
+updates the model policy and public access grants. It never changes
+LiteLLM configuration. Importing the wrapper does not contact Docker."""
 
 from __future__ import annotations
 

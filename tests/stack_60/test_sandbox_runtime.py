@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Hermes sandbox generation and cleanup sidecar behavior."""
+"""Test generation-bound Hermes sandbox state and cleanup.
+
+The suite binds sandbox modules to temporary workspaces and SQLite files
+to verify protection, quarantine, and deletion boundaries. It avoids
+the production sandbox. Importing the module does not start sidecars."""
 
 import sys
 

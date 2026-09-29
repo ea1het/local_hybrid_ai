@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Run the repository test suite without writing Python bytecode or pytest cache."""
+"""Execute the repository's pytest suite without local cache artifacts.
+
+This entrypoint adds the repository root to Python's import path, disables
+bytecode writes, and invokes pytest with its cache provider disabled.
+It is intended as the deterministic local validation command; importing
+the module alone does not start a test run."""
 
 import sys
 

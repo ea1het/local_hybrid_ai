@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 30 PostgreSQL provisioning for LiteLLM."""
+"""Test idempotent PostgreSQL provisioning for LiteLLM.
+
+The suite simulates database commands and secrets to verify role and
+database creation only when needed. It never connects to a live database;
+importing the module only defines tests."""
 
 import sys
 

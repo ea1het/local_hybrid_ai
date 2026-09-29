@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 40 Gitea preparation and deployment."""
+"""Test Gitea preparation and deployment with isolated resources.
+
+Cases check rendered configuration, preserved runner credentials,
+deployment preconditions, and expected subprocess behavior. Importing
+this module does not access a real Gitea installation."""
 
 import sys
 

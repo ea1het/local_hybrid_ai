@@ -29,6 +29,14 @@ flowchart LR
 - **Web behaviour:** new chats start with web search enabled when the capability exists, while users retain the ability to disable it.
 - **DR:** `/app/backend/data` is persistent sensitive state and is archived; `OPENWEBUI_SECRET_KEY` is persistent installation identity in protected configuration.
 
+## Initial preparation
+
+Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root after Stack0 and Stack3 are prepared and LiteLLM is running. The wrapper does not start Open WebUI. If `stack-70_-_open-webui/.lock` already exists, it changes nothing and shows the manual startup command; remove the lock only after reviewing the impact of reconfiguration.
+
+Without a lock, the wrapper calls `00-bootstrap.py` and then `01-prepare.py`. Bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
+
+If `OPENWEBUI_LITELLM_API_KEY` is missing, bootstrap issues a dedicated LiteLLM virtual key scoped to **all models visible at issuance time** and stores it in root `.env`; Compose passes it to Open WebUI as `OPENAI_API_KEY`. It never prints the key. Newly added models are not automatically included in that existing key's scope. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
+
 ## Policy lifecycle
 
 Stack7 model policy is reconciled through the supported `./local-ai` lifecycle. Before the first real administrator exists, reconciliation intentionally reports a deferred/bootstrap-safe state rather than failing initial deployment. After an administrator exists, reconciliation becomes idempotent and verification requires the declared access/default-feature policy.

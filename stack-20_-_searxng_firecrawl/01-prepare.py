@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepara SearXNG y Firecrawl sobre los directorios y la red de Stack0."""
+"""Prepare SearXNG and Firecrawl without owning platform directories.
+
+The entrypoint validates Stack 0's lock and network, reads required settings,
+and installs service configuration into directories created by bootstrap.
+It preserves existing persistent secrets and writes the stack lock only when
+preparation completes. Importing it neither starts containers nor changes
+host state."""
 
 import datetime
 import os
@@ -25,7 +31,7 @@ REQUIRED = ("STACKS_ROOT BASE_PATH NETWORK_NAME SEARXNG_SECRET SEARXNG_BASE_URL 
 
 
 def log(message):
-    """Muestra un detalle de progreso con sangría."""
+    """Print an indented progress detail."""
     print(f"  {message}")
 
 
@@ -35,7 +41,7 @@ def step(message):
 
 
 def die(message):
-    """Muestra un error y termina la preparación."""
+    """Print an error and abort preparation."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -50,7 +56,7 @@ def sourced_environment():
 
 
 def main():
-    """Valida dependencias, conserva o crea el secreto y prepara la configuración."""
+    """Validate dependencies, preserve or create the secret, and prepare configuration."""
     if LOCK_FILE.exists():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Deploy the prepared Gitea stack and verify runner registration."""
+"""Deploy a prepared Gitea installation and check its runner.
+
+This entrypoint requires the stack lock, rendered files, and runner token
+produced during preparation. It performs the Gitea deployment steps and
+checks that the runner registers successfully. Importing the module is safe;
+deployment only occurs through its explicit CLI main function."""
 
 import os
 import shutil

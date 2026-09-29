@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepara HAProxy y la web tras validar la red y los certificados de Stack0."""
+"""Prepare HAProxy and the web frontend after Stack 0 is ready.
+
+This script requires the platform lock, shared network, generated TLS pair,
+and source configuration. It renders or copies files into the directories
+owned by Stack 0 and marks the stack prepared only after successful checks.
+Existing preparation locks prevent unintended reconciliation. Importing the
+module does not touch the filesystem or Docker."""
 
 import datetime
 import os
@@ -35,7 +41,7 @@ HAPROXY_VARS = (
 
 
 def log(message):
-    """Muestra un detalle de progreso con sangría."""
+    """Print an indented progress detail."""
     print(f"  {message}")
 
 
@@ -45,7 +51,7 @@ def step(message):
 
 
 def die(message):
-    """Muestra un error y termina la preparación."""
+    """Print an error and abort preparation."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -69,7 +75,7 @@ def sourced_environment():
 
 
 def main():
-    """Verifica requisitos, instala configuración y web, y crea el lock."""
+    """Check prerequisites, install proxy and web files, and write the preparation lock."""
     if LOCK_FILE.exists():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

@@ -38,6 +38,17 @@ Historical TLS-specific runner artifacts are not part of the current architectur
 
 `.lock` means **PREPARED only**. It does not prove migrations have run, the configured administrator exists, the runner is registered or either service is healthy.
 
+## Unattended preparation wrapper
+
+Run `python3 -B wrapper/bin/stack-40.py install` from the repository root (as root for
+initial preparation). It invokes only the stack's `01-prepare.py` package
+module, forwards its output, and requires a regular `.lock` after success.
+An existing lock is explained without changing configuration or removing it.
+
+The wrapper **does not** run `deploy-gitea.py`. It prints that command as a
+manual next step for migrations, administrator setup, runner registration,
+and startup. PREPARED does not mean Gitea is running.
+
 ## Lifecycle
 
 The supported lifecycle is orchestrated through `./local-ai`. Stack-owned prepare/run scripts are implementation phases, not operator APIs. Re-preparation may converge managed configuration while preserving appropriate application runtime; it is not a substitute for normal start/stop or upgrade operations.

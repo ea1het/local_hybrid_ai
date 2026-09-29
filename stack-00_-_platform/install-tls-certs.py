@@ -3,50 +3,22 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""
-install-tls-certs.py
+"""Install the local TLS certificate and key for HAProxy.
 
-Instala el certificado wildcard de servidor (tls.crt / tls.key), emitido por
-la CA mkcert, en la carpeta de servicio de HAProxy:
-
-    ${BASE_PATH}/service_-_haproxy/config/tls.crt   0644 root:local-hybrid-pki
-    ${BASE_PATH}/service_-_haproxy/config/tls.key   0640 root:local-hybrid-pki
-
-Stack1 (01-prepare.py) coloca después haproxy.cfg en la misma carpeta, que se
-monta en el contenedor como /usr/local/etc/haproxy. HAProxy (uid 99) lee la
-clave privada mediante el grupo suplementario PLATFORM_PKI_GID.
-
-Suposiciones:
-  - tls.crt y tls.key se han copiado desde la CA mkcert a /tmp.
-  - 00-bootstrap.py ya ha creado la carpeta de servicio de HAProxy.
-  - install-ca-cert.py ya ha instalado la CA en
-    /usr/local/share/ca-certificates/<LOCAL_CA_NAME>.crt (se usa para validar
-    la cadena; LOCAL_CA_NAME se define en el .env central).
-
-Uso:
-  sudo ./install-tls-certs.py                    # instalación inicial
-  sudo ./install-tls-certs.py --renew            # sustituir en un sistema en marcha
-  sudo ./install-tls-certs.py --cert /ruta/tls.crt --key /ruta/tls.key
-
-Qué hace:
-  1. Valida certificado y clave (formato, correspondencia, cadena contra la CA,
-     que el SAN contenga TODOS los nombres de TLS_SAN_DOMAINS del .env,
-     caducidad).
-  2. Los instala de forma atómica en la carpeta de servicio de HAProxy.
-  3. Si HAProxy está en ejecución, indica cómo recargarlo.
-
-Protección de sistemas en marcha: si Stack0 ya está PREPARADO
-(stack-00_-_platform/.lock) el script no modifica nada salvo que se indique
---renew de forma explícita.
-
-No borra los ficheros de /tmp. Es idempotente.
-"""
+The script validates the certificate/key pair, trust chain, expiration, and
+all hostnames configured by TLS_SAN_DOMAINS before atomically installing
+tls.crt and tls.key in HAProxy's service directory. It relies on bootstrap
+having created that directory and on the local CA being installed first.
+Ownership and modes allow HAProxy to read the private key through the
+local-hybrid-pki group. A valid installed pair is kept without requiring
+the source files; missing or invalid material is repaired from them.
+--renew explicitly requests replacement, and importing is inert."""
 
 from __future__ import annotations
 
 import sys
 
-sys.dont_write_bytecode = True  # nunca crear __pycache__ en el worktree
+sys.dont_write_bytecode = True  # never create __pycache__ in the worktree
 
 import argparse
 import os
@@ -59,12 +31,11 @@ from pathlib import Path
 STACK_DIR = Path(__file__).resolve().parent
 ROOT_DIR = STACK_DIR.parent
 ENV_FILE = ROOT_DIR / ".env"
-LOCK_FILE = STACK_DIR / ".lock"
 
 DEFAULT_CERT = Path("/tmp/tls.crt")
 DEFAULT_KEY = Path("/tmp/tls.key")
-# Carpeta fijada por update-ca-certificates (Debian/Ubuntu); el nombre del
-# fichero viene de LOCAL_CA_NAME en el .env.
+# Directory used by update-ca-certificates (Debian/Ubuntu); the filename
+# comes from LOCAL_CA_NAME in the central .env file.
 SYSTEM_CA_DIR = Path("/usr/local/share/ca-certificates")
 LOCAL_CA_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 EXPIRY_WARNING_SECONDS = 30 * 24 * 3600
@@ -72,13 +43,13 @@ SAN_NAME_RE = re.compile(r"^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$")
 
 
 def die(message: str, code: int = 1) -> None:
-    """Muestra un error y termina con el código indicado."""
+    """Print an error and exit with the requested status code."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def log(message: str) -> None:
-    """Muestra un detalle de progreso con sangría."""
+    """Print an indented progress detail."""
     print(f"  {message}")
 
 
@@ -88,7 +59,7 @@ def step(message: str) -> None:
 
 
 def openssl(*args: str) -> subprocess.CompletedProcess:
-    """Ejecuta OpenSSL y devuelve código de salida y salida capturada."""
+    """Run OpenSSL and return its exit status and captured output."""
     return subprocess.run(["openssl", *args], text=True, capture_output=True, check=False)
 
 
@@ -112,7 +83,7 @@ def load_env(env_file: Path) -> dict[str, str]:
 
 
 def parse_args() -> argparse.Namespace:
-    """Lee rutas de certificado, clave, CA y la opción de renovación."""
+    """Parse certificate, key, and CA paths and the renewal option."""
     parser = argparse.ArgumentParser(
         description="Instala tls.crt / tls.key en la carpeta de servicio de HAProxy.",
     )
@@ -127,7 +98,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--renew",
         action="store_true",
-        help="permite sustituir el certificado aunque Stack0 ya esté PREPARADO (.lock)",
+        help="sustituye el par TLS aunque el instalado sea válido (rotación explícita)",
     )
     return parser.parse_args()
 
@@ -154,7 +125,7 @@ def parse_san_domains(raw: str) -> list[str]:
 
 
 def require_regular_file(path: Path, label: str) -> None:
-    """Exige un fichero regular no vacío que no sea un symlink."""
+    """Require a nonempty regular file rather than a symbolic link."""
     if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
         die(f"falta o no es un fichero regular no vacío ({label}): {path}")
 
@@ -195,8 +166,41 @@ def validate_pair(cert: Path, key: Path, ca: Path, san_domains: list[str]) -> No
     print(summary.stdout, end="")
 
 
+def pair_healthy(cert: Path, key: Path, ca: Path, san_domains: list[str]) -> bool:
+    """Check the installed pair without printing or changing private material."""
+    if any(path.is_symlink() or not path.is_file() or path.stat().st_size == 0 for path in (cert, key)):
+        return False
+    if openssl("x509", "-in", str(cert), "-noout").returncode != 0:
+        return False
+    if openssl("pkey", "-in", str(key), "-noout").returncode != 0:
+        return False
+    cert_pub = openssl("x509", "-in", str(cert), "-noout", "-pubkey")
+    key_pub = openssl("pkey", "-in", str(key), "-pubout")
+    if cert_pub.returncode or key_pub.returncode or not cert_pub.stdout or cert_pub.stdout != key_pub.stdout:
+        return False
+    if openssl("verify", "-CAfile", str(ca), str(cert)).returncode != 0:
+        return False
+    if openssl("x509", "-in", str(cert), "-noout", "-checkend", "0").returncode != 0:
+        return False
+    result = openssl("x509", "-in", str(cert), "-noout", "-ext", "subjectAltName")
+    if result.returncode != 0:
+        return False
+    san = {entry.strip() for line in result.stdout.splitlines()[1:] for entry in line.split(",")}
+    return all(f"DNS:{name}" in san for name in san_domains)
+
+
+def ensure_metadata(path: Path, mode: int, gid: int) -> bool:
+    """Repair ownership and mode without replacing an otherwise valid file."""
+    st = path.stat()
+    changed = (st.st_uid, st.st_gid, st.st_mode & 0o7777) != (0, gid, mode)
+    if changed:
+        os.chown(path, 0, gid)
+        os.chmod(path, mode)
+    return changed
+
+
 def install_atomic(source: Path, target: Path, mode: int, gid: int) -> bool:
-    """Copia source a target (root:gid, mode) de forma atómica. Devuelve True si cambió."""
+    """Atomically copy source to target with root:gid ownership and mode; report whether it changed."""
     if target.is_symlink() or (target.exists() and not target.is_file()):
         die(f"el destino no es un fichero regular: {target}")
 
@@ -218,13 +222,11 @@ def install_atomic(source: Path, target: Path, mode: int, gid: int) -> bool:
             Path(tmp_name).unlink(missing_ok=True)
             raise
 
-    os.chown(target, 0, gid)
-    os.chmod(target, mode)
-    return not unchanged
+    return not unchanged or ensure_metadata(target, mode, gid)
 
 
 def haproxy_running() -> bool:
-    """Indica si existe un contenedor HAProxy en ejecución."""
+    """Report whether an HAProxy container is running."""
     if shutil.which("docker") is None:
         return False
     result = subprocess.run(
@@ -245,11 +247,6 @@ def main() -> None:
     if shutil.which("openssl") is None:
         die("falta el comando requerido: openssl")
 
-    if LOCK_FILE.exists() and not args.renew:
-        print(f"Stack0 ya está PREPARADO ({LOCK_FILE}); no se modifica nada.")
-        print("Para sustituir el certificado en un sistema en marcha usa --renew.")
-        return
-
     env = load_env(ENV_FILE)
     for key in ("BASE_PATH", "TLS_SAN_DOMAINS"):
         if not env.get(key):
@@ -269,15 +266,26 @@ def main() -> None:
     if target_dir.is_symlink() or not target_dir.is_dir():
         die(f"falta la carpeta de servicio {target_dir}; ejecuta primero 00-bootstrap.py")
 
+    require_regular_file(ca, "CA (instálala con install-ca-cert.py)")
+    cert_target = target_dir / "tls.crt"
+    key_target = target_dir / "tls.key"
+    for target in (cert_target, key_target):
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            die(f"destino TLS no seguro: {target}")
+
+    if not args.renew and pair_healthy(cert_target, key_target, ca, san_domains):
+        changed_cert = ensure_metadata(cert_target, 0o644, pki_gid)
+        changed_key = ensure_metadata(key_target, 0o640, pki_gid)
+        print("Par TLS instalado y válido; certificados conservados.")
+        if (changed_cert or changed_key) and haproxy_running():
+            print("Permisos TLS reparados; comprueba HAProxy y reinícialo si es necesario.")
+        return
+
     require_regular_file(args.cert, "certificado")
     require_regular_file(args.key, "clave privada")
-    require_regular_file(ca, "CA (instálala con install-ca-cert.py)")
-
     validate_pair(args.cert, args.key, ca, san_domains)
 
     step("2/2 Instalando en la carpeta de servicio de HAProxy")
-    cert_target = target_dir / "tls.crt"
-    key_target = target_dir / "tls.key"
     changed_cert = install_atomic(args.cert, cert_target, 0o644, pki_gid)
     changed_key = install_atomic(args.key, key_target, 0o640, pki_gid)
     log(f"{cert_target}: {'actualizado' if changed_cert else 'sin cambios'} (0644 root:{pki_gid})")

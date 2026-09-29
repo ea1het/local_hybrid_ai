@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Hermes environment parsing and container readiness."""
+"""Test Hermes environment parsing and container readiness behavior.
+
+Fixtures cover variable expansion, quoting, missing settings, and mocked
+container status. The tests avoid sourcing a real environment file or
+contacting Docker. Importing the module only defines tests."""
 
 import sys
 

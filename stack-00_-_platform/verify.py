@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Verify Stack0 paths, network, CA trust, and HAProxy TLS material."""
+"""Verify that the platform prerequisites are ready without repairing them.
+
+The verifier checks service paths and modes, the shared Docker network,
+local CA trust, and HAProxy TLS material against the configured environment.
+It reports a failure instead of silently replacing an existing resource.
+The installer invokes this check before marking Stack 0 prepared; importing
+the module performs no verification or host mutation."""
 
 from __future__ import annotations
 
@@ -16,7 +22,10 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 
-from ops_common import die, load_env, log, require, require_commands, require_root, run
+if __package__:
+    from .ops_common import die, load_env, log, require, require_commands, require_root, run
+else:
+    from ops_common import die, load_env, log, require, require_commands, require_root, run
 
 
 def real_directory(path: Path) -> bool:
@@ -59,10 +68,17 @@ def main() -> None:
 
     base_path = Path(env["BASE_PATH"].rstrip("/"))
     platform_root = base_path / "service_-_platform"
-    haproxy_config = base_path / "service_-_haproxy" / "config"
-    for directory in (platform_root, platform_root / "state", platform_root / "logs", haproxy_config):
+    haproxy_root = base_path / "service_-_haproxy"
+    haproxy_config = haproxy_root / "config"
+    for directory in (base_path, platform_root, platform_root / "state", platform_root / "logs",
+                      haproxy_root, haproxy_config):
         if not real_directory(directory):
             die(f"missing service directory: {directory} (run 00-bootstrap.py)")
+    for directory, mode in ((base_path, 0o750), (platform_root, 0o750), (platform_root / "state", 0o700),
+                            (platform_root / "logs", 0o750)):
+        directory_stat = directory.stat()
+        if (directory_stat.st_uid, directory_stat.st_gid, stat.S_IMODE(directory_stat.st_mode)) != (0, 0, mode):
+            die(f"incorrect owner or mode for {directory} (run 00-bootstrap.py)")
     log("base service tree: OK")
 
     pki_gid = env.get("PLATFORM_PKI_GID") or "1999"
@@ -73,6 +89,10 @@ def main() -> None:
     if str(group.gr_gid) != pki_gid:
         die(f"local-hybrid-pki does not have GID {pki_gid}")
     log("PKI consumer group: OK")
+    for directory in (haproxy_root, haproxy_config):
+        config_stat = directory.stat()
+        if (config_stat.st_uid, str(config_stat.st_gid), stat.S_IMODE(config_stat.st_mode)) != (0, pki_gid, 0o750):
+            die(f"incorrect owner or mode for {directory} (run 00-bootstrap.py)")
 
     network_name = env["NETWORK_NAME"]
     run("docker", "network", "inspect", network_name, capture=True)
@@ -86,8 +106,11 @@ def main() -> None:
         die(f"invalid LOCAL_CA_NAME: {ca_name}")
     local_ca = Path("/usr/local/share/ca-certificates") / f"{ca_name}.crt"
     host_bundle = Path("/etc/ssl/certs/ca-certificates.crt")
-    if not local_ca.is_file() or local_ca.stat().st_size == 0:
+    if not real_nonempty_file(local_ca):
         die(f"local CA not installed: {local_ca} (run install-ca-cert.py)")
+    ca_stat = local_ca.stat()
+    if (ca_stat.st_uid, ca_stat.st_gid, stat.S_IMODE(ca_stat.st_mode)) != (0, 0, 0o644):
+        die(f"{local_ca} must be root:root 0644")
     run("openssl", "verify", "-CAfile", str(host_bundle), str(local_ca), capture=True)
     log("local CA trusted by host: OK")
 
@@ -97,6 +120,9 @@ def main() -> None:
         die(f"missing {certificate} (run install-tls-certs.py)")
     if not real_nonempty_file(private_key):
         die(f"missing {private_key} (run install-tls-certs.py)")
+    cert_stat = certificate.stat()
+    if (cert_stat.st_uid, str(cert_stat.st_gid), stat.S_IMODE(cert_stat.st_mode)) != (0, pki_gid, 0o644):
+        die(f"{certificate} must be root:{pki_gid} 0644")
     key_stat = private_key.stat()
     if (key_stat.st_uid, str(key_stat.st_gid), stat.S_IMODE(key_stat.st_mode)) != (0, pki_gid, 0o640):
         die(f"{private_key} must be root:{pki_gid} 0640")

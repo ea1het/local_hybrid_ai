@@ -3,14 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Initialize or validate generation-bound state for the Stack6 sandbox.
+"""Initialize or validate generation-bound Hermes sandbox state.
 
-A sandbox generation couples a workspace marker with an integrity-checked SQLite
-state database. Existing generations are validated fail-closed; partially
-initialized, symlinked or mismatched state requires an explicit sandbox reset.
-Objects present at initialization are marked protected so the cleanup sidecar
-cannot later treat platform-created baseline content as disposable user state.
-"""
+A workspace marker and an integrity-checked SQLite database identify one
+sandbox generation. Existing mismatched, symlinked, or partially initialized
+state fails closed and requires an explicit reset. Baseline objects are
+marked protected so the cleanup sidecar cannot mistake them for disposable
+user content. Importing this module does not create the database."""
 
 from __future__ import annotations
 

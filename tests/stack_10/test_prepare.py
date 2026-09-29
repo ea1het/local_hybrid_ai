@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 10 HAProxy and web preparation in temporary trees."""
+"""Test HAProxy and web frontend preparation in temporary trees.
+
+Cases verify environment validation, TLS prerequisites, rendered files,
+and the preparation lock without touching the live reverse proxy.
+Importing this test module only defines fixtures and test functions."""
 
 import sys
 

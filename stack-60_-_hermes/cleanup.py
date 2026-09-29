@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Controlled cleanup of Hermes and its sandbox runtime."""
+"""Perform explicitly selected Hermes runtime cleanup operations.
+
+This script distinguishes routine cleanup, sandbox reset, and destructive
+factory reset, applying path-scope checks and operator confirmation before
+deleting data. It audits runtime environment safety and refuses unexpected
+paths or protected state. Importing the module cannot trigger cleanup."""
 
 import glob
 import hashlib
@@ -16,7 +21,10 @@ import sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

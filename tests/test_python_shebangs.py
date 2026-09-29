@@ -2,7 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Checks for the executable Python shebang policy."""
+"""Test the executable-Python shebang policy without changing the repository.
+
+The suite simulates Git index modes and worktree content to ensure only
+eligible files receive the expected shebang. It verifies that unsafe
+inputs and check-only mode remain non-mutating. Importing the module does
+not run the workflow tool."""
 
 import sys
 

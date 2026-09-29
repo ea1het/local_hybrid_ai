@@ -3,14 +3,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Apply and verify MPL 2.0 notices across tracked repository files.
+"""Apply and verify MPL 2.0 notices on tracked repository files.
 
-The tool is deliberately conservative: it only edits formats where a comment
-can be embedded without changing runtime semantics. Files that are binary,
-symlinks, pure JSON, cryptographic material or otherwise ambiguous are recorded
-in ``docs/license-header-exceptions.md`` for explicit manual review instead of
-being modified speculatively.
-"""
+The tool obtains paths from Git and selects comment syntax by file format.
+It protects shebangs and XML declarations, refuses symlinks, binaries, JSON,
+cryptographic files, and unknown formats, and records explicit exclusions
+in docs/license-header-exceptions.md. --check verifies both notices and
+the generated report without editing files; normal mode updates supported
+files. Importing the module performs no repository scan."""
 
 from __future__ import annotations
 

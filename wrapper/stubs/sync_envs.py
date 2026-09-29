@@ -3,29 +3,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Synchronise the local .env with the Git-tracked .env.template.
+"""Synchronize the local .env with the Git-tracked .env.template.
 
-.env is local (never committed); .env.template is the variable contract in
-Git. .env may hold MORE variables than the template, never fewer. The result
-is rebuilt from the template layout:
-
-  - every template variable keeps the VALUE from .env and the inline COMMENT
-    from .env.template (so the file stays aligned with Git except for values);
-  - template variables missing from .env are added with the template default;
-  - variables only present in .env stay ACTIVE, moved to a clearly marked
-    REVIEW section at the top of the file for a human to decide on;
-  - a variable defined twice in .env with different values aborts the sync
-    (nothing is written) until it is resolved by hand.
-
-Usage:
-  wrapper/stubs/sync_envs.py              rewrite .env when it differs (backup first)
-  wrapper/stubs/sync_envs.py --dry-run    show the unified diff, write nothing
-  wrapper/stubs/sync_envs.py --check      write nothing; exit 10 if a sync is needed
-
-Every write is preceded by a .env--backup-YYYY-MM-DD copy and is atomic,
-preserving the file mode and owner. Running it twice is a no-op.
-Exit status: 0 in sync / written, 10 sync needed (--check, --dry-run), 1 error.
-"""
+The template defines the supported variable set and ordering; local values
+take precedence, missing keys receive template defaults, and extra local
+keys remain active in a review section. Conflicting duplicate assignments
+abort before writing. A normal update makes a dated backup and replaces
+the file atomically; --check and --dry-run are read-only and return 10
+when synchronization is needed. Importing the module never reads .env."""
 
 from __future__ import annotations
 

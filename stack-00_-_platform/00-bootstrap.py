@@ -3,43 +3,21 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""
-00-bootstrap.py
+"""Create the shared host filesystem and PKI group for all stacks.
 
-Crea, de forma centralizada, el árbol de carpetas de servicio de TODOS los
-stacks bajo BASE_PATH y fija su propietario y permisos. Los 01-prepare.py de
-cada stack ya no crean carpetas ni ajustan sus permisos: solo verifican que
-existen y copian/renderizan sus ficheros dentro.
-
-También crea el grupo local-hybrid-pki (PLATFORM_PKI_GID), usado por HAProxy
-para leer la clave privada TLS.
-
-Uso:
-  sudo ./00-bootstrap.py
-  sudo ./00-bootstrap.py --dry-run     # muestra lo que haría, sin cambios
-
-Reglas:
-  - Nunca reemplaza una ruta existente: si existe debe ser un directorio real
-    (no symlink); si no, falla.
-  - Los directorios PGDATA de PostgreSQL solo se crean si no existen; si
-    existen no se toca ni su propietario ni sus permisos (los gestiona
-    PostgreSQL y cambiarlos en caliente rompe el bind mount).
-  - Las carpetas marcadas como recursivas reconcilian el propietario de todo
-    su contenido (como hacían antes los 01-prepare.py correspondientes).
-  - En Stack2 el propietario de SearXNG/Redis/RabbitMQ es el UID/GID de la
-    imagen, que se obtiene con "docker run --entrypoint id".
-  - Protección de sistemas en marcha: las carpetas de un stack cuyo .lock
-    existe (stack-NN_-_*/.lock, es decir, ya PREPARADO) no se modifican. Para
-    reconciliarlas, borra deliberadamente ese .lock y vuelve a ejecutar.
-
-Es idempotente: puede ejecutarse varias veces.
-"""
+This operator-run entrypoint creates service directories below BASE_PATH with
+the owners and modes expected by each container; individual prepare scripts
+only verify and populate those directories. It also creates the
+local-hybrid-pki group used to read HAProxy's private key. Existing PostgreSQL
+data directories are never re-owned. Stack 0 is audited even with its .lock;
+other locked stacks are left alone to protect running installations. Use
+--dry-run to inspect the plan. Importing this module performs no setup."""
 
 from __future__ import annotations
 
 import sys
 
-sys.dont_write_bytecode = True  # nunca crear __pycache__ en el worktree
+sys.dont_write_bytecode = True  # never create __pycache__ in the worktree
 
 import argparse
 import functools
@@ -68,25 +46,25 @@ class Dir:
 
     path: Path
     mode: int
-    uid: int | None = 0          # None: no cambiar propietario (se crea como root)
+    uid: int | None = 0          # None: keep the current owner (created as root)
     gid: int | None = 0
-    recursive: bool = False      # reconciliar propietario del contenido
-    create_only: bool = False    # PGDATA: crear si falta, nunca tocar si existe
+    recursive: bool = False      # reconcile ownership of existing contents
+    create_only: bool = False    # PGDATA: create if absent, never alter if present
 
 
 def die(message: str, code: int = 1) -> None:
-    """Muestra un error y termina con el código indicado."""
+    """Print an error and exit with the requested status code."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
 
 
 def warn(message: str) -> None:
-    """Muestra una advertencia sin interrumpir la ejecución."""
+    """Print a warning without interrupting execution."""
     print(f"WARNING: {message}", file=sys.stderr)
 
 
 def log(message: str) -> None:
-    """Muestra un detalle de progreso con sangría."""
+    """Print an indented progress detail."""
     print(f"  {message}")
 
 
@@ -115,7 +93,7 @@ def load_env(env_file: Path) -> dict[str, str]:
 
 
 def require(env: dict[str, str], key: str) -> str:
-    """Devuelve una variable no vacía o termina con un error."""
+    """Return a nonempty environment value or exit with an error."""
     value = env.get(key, "")
     if not value:
         die(f"falta {key} en {ENV_FILE}")
@@ -139,7 +117,7 @@ def require_service_name(env: dict[str, str], key: str) -> str:
 
 
 def image_ref(env: dict[str, str], image_key: str, version_key: str) -> str:
-    """Construye una referencia imagen:versión si ambos valores existen."""
+    """Build an image:version reference when both components are present."""
     image, version = env.get(image_key, ""), env.get(version_key, "")
     return f"{image}:{version}" if image and version else ""
 
@@ -193,11 +171,14 @@ def chown_tree(root: Path, uid: int, gid: int) -> None:
     """Reconcilia el propietario del contenido de un directorio, sin seguir enlaces."""
     for current, dirs, files in os.walk(root):
         for name in dirs + files:
-            os.lchown(os.path.join(current, name), uid, gid)
+            child = os.path.join(current, name)
+            child_stat = os.lstat(child)
+            if (child_stat.st_uid, child_stat.st_gid) != (uid, gid):
+                os.lchown(child, uid, gid)
 
 
 def ensure_dir(spec: Dir) -> None:
-    """Crea o reconcilia un directorio según la especificación y el modo dry-run."""
+    """Create or reconcile a directory according to its specification and dry-run mode."""
     path = spec.path
     if path.is_symlink():
         die(f"la ruta de servicio no puede ser un symlink: {path}")
@@ -218,18 +199,23 @@ def ensure_dir(spec: Dir) -> None:
     if not path.exists():
         path.mkdir(mode=0o700, parents=True)
         os.chown(path, 0, 0)
+    current = path.stat()
     if spec.uid is not None and spec.gid is not None:
-        os.chown(path, spec.uid, spec.gid)
+        if (current.st_uid, current.st_gid) != (spec.uid, spec.gid):
+            os.chown(path, spec.uid, spec.gid)
         if spec.recursive:
             chown_tree(path, spec.uid, spec.gid)
-    os.chmod(path, spec.mode)
+    if current.st_mode & 0o7777 != spec.mode:
+        os.chmod(path, spec.mode)
     log(description)
 
 
 def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]]]:
-    """Devuelve (stack, constructor). Cada constructor solo se evalúa si el
-    stack no está PREPARADO (.lock), así un stack bloqueado ni siquiera lanza
-    docker run ni valida sus variables."""
+    """Return stack/layout-builder pairs for unlocked stacks and Stack 0.
+
+    Other locked stacks do not invoke Docker or validate settings they will
+    not change. The caller still audits Stack 0 when it has a lock.
+    """
     base = Path(env["BASE_PATH"].rstrip("/"))
 
     def svc(name: str) -> Path:
@@ -292,7 +278,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack3() -> list[Dir]:
-        """Define configuración de LiteLLM y datos y secretos de PostgreSQL."""
+        """Describe LiteLLM configuration and PostgreSQL data and secret directories."""
         litellm = svc("service_-_litellm")
         litellm_postgres = svc("service_-_litellm-postgres")
         return [
@@ -377,7 +363,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
 
 
 def parse_args() -> argparse.Namespace:
-    """Lee la opción --dry-run de la línea de comandos."""
+    """Parse the --dry-run command-line option."""
     parser = argparse.ArgumentParser(
         description="Crea el árbol de carpetas de servicio de todos los stacks y fija sus permisos.",
     )
@@ -386,7 +372,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Valida el entorno y reconcilia solo los stacks sin .lock."""
+    """Validate the environment and reconcile Stack 0 plus unlocked stacks."""
     global DRY_RUN
     sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()
@@ -419,7 +405,7 @@ def main() -> None:
     for stack, build in build_layout(env):
         step(f"Carpetas de {stack}")
         lock = ROOT_DIR / stack / ".lock"
-        if lock.exists():
+        if lock.exists() and stack != "stack-00_-_platform":
             log(f"PREPARADO ({lock}): carpetas y permisos no se modifican")
             skipped.append(stack)
             continue

@@ -37,6 +37,18 @@ Updating a file on disk does not necessarily reload the HAProxy process. Configu
 
 `.lock` means **PREPARED only**. It does not mean HAProxy is running, healthy or serving every optional backend.
 
+## Unattended preparation wrapper
+
+Run `python3 -B wrapper/bin/stack-10.py install` from the repository root (as root for
+initial preparation). The wrapper calls the stack's Python package without
+interactive input, forwards the preparation output, and checks both its exit
+status and the resulting `.lock`. It never starts or restarts containers.
+
+When `.lock` already exists, the wrapper changes nothing and explains the
+reconfiguration risk. It does not remove the lock. After a successful
+preparation, it prints the manual `docker compose ... up -d` command; running
+that command remains a separate operator decision.
+
 ## Security invariants
 
 - `tls.key` is installed by Stack0 as `root:PLATFORM_PKI_GID 0640`; HAProxy (uid 99) reads it only through that supplementary group. Stack1 never copies or rewrites it.

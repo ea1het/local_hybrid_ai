@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 20 service readiness probes and retry behavior."""
+"""Test SearXNG and Firecrawl readiness probes and retries.
+
+The tests simulate Docker and TCP responses to cover ready, not-ready,
+and failed states without contacting containers. Importing the module
+does not perform a live readiness check."""
 
 import sys
 

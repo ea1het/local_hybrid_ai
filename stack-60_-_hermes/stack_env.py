@@ -2,7 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Read the stack's simple shell assignment file without executing it."""
+"""Parse Hermes stack environment assignments without sourcing a shell.
+
+The parser reads the configured .env file, expands supported references,
+and keeps quoting behavior explicit so operational scripts can obtain
+consistent values without executing arbitrary shell content. Importing
+this helper does not read .env until load_env is called."""
 
 import os
 import sys

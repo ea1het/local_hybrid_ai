@@ -3,14 +3,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Explicit one-time Stack7 environment bootstrap.
+"""Bootstrap missing Open WebUI environment values explicitly.
 
-This operator-invoked utility is deliberately outside the common installer
-lifecycle because PREPARE must never mutate the protected operational .env.
-It adds only missing/placeholder Stack7 values, never prints secrets, and asks
-LiteLLM itself to issue a dedicated virtual key scoped to the model ids visible
-at bootstrap time.
-"""
+This utility fills missing or placeholder Stack 70 values in the protected
+root .env, keeping existing custom values. Before a change it saves the exact
+original bytes to a root-owned, mode-0600, timestamped backup. When a key is
+needed, LiteLLM issues one scoped to every model currently visible through
+its API; the returned key is stored only in .env, never printed. Importing
+the module does not issue a key or write .env."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ import secrets
 import stat
 import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent
@@ -70,7 +71,7 @@ def require_env_file() -> str:
         raise BootstrapError(f"operational environment must have mode 0600: {ENV_FILE}")
     if st.st_uid != 0 or st.st_gid != 0:
         raise BootstrapError(f"operational environment must be owned by root:root: {ENV_FILE}")
-    return ENV_FILE.read_text(encoding="utf-8")
+    return ENV_FILE.read_bytes().decode("utf-8")
 
 
 def parse_values(text: str) -> tuple[dict[str, str], dict[str, int]]:
@@ -177,8 +178,47 @@ def render_updated(text: str, replacements: dict[str, str]) -> str:
     return "\n".join(output) + "\n"
 
 
-def atomic_write(payload: str) -> None:
-    """Replace the operational environment with a synced root-owned file."""
+def backup_env(expected_text: str) -> Path:
+    """Save the unchanged operational .env exclusively before modifying it."""
+    timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
+    backup = ROOT / f".env-backup-{timestamp}"
+    source_fd = os.open(ENV_FILE, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        source_stat = os.fstat(source_fd)
+        if (not stat.S_ISREG(source_stat.st_mode)
+                or stat.S_IMODE(source_stat.st_mode) != 0o600
+                or source_stat.st_uid != 0 or source_stat.st_gid != 0):
+            raise BootstrapError("operational .env changed type, mode, or owner before backup")
+        with os.fdopen(source_fd, "rb", closefd=False) as source:
+            original = source.read()
+    finally:
+        os.close(source_fd)
+    if original != expected_text.encode("utf-8"):
+        raise BootstrapError("operational .env changed during bootstrap; refusing to overwrite it")
+
+    descriptor = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        os.fchown(descriptor, 0, 0)
+        with os.fdopen(descriptor, "wb", closefd=False) as output:
+            output.write(original)
+            output.flush()
+            os.fsync(output.fileno())
+    except BaseException:
+        backup.unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(descriptor)
+    directory_fd = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+    return backup
+
+
+def atomic_write(payload: str, expected_text: str) -> None:
+    """Replace .env atomically only if it still matches the backed-up version."""
     fd, tmp_name = tempfile.mkstemp(prefix=".env.stack7.", dir=ROOT)
     tmp = Path(tmp_name)
     try:
@@ -188,6 +228,8 @@ def atomic_write(payload: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chown(tmp, 0, 0)
+        if require_env_file() != expected_text:
+            raise BootstrapError("operational .env changed during bootstrap; refusing to overwrite it")
         os.replace(tmp, ENV_FILE)
         # Sync the directory so the replacement survives a sudden power loss.
         directory_fd = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY)
@@ -213,19 +255,24 @@ def main() -> int:
         if missing_or_placeholder(values.get("OPENWEBUI_SECRET_KEY")):
             replacements["OPENWEBUI_SECRET_KEY"] = secrets.token_hex(32)
 
-        issued_models: list[str] = []
-        if missing_or_placeholder(values.get("OPENWEBUI_LITELLM_API_KEY")):
+        needs_key = missing_or_placeholder(values.get("OPENWEBUI_LITELLM_API_KEY"))
+        if needs_key:
             litellm_running()
-            key, issued_models = issue_litellm_key()
-            replacements["OPENWEBUI_LITELLM_API_KEY"] = key
 
-        if not replacements:
+        if not replacements and not needs_key:
             print("Stack7 environment already bootstrapped; no changes made.")
             return 0
 
+        backup = backup_env(text)
+        issued_models: list[str] = []
+        if needs_key:
+            key, issued_models = issue_litellm_key()
+            replacements["OPENWEBUI_LITELLM_API_KEY"] = key
+
         updated = render_updated(text, replacements)
-        atomic_write(updated)
+        atomic_write(updated, text)
         print("Stack7 environment bootstrap: PASS")
+        print(f"- protected backup: {backup}")
         print(f"- updated variables: {len(replacements)}")
         if issued_models:
             print(f"- dedicated LiteLLM virtual key issued for {len(issued_models)} model id(s)")

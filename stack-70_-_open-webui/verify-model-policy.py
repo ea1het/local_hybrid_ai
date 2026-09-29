@@ -3,12 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Verify Stack7-owned Open WebUI policy for basic_autorouter without mutation.
+"""Verify the Stack 70 basic_autorouter policy without mutation.
 
-Before the first administrator exists the policy is not yet applicable and the
-check reports DEFER successfully. Once an administrator exists, every required
-policy property must be present or verification fails closed.
-"""
+The host wrapper runs an embedded read-only check through Open WebUI's
+own data layer. Before the first administrator exists the policy is not
+applicable and the check reports DEFER; once an admin exists, missing
+capabilities or access grants fail verification. Importing the module
+does not run the check or connect to the container."""
 
 from __future__ import annotations
 

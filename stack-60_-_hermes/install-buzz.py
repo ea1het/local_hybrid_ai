@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Build and install the pinned Buzz CLI into Hermes runtime data."""
+"""Install the pinned Buzz CLI into Hermes persistent runtime data.
+
+The script builds or copies the expected Buzz artifact, checks required
+paths and permissions, and installs it without relying on a transient
+container filesystem. It is an optional post-preparation integration;
+importing this module does not download or install software."""
 
 import os
 import re
@@ -16,7 +21,10 @@ sys.dont_write_bytecode = True
 import tempfile
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

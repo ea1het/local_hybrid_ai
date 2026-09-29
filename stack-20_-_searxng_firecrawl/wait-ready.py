@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Espera a que los contenedores y endpoints TCP de Stack2 estén disponibles."""
+"""Wait for the SearXNG and Firecrawl services to become reachable.
+
+The script checks container running state and the expected TCP endpoints,
+retrying until services become available or the configured wait expires.
+It is a deployment-time health gate rather than a preparation step, and
+importing it does not run probes or start containers."""
 
 import os
 import re
@@ -32,7 +37,7 @@ socket.once("error", () => finish(false));
 
 
 def log(message):
-    """Muestra un mensaje de progreso de la comprobación de disponibilidad."""
+    """Print readiness-check progress."""
     print(f"[stack2-ready] {message}")
 
 
@@ -43,14 +48,14 @@ def die(message):
 
 
 def running(name):
-    """Indica si Docker informa que el contenedor está en ejecución."""
+    """Report whether Docker marks the container as running."""
     result = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", name],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     return result.returncode == 0 and result.stdout.rstrip(b"\n") == b"true"
 
 
 def tcp_ready(host, port):
-    """Prueba una conexión TCP desde firecrawl-api con el runtime Node."""
+    """Probe a TCP connection from firecrawl-api using the Node runtime."""
     return subprocess.run(["docker", "exec", "firecrawl-api", "node", "-e", TCP_PROBE, host, port],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 

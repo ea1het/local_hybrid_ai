@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 30 LiteLLM preparation and input validation."""
+"""Test LiteLLM preparation and its input validation.
+
+Temporary service directories and mocked commands exercise configuration
+rendering, secret creation, prerequisite checks, and lock placement.
+Importing this module does not start LiteLLM or change database data."""
 
 import sys
 

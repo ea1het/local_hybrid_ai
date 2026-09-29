@@ -26,9 +26,20 @@ flowchart LR
 - **DR:** reconstructable; Dockhand application state is not a recovery target.
 - **Purpose:** operational convenience, not a control-plane dependency of `./local-ai`.
 
-Dockhand persists through the existing external Docker volume `dockhand_data`; there is intentionally no Stack5 bind-mounted `service_-_dockhand` runtime directory. PREPARE validates the external volume contract but does not create, migrate or rewrite its contents.
+Dockhand persists through the external Docker volume `dockhand_data`; there is intentionally no Stack5 bind-mounted `service_-_dockhand` runtime directory. PREPARE creates the volume if absent and validates it, but does not migrate or rewrite existing contents.
 
 `.lock` means **PREPARED only**. It does not mean the Dockhand container is running or healthy.
+
+## Unattended preparation wrapper
+
+Run `python3 -B wrapper/bin/stack-50.py install` from the repository root (as root for
+initial preparation). The wrapper invokes only the stack's `01-prepare.py`
+package module with closed stdin. Preparation may create the missing
+`dockhand_data` volume, as authorized, but preserves an existing volume.
+
+If `.lock` already exists, the wrapper changes nothing and explains the risk
+of manually removing it. After successful preparation, it shows how to run
+Docker Compose manually; it never starts Dockhand itself.
 
 ## Lifecycle behaviour
 

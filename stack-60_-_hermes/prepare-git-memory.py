@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Adopt an existing Git repository as persistent Hermes memory."""
+"""Adopt an existing Git working tree as Hermes persistent memory.
+
+The entrypoint validates the prepared stack and environment, examines
+existing data for conflicts, and configures the dedicated memory checkout
+without silently replacing divergent user content. It detects concurrent
+changes to .env and .lock before committing modifications. Importing the
+module does not touch Git or the filesystem."""
 
 import hashlib
 import os
@@ -17,7 +23,10 @@ sys.dont_write_bytecode = True
 import tempfile
 from pathlib import Path, PurePosixPath
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

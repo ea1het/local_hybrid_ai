@@ -3,15 +3,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Track, quarantine and remove stale Stack6 sandbox workspace objects safely.
+"""Quarantine and eventually remove stale Hermes sandbox objects.
 
-The cleanup sidecar maintains generation-bound SQLite state for top-level sandbox
-objects, observes filesystem activity with inotify, and performs scheduled
-two-phase cleanup: stale objects are quarantined first and deleted only after a
-separate retention window. Protected objects and generation mismatches fail
-closed. The process is scoped to the Stack6 workspace and does not provide
-platform- or Docker-management authority to Hermes.
-"""
+The sidecar tracks top-level workspace entries in generation-bound SQLite
+state, observes filesystem activity, and sweeps stale objects in two
+phases: quarantine followed by deletion after a separate retention period.
+Protected objects and generation mismatches fail closed. Its authority is
+limited to the sandbox workspace; importing it does not start a watcher
+or delete files."""
 
 from __future__ import annotations
 

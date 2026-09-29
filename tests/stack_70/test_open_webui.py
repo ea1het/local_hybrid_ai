@@ -2,13 +2,21 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 70 Open WebUI bootstrap, preparation, and policy wrappers."""
+"""Test Open WebUI bootstrap, preparation, and model-policy wrappers.
+
+Cases use temporary environment files and mocked container calls to verify
+secret preservation, readiness, and policy-script wiring. They do not
+issue live LiteLLM keys or modify Open WebUI. Importing this module only
+defines tests."""
 
 import sys
 
 sys.dont_write_bytecode = True
 
 import json
+import re
+import stat
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -26,22 +34,75 @@ def test_bootstrap_updates_only_missing_values_and_keeps_secrets_private(tmp_pat
     env_file.write_text("OTHER=keep\nOPENWEBUI_IMAGE=custom/image\n"
                         "OPENWEBUI_LITELLM_API_KEY=PUT_YOUR_KEY_HERE\n")
     written = []
+    backups = []
     monkeypatch.setattr(module, "ENV_FILE", env_file)
     monkeypatch.setattr(module, "require_env_file", lambda: env_file.read_text())
     monkeypatch.setattr(module, "litellm_running", lambda: None)
     monkeypatch.setattr(module, "issue_litellm_key", lambda: ("sk-private", ["model-a"]))
     monkeypatch.setattr(module.secrets, "token_hex", lambda _: "secret-private")
-    monkeypatch.setattr(module, "atomic_write", written.append)
+    monkeypatch.setattr(module, "backup_env", lambda original: backups.append(original) or tmp_path / "backup")
+    monkeypatch.setattr(module, "atomic_write", lambda payload, original: written.append((payload, original)))
 
     assert module.main() == 0
     assert len(written) == 1
-    values, _ = module.parse_values(written[0])
+    assert backups == [env_file.read_text()]
+    assert written[0][1] == backups[0]
+    values, _ = module.parse_values(written[0][0])
     assert values["OPENWEBUI_IMAGE"] == "custom/image"
     assert values["OPENWEBUI_LITELLM_API_KEY"] == "sk-private"
     assert values["OPENWEBUI_SECRET_KEY"] == "secret-private"
     assert values["OPENWEBUI_VERSION"] == module.DEFAULTS["OPENWEBUI_VERSION"]
-    assert "OTHER=keep" in written[0]
-    assert "private" not in capsys.readouterr().out
+    assert "OTHER=keep" in written[0][0]
+    output = capsys.readouterr().out
+    assert "sk-private" not in output
+    assert "secret-private" not in output
+
+
+def test_bootstrap_backup_preserves_exact_bytes_and_rejects_collision(tmp_path, monkeypatch):
+    """Write a protected timestamped backup without replacing an existing one."""
+    module = load_module(STACK, "00-bootstrap.py")
+    original = b"EXISTING=secret\r\n"
+    env_file = tmp_path / ".env"
+    env_file.write_bytes(original)
+    env_file.chmod(0o600)
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "ENV_FILE", env_file)
+    monkeypatch.setattr(module.os, "fchown", lambda *args: None)
+    actual_fstat = module.os.fstat
+    monkeypatch.setattr(module.os, "fstat", lambda descriptor: SimpleNamespace(
+        st_mode=actual_fstat(descriptor).st_mode, st_uid=0, st_gid=0
+    ))
+
+    class FixedDatetime(datetime):
+        """Make the backup name deterministic for the collision check."""
+
+        @classmethod
+        def now(cls):
+            """Return a fixed local timestamp."""
+            return cls(2026, 9, 29, 2, 30, 45)
+
+    monkeypatch.setattr(module, "datetime", FixedDatetime)
+    backup = module.backup_env(original.decode())
+    assert re.fullmatch(r"\.env-backup-\d{6}-\d{6}", backup.name)
+    assert backup.read_bytes() == original
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+    with pytest.raises(FileExistsError):
+        module.backup_env(original.decode())
+    assert backup.read_bytes() == original
+
+
+def test_bootstrap_backup_failure_prevents_key_issuance(monkeypatch, capsys):
+    """Fail before asking LiteLLM for a key when no safe backup can be made."""
+    module = load_module(STACK, "00-bootstrap.py")
+    monkeypatch.setattr(module, "require_env_file", lambda: "OPENWEBUI_LITELLM_API_KEY=PUT_YOUR_KEY_HERE\n")
+    monkeypatch.setattr(module, "litellm_running", lambda: None)
+    monkeypatch.setattr(module, "backup_env", lambda original: (_ for _ in ()).throw(
+        module.BootstrapError("backup unavailable")
+    ))
+    monkeypatch.setattr(module, "issue_litellm_key", lambda: pytest.fail("key must not be issued"))
+
+    assert module.main() == 1
+    assert "backup unavailable" in capsys.readouterr().err
 
 
 def test_bootstrap_rejects_duplicate_keys_before_issuing_key(monkeypatch, capsys):

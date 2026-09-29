@@ -3,7 +3,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Wait for the Open WebUI container to report healthy status."""
+"""Wait until the Open WebUI container reports a healthy state.
+
+This command probes the expected container and returns success only when
+the runtime is ready, subject to its timeout. It is a post-deployment
+gate rather than a repair step. Importing the module does not query Docker."""
 
 
 import os

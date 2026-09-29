@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 20 SearXNG and Firecrawl preparation."""
+"""Test SearXNG and Firecrawl preparation with isolated runtime files.
+
+Cases check platform prerequisites, configuration installation, preserved
+secrets, and the preparation lock. Docker operations are replaced by
+test doubles. Importing the module does not prepare services."""
 
 import sys
 

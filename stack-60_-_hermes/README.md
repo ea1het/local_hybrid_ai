@@ -62,6 +62,18 @@ Generation/state initialization is fail-closed: an incomplete or inconsistent sa
 
 A `.lock` means **PREPARED only**. It says nothing about Hermes health, sandbox readiness or optional capability convergence.
 
+## Unattended preparation wrapper
+
+Run `python3 -B wrapper/bin/stack-60.py install` from the repository root (as root for
+initial preparation). It invokes only the stack's `01-prepare.py` package
+module with closed stdin, forwards the preparation audit, and checks for a
+regular `.lock` on success. An existing lock is reported without changing
+configuration or removing it.
+
+The wrapper never starts containers or executes Buzz installation, Git-memory
+adoption, sidecar setup, capability reconciliation, workaround, readiness,
+or cleanup. Those operations belong to a later, separately scoped phase.
+
 ## Memory contract
 
 Portable durable memory consists of the user-owned Git-backed files `MEMORY.md` and `USER.md`. Generated sandbox state, transient sessions and reconstructable runtime are not promoted to DR artifacts merely because they exist on disk.

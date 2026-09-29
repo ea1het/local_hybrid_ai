@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Stack 60 tests."""
+"""Group Stack 60 Hermes safety and lifecycle tests.
+
+The package covers configuration, readiness, optional integrations,
+sandbox state, and cleanup in isolated fixtures. Importing it does not
+prepare or delete Hermes runtime data."""
 
 import sys
 

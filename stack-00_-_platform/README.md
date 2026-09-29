@@ -23,7 +23,7 @@ Stack0 has no application container.
 ## Prerequisites
 
 1. The worktree at `STACKS_ROOT` and the operational `.env` at `${STACKS_ROOT}/.env` (root:root 0600).
-2. The certificate files copied from the mkcert CA (Mac mini) into `/tmp` — see [section 6 of the mkcert guide](../program_configs/inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack0):
+2. For missing, invalid, or deliberately rotated certificates, copy the files from the mkcert CA into `/tmp` — see [section 6 of the mkcert guide](../program_configs/inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack0). Existing valid certificates do not require the `/tmp` sources:
 
    | File | Consumed by |
    |---|---|
@@ -38,9 +38,11 @@ Stack0 has no application container.
 Run as root:
 
 ```bash
-cd /opt/docker/stacks/stack-00_-_platform
-./install.py
+cd /opt/docker/stacks
+sudo python3 -B wrapper/bin/stack-00.py install
 ```
+
+The wrapper runs the complete stack-owned `install.py` workflow and relays its audit output. It never deploys containers. Direct `./install.py` invocation from the stack directory remains available.
 
 `install.py` runs, in order:
 
@@ -57,20 +59,20 @@ verify.py                 # read-only check of the above
 
 ## `.lock` and running systems
 
-`.lock` protects a system that is already running from being rewritten:
+`.lock` records a successful verification, but does not suppress the Stack0 audit. Each invocation checks platform resources and repairs missing or invalid state where safe; an existing valid certificate is preserved even when `/tmp` sources are absent. Certificate rotation is separate and explicit (`install-ca-cert.py --force` or `install-tls-certs.py --renew`).
 
 | Script | `stack-00_-_platform/.lock` present |
 |---|---|
-| `install.py` | Runs read-only `verify.py` and returns its result; does not repeat preparation. |
-| `01-prepare.py` | Exits immediately; nothing changed. |
-| `00-bootstrap.py` | Skips **every** stack whose own `stack-NN_-_*/.lock` exists (Stack0 included): its directories, owners and modes are left untouched, and no `docker run` is issued for it. Unlocked stacks are still created/reconciled. |
-| `install-ca-cert.py` | Does nothing unless `--force` is given (CA rotation). |
-| `install-tls-certs.py` | Does nothing unless `--renew` is given (certificate renewal). |
+| `install.py` | Runs every phase, verifies the result and retains the existing lock; creates a lock only after success if missing. |
+| `01-prepare.py` | Checks links and network, creating missing resources without replacing conflicting files. |
+| `00-bootstrap.py` | Reconciles Stack0 directories despite its lock. Other locked stacks remain untouched; unlocked stacks are reconciled. |
+| `install-ca-cert.py` | Keeps a valid, trusted installed CA; refreshes missing bundle trust or repairs missing/invalid CA from `/tmp/rootCA.pem`. `--force` rotates it explicitly. |
+| `install-tls-certs.py` | Keeps a valid installed pair, repairs its metadata or reinstalls missing/invalid material from `/tmp/tls.{crt,key}`. `--renew` rotates it explicitly. |
 | `verify.py` | Read-only; works with or without `.lock` and checks the platform state. |
 
 Stacks 1–7 follow the same convention: their `01-prepare.py` exits without changes when their `.lock` exists, and requires `stack-00_-_platform/.lock`. To reconcile a prepared stack deliberately, stop it, remove its `.lock` and run `00-bootstrap.py` and its `01-prepare.py` again.
 
-If initial verification fails, `install.py` leaves no new `.lock` and a later run can retry preparation. An existing `.lock` is never removed automatically when a read-only verification fails.
+If any phase fails, `install.py` removes an existing Stack0 `.lock` and leaves no new one; retry after correcting the reported cause. Other stacks must not treat a failed audit as READY. Back up sensitive state before deliberately rotating certificates or modifying running services.
 
 ### Existing installations with the old directory names
 
@@ -117,10 +119,10 @@ Owners and modes are defined in `build_layout()` inside the script.
 # 0. Add TLS_SAN_DOMAINS to /opt/docker/stacks/.env (see .env.template).
 
 # 1. Stack0 with the new flow (files already in /tmp). The old .lock was
-#    written by the former 01-prepare.py; remove it so install.py runs.
+#    written by the former 01-prepare.py; install.py now audits it too.
 #    00-bootstrap.py skips stacks 1-7 while their .lock exists.
 cd /opt/docker/stacks/stack-00_-_platform
-rm -f .lock && ./install.py
+./install.py
 
 # 2. Re-prepare Stack1 (its .lock makes 01-prepare.py a no-op otherwise):
 #    reconcile its directories, deploy haproxy.cfg and recreate HAProxy,

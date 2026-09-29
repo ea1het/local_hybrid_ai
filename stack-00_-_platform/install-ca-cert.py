@@ -3,44 +3,21 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""
-install-ca-cert.py
+"""Install the local mkcert CA into the Linux host trust store.
 
-Instala la CA local (mkcert) en el trust store del host y termina.
-
-Suposiciones:
-  - La CA pública se ha copiado desde el Mac mini (CA mkcert) a /tmp/rootCA.pem.
-  - El host es Debian/Ubuntu (update-ca-certificates).
-
-Uso:
-  sudo ./install-ca-cert.py                      # instalación inicial
-  sudo ./install-ca-cert.py --force              # sustituir en un sistema en marcha
-  sudo ./install-ca-cert.py --ca /ruta/rootCA.pem
-
-Qué hace:
-  1. Valida que el fichero es un certificado de CA (CA:TRUE).
-  2. Lo instala en /usr/local/share/ca-certificates/<LOCAL_CA_NAME>.crt
-     (LOCAL_CA_NAME se define en el .env central).
-  3. Ejecuta update-ca-certificates.
-  4. Verifica con openssl que la CA forma parte del bundle del host
-     (/etc/ssl/certs/ca-certificates.crt).
-
-No modifica ningún stack. Los contenedores que necesitan confiar en la CA
-(p. ej. LiteLLM en Stack3) montan el bundle del host desde su propio Compose.
-No borra /tmp/rootCA.pem.
-
-Protección de sistemas en marcha: si Stack0 ya está PREPARADO
-(stack-00_-_platform/.lock) el script no modifica nada salvo que se indique
---force de forma explícita (p. ej. rotación de la CA).
-
-Es idempotente: puede ejecutarse varias veces.
-"""
+The script validates that the supplied PEM is a CA certificate, installs it
+under /usr/local/share/ca-certificates using LOCAL_CA_NAME from .env, refreshes
+the host certificate bundle, and verifies that the new CA is trusted. The
+default input is /tmp/rootCA.pem; the host needs update-ca-certificates.
+An installed, trusted CA is preserved without requiring the source PEM, even
+when Stack 0 has a lock. Missing or invalid CA state is repaired from the
+source; --force explicitly authorizes rotation. Importing is safe."""
 
 from __future__ import annotations
 
 import sys
 
-sys.dont_write_bytecode = True  # nunca crear __pycache__ en el worktree
+sys.dont_write_bytecode = True  # never create __pycache__ in the worktree
 
 import argparse
 import os
@@ -51,17 +28,16 @@ from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent
 ENV_FILE = STACK_DIR.parent / ".env"
-LOCK_FILE = STACK_DIR / ".lock"
 DEFAULT_CA = Path("/tmp/rootCA.pem")
 # Rutas fijadas por update-ca-certificates (Debian/Ubuntu), no por el despliegue:
-# solo lee ficheros *.crt de SYSTEM_CA_DIR y genera HOST_CA_BUNDLE.
+# Only reads *.crt files from SYSTEM_CA_DIR and generates HOST_CA_BUNDLE.
 SYSTEM_CA_DIR = Path("/usr/local/share/ca-certificates")
 HOST_CA_BUNDLE = Path("/etc/ssl/certs/ca-certificates.crt")
 LOCAL_CA_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def die(message: str, code: int = 1) -> None:
-    """Muestra un error y termina con el código indicado."""
+    """Print an error and exit with the requested status code."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
 
@@ -111,13 +87,13 @@ def local_ca_path(env: dict[str, str]) -> Path:
 
 
 def require_root() -> None:
-    """Exige privilegios de root antes de modificar el almacén de CA."""
+    """Require root privileges before changing the CA trust store."""
     if os.geteuid() != 0:
         die("Ejecuta el script con sudo/root.")
 
 
 def require_commands() -> None:
-    """Comprueba que estén disponibles los comandos de instalación y validación."""
+    """Check that installation and validation commands are available."""
     required = ("openssl", "install", "update-ca-certificates")
     missing = [cmd for cmd in required if shutil.which(cmd) is None]
     if missing:
@@ -125,7 +101,7 @@ def require_commands() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    """Lee la ruta de CA opcional y el permiso explícito para sustituirla."""
+    """Parse the optional CA path and explicit replacement permission."""
     parser = argparse.ArgumentParser(
         description="Instala la CA local (rootCA.pem) en el trust store del host.",
     )
@@ -138,7 +114,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="permite sustituir la CA aunque Stack0 ya esté PREPARADO (.lock)",
+        help="sustituye la CA instalada aunque ya sea válida (rotación explícita)",
     )
     return parser.parse_args()
 
@@ -169,7 +145,7 @@ def validate_ca(source: Path) -> None:
 
 
 def install_ca_on_host(source: Path, dest: Path) -> None:
-    """Instala la CA pública y actualiza el bundle de confianza del host."""
+    """Install the public CA certificate and refresh the host trust bundle."""
     print("\n== 2/3 Instalando CA en el host ==")
     dest.parent.mkdir(parents=True, exist_ok=True)
     run(["install", "-m", "0644", "-o", "0", "-g", "0", str(source), str(dest)])
@@ -185,19 +161,51 @@ def verify_bundle(dest: Path) -> None:
     print(verify.stdout, end="")
 
 
+def certificate_valid(path: Path) -> bool:
+    """Check whether an existing regular file contains a CA certificate."""
+    if path.is_symlink() or not path.is_file():
+        return False
+    result = subprocess.run(
+        ["openssl", "x509", "-in", str(path), "-noout", "-text"],
+        text=True, capture_output=True, check=False,
+    )
+    return result.returncode == 0 and "CA:TRUE" in result.stdout
+
+
+def bundle_trusts(path: Path) -> bool:
+    """Check that the host bundle verifies the installed CA."""
+    if not HOST_CA_BUNDLE.is_file():
+        return False
+    result = subprocess.run(
+        ["openssl", "verify", "-CAfile", str(HOST_CA_BUNDLE), str(path)],
+        text=True, capture_output=True, check=False,
+    )
+    return result.returncode == 0
+
+
 def main() -> None:
-    """Valida, instala y verifica la CA salvo que el lock impida cambios."""
+    """Preserve a trusted CA or repair missing and invalid host CA state."""
     args = parse_args()
-
-    if LOCK_FILE.exists() and not args.force:
-        print(f"Stack0 ya está PREPARADO ({LOCK_FILE}); no se modifica nada.")
-        print("Para sustituir la CA en un sistema en marcha usa --force.")
-        return
-
     require_root()
     require_commands()
 
     dest = local_ca_path(load_env(ENV_FILE))
+    if dest.is_symlink() or (dest.exists() and not dest.is_file()):
+        die(f"destino de CA no seguro: {dest}")
+
+    if not args.force and certificate_valid(dest):
+        dest_stat = dest.stat()
+        if (dest_stat.st_uid, dest_stat.st_gid, dest_stat.st_mode & 0o7777) != (0, 0, 0o644):
+            os.chown(dest, 0, 0)
+            os.chmod(dest, 0o644)
+            print(f"Permisos de CA reparados: {dest}")
+        if not bundle_trusts(dest):
+            print(f"CA instalada pero sin confianza en el bundle; actualizando: {dest}")
+            run(["update-ca-certificates"])
+        verify_bundle(dest)
+        print(f"CA ya instalada y confiable; sin cambios: {dest}")
+        return
+
     source = find_ca(args.ca)
     print(f"CA origen: {source}")
 

@@ -33,6 +33,18 @@ flowchart LR
 
 `.lock` means **PREPARED only**. Deployment and readiness are separate lifecycle states. The common lifecycle waits for the SearXNG and Firecrawl provider endpoints before optional consumers are reconciled.
 
+## Unattended preparation wrapper
+
+Run `python3 -B wrapper/bin/stack-20.py install` from the repository root (as root for
+initial preparation). The wrapper invokes the stack's `01-prepare.py` package
+module with closed stdin, forwards its output, and requires a regular `.lock`
+after success. If the lock already exists, it does nothing and explains the
+risk of manually removing it before reconfiguration.
+
+The wrapper prints the manual Docker Compose start command but never runs it.
+`wait-ready.py` is a separate check for after the containers are started; it
+is not part of unattended preparation.
+
 ## PostgreSQL identity model
 
 Stack2 uses one PostgreSQL cluster and keeps the database name `postgres` because the pinned NuQ image configures `pg_cron` against it. Security separation is therefore performed with roles rather than by moving Firecrawl to another database.

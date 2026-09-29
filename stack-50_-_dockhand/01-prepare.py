@@ -3,7 +3,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Validate Stack0 and prepare Dockhand's persistent Docker volume."""
+"""Prepare Dockhand's persistent Docker volume and stack prerequisites.
+
+The script verifies Stack 0 readiness and the shared network, creates the
+Dockhand volume only if missing, and then records the preparation lock.
+It does not start Dockhand, and importing the module never creates a volume."""
 
 import datetime
 import os

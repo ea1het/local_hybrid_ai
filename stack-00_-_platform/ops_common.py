@@ -2,7 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Shared command, environment, and prerequisite helpers for Stack0 scripts."""
+"""Provide shared preflight and subprocess helpers for Stack 0 scripts.
+
+These functions centralize logging, fatal errors, root and command checks,
+environment loading, and subprocess execution. Bootstrap, preparation, and
+verification import them so their prerequisite handling stays consistent.
+The module does not perform host changes when imported."""
 
 from __future__ import annotations
 

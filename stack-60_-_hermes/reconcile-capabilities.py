@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Reconcile optional Hermes providers without changing PREPARED state."""
+"""Reconcile optional Hermes capabilities after core preparation.
+
+The entrypoint checks the Hermes lock, installed runtime, and enabled
+provider settings before updating capability-specific configuration.
+Git-memory and maintenance sidecars must be explicitly prepared first
+when enabled. It does not change the meaning of the core preparation
+lock, and import does not reconcile anything."""
 
 import argparse
 import hashlib
@@ -17,7 +23,10 @@ sys.dont_write_bytecode = True
 import tempfile
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

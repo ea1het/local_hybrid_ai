@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Hermes preparation, Buzz setup, sidecars, and Git memory safety."""
+"""Test Hermes preparation and optional integrations safely.
+
+Cases cover the core prepare script, Buzz installation, sidecar setup,
+and Git-memory adoption with temporary files and mocked external tools.
+Importing this module does not install software or change a real checkout."""
 
 import sys
 

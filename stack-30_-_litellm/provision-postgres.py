@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Provisiona el rol y la base de datos PostgreSQL dedicados a LiteLLM."""
+"""Provision LiteLLM's PostgreSQL role and database after preparation.
+
+This operator-run script requires the Stack 30 lock and its administrative
+secret, then executes database commands in the dedicated PostgreSQL service.
+It avoids recreating an existing database and does not reset persistent
+PostgreSQL data. Importing the module does not connect to the database."""
 
 import os
 import shutil
@@ -21,7 +26,7 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
-    """Interrumpe el provisionado con un error de ejecución."""
+    """Abort provisioning with an execution error."""
     raise RuntimeError(message)
 
 
@@ -31,7 +36,7 @@ def step(message):
 
 
 def log(message):
-    """Muestra un detalle de progreso con sangría."""
+    """Print an indented progress detail."""
     print(f"  {message}")
 
 

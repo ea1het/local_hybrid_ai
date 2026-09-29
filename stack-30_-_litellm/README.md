@@ -54,6 +54,17 @@ flowchart TD
 
 `.lock` means **PREPARED only**. It is not proof that PostgreSQL or LiteLLM is running or healthy.
 
+## Unattended preparation wrapper
+
+Run `python3 -B wrapper/bin/stack-30.py install` from the repository root (as root for
+initial preparation). The wrapper calls only the stack's `01-prepare.py`
+package module, with closed stdin. It reports an existing `.lock` without
+changing anything and requires a regular lock after successful preparation.
+
+It **does not** execute `provision-postgres.py` or start containers. It prints
+the manual PostgreSQL provisioning and Compose startup commands as separate
+next steps; a preparation lock alone does not prove the database is ready.
+
 ## Credential and policy boundary
 
 Application consumers use dedicated least-privilege virtual credentials rather than `LITELLM_MASTER_KEY`. Provider policy also stays behind LiteLLM: consumers should not bypass the gateway to reach model providers directly.

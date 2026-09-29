@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepara LiteLLM y su PostgreSQL dedicado tras verificar Stack0."""
+"""Prepare LiteLLM configuration and its dedicated PostgreSQL storage.
+
+The entrypoint verifies Stack 0 prerequisites, the service source files,
+and pre-created runtime directories. It provisions required secrets and
+configuration while preserving an existing PostgreSQL data directory;
+database role creation is handled separately by provision-postgres.py.
+The .lock marks successful preparation, not service health. Import is inert."""
 
 import datetime
 import os
@@ -23,12 +29,12 @@ LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
-    """Interrumpe la preparación con un error de ejecución."""
+    """Abort preparation with an execution error."""
     raise RuntimeError(message)
 
 
 def log(message):
-    """Muestra un detalle de progreso con sangría."""
+    """Print an indented progress detail."""
     print(f"  {message}")
 
 
@@ -60,7 +66,7 @@ def require(env, keys):
 
 
 def main():
-    """Verifica dependencias, prepara secreto y configuración, y crea el lock."""
+    """Check dependencies, prepare the secret and configuration, and write the lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
         print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
         return

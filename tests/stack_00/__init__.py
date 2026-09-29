@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Stack 00 tests."""
+"""Group Stack 00 platform regression tests.
+
+The package covers bootstrap, environment preparation, certificate
+installation, and verification in controlled fixtures. Importing it
+does not perform any host platform setup."""
 
 import sys
 

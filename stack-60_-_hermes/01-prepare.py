@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepare and audit the Hermes runtime without starting containers."""
+"""Prepare and audit the Hermes agent runtime before container startup.
+
+The entrypoint validates environment values, prerequisite stack locks,
+runtime directory ownership, keys, and deployed configuration. It refuses
+unsafe changes to an existing runtime and writes the Hermes preparation
+lock only after its audit succeeds. Optional integrations are handled by
+separate scripts. Importing the module does not perform preparation."""
 
 import hashlib
 import os
@@ -17,7 +23,10 @@ sys.dont_write_bytecode = True
 import tempfile
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

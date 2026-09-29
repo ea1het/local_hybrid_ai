@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Apply the temporary Hermes terminal timeout workaround."""
+"""Apply the temporary terminal timeout workaround to Hermes runtime code.
+
+The operation checks the installed runtime and modifies the targeted
+timeout behavior only when the expected source pattern is present. It is
+separate from stack preparation so an operator can invoke it deliberately.
+Importing the module performs no patching."""
 
 import os
 import re
@@ -15,7 +20,10 @@ import tempfile
 import time
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

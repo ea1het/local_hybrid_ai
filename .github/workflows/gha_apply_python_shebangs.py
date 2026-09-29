@@ -3,12 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Apply and verify the project shebang on executable Python scripts.
+"""Check or add shebangs to executable Python files tracked by Git.
 
-Only tracked ``.py`` files marked executable in Git need a shebang. Import-only
-modules and tests need none. The tool never replaces a different shebang or
-follows a symlink in the worktree.
-"""
+Only index entries with executable mode are considered; import-only modules
+and tests do not require a shebang. The tool refuses symlinks, binary data,
+BOM-prefixed sources, and a preexisting different interpreter directive.
+--check reports drift without writes. Importing the module does not inspect
+or change repository files."""
 
 from __future__ import annotations
 

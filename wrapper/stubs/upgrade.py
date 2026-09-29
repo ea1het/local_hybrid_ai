@@ -3,19 +3,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Keep .env in sync with .env.template and plan/apply container upgrades.
+"""Plan and apply container version upgrades through the root .env.
 
-  upgrade.py [check]   sync .env with the template, query the registries and
-                       write .env--upgrading (installed -> latest per package)
-  upgrade.py apply     ask y/n per entry of .env--upgrading, confirm once more,
-                       then write every accepted value to .env in one pass
-  upgrade.py sync      only synchronise the variables of .env with the template
-  upgrade.py template  maintainers: bump .env.template from the registries
-
-Every write to .env is preceded by a .env--backup-YYYY-MM-DD copy. Nothing is
-ever written when the final answer is "no" or the input is closed.
-Exit status of `check`: 0 up to date, 10 upgrades pending, 1 errors.
-"""
+The check command can synchronize .env with its template, query configured
+OCI registries, compare tags within each image family, and write a reviewable
+.env--upgrading plan. The apply command checks that the plan is still valid,
+asks for each candidate and final confirmation, backs up .env, and writes
+accepted changes atomically. The sync command only aligns environment keys;
+template is for maintainers updating tracked defaults. Imports do not query
+registries or modify files."""
 
 from __future__ import annotations
 
@@ -457,7 +453,7 @@ def write_plan(plan_path: Path, rows: list[dict], installed: dict[str, str],
         f"# upgrade.py plan - generated {datetime.now():%Y-%m-%dT%H:%M:%S}",
         f"# env: {env_path if has_env else 'NONE - .env.template used as installed baseline'}",
         f"# template-sha256: {template_sha}",
-        "# Delete or comment out a line to skip it, then run: wrapper/lib/upgrade.py apply",
+        "# Delete or comment out a line to skip it, then run: wrapper/bin/upgrade.py apply",
         "# MAJOR = first version number changes: databases may need a data migration.",
         "",
     ]
@@ -505,7 +501,7 @@ def cmd_check(base: Path, no_sync: bool) -> int:
         if any(row["target"] for row in rows) else 0
     if count:
         print(f"\n{count} upgrade(s) planned in {plan_path}. Review it, then run: "
-              f"wrapper/lib/upgrade.py apply")
+              f"wrapper/bin/upgrade.py apply")
     else:
         plan_path.unlink(missing_ok=True)
         print("\nNothing to upgrade.")
@@ -523,7 +519,7 @@ def cmd_apply(base: Path) -> int:
     env_path, tpl_path, plan_path = base / ".env", base / ".env.template", base / PLAN_NAME
     for path in (env_path, plan_path):
         if not path.is_file():
-            err(f"ERROR: not found: {path}" + ("  (run: wrapper/lib/upgrade.py check)"
+            err(f"ERROR: not found: {path}" + ("  (run: wrapper/bin/upgrade.py check)"
                                                   if path == plan_path else ""))
             return 1
     plan_text = plan_path.read_text(encoding="utf-8")
@@ -531,7 +527,7 @@ def cmd_apply(base: Path) -> int:
     if tpl_path.is_file() and recorded and \
             recorded[1] != hashlib.sha256(tpl_path.read_bytes()).hexdigest():
         err("ERROR: .env.template changed after this plan was generated; "
-            "run: wrapper/lib/upgrade.py check")
+            "run: wrapper/bin/upgrade.py check")
         return 1
 
     env = EnvFile(env_path)

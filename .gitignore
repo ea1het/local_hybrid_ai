@@ -11,6 +11,7 @@
 
 # Operational environment backups (contain secrets)
 .env--*
+.env-backup-*
 
 
 
@@ -172,7 +173,6 @@ downloads/
 eggs/
 .eggs/
 lib/
-!wrapper/lib/
 lib64/
 parts/
 sdist/
@@ -1154,6 +1154,7 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+!wrapper/bin/
 [Oo]bj/
 # /log/
 # /logs/

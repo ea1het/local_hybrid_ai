@@ -3,7 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Validate prerequisites and prepare Gitea and runner runtime configuration."""
+"""Prepare Gitea server and runner configuration without deploying them.
+
+The script checks Stack 0 prerequisites, required source files, environment
+values, and runtime directories. It renders service configuration and
+preserves an existing runner token before writing a preparation lock.
+deploy-gitea.py performs the later service migration and startup; importing
+this module does not run either phase."""
 
 import datetime
 import os

@@ -3,39 +3,48 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepare Stack0 environment links and its shared Docker bridge network."""
+"""Prepare the platform environment links and shared Docker network.
+
+This script validates the root environment and prerequisites, links each
+stack to the central .env without replacing an existing non-symlink file,
+and ensures the shared network exists. It checks these resources even when
+the platform has a .lock, repairing only missing links or network state.
+install.py writes the lock after complete verification. Importing the module
+changes nothing."""
 
 from __future__ import annotations
 
 import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True
 
-from ops_common import die, load_env, log, require, require_commands, require_root, run, step
+if __package__:
+    from .ops_common import die, load_env, log, require, require_commands, require_root, run, step
+else:
+    from ops_common import die, load_env, log, require, require_commands, require_root, run, step
 
 
 def main() -> None:
-    """Validate platform prerequisites and prepare links and network if unlocked."""
+    """Validate and reconcile platform links and network regardless of lock."""
     stack_dir = Path(__file__).resolve().parent
     root_dir = stack_dir.parent
     env_file = root_dir / ".env"
-    lock_file = stack_dir / ".lock"
-    if lock_file.exists() or lock_file.is_symlink():
-        print(f"Stack0 already PREPARED ({lock_file}); nothing changed.")
-        return
-
     require_root()
     require_commands("docker", "ln", "readlink", "chmod", "chown")
     run("docker", "compose", "version", capture=True)
     if not env_file.is_file() or env_file.is_symlink():
         die(f"missing root operational environment: {env_file}")
 
-    os.chown(env_file, 0, 0)
-    os.chmod(env_file, 0o600)
+    env_stat = env_file.stat()
+    if (env_stat.st_uid, env_stat.st_gid) != (0, 0):
+        os.chown(env_file, 0, 0)
+    if stat.S_IMODE(env_stat.st_mode) != 0o600:
+        os.chmod(env_file, 0o600)
     env = load_env(env_file)
     require(env, env_file, "STACKS_ROOT", "BASE_PATH", "NETWORK_NAME", "ROOT_HOSTNAME")
     stacks_root = env["STACKS_ROOT"].rstrip("/")

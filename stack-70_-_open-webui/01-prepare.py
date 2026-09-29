@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Validate Open WebUI prerequisites and mark Stack7 prepared."""
+"""Validate Open WebUI prerequisites and mark Stack 70 prepared.
+
+The script checks the platform dependency, required configuration, and
+service files before writing its preparation lock. It does not mint
+credentials; the separate bootstrap script handles missing values.
+Importing the module does not inspect Docker or change runtime state."""
 
 
 import os

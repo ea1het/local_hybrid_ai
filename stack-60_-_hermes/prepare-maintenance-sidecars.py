@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepare the optional Hermes maintenance sidecars."""
+"""Prepare optional Hermes maintenance sidecars and their credentials.
+
+The script validates required configuration and creates the dedicated
+runtime files used by sidecars, keeping secret material separate from
+tracked source. It is intentionally separate from the core preparation
+phase. Importing this module does not generate or deploy sidecars."""
 
 import os
 import subprocess
@@ -12,7 +17,10 @@ import sys
 sys.dont_write_bytecode = True
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

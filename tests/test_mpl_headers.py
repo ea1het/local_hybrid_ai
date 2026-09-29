@@ -2,7 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Behavior checks for the repository MPL header tool."""
+"""Test safe classification, insertion, and reporting of MPL notices.
+
+The cases exercise supported comment formats, protected file types, missing
+worktree paths, and the generated exception report. They load the workflow
+tool in isolation and replace mutable repository state with temporary
+fixtures. Importing this test module does not change license headers."""
 
 import sys
 

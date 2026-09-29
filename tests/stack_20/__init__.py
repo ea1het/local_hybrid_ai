@@ -2,7 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Stack 20 tests."""
+"""Group Stack 20 search and crawler tests.
+
+The package contains preparation and readiness cases for SearXNG and
+Firecrawl. Importing it does not start containers or run probes."""
 
 import sys
 

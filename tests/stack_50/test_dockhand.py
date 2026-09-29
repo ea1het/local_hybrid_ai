@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Stack 50 Dockhand preparation and Docker volume handling."""
+"""Test Dockhand preparation and persistent-volume handling.
+
+Mocked Docker calls and temporary directories cover missing or existing
+volumes, prerequisite failures, and lock creation. Importing this module
+does not invoke Docker."""
 
 import sys
 

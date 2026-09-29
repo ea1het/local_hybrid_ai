@@ -2,7 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prevent repository Python entrypoints from creating local bytecode."""
+"""Guard against Python bytecode artifacts in operational entrypoints.
+
+The suite statically checks that each repository Python module disables
+bytecode before local imports and runs representative scripts in isolated
+temporary trees. It asserts that neither __pycache__ directories nor .pyc
+files appear. Importing this module only defines tests and parameters."""
 
 import ast
 import os
@@ -64,7 +69,7 @@ def test_module_disables_bytecode_before_local_import(path):
     [
         ("stack-00_-_platform/verify.py", "stack-00_-_platform/ops_common.py"),
         ("stack-60_-_hermes/wait-ready.py", "stack-60_-_hermes/stack_env.py"),
-        ("wrapper/lib/upgrade.py", "wrapper/stubs/sync_envs.py"),
+        ("wrapper/bin/upgrade.py", "wrapper/stubs/sync_envs.py"),
     ],
 )
 def test_local_import_does_not_create_pycache(tmp_path, script, helper):

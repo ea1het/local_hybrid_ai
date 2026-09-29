@@ -3,7 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Wait for the required Hermes containers to become ready."""
+"""Wait for required Hermes service containers to become ready.
+
+This deployment-time probe reads the stack environment and checks the
+expected containers until they report a usable state or time out.
+It neither prepares the stack nor starts containers. Importing the
+module does not perform readiness checks."""
 
 import os
 import shutil
@@ -14,7 +19,10 @@ sys.dont_write_bytecode = True
 import time
 from pathlib import Path
 
-from stack_env import load_env
+if __package__:
+    from .stack_env import load_env
+else:
+    from stack_env import load_env
 
 
 STACK_DIR = Path(__file__).resolve().parent

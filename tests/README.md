@@ -24,3 +24,22 @@ after an arbitrary importer has already begun loading it.
 
 These tests do not replace deployment and integration checks against Docker,
 host certificates, filesystem ownership, and real provider services.
+
+## Importing stack packages
+
+Each existing `stack-NN_-_*` directory is a Python package. The filesystem
+names remain unchanged because Compose files, deployment paths, and operator
+commands depend on them. Since hyphens and numeric script prefixes are not
+valid in a Python `import` statement, use `importlib` from the repository root:
+
+```python
+import importlib
+
+platform = importlib.import_module("stack-00_-_platform")
+prepare = importlib.import_module("stack-00_-_platform.01-prepare")
+```
+
+Package imports do not execute operational `main()` functions. Direct script
+execution, such as `./stack-00_-_platform/01-prepare.py`, remains supported.
+Use `python3 -B` (or `PYTHONDONTWRITEBYTECODE=1`) when importing from a fresh
+interpreter if the checkout must remain free of bytecode files.

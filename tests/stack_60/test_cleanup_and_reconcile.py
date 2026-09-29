@@ -2,7 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check Hermes cleanup, capability reconciliation, and timeout settings."""
+"""Test Hermes cleanup safeguards and capability reconciliation.
+
+Cases exercise protected paths, runtime override checks, and optional
+capability changes using controlled fixtures instead of live services.
+Importing the module does not run cleanup or reconciliation."""
 
 import sys
 
