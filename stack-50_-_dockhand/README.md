@@ -20,7 +20,7 @@ flowchart LR
 
 ## Contract
 
-- **Requires:** Stack0.
+- **Requires:** the configured shared Docker bridge network, root `.env`, and Docker Compose; it does not require Stack 00's `.lock` or host CA. Stack 00 normally creates the network and managed `.env` link.
 - **Optional relation:** Stack1 may publish the UI.
 - **Owns:** the `dockhand` container and external Docker volume `dockhand_data`.
 - **DR:** reconstructable; Dockhand application state is not a recovery target.

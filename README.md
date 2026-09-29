@@ -17,7 +17,7 @@ Local-first AI infrastructure split into eight Docker stacks. The repository con
 | [20 · SearXNG/Firecrawl](stack-20_-_searxng_firecrawl/README.md) | Optional local search and extraction | 00 |
 | [30 · LiteLLM](stack-30_-_litellm/README.md) | AI gateway and PostgreSQL | 00 |
 | [40 · Gitea](stack-40_-_gitea/README.md) | Git service and Actions runner | 00; 10 for optional ingress |
-| [50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker management UI | 00; 10 for optional ingress |
+| [50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker management UI | Shared Docker bridge network; 10 for optional ingress |
 | [60 · Hermes](stack-60_-_hermes/README.md) | Agent, sandbox, and maintenance sidecars | 00 and running 30; 20 and 40 optional |
 | [70 · Open WebUI](stack-70_-_open-webui/README.md) | Chat UI over LiteLLM | 00 and running 30; 10 and 20 optional |
 

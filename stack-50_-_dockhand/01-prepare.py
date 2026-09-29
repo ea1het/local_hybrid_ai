@@ -5,7 +5,8 @@
 
 """Prepare Dockhand's persistent Docker volume and stack prerequisites.
 
-The script verifies Stack 0 readiness and the shared network, creates the
+The script verifies the shared Docker network without requiring Stack 0's
+preparation lock, creates the
 Dockhand volume only if missing, and then records the preparation lock.
 It does not start Dockhand, and importing the module never creates a volume."""
 
@@ -77,18 +78,15 @@ def main():
         die(f"este stack debe residir en {stacks_root}/{STACK_NAME}; ruta actual: {STACK_DIR}")
     if stacks_root == base_path:
         die("STACKS_ROOT y BASE_PATH deben ser distintos")
-    stack0_lock = Path(stacks_root) / "stack-00_-_platform/.lock"
-    if not stack0_lock.is_file():
-        die(f"Stack0 no esta preparado: falta {stack0_lock}")
     network = env["NETWORK_NAME"]
     step(f"Red Docker compartida {network}")
     if subprocess.run(["docker", "network", "inspect", network], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die(f"falta {network}; instala/prepara primero Stack0")
+        die(f"falta la red Docker compartida {network}")
     driver = run(["docker", "network", "inspect", "-f", "{{.Driver}}", network], capture=True).stdout.strip()
     if driver != "bridge":
         die(f"{network} usa driver {driver}, no bridge")
-    log("red de Stack0 verificada")
+    log("red Docker compartida verificada")
     step(f"Volumen persistente {VOLUME}")
     if subprocess.run(["docker", "volume", "inspect", VOLUME], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:

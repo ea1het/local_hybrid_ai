@@ -15,7 +15,7 @@ Run commands from the repository root. Set up the protected root `.env` first (s
 | 20 | Search/Firecrawl prepare | Compose `up -d` | Compose `down` | Firecrawl PostgreSQL `SELECT 1` |
 | 30 | LiteLLM prepare only | Compose `up -d` | Compose `down` | LiteLLM PostgreSQL `SELECT 1` |
 | 40 | Gitea prepare only | Compose `up -d` | Compose `down` | No extra probe |
-| 50 | Dockhand prepare | Compose `up -d` | Compose **`stop`** | No extra probe |
+| 50 | Check shared network and prepare Dockhand volume; no Stack 00 lock required | Compose `up -d` | Compose **`stop`** | No extra probe |
 | 60 | Hermes prepare only | Compose `up -d --build` | Compose `down` | No extra probe |
 | 70 | Bootstrap key/config, then prepare | Compose `up -d` | Compose `down` | No extra probe |
 
@@ -25,7 +25,7 @@ An existing Stack 10–70 `.lock` makes `install` a no-op. Never remove it simpl
 
 ## First deployment and follow-up
 
-1. Prepare Stack 00 and verify with `status --deep`. Supply mkcert source files only if installed certificates are missing or invalid, or when intentionally rotating them.
+1. Prepare Stack 00 and verify with `status --deep` for stacks that require its full platform contract. Supply mkcert source files only if installed certificates are missing or invalid, or when intentionally rotating them. Stack 50 is an exception: its installer checks the existing shared bridge network directly and does not require Stack 00's lock or CA.
 2. Prepare and start desired independent stacks. Stack 30 requires its separate `provision-postgres.py` phase before normal LiteLLM startup; Stack 40's first deployment requires `deploy-gitea.py` for migrations, administrator, and runner registration. The respective READMEs explain these scripts.
 3. Ensure LiteLLM is running before first preparing Stack 70 when `OPENWEBUI_LITELLM_API_KEY` is absent. Its bootstrap writes a root-owned `.env-backup-YYMMDD-HHMMSS` before modifying `.env` and stores a dedicated virtual key scoped to all models visible **at issuance time**. New models are not automatically added to that key.
 4. Start applications, inspect `status`, and perform any application-specific readiness or policy checks. Stack 20's `wait-ready.py`, Stack 60's memory/capability setup, and Stack 70's model-policy reconciliation are not automatically run by `start`.

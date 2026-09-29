@@ -27,8 +27,6 @@ def test_prepare_creates_volume_then_lock(tmp_path, monkeypatch):
     stack_dir.mkdir()
     (stack_dir / ".env").touch()
     (stack_dir / "docker-compose.yml").touch()
-    (tmp_path / "stack-00_-_platform").mkdir()
-    (tmp_path / "stack-00_-_platform/.lock").touch()
     env = {"STACKS_ROOT": str(tmp_path), "BASE_PATH": str(tmp_path / "runtime"),
            "NETWORK_NAME": "internal"}
     commands = []
@@ -70,8 +68,6 @@ def test_prepare_rejects_non_bridge_network_before_volume_creation(tmp_path, mon
     stack_dir.mkdir()
     (stack_dir / ".env").touch()
     (stack_dir / "docker-compose.yml").touch()
-    (tmp_path / "stack-00_-_platform").mkdir()
-    (tmp_path / "stack-00_-_platform/.lock").touch()
     env = {"STACKS_ROOT": str(tmp_path), "BASE_PATH": str(tmp_path / "runtime"),
            "NETWORK_NAME": "internal"}
     commands = []
