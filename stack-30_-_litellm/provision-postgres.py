@@ -73,7 +73,7 @@ def main():
     if not admin_password:
         die("el secreto administrativo PostgreSQL esta vacio")
     compose = ["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE)]
-    step("Arranque de PostgreSQL dedicado")
+    step("Starting dedicated PostgreSQL")
     run(compose + ["up", "-d", "litellm-postgres"], env=env)
     for attempt in range(40):
         if subprocess.run(["docker", "exec", "litellm-postgres", "pg_isready", "-U", "postgres", "-d", "postgres"],
@@ -85,7 +85,7 @@ def main():
     log("litellm-postgres disponible")
     admin = ["docker", "exec", "-i", "-e", f"PGPASSWORD={admin_password}", "litellm-postgres",
              "psql", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-U", "postgres", "-d", "postgres"]
-    step("Usuario PostgreSQL de LiteLLM")
+    step("LiteLLM PostgreSQL user")
     run(admin + ["-v", f"db_user={env['LITELLM_DB_USER']}", "-v", f"db_password={env['LITELLM_DB_PASSWORD']}"],
         input_text="""SELECT format('CREATE ROLE %I WITH LOGIN PASSWORD %L', :'db_user', :'db_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user')
@@ -93,7 +93,7 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user')
 SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION', :'db_user', :'db_password')
 \\gexec
 """)
-    step("Base de datos PostgreSQL de LiteLLM")
+    step("LiteLLM PostgreSQL database")
     exists = run(admin + ["-v", f"db_name={env['LITELLM_DB_NAME']}", "-tA"],
                  input_text="SELECT 1 FROM pg_database WHERE datname = :'db_name';\n", capture=True).stdout.strip()
     if exists != "1":
@@ -101,15 +101,15 @@ SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCRE
              "-h", "127.0.0.1", "-U", "postgres", "-O", env["LITELLM_DB_USER"], env["LITELLM_DB_NAME"]])
     run(admin + ["-v", f"db_name={env['LITELLM_DB_NAME']}", "-v", f"db_user={env['LITELLM_DB_USER']}"],
         input_text="SELECT format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'db_user')\n\\gexec\n")
-    step("Validacion de credenciales LiteLLM")
+    step("LiteLLM credential validation")
     run(["docker", "exec", "-e", f"PGPASSWORD={env['LITELLM_DB_PASSWORD']}", "litellm-postgres", "psql",
          "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-U", env["LITELLM_DB_USER"],
          "-d", env["LITELLM_DB_NAME"], "-tAc", "SELECT 1;"], capture=True)
     log("conexion PostgreSQL: OK")
-    step("Validacion de Docker Compose")
+    step("Docker Compose validation")
     run(compose + ["config", "--quiet"], env=env)
     log("compose valido")
-    step("Provisionado terminado")
+    step("Provisioning complete")
     log("PostgreSQL dedicado de Stack3 provisionado y validado")
 
 

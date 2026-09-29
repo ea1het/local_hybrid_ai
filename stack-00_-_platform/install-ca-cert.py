@@ -129,7 +129,7 @@ def find_ca(path: Path) -> Path:
 
 def validate_ca(source: Path) -> None:
     """Comprueba CA:TRUE y muestra los datos del certificado origen."""
-    print("\n== 1/3 Validando CA ==")
+    print("\n== 1/3 Validating CA ==")
     result = run(["openssl", "x509", "-in", str(source), "-noout", "-text"], capture=True)
     if "CA:TRUE" not in result.stdout:
         die(f"El certificado no parece ser una CA (no contiene CA:TRUE): {source}")
@@ -146,7 +146,7 @@ def validate_ca(source: Path) -> None:
 
 def install_ca_on_host(source: Path, dest: Path) -> None:
     """Install the public CA certificate and refresh the host trust bundle."""
-    print("\n== 2/3 Instalando CA en el host ==")
+    print("\n== 2/3 Installing CA on host ==")
     dest.parent.mkdir(parents=True, exist_ok=True)
     run(["install", "-m", "0644", "-o", "0", "-g", "0", str(source), str(dest)])
     run(["update-ca-certificates"])
@@ -154,7 +154,7 @@ def install_ca_on_host(source: Path, dest: Path) -> None:
 
 def verify_bundle(dest: Path) -> None:
     """Verifica la CA instalada frente al bundle de certificados del host."""
-    print("\n== 3/3 Verificando bundle del host ==")
+    print("\n== 3/3 Verifying host CA bundle ==")
     if not HOST_CA_BUNDLE.is_file():
         die(f"No existe el bundle del sistema esperado: {HOST_CA_BUNDLE}")
     verify = run(["openssl", "verify", "-CAfile", str(HOST_CA_BUNDLE), str(dest)], capture=True)

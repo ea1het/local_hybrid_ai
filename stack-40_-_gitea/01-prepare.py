@@ -125,7 +125,7 @@ def main():
         if not directory.is_dir() or directory.is_symlink():
             die(f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
     network = env["GITEA_DOCKER_NETWORK"]
-    step(f"Red Docker compartida {network}")
+    step(f"Shared Docker network {network}")
     if subprocess.run(["docker", "network", "inspect", network], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
         die(f"falta {network}; instala/prepara primero Stack0")
@@ -133,7 +133,7 @@ def main():
     if driver != "bridge":
         die(f"{network} usa driver {driver}, no bridge")
     log("red de Stack0 verificada")
-    step("Token persistente del runner")
+    step("Persistent runner token")
     if token_file.is_file() and token_file.stat().st_size:
         log("token existente preservado")
     else:
@@ -151,7 +151,7 @@ def main():
         die(f"no se pudo preparar {token_file}")
     os.chown(token_file, 0, int(env["GITEA_GID"]))
     os.chmod(token_file, 0o440)
-    step("Configuracion de Gitea")
+    step("Gitea configuration")
     app_keys = ("GITEA_DOMAIN", "GITEA_ROOT_URL", "GITEA_SSH_DOMAIN", "GITEA_SSH_PORT",
                 "GITEA_INTERNAL_TOKEN", "GITEA_JWT_SECRET")
     render(app_source, app_target, {key: env[key] for key in app_keys})
@@ -167,18 +167,18 @@ def main():
         default_target.symlink_to("../app.ini")
     os.chown(default_target, int(env["GITEA_UID"]), int(env["GITEA_GID"]), follow_symlinks=False)
     log("config bind preservado; app.ini disponible tambien en custom/conf/app.ini")
-    step("Configuracion del runner")
+    step("Runner configuration")
     for obsolete in ("ca-certificates.crt", "certificates.txt"):
         (runner_service / "data" / obsolete).unlink(missing_ok=True)
     render(runner_source, runner_target, {"GITEA_DOCKER_NETWORK": network})
     os.chown(runner_target, int(env["GITEA_UID"]), int(env["GITEA_GID"]))
     os.chmod(runner_target, 0o640)
-    step("Validacion de Docker Compose")
+    step("Docker Compose validation")
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
     log("compose valido")
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
-    step("Preparacion terminada")
+    step("Preparation complete")
     log(f"lock creado: {LOCK_FILE}")
     log("runner token: runtime persistente, no requerido en .env")
     log("ejecuta ./deploy-gitea.py para migrar Gitea, asegurar el administrador y arrancar el stack")

@@ -82,12 +82,12 @@ def main():
     if not token_file.is_file() or not token_file.stat().st_size:
         die("falta el token runtime del runner; ejecuta primero ./01-prepare.py")
     compose = ["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE)]
-    step("Validacion y descarga")
+    step("Validation and download")
     run(compose + ["config", "--quiet"], env=env)
     run(compose + ["pull"], env=env)
-    step("Migraciones de Gitea")
+    step("Gitea migrations")
     run(compose + ["run", "--rm", "gitea", "gitea", "migrate", "--config", "/etc/gitea/app.ini"], env=env)
-    step("Usuario administrador")
+    step("Administrator user")
     admins = subprocess.run(compose + ["run", "--rm", "gitea", "gitea", "admin", "user", "list",
                                     "--config", "/etc/gitea/app.ini", "--admin"],
                             env=env, stdout=subprocess.PIPE, text=True)
@@ -97,9 +97,9 @@ def main():
                        'gitea admin user create --config /etc/gitea/app.ini '
                        '--username "$GITEA_ADMIN_USERNAME" --email "$GITEA_ADMIN_EMAIL" '
                        '--password "$GITEA_ADMIN_PASSWORD" --admin --must-change-password=false'], env=env)
-    step("Arranque")
+    step("Startup")
     run(compose + ["up", "-d"], env=env)
-    step("Validacion del runner")
+    step("Runner validation")
     for attempt in range(30):
         inspected = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "gitea-runner"],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -110,7 +110,7 @@ def main():
             die("el runner no creo/recupero su identidad persistente")
         time.sleep(2)
     run(compose + ["ps"], env=env)
-    step("Instalacion terminada")
+    step("Installation complete")
     log(f"Gitea publico: {env['GITEA_ROOT_URL']}")
     log(f"runner: {env['GITEA_RUNNER_NAME']}")
 

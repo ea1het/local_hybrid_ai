@@ -104,7 +104,7 @@ def main():
         require(lock.is_file(), f"{label} no esta preparado: falta {lock}")
 
     network = env["NETWORK_NAME"]
-    print(f"\n== Red Docker compartida {network}")
+    print(f"\n== Shared Docker network {network}")
     require(subprocess.run(("docker", "network", "inspect", network),
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            check=False).returncode == 0,
@@ -121,14 +121,14 @@ def main():
     require(running == "true", "litellm no esta en ejecucion")
     print("  LiteLLM disponible")
 
-    print("\n== Runtime persistente Open WebUI")
+    print("\n== Persistent Open WebUI runtime")
     data_dir = Path(base_path.rstrip("/")) / "service_-_open-webui" / "data"
     for directory in (data_dir.parent, data_dir):
         require(directory.is_dir() and not directory.is_symlink(),
                 f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
     print(f"  datos persistentes: {data_dir}")
 
-    print("\n== Validacion de Docker Compose")
+    print("\n== Docker Compose validation")
     run("docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE),
         "config", "--quiet", env=env)
     print("  compose valido")
@@ -136,7 +136,7 @@ def main():
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
     LOCK_FILE.chmod(0o644)
-    print(f"\n== Preparacion terminada\n  lock creado: {LOCK_FILE}")
+    print(f"\n== Preparation complete\n  lock creado: {LOCK_FILE}")
     print("  Open WebUI usara exclusivamente el gateway OpenAI-compatible de Stack3")
 
 

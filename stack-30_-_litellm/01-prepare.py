@@ -123,7 +123,7 @@ def main():
     config_dir = service_dir / "config"
     if not config_source.is_file():
         die(f"falta {config_source}")
-    step("Runtime de Stack3")
+    step("Stack 30 runtime")
     for directory in (service_dir, config_dir, postgres_dir, data_dir, secret_dir):
         if not directory.is_dir() or directory.is_symlink():
             die(f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
@@ -141,16 +141,16 @@ def main():
     os.chown(password_file, 0, 0)
     os.chmod(password_file, 0o600)
     log(f"PostgreSQL dedicado: {data_dir}")
-    step("Configuracion de LiteLLM")
+    step("LiteLLM configuration")
     run(["install", "-m", "0644", "-o", "0", "-g", "0", str(config_source), str(config_dir / "config.yaml")])
     log(f"config.yaml sincronizado desde {config_source} sin reemplazar el directorio bind")
     log(f"imagen fijada: {env['LITELLM_IMAGE']}:{env['LITELLM_VERSION']}")
-    step("Validacion de Docker Compose")
+    step("Docker Compose validation")
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
     log("compose valido")
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
-    step("Preparacion terminada")
+    step("Preparation complete")
     log(f"lock creado: {LOCK_FILE}")
     log("PostgreSQL pertenece ahora a Stack3")
 

@@ -104,7 +104,7 @@ def main():
     postgres_secret = postgres_service / "secret/postgres_admin_password"
 
     network = env["NETWORK_NAME"]
-    step(f"Red Docker compartida {network}")
+    step(f"Shared Docker network {network}")
     if subprocess.run(["docker", "network", "inspect", network], env=env, stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
         die(f"falta {network}; instala/prepara primero Stack0")
@@ -113,7 +113,7 @@ def main():
         die(f"{network} usa driver {driver}, no bridge")
     log("existe, es bridge y permanece propiedad de Stack0")
 
-    step("Directorios persistentes")
+    step("Persistent directories")
     for directory in (searxng_service, searxng_config, searxng_service / "data",
                       Path(base_path) / "service_-_firecrawl-redis/data",
                       Path(base_path) / "service_-_firecrawl-rabbitmq/data", postgres_service,
@@ -122,7 +122,7 @@ def main():
             die(f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
     log("carpetas y permisos gestionados por Stack0 (00-bootstrap.py)")
 
-    step("Secreto administrativo PostgreSQL")
+    step("PostgreSQL administrator secret")
     if postgres_secret.exists():
         if not postgres_secret.is_file() or postgres_secret.is_symlink() or not postgres_secret.stat().st_size:
             die(f"estado invalido del secreto PostgreSQL: {postgres_secret}")
@@ -137,7 +137,7 @@ def main():
         os.chmod(postgres_secret, 0o600)
         log("secreto administrativo PostgreSQL: generado una vez")
 
-    step("Configuracion de SearXNG")
+    step("SearXNG configuration")
     for source in (settings, limiter):
         target = searxng_config / source.name
         if target.is_dir() and not target.is_symlink():
@@ -148,13 +148,13 @@ def main():
                         str(source), str(searxng_config / source.name)], check=True)
     log("directorio bind-mounted preservado; solo se reconcilian ficheros gestionados")
 
-    step("Validacion de Docker Compose")
+    step("Docker Compose validation")
     subprocess.run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE),
                     "config", "--quiet"], env=env, check=True)
     log("compose valido")
     os.umask(0o022)
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}\n")
-    step("Preparacion terminada")
+    step("Preparation complete")
     log(f"lock creado: {LOCK_FILE}")
     log(f"postgres queda reservado como rol administrativo; Firecrawl usa {db_user}")
     log("red compartida consumida desde Stack0; no se crea ni se modifica")

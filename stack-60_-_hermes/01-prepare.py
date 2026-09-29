@@ -113,7 +113,7 @@ class Prepare:
     def __init__(self):
         """Validate stack settings and derive managed persistent paths."""
         self.env_hash = sha256(ENV_FILE)
-        step("Validacion de .env (solo lectura)")
+        step("Read-only .env validation")
         lines = ENV_FILE.read_text().splitlines()
         for key in ALL_KEYS:
             if not any(line.startswith(f"{key}=") for line in lines):
@@ -200,7 +200,7 @@ class Prepare:
 
     def sources(self) -> None:
         """Validate required sources and managed model references."""
-        step("Ficheros fuente del stack")
+        step("Stack source files")
         self.config_source = STACK_DIR / "config/hermes/config.yaml"
         self.sandbox_dockerfile = STACK_DIR / "config/sandbox/Dockerfile"
         self.sandbox_entrypoint = STACK_DIR / "config/sandbox/entrypoint.sh"
@@ -239,14 +239,14 @@ class Prepare:
     def docker_preflight(self) -> None:
         """Require the shared bridge network and stopped Hermes containers."""
         name = self.env["NETWORK_NAME"]
-        step(f"Red Docker {name}")
+        step(f"Docker network {name}")
         if self.run("docker", "network", "inspect", name, quiet=True, check=False).returncode:
             die(f"falta la red compartida {name}; debe crearla Stack0")
         driver = self.run("docker", "network", "inspect", "-f", "{{.Driver}}", name, capture=True).stdout.strip()
         if driver != "bridge":
             die(f"la red {name} existe pero usa driver '{driver}', no bridge")
         log("existe, es bridge y permanece propiedad de Stack0")
-        step("Estado de Hermes")
+        step("Hermes status")
         for container in (self.env["HERMES_CONTAINER"], self.env["SANDBOX_CONTAINER"]):
             if self.run("docker", "inspect", container, quiet=True, check=False).returncode == 0:
                 running = self.run("docker", "inspect", "-f", "{{.State.Running}}", container,
@@ -259,7 +259,7 @@ class Prepare:
 
     def persistent_filesystem(self) -> None:
         """Verify bootstrapped directories and preserve or create memory files."""
-        step("Creacion/verificacion del arbol objetivo")
+        step("Target directory creation and verification")
         paths = (self.hermes_root, self.hermes_config, self.hermes_config / "ssh", self.hermes_data,
                  self.hermes_logs, self.memory_root, self.memory_data, self.sandbox_root,
                  self.sandbox_config, self.sandbox_config / "ssh-host", self.sandbox_data,
@@ -318,7 +318,7 @@ class Prepare:
 
     def deploy_config(self, rendered: Path) -> None:
         """Render and install the managed Hermes and sandbox configuration."""
-        step("Configuracion gestionada")
+        step("Managed configuration")
         model = self.env["HERMES_MODEL"]
         lines = self.config_source.read_text().splitlines()
         rendered.write_text("\n".join(line.replace(MODEL_REFERENCE, model) for line in lines) + "\n")
@@ -356,7 +356,7 @@ class Prepare:
 
     def ssh_keys(self) -> None:
         """Provision Hermes-to-sandbox authorization and sandbox host keys."""
-        step("Claves SSH")
+        step("SSH keys")
         self.keypair(self.ssh_private, self.ssh_public, "hermes-sandbox",
                      self.env["HERMES_UID"], self.env["HERMES_GID"])
         self.keypair(self.host_private, self.host_public, "hermes-sandbox-host", "0", "0")
@@ -367,7 +367,7 @@ class Prepare:
 
     def dependencies(self) -> None:
         """Require a running LiteLLM container on the shared network."""
-        step("Dependencias existentes")
+        step("Existing dependencies")
         container = "litellm"
         if self.run("docker", "inspect", container, quiet=True, check=False).returncode:
             die(f"no existe el contenedor requerido '{container}'")
@@ -413,7 +413,7 @@ class Prepare:
 
     def audit(self, rendered: Path) -> None:
         """Audit managed trees, permissions, content, keys, and env immutability."""
-        step("Auditoria final del filesystem")
+        step("Final filesystem audit")
         top = ["config", "data", "logs"]
         self.assert_tree(self.hermes_root, top, False)
         self.assert_tree(self.sandbox_root, top, False)
@@ -487,7 +487,7 @@ class Prepare:
             self.deploy_config(rendered)
             self.ssh_keys()
             self.dependencies()
-            step("Validacion Docker Compose")
+            step("Docker Compose validation")
             self.run("docker", "compose", "config", "--quiet")
             log("docker compose config: OK")
             self.audit(rendered)

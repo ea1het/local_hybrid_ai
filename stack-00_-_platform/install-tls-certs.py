@@ -132,7 +132,7 @@ def require_regular_file(path: Path, label: str) -> None:
 
 def validate_pair(cert: Path, key: Path, ca: Path, san_domains: list[str]) -> None:
     """Comprueba clave, cadena CA, SAN y vigencia del certificado TLS."""
-    step("1/2 Validando certificado y clave")
+    step("1/2 Validating certificate and key")
 
     if openssl("x509", "-in", str(cert), "-noout").returncode != 0:
         die(f"certificado X.509 inválido: {cert}")
@@ -285,7 +285,7 @@ def main() -> None:
     require_regular_file(args.key, "clave privada")
     validate_pair(args.cert, args.key, ca, san_domains)
 
-    step("2/2 Instalando en la carpeta de servicio de HAProxy")
+    step("2/2 Installing in HAProxy service directory")
     changed_cert = install_atomic(args.cert, cert_target, 0o644, pki_gid)
     changed_key = install_atomic(args.key, key_target, 0o640, pki_gid)
     log(f"{cert_target}: {'actualizado' if changed_cert else 'sin cambios'} (0644 root:{pki_gid})")

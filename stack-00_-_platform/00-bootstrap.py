@@ -146,7 +146,7 @@ def image_owner(image: str) -> tuple[int, int] | None:
 
 def ensure_group(name: str, gid: int) -> None:
     """Comprueba o crea el grupo local con el GID esperado."""
-    step(f"Grupo {name}")
+    step(f"Group {name}")
     try:
         existing = grp.getgrnam(name)
     except KeyError:
@@ -408,7 +408,7 @@ def main() -> None:
     for stack, build in build_layout(env):
         if args.platform_only and stack not in ("stack-00_-_platform", "stack-10_-_haproxy_web"):
             continue
-        step(f"Carpetas de {stack}")
+        step(f"Directories for {stack}")
         lock = ROOT_DIR / stack / ".lock"
         if lock.exists() and stack != "stack-00_-_platform":
             log(f"PREPARADO ({lock}): carpetas y permisos no se modifican")
@@ -417,7 +417,7 @@ def main() -> None:
         for spec in build():
             ensure_dir(spec)
 
-    step("Estructura base completa" if not DRY_RUN else "Dry-run completo; no se ha modificado nada")
+    step("Base directory layout complete" if not DRY_RUN else "Dry run complete; no changes made")
     log(f"BASE_PATH: {base_path}")
     if skipped:
         log("stacks preparados omitidos (borra su .lock para reconciliarlos): " + ", ".join(skipped))

@@ -91,7 +91,7 @@ def main() -> None:
         run("docker", "network", "create", "--driver", "bridge", network_name, capture=True)
         log("created")
     step("Platform preparation complete")
-    log(".lock is written by install.py after certificate installation and verification")
+    log(".lock is written by the install process after certificate installation and verification")
 
 
 if __name__ == "__main__":

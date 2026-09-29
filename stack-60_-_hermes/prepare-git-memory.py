@@ -234,7 +234,7 @@ def main() -> None:
     data = memory_root / "data"
     legacy = base_path / service / "data/memories"
 
-    step("Estado de Hermes")
+    step("Hermes status")
     if subprocess.run(["docker", "inspect", env["HERMES_CONTAINER"]], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode == 0:
         running = run("docker", "inspect", "-f", "{{.State.Running}}", env["HERMES_CONTAINER"], capture=True).stdout.decode().strip()
@@ -244,7 +244,7 @@ def main() -> None:
     else:
         log(f"{env['HERMES_CONTAINER']}: no creado")
 
-    step("Directorio persistente de memoria")
+    step("Persistent memory directory")
     for path in (memory_root, data):
         if path.is_symlink():
             fail(f"{path} no puede ser symlink")
@@ -264,11 +264,11 @@ def main() -> None:
             os.chown(path, uid, gid)
             log(f"creado fichero local vacio: {name}")
 
-    step("Working tree Git")
+    step("Git working tree")
     adopt(memory_root, data, legacy, repository, branch, uid, gid)
     origin, actual_branch = validate_identity(data, repository, branch)
 
-    step("Memoria legacy")
+    step("Legacy memory")
     for name in MEMORY_FILES:
         old = legacy / name
         if old.is_file() and old.stat().st_size:
@@ -286,7 +286,7 @@ def main() -> None:
     for name in MEMORY_FILES:
         (data / name).chmod(0o640)
 
-    step("Auditoria")
+    step("Audit")
     if not (data / ".git").is_dir() or (data / ".git").is_symlink():
         fail(".git ausente o invalido")
     for path, mode in ((data, 0o750), *((data / name, 0o640) for name in MEMORY_FILES)):

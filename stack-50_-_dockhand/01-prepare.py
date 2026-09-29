@@ -79,7 +79,7 @@ def main():
     if stacks_root == base_path:
         die("STACKS_ROOT y BASE_PATH deben ser distintos")
     network = env["NETWORK_NAME"]
-    step(f"Red Docker compartida {network}")
+    step(f"Shared Docker network {network}")
     if subprocess.run(["docker", "network", "inspect", network], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
         die(f"falta la red Docker compartida {network}")
@@ -87,7 +87,7 @@ def main():
     if driver != "bridge":
         die(f"{network} usa driver {driver}, no bridge")
     log("red Docker compartida verificada")
-    step(f"Volumen persistente {VOLUME}")
+    step(f"Persistent volume {VOLUME}")
     if subprocess.run(["docker", "volume", "inspect", VOLUME], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
         run(["docker", "volume", "create", VOLUME], capture=True)
@@ -100,13 +100,13 @@ def main():
     volume_name = run(["docker", "volume", "inspect", "-f", "{{.Name}}", VOLUME], capture=True).stdout.strip()
     if volume_name != VOLUME:
         die(f"volumen inesperado: {volume_name}")
-    step("Validacion de Docker Compose")
+    step("Docker Compose validation")
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
     log("compose valido")
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
     LOCK_FILE.chmod(0o644)
-    step("Preparacion terminada")
+    step("Preparation complete")
     log(f"lock creado: {LOCK_FILE}")
     log(f"volumen {VOLUME}: propiedad de Stack5 y preservado entre despliegues")
 
