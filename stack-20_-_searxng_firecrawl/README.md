@@ -4,9 +4,9 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Stack2 — SearXNG + Firecrawl
+# Stack 20 — SearXNG + Firecrawl
 
-[Documentation TOC](../docs/TOC.md) · [Stack map](../docs/stacks/README.md) · [OpenSpec contract](../docs/devel-docs/openspec/stacks/stack2.feature)
+[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
 
 Stack2 provides local web search and page extraction. It is optional for AI consumers: Stack6 and Stack7 can operate without it, but web capabilities remain disabled rather than silently falling back to an external service.
 
@@ -31,7 +31,7 @@ flowchart LR
 - **DR:** reconstructable; caches, queue state and Firecrawl database state are not recovery artifacts.
 - **Network:** application services remain internal to `redlocal` unless explicitly exposed through Stack1.
 
-`.lock` means **PREPARED only**. Deployment and readiness are separate lifecycle states. The common lifecycle waits for the SearXNG and Firecrawl provider endpoints before optional consumers are reconciled.
+`.lock` means **PREPARED only**. Deployment and readiness are separate lifecycle states. The wrappers do not wait for provider endpoints or reconcile optional consumers automatically.
 
 ## Unattended preparation wrapper
 
@@ -41,9 +41,15 @@ module with closed stdin, forwards its output, and requires a regular `.lock`
 after success. If the lock already exists, it does nothing and explains the
 risk of manually removing it before reconfiguration.
 
-The wrapper prints the manual Docker Compose start command but never runs it.
+The `install` verb prints the manual Docker Compose start command but never runs it.
 `wait-ready.py` is a separate check for after the containers are started; it
 is not part of unattended preparation.
+
+`python3 -B wrapper/bin/stack-20.py start` runs `docker compose up -d` after checking `.lock`; `python3 -B wrapper/bin/stack-20.py stop` runs `docker compose down` without `--volumes`. Stop removes this stack's containers, not its persistent bind-mounted data or Stack0's external network. Start does not run `wait-ready.py` or reconcile optional consumers; run those phases separately before claiming `web.search` or `web.extract` is READY.
+
+Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
+
+`python3 -B wrapper/bin/stack-20.py status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role. It does not wait or alter the database.
 
 ## PostgreSQL identity model
 
@@ -64,9 +70,9 @@ The administrative PostgreSQL password is generated once for a new runtime and t
 
 ## Capability behaviour
 
-Stack2 is a provider, not a hard dependency of Stack6 or Stack7. If it is absent or not READY, consumers must keep web tools explicitly disabled. Once Stack2 becomes READY, the common installer/reconciliation lifecycle may enable the optional capabilities for prepared consumers.
+Stack 20 is a provider, not a hard dependency of Stacks 60 or 70. If it is absent or not READY, consumers must keep web tools explicitly disabled. Once it becomes READY, consumer capability configuration can be reconciled separately.
 
-This relationship is capability-driven; operators should not invoke consumer-specific scripts manually as part of normal lifecycle management.
+`start` and `status` do not change consumer configuration; inspect each consumer's README for its separate reconciliation phase.
 
 ## Security invariants
 
@@ -75,12 +81,6 @@ This relationship is capability-driven; operators should not invoke consumer-spe
 - The administrative database secret stays outside Git and outside the root `.env`.
 - Existing PGDATA metadata is preserved during PREPARE.
 - Missing Stack2 capability never enables an undeclared external web fallback.
-- `./local-ai` is the supported management boundary; Compose and stack scripts are implementation details.
+- The operator entry point is `wrapper/bin/stack-20.py`; it does not automate capability reconciliation.
 
-## Related decisions
-
-- [SDR-0004 — internal-only service networking](../docs/devel-docs/sdr/0004-internal-only-service-networking.md)
-- [Configuration and secrets](../docs/configuration/env-secrets.md)
-- [Installation lifecycle](../docs/installation.md)
-
-Key implementation files: `docker-compose.yml`, `config/searxng/`, `config/postgres/020-firecrawl-app-role.sh`, `manifest.json`, and stack lifecycle scripts.
+Key implementation files: `docker-compose.yml`, `config/searxng/`, `config/postgres/020-firecrawl-app-role.sh`, `01-prepare.py`, and `wait-ready.py`.

@@ -4,7 +4,9 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Stack0 — Platform foundation
+# Stack 00 — Platform foundation
+
+[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
 
 Stack0 is the mandatory foundation for every other stack. It owns the shared platform resources so application stacks do not duplicate or mutate them.
 
@@ -44,6 +46,8 @@ sudo python3 -B wrapper/bin/stack-00.py install
 
 The wrapper runs the complete stack-owned `install.py` workflow and relays its audit output. It never deploys containers. Direct `./install.py` invocation from the stack directory remains available.
 
+`sudo python3 -B wrapper/bin/stack-00.py status` reports the preparation lock without changing anything; it cannot infer platform health from a lock. Add `--deep` to run the read-only `verify.py` checks of directories, permissions, Docker network, CA and TLS. Stack0 has no application containers to inspect.
+
 `install.py` runs, in order:
 
 ```bash
@@ -70,7 +74,7 @@ verify.py                 # read-only check of the above
 | `install-tls-certs.py` | Keeps a valid installed pair, repairs its metadata or reinstalls missing/invalid material from `/tmp/tls.{crt,key}`. `--renew` rotates it explicitly. |
 | `verify.py` | Read-only; works with or without `.lock` and checks the platform state. |
 
-Stacks 1–7 follow the same convention: their `01-prepare.py` exits without changes when their `.lock` exists, and requires `stack-00_-_platform/.lock`. To reconcile a prepared stack deliberately, stop it, remove its `.lock` and run `00-bootstrap.py` and its `01-prepare.py` again.
+Stacks 10–70 skip their wrapper `install` when their `.lock` exists and require `stack-00_-_platform/.lock` for preparation. Stack 70 has its own `00-bootstrap.py` before `01-prepare.py`; the other application wrappers invoke only `01-prepare.py`. To reconfigure one deliberately, stop it, back up affected state, review the stack-specific instructions, and only then remove its lock and rerun its wrapper `install`.
 
 If any phase fails, `install.py` removes an existing Stack0 `.lock` and leaves no new one; retry after correcting the reported cause. Other stacks must not treat a failed audit as READY. Back up sensitive state before deliberately rotating certificates or modifying running services.
 

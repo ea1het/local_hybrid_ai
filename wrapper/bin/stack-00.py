@@ -22,6 +22,8 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from wrapper.lib.stack_status import report_platform_status
 STACK_DIR = ROOT / "stack-00_-_platform"
 LOCK_FILE = STACK_DIR / ".lock"
 INSTALL_MODULE = "stack-00_-_platform.install"
@@ -72,7 +74,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("install", help="Reconcile and verify platform prerequisites").set_defaults(handler=install)
-    return parser.parse_args(argv).handler()
+    status_parser = commands.add_parser("status", help="Report preparation and container health")
+    status_parser.add_argument("--deep", action="store_true", help="Run additional read-only checks")
+    options = parser.parse_args(argv)
+    if options.command == "status":
+        return report_platform_status(STACK_DIR, LOCK_FILE, deep=options.deep)
+    return options.handler()
 
 
 if __name__ == "__main__":

@@ -6,150 +6,66 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Local Hybrid AI
 
-A **local-first, hybrid AI platform** assembled from independent Docker stacks. Local services are the default execution path; cloud services can be used deliberately when a workload or policy requires them. The repository is designed so that infrastructure ownership, security boundaries, persistence, recovery and upgrades remain explicit rather than hidden inside one monolithic Compose project.
+Local-first AI infrastructure split into eight Docker stacks. The repository contains Python preparation modules, Compose definitions, operational wrappers, tests, and configuration examples. Installation state and secrets belong outside Git; the root `.env` is the protected operational configuration.
 
-A new reader begins with this page and then follows the [documentation map](docs/TOC.md), whose opening diagram routes operators, maintainers and contributors to the appropriate documentation layer.
+## Stacks and dependencies
 
-## What problem this project solves
+| Stack | Purpose | Dependencies |
+|---|---|---|
+| [00 · Platform](stack-00_-_platform/README.md) | Shared directories and network, local CA trust, HAProxy TLS | Host Docker and operational `.env` |
+| [10 · HAProxy/Web](stack-10_-_haproxy_web/README.md) | HTTPS ingress and static landing page | 00 |
+| [20 · SearXNG/Firecrawl](stack-20_-_searxng_firecrawl/README.md) | Optional local search and extraction | 00 |
+| [30 · LiteLLM](stack-30_-_litellm/README.md) | AI gateway and PostgreSQL | 00 |
+| [40 · Gitea](stack-40_-_gitea/README.md) | Git service and Actions runner | 00; 10 for optional ingress |
+| [50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker management UI | 00; 10 for optional ingress |
+| [60 · Hermes](stack-60_-_hermes/README.md) | Agent, sandbox, and maintenance sidecars | 00 and running 30; 20 and 40 optional |
+| [70 · Open WebUI](stack-70_-_open-webui/README.md) | Chat UI over LiteLLM | 00 and running 30; 10 and 20 optional |
 
-Local AI systems tend to become tightly coupled: one Compose file owns everything, application state leaks into the source checkout, agents gain excessive privileges, and upgrades become “pull the newest image and hope”. Local Hybrid AI takes the opposite approach:
+Stack 00 owns common host prerequisites. Stack 20 is an optional provider, not an automatic external-web fallback. Stack 30 is the required gateway for AI consumers. Each stack README describes its specific state and manual follow-up steps.
 
-- **local first** — inference, web tooling and agent execution can remain on the local platform;
-- **hybrid by policy** — remote model providers are reached through the AI gateway, not directly by every consumer;
-- **atomic stacks** — each stack declares what it requires, provides, consumes and owns;
-- **one management boundary** — operators and automation use `./local-ai`, not private scripts as public APIs;
-- **explicit mutable state** — Git source and installation runtime are separate;
-- **fail closed** — missing required dependencies, unsafe lifecycle operations and indeterminate registry state do not become implicit success;
-- **recoverable by design** — stateful resources declare recovery contracts; reconstructable resources are rebuilt from source;
-- **version-aware upgrades** — a human version and an immutable image digest are different pieces of evidence.
+## Installation and operations
 
-## How the platform fits together
-
-```mermaid
-flowchart TB
-    U["Users / clients"] --> S1["Stack1 · HAProxy/Web"]
-    S1 --> S7["Stack7 · Open WebUI"]
-    S1 -.-> S6["Stack6 · Hermes"]
-    S1 -.-> S4["Stack4 · Gitea"]
-    S1 -.-> S5["Stack5 · Dockhand"]
-
-    S7 --> S3["Stack3 · LiteLLM"]
-    S6 --> S3
-    S3 --> M["Local models"]
-    S3 -.-> C["Cloud model APIs"]
-
-    S7 -.-> S2["Stack2 · Web tools"]
-    S6 -.-> S2
-
-    S0["Stack0 · Platform"] --> S1
-    S0 --> S2
-    S0 --> S3
-    S0 --> S4
-    S0 --> S5
-    S0 --> S6
-    S0 --> S7
-```
-
-Stack0 is the shared foundation. Stack3 is a **required** AI dependency for Hermes and Open WebUI. Stack2 provides **optional** `web.search` and `web.extract` capabilities. Stack1 publishes services but does not own their application state. The detailed dependency/capability model is in the [stack architecture](docs/stacks/README.md).
-
-## The eight stacks
-
-| Stack | Purpose |
-|---|---|
-| **0 · Platform** | Shared Docker network, service directory tree, local CA trust and HAProxy TLS material |
-| **1 · HAProxy/Web** | HTTPS ingress and static landing page |
-| **2 · SearXNG/Firecrawl** | Local web search and extraction |
-| **3 · LiteLLM** | OpenAI-compatible model/MCP gateway and policy boundary |
-| **4 · Gitea** | Local Git service and Actions runner |
-| **5 · Dockhand** | Container-management UI |
-| **6 · Hermes** | Agent runtime, isolated sandbox and Git-backed durable memory |
-| **7 · Open WebUI** | Curated chat UI over LiteLLM with optional local web tools |
-
-## Source is not runtime
-
-The repository is declarative project source. Mutable installation state lives outside the checkout:
-
-```text
-/opt/docker/stacks    Git checkout: source, manifests, Compose and documentation
-/opt/docker/runtime   installation-owned runtime, secrets and management state
-```
-
-This separation is a core invariant. Stack preparation does not silently regenerate the protected root `.env`, and a stack `.lock` means **PREPARED only** — never “deployed”, “ready” or “healthy”. [Configuration](docs/configuration/README.md) and [ADR-0001](docs/devel-docs/adr/0001-backup-operational-env.md) describe the corresponding contracts.
-
-## Lifecycle
-
-Every managed stack follows the same conceptual lifecycle:
-
-```mermaid
-flowchart LR
-    P["PREPARE"] --> D["DEPLOY"] --> R["READY"] --> C["RECONCILE"] --> V["VERIFY"]
-    C -.->|runtime changed| R
-```
-
-Preparation establishes prerequisites and declarative/runtime structure. Deployment starts or updates runtime. READY proves required runtime health. Reconciliation applies capability-dependent policy. VERIFY checks the resulting contract. [Installation](docs/installation.md) describes the operator workflow.
-
-## One supported management interface
-
-`./local-ai` is the project’s **sole supported management and automation boundary**. Python modules under `src/local_ai_cli/`, stack shell scripts and Compose files are implementation details.
-
-```mermaid
-flowchart LR
-    H["Human operator"] --> CLI["./local-ai"]
-    A["Automation / CI / API"] -->|"--json"| CLI
-    CLI --> I["install / start / stop"]
-    CLI --> S["status / upgrade"]
-    CLI --> DR["backup / restore"]
-```
-
-Common entry points are:
+Run the wrappers from the repository root with Python 3 and Docker Compose available. Prepare the protected `.env` using [`.env.template`](.env.template); do not commit credentials. Initial preparation and lifecycle commands need root privileges. For example:
 
 ```bash
-./local-ai install --plan all
-./local-ai install 0 1 2 3 4 5 6 7 --yes
-./local-ai status
-./local-ai start 5
-./local-ai stop 5
-./local-ai upgrade
-./local-ai backup --yes
-./local-ai restore list-backup-sets
-./local-ai restore plan <backup-set>
+cd /opt/docker/stacks
+sudo python3 -B wrapper/bin/stack-00.py install
+sudo python3 -B wrapper/bin/stack-00.py status --deep
+sudo python3 -B wrapper/bin/stack-10.py install
+sudo python3 -B wrapper/bin/stack-10.py start
+sudo python3 -B wrapper/bin/stack-10.py status
+sudo python3 -B wrapper/bin/stack-10.py stop
 ```
 
-Interactive backup asks for confirmation; unattended or JSON execution requires `--yes`. Restore planning is read-only and does not expose the recovery engine's private `--dry-run` implementation flag.
+Replace `10` with `20`, `30`, `40`, `50`, `60`, or `70` for their wrappers. Stack 00 has **`install` and `status` only**: it has no containers to start or stop. Stack 00 `install` audits and repairs missing platform prerequisites even when `.lock` exists, and writes/retains its lock only after verification. Other stacks' `install` normally stops at an existing `.lock`; removing a lock can trigger destructive reconfiguration and requires a deliberate review and backup. A lock means **prepared**, never running or healthy.
 
-Selective lifecycle is conservative: `stop` refuses to stop a provider while required consumers are running, and `start` refuses to invent or auto-start missing required providers. The complete [CLI reference](docs/user-docs/cli.md), [management-plane architecture](docs/architecture/management-plane.md) and [ADR-0002](docs/devel-docs/adr/0002-single-management-cli.md) describe the boundary at different levels.
+For Stacks 10–70, `install` prepares but does not start containers. `start` runs Compose `up -d` (`--build` for 60); `stop` runs Compose `down` without `--volumes`, except 50, which uses Compose `stop` to preserve its container and external volume. `start` requires a regular preparation lock and managed `.env` link. These verbs do not automatically orchestrate dependent stacks or all first-deployment tasks. In particular, 30 needs separate PostgreSQL provisioning, 40 needs its deployment script, and 70 needs **running LiteLLM** to issue a scoped API key when one is missing. Read the relevant stack README before first start.
 
-## Security boundaries
+`status` is read-only and combines the lock with Docker Compose container state and healthchecks. It distinguishes stopped, partial, degraded, running-without-confirmed-health, and ready services; **a successful `start` is not proof of readiness**. `status --deep` additionally runs Stack 00's platform verifier or an authenticated, read-only PostgreSQL `SELECT 1` for 20 and 30. Other stacks have no additional deep probe yet. Healthchecks establish local service liveness, not end-to-end functionality, model policy, background-job success, or backup validity. See [stack operations](docs/operations.md) for the verb matrix, output interpretation, and first-run exceptions.
 
-Security decisions are recorded explicitly rather than buried in Compose files. Important examples include: Hermes runs without the Docker socket; AI consumers use least-privilege LiteLLM credentials; service networking stays internal unless intentionally published; and Open WebUI model access is explicit. The [SDR index](docs/devel-docs/sdr/README.md) records the rationale.
+## Source and runtime
 
-## Upgrades and recovery
-
-The normal upgrade workflow is **installed → available → selectable → selected → verified PASS**. Registry availability is discovery, not consent, and a component is selectable only after its executor has been qualified. The [upgrade guide](docs/user-docs/upgrade.md) is the operator entry point; compatibility rules are documented separately in [upgrade policy](docs/upgrade-policy.md).
-
-Disaster recovery is manifest-driven. Stateful resources are backed up according to their recovery strategy; reconstructable resources are rebuilt. Backup publication and restore validation fail closed. The [DR guide](docs/dr/README.md) is the recovery entry point.
+`STACKS_ROOT` in `.env` identifies the checkout; `BASE_PATH` identifies installation-owned runtime directories. The examples assume `/opt/docker/stacks` for the checkout, but the configured paths govern an actual installation. Stack 00 creates the common directory tree, Docker network, and managed per-stack `.env` links. Certificates are sourced from mkcert when missing or explicitly rotated; see the [mkcert guide](program_configs/inference_server/mkcert/README.md). Stack 70 backs up the root `.env` as `.env-backup-YYMMDD-HHMMSS` before changing it and stores its LiteLLM virtual key there without printing it.
 
 ## Repository map
 
-```text
-local-ai                        supported operator/automation CLI
-src/local_ai_cli/                private management implementation package
-src/local_ai_cli/backup/         backup engine
-src/local_ai_cli/restore/        restore engine
-src/local_ai_cli/common/         shared primitives (manifests, DR archive/filesystem/postgres, render)
-stack-00_-_* … stack-70_-_*         atomic stack implementations
-docs/                           documentation and decision records
-tests/                          automated verification, mirroring src/local_ai_cli/
-```
+| Path | Role |
+|---|---|
+| `stack-00_-_platform/` … `stack-70_-_open-webui/` | Stack-owned Python packages, Compose files, and configuration |
+| `wrapper/bin/stack-NN.py` | Operator verbs for each stack |
+| `wrapper/lib/stack_status.py` | Shared status and deep-probe implementation |
+| `wrapper/stubs/` | Supporting stubs and maintenance utilities; not a unified lifecycle CLI |
+| `program_configs/` | Client and infrastructure configuration guides |
+| `tests/` | Automated tests grouped by stack and shared behavior |
 
-The complete documentation structure is in [`docs/TOC.md`](docs/TOC.md). Behavioural traceability from requirements to implementation and tests is in [OpenSpec traceability](docs/devel-docs/openspec/traceability.md).
+The repository does **not** currently provide a unified `./local-ai` management command, backup/restore CLI, or automatic cross-stack lifecycle manager. Do not use older commands for those interfaces. Upgrades and recovery need their own reviewed procedures; do not infer either from a successful preparation lock or healthcheck.
 
-## Development gate
-
-The repository validation gate is:
+## Validation
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -t .
+python3 -B tests/run.py
+python3 -B .github/workflows/gha_apply_mpl_headers.py --check
+python3 -B .github/workflows/gha_apply_python_shebangs.py --check
 ```
 
-Testing conventions and qualification evidence are documented in [testing strategy](docs/devel-docs/testing.md).
+The tests mock external operations; they do not deploy containers or validate a live installation. See [tests/README.md](tests/README.md) and [design principles](docs/design_principles.md).

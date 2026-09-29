@@ -67,6 +67,13 @@ services:
     container_name: gitea-runner
     restart: unless-stopped
 
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/.runner"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
     environment:
       CONFIG_FILE: /data/config.yaml
       GITEA_INSTANCE_URL: ${GITEA_RUNNER_INSTANCE_URL:?Set GITEA_RUNNER_INSTANCE_URL in .env}

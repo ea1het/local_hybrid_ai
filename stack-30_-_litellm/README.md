@@ -4,9 +4,9 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Stack3 — LiteLLM + PostgreSQL
+# Stack 30 — LiteLLM + PostgreSQL
 
-[Documentation TOC](../docs/TOC.md) · [Stack map](../docs/stacks/README.md) · [OpenSpec contract](../docs/devel-docs/openspec/stacks/stack3.feature)
+[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
 
 Stack3 is the central OpenAI-compatible AI gateway. It is the policy and credential boundary between local/remote model providers and application consumers such as Stack6 Hermes and Stack7 Open WebUI.
 
@@ -61,15 +61,21 @@ initial preparation). The wrapper calls only the stack's `01-prepare.py`
 package module, with closed stdin. It reports an existing `.lock` without
 changing anything and requires a regular lock after successful preparation.
 
-It **does not** execute `provision-postgres.py` or start containers. It prints
+`install` **does not** execute `provision-postgres.py` or start containers. It prints
 the manual PostgreSQL provisioning and Compose startup commands as separate
 next steps; a preparation lock alone does not prove the database is ready.
+
+`python3 -B wrapper/bin/stack-30.py start` runs `docker compose up -d` after checking `.lock`; it does **not** provision PostgreSQL first. On a new installation, run `provision-postgres.py` as instructed above before starting LiteLLM. `python3 -B wrapper/bin/stack-30.py stop` runs `docker compose down` without `--volumes`, removing containers but retaining the PostgreSQL bind-mounted data and `.lock`. Neither verb proves LiteLLM is healthy.
+
+Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
+
+`python3 -B wrapper/bin/stack-30.py status` reports PostgreSQL and LiteLLM health. The existing PostgreSQL `pg_isready` healthcheck only tests server readiness; `status --deep` adds an authenticated, read-only `SELECT 1` inside the PostgreSQL container. This still does not prove that a model inference request succeeds.
 
 ## Credential and policy boundary
 
 Application consumers use dedicated least-privilege virtual credentials rather than `LITELLM_MASTER_KEY`. Provider policy also stays behind LiteLLM: consumers should not bypass the gateway to reach model providers directly.
 
-MCP traffic follows the same boundary when routed through LiteLLM. See the operator integration documentation for supported MCP configuration rather than coupling applications to internal implementation files.
+MCP traffic follows the same boundary when routed through LiteLLM. Review `config/litellm/config.yaml` and the protected environment when changing gateway routes.
 
 ## Security invariants
 
@@ -77,13 +83,6 @@ MCP traffic follows the same boundary when routed through LiteLLM. See the opera
 - LiteLLM consumers receive scoped credentials instead of the master key.
 - Persistent identity material is preserved across PREPARE and guarded upgrades.
 - Applications consume the gateway rather than embedding provider credentials or provider-selection policy.
-- `./local-ai` is the supported management boundary; direct stack scripts and Compose commands are implementation details.
+- The operator entry point is `wrapper/bin/stack-30.py`; PostgreSQL provisioning remains a separate step.
 
-## Related decisions
-
-- [SDR-0003 — least-privilege AI gateway credentials](../docs/devel-docs/sdr/0003-least-privilege-ai-gateway-credentials.md)
-- [ADR-0004 — upgrade compatibility policy](../docs/devel-docs/adr/0004-upgrade-compatibility-policy.md)
-- [LiteLLM MCP integration](../docs/user-docs/integrations/litellm-mcp.md)
-- [PostgreSQL disaster recovery](../docs/dr/postgres.md)
-
-Key implementation files: `docker-compose.yml`, `config/litellm/config.yaml`, `manifest.json`, and stack lifecycle scripts.
+Key implementation files: `docker-compose.yml`, `config/litellm/config.yaml`, `01-prepare.py`, and `provision-postgres.py`.

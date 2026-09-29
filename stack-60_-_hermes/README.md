@@ -4,9 +4,9 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Stack6 — Hermes
+# Stack 60 — Hermes
 
-[Documentation TOC](../docs/TOC.md) · [Stack map](../docs/stacks/README.md) · [Management plane](../docs/architecture/management-plane.md) · [OpenSpec contract](../docs/devel-docs/openspec/stacks/stack6.feature)
+[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
 
 Stack6 is the agent runtime. It combines Hermes with isolated command execution, local-first AI access through Stack3, optional Stack2 web capabilities and portable Git-backed user memory.
 
@@ -28,7 +28,7 @@ flowchart LR
 - **Owns:** Hermes runtime, sandbox execution surface and Stack6 maintenance sidecars.
 - **DR:** runtime and sandbox are reconstructable. Durable user memory is the Git-backed `MEMORY.md` + `USER.md` contract and is verified as an external prerequisite rather than copied as arbitrary container state.
 
-Stack2 is deliberately optional. When its provider capabilities are absent or not READY, Hermes web tools remain disabled. Reconciliation enables them only after the provider is proven ready.
+Stack 20 is deliberately optional. When its provider capabilities are absent or not READY, Hermes web tools must remain disabled. Capability reconciliation is a separate action after the provider is proven ready.
 
 ## Isolation boundary
 
@@ -40,7 +40,7 @@ The model/provider boundary is also externalized: Hermes talks to Stack3 through
 
 ## Preparation and convergence
 
-Stack6 preparation is deliberately staged because filesystem ownership, managed configuration, SSH isolation, generation state and Git-backed memory have different failure and security properties.
+The complete Stack 60 deployment involves separate phases because filesystem ownership, managed configuration, SSH isolation, generation state and Git-backed memory have different failure and security properties. The `install` wrapper runs only `01-prepare.py`, not this entire sequence.
 
 ```mermaid
 flowchart TD
@@ -58,7 +58,7 @@ flowchart TD
     READY2 --> VER
 ```
 
-Generation/state initialization is fail-closed: an incomplete or inconsistent sandbox generation is not treated as prepared merely because files exist. Capability reconciliation can restart runtime when configuration changes; readiness is therefore re-established after such a restart before verification succeeds.
+Generation/state initialization is fail-closed: an incomplete or inconsistent sandbox generation is not treated as prepared merely because files exist. Capability reconciliation can restart runtime when configuration changes; recheck readiness after such a restart.
 
 A `.lock` means **PREPARED only**. It says nothing about Hermes health, sandbox readiness or optional capability convergence.
 
@@ -70,9 +70,15 @@ module with closed stdin, forwards the preparation audit, and checks for a
 regular `.lock` on success. An existing lock is reported without changing
 configuration or removing it.
 
-The wrapper never starts containers or executes Buzz installation, Git-memory
+`install` never starts containers or executes Buzz installation, Git-memory
 adoption, sidecar setup, capability reconciliation, workaround, readiness,
 or cleanup. Those operations belong to a later, separately scoped phase.
+
+`python3 -B wrapper/bin/stack-60.py start` runs `docker compose up -d --build` after checking `.lock`; `python3 -B wrapper/bin/stack-60.py stop` runs `docker compose down` without `--volumes`. Stop removes the stack's containers but preserves bind-mounted state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
+
+Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
+
+`python3 -B wrapper/bin/stack-60.py status` reports Hermes, sandbox and cleanup-sidecar health; an absent `git-memory` profile is shown as optional, not failed. The memory-sync healthcheck confirms a Git checkout is mounted, not that its last synchronization succeeded. The cleanup healthcheck confirms its state DB and generation marker exist, not that a sweep succeeded. These workers expose no independent readiness endpoint, so `status --deep` currently has no additional probe and must not claim those background jobs completed.
 
 ## Memory contract
 
@@ -86,12 +92,4 @@ With Hermes stopped and Stack6 prepared, adopt or validate the memory working tr
 
 Hermes native Cron is the agentic deferred-work mechanism. A future Cron execution starts in a fresh session, so a scheduled prompt carries the context required to perform that future task. Deterministic housekeeping such as sandbox cleanup and Git-memory synchronization remains in dedicated sidecars rather than being delegated to agentic Cron.
 
-## Related decisions and operator documentation
-
-- [SDR-0002 — agent runtime without Docker socket](../docs/devel-docs/sdr/0002-agent-runtime-without-docker-socket.md)
-- [SDR-0003 — least-privilege AI gateway credentials](../docs/devel-docs/sdr/0003-least-privilege-ai-gateway-credentials.md)
-- [SDR-0004 — internal-only service networking](../docs/devel-docs/sdr/0004-internal-only-service-networking.md)
-- [Hermes operator integration](../docs/user-docs/integrations/hermes.md)
-- [Stack6 DR verifier/status](../docs/dr/status.md)
-
-Key implementation files include `docker-compose.yml`, `config/hermes/config.yaml`, sandbox and maintenance configuration, `manifest.json`, and stack lifecycle scripts. Those files implement the contract; they are not independent public management interfaces.
+Key implementation files include `docker-compose.yml`, `config/hermes/config.yaml`, sandbox and maintenance configuration, `01-prepare.py`, `wait-ready.py`, and `reconcile-capabilities.py`. The wrapper does not run the latter two phases automatically.

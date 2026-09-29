@@ -173,6 +173,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!wrapper/lib/
 lib64/
 parts/
 sdist/

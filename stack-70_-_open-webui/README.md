@@ -4,9 +4,9 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Stack7 — Open WebUI
+# Stack 70 — Open WebUI
 
-[Documentation TOC](../docs/TOC.md) · [Stack map](../docs/stacks/README.md) · [OpenSpec contract](../docs/devel-docs/openspec/stacks/stack7.feature)
+[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
 
 Stack7 is the curated user chat surface. It consumes the Stack3 AI gateway, can consume Stack2 local web capabilities and may be published through Stack1 ingress. Model access is explicit rather than globally bypassed.
 
@@ -31,27 +31,32 @@ flowchart LR
 
 ## Initial preparation
 
-Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root after Stack0 and Stack3 are prepared and LiteLLM is running. The wrapper does not start Open WebUI. If `stack-70_-_open-webui/.lock` already exists, it changes nothing and shows the manual startup command; remove the lock only after reviewing the impact of reconfiguration.
+Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root after Stack0 and Stack3 are prepared and LiteLLM is running. `install` does not start Open WebUI. If `stack-70_-_open-webui/.lock` already exists, it changes nothing and shows the manual startup command; remove the lock only after reviewing the impact of reconfiguration.
 
 Without a lock, the wrapper calls `00-bootstrap.py` and then `01-prepare.py`. Bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
 
 If `OPENWEBUI_LITELLM_API_KEY` is missing, bootstrap issues a dedicated LiteLLM virtual key scoped to **all models visible at issuance time** and stores it in root `.env`; Compose passes it to Open WebUI as `OPENAI_API_KEY`. It never prints the key. Newly added models are not automatically included in that existing key's scope. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
 
+`sudo python3 -B wrapper/bin/stack-70.py start` runs `docker compose up -d` after checking `.lock`; `sudo python3 -B wrapper/bin/stack-70.py stop` runs `docker compose down` without `--volumes`. Stop removes the container but preserves bind-mounted Open WebUI data and `.lock`. Start does not run `wait-ready.py` or reconcile/verify model policy, so a successful Compose exit is not a READY result.
+
+`sudo python3 -B wrapper/bin/stack-70.py status` reports the container's `/health` result from Compose. This tests the WebUI process, not the LiteLLM key scope or model policy; `status --deep` currently has no additional probe. Run the separate policy verifier when that contract matters.
+
 ## Policy lifecycle
 
-Stack7 model policy is reconciled through the supported `./local-ai` lifecycle. Before the first real administrator exists, reconciliation intentionally reports a deferred/bootstrap-safe state rather than failing initial deployment. After an administrator exists, reconciliation becomes idempotent and verification requires the declared access/default-feature policy.
+Model-policy reconciliation is separate from the wrapper lifecycle. Before the first real administrator exists, reconciliation may report a deferred/bootstrap-safe state. After an administrator exists, run reconciliation and verification explicitly to check the declared access/default-feature policy.
 
-The stack-owned reconciliation and verification Python programs are implementation details. Operators use:
+From the stack directory, the dedicated programs are:
 
 ```bash
-./local-ai install 7 --reconcile --yes
+sudo python3 -B reconcile-model-policy.py
+sudo python3 -B verify-model-policy.py
 ```
 
 The reconciler ensures `basic_autorouter` is active, explicitly readable and configured with `web_search` in its default feature identifiers. Verification is read-only and checks the same contract.
 
 ## Optional web capability
 
-Stack2 is not a required dependency. Without a READY Stack2 provider, Stack7 must not silently route web requests to an undeclared external provider. When Stack2 becomes READY, capability reconciliation enables the configured local web integration.
+Stack 20 is not a required dependency. Without a READY provider, Stack 70 must not silently route web requests to an undeclared external provider. Once Stack 20 is ready, configure and verify local web integration separately; the wrapper does not do this.
 
 ## Security invariants
 
@@ -59,13 +64,6 @@ Stack2 is not a required dependency. Without a READY Stack2 provider, Stack7 mus
 - Persistent Open WebUI identity/state is included in its recovery contract.
 - AI provider credentials remain behind Stack3; Stack7 receives scoped gateway access.
 - Optional web capability is local and explicit rather than an implicit cloud fallback.
-- `./local-ai` remains the supported management boundary.
-
-## Related decisions
-
-- [SDR-0003 — least-privilege AI gateway credentials](../docs/devel-docs/sdr/0003-least-privilege-ai-gateway-credentials.md)
-- [SDR-0005 — explicit Open WebUI model access](../docs/devel-docs/sdr/0005-open-webui-explicit-model-access.md)
-- [Stack7 DR qualification](../docs/dr/status.md)
-- [CLI reference](../docs/user-docs/cli.md)
+- The wrapper does not enforce model policy; run the separate reconciliation and verification programs when needed.
 
 Key implementation files: `docker-compose.yml`, `00-bootstrap.py`, `01-prepare.py`, `wait-ready.py`, and the model-policy reconcile/verify programs.

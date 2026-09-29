@@ -28,6 +28,13 @@ services:
     container_name: searxng
     restart: unless-stopped
 
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
     networks:
       - redlocal
 
@@ -49,6 +56,13 @@ services:
     image: node:22-alpine
     container_name: searxng-mcp
     restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(3000,'127.0.0.1');s.setTimeout(2000);s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
     command:
       - npx
@@ -77,6 +91,13 @@ services:
     image: node:22-alpine
     container_name: firecrawl-mcp
     restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(3000,'127.0.0.1');s.setTimeout(2000);s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
     command:
       - npx
@@ -109,6 +130,13 @@ services:
     image: ${FIRECRAWL_IMAGE:-ghcr.io/firecrawl/firecrawl@sha256:1910ef022706238c7d13c0e191b9a080efcf10aab049d776ba321abd8dc512ca}
     container_name: firecrawl-api
     restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(3002,'127.0.0.1');s.setTimeout(2000);s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
 
     command: node dist/src/harness.js --start-docker
 
@@ -171,6 +199,13 @@ services:
     image: ${FIRECRAWL_PLAYWRIGHT_IMAGE:-ghcr.io/firecrawl/playwright-service@sha256:df1a393ce8bfc3801570a826a9b0dcc400ae48789adb4a0ad9d6cbf0229b059b}
     container_name: firecrawl-playwright
     restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(3000,'127.0.0.1');s.setTimeout(2000);s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));s.on('timeout',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
     networks:
       - redlocal
