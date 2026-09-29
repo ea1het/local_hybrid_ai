@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+"""Dispatch a stack command to the matching wrapper/bin Python entry point.
+
+The executable name omits the wrapper's .py suffix. Arguments after the name
+are passed through unchanged, so each stack wrapper retains ownership of its
+own verbs, options, output, and exit status. New stack wrappers become
+available automatically without changing this dispatcher.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+
+BIN_DIR = Path(__file__).resolve().parent / "wrapper" / "bin"
+
+
+def available_commands() -> dict[str, Path]:
+    """Find safe Python entry points in the wrapper binary directory."""
+    return {
+        path.stem: path
+        for path in BIN_DIR.glob("*.py")
+        if path.is_file() and not path.is_symlink() and not path.name.startswith("_")
+    }
+
+
+def main(arguments: list[str] | None = None) -> int:
+    """Show available commands or replace this process with the chosen wrapper."""
+    arguments = sys.argv[1:] if arguments is None else arguments
+    commands = available_commands()
+    if not arguments or arguments[0] in {"-h", "--help"}:
+        print("Usage: ./local-ai <command> [parameters]", file=sys.stderr if not arguments else sys.stdout)
+        print("Available commands: " + ", ".join(sorted(commands)),
+              file=sys.stderr if not arguments else sys.stdout)
+        return 2 if not arguments else 0
+
+    command = arguments[0]
+    if command not in commands:
+        print(f"Unknown command: {command}", file=sys.stderr)
+        print("Available commands: " + ", ".join(sorted(commands)), file=sys.stderr)
+        return 2
+
+    os.execv(sys.executable, [sys.executable, "-B", str(commands[command]), *arguments[1:]])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

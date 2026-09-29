@@ -25,19 +25,19 @@ Stack 00 owns common host prerequisites. Stack 20 is an optional provider, not a
 
 ## Installation and operations
 
-Run the wrappers from the repository root with Python 3 and Docker Compose available. Prepare the protected `.env` using [`.env.template`](.env.template); do not commit credentials. Initial preparation and lifecycle commands need root privileges. For example:
+Run `./local-ai` from the repository root with Python 3 and Docker Compose available. It dispatches `stack-NN` to the matching `wrapper/bin/stack-NN.py` and forwards all remaining arguments and the exit status. Prepare the protected `.env` using [`.env.template`](.env.template); do not commit credentials. Initial preparation and lifecycle commands need root privileges. For example:
 
 ```bash
 cd /opt/docker/stacks
-sudo python3 -B wrapper/bin/stack-00.py install
-sudo python3 -B wrapper/bin/stack-00.py status --deep
-sudo python3 -B wrapper/bin/stack-10.py install
-sudo python3 -B wrapper/bin/stack-10.py start
-sudo python3 -B wrapper/bin/stack-10.py status
-sudo python3 -B wrapper/bin/stack-10.py stop
+sudo ./local-ai stack-00 install
+sudo ./local-ai stack-00 status --deep
+sudo ./local-ai stack-10 install
+sudo ./local-ai stack-10 start
+sudo ./local-ai stack-10 status
+sudo ./local-ai stack-10 stop
 ```
 
-Replace `10` with `20`, `30`, `40`, `50`, `60`, or `70` for their wrappers. Stack 00 has **`install` and `status` only**: it has no containers to start or stop. Stack 00 `install` audits and repairs missing platform prerequisites even when `.lock` exists, and writes/retains its lock only after verification. Other stacks' `install` normally stops at an existing `.lock`; removing a lock can trigger destructive reconfiguration and requires a deliberate review and backup. A lock means **prepared**, never running or healthy.
+Use `./local-ai --help` to list available stacks. The current names are `stack-00`, `stack-10`, …, `stack-70`; `stack-01` is not present. Stack 00 has **`install` and `status` only**: it has no containers to start or stop. Stack 00 `install` audits and repairs missing platform prerequisites even when `.lock` exists, and writes/retains its lock only after verification. Other stacks' `install` normally stops at an existing `.lock`; removing a lock can trigger destructive reconfiguration and requires a deliberate review and backup. A lock means **prepared**, never running or healthy.
 
 For Stacks 10–70, `install` prepares but does not start containers. `start` runs Compose `up -d` (`--build` for 60); `stop` runs Compose `down` without `--volumes`, except 50, which uses Compose `stop` to preserve its container and external volume. `start` requires a regular preparation lock and managed `.env` link. These verbs do not automatically orchestrate dependent stacks or all first-deployment tasks. In particular, 30 needs separate PostgreSQL provisioning, 40 needs its deployment script, and 70 needs **running LiteLLM** to issue a scoped API key when one is missing. Read the relevant stack README before first start.
 
@@ -52,13 +52,14 @@ For Stacks 10–70, `install` prepares but does not start containers. `start` ru
 | Path | Role |
 |---|---|
 | `stack-00_-_platform/` … `stack-70_-_open-webui/` | Stack-owned Python packages, Compose files, and configuration |
-| `wrapper/bin/stack-NN.py` | Operator verbs for each stack |
+| `local-ai` | Root dispatcher: `./local-ai stack-NN <verb> [parameters]` |
+| `wrapper/bin/stack-NN.py` | Stack-specific operator verbs, also directly invocable |
 | `wrapper/lib/stack_status.py` | Shared status and deep-probe implementation |
 | `wrapper/stubs/` | Supporting stubs and maintenance utilities; not a unified lifecycle CLI |
 | `program_configs/` | Client and infrastructure configuration guides |
 | `tests/` | Automated tests grouped by stack and shared behavior |
 
-The repository does **not** currently provide a unified `./local-ai` management command, backup/restore CLI, or automatic cross-stack lifecycle manager. Do not use older commands for those interfaces. Upgrades and recovery need their own reviewed procedures; do not infer either from a successful preparation lock or healthcheck.
+`./local-ai` is a dispatcher, **not** a cross-stack lifecycle manager, backup/restore CLI, or upgrade engine. It does not add commands beyond those of the selected stack wrapper. Upgrades and recovery need their own reviewed procedures; do not infer either from a successful preparation lock or healthcheck.
 
 ## Validation
 

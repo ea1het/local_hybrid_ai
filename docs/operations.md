@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack operations
 
-Run commands from the repository root. Set up the protected root `.env` first (see [`.env.template`](../.env.template)); Stack 00 creates per-stack `.env` links. Use `sudo` for preparation and container lifecycle operations. The wrapper paths are stable even though the stack directories are also importable Python packages.
+Run commands from the repository root. Set up the protected root `.env` first (see [`.env.template`](../.env.template)); Stack 00 creates per-stack `.env` links. Use `sudo` for preparation and container lifecycle operations. `./local-ai stack-NN <verb> [parameters]` dispatches to `wrapper/bin/stack-NN.py` with arguments unchanged; direct invocation of the Python wrapper still works.
 
 | Stack | `install` | `start` | `stop` | `status --deep` |
 |---|---|---|---|---|
@@ -19,7 +19,7 @@ Run commands from the repository root. Set up the protected root `.env` first (s
 | 60 | Hermes prepare only | Compose `up -d --build` | Compose `down` | No extra probe |
 | 70 | Bootstrap key/config, then prepare | Compose `up -d` | Compose `down` | No extra probe |
 
-Every wrapper has `install` and `status`; Stacks 10–70 also have `start` and `stop`. Run `sudo python3 -B wrapper/bin/stack-NN.py <verb>` with the desired two-digit stack number. The wrappers use closed stdin for preparation; they forward output and propagate errors rather than prompting. `stop` is available without a lock; `start` requires one. Neither verb removes persistent bind mounts or the preparation lock. Stack 50's `stop` preserves its existing container and external `dockhand_data` volume; the volume contains runtime state even though Dockhand is reconstructable as a service.
+Every wrapper has `install` and `status`; Stacks 10–70 also have `start` and `stop`. Run `sudo ./local-ai stack-NN <verb>` with an available two-digit stack number. `./local-ai --help` lists the current names; an unknown stack is rejected. The wrappers use closed stdin for preparation; they forward output and propagate errors rather than prompting. `stop` is available without a lock; `start` requires one. Neither verb removes persistent bind mounts or the preparation lock. Stack 50's `stop` preserves its existing container and external `dockhand_data` volume; the volume contains runtime state even though Dockhand is reconstructable as a service.
 
 An existing Stack 10–70 `.lock` makes `install` a no-op. Never remove it simply to rerun a command: backup and assess what re-preparation may overwrite first. Stack 00 differs: every `install` audits/repairs platform resources and only leaves a lock after successful verification. Certificate rotation is a separate explicit action.
 
@@ -32,4 +32,4 @@ An existing Stack 10–70 `.lock` makes `install` a no-op. Never remove it simpl
 
 `status` reports preparation separately from Compose state. A required container that is running without a healthy healthcheck is `RUNNING`, not `READY`. Stopped, partially started, and unhealthy services are not ready. Optional Compose profiles, such as Stack 60 Git-memory sync, do not count as failures when inactive. A return code of 0 means the wrapper's implemented checks passed; it does **not** prove real search, inference, runner jobs, memory sync, policy convergence, or public TLS routing. `status --deep` is read-only and adds only the probes shown in the table. Docker access and valid Compose inputs are required to inspect running stacks.
 
-These wrappers are per-stack operations, not a dependency scheduler, upgrade engine, or disaster-recovery interface. Consult the [stack READMEs](../README.md#stacks-and-dependencies) before running first-time or destructive procedures.
+The dispatcher and wrappers are per-stack operations, not a dependency scheduler, upgrade engine, or disaster-recovery interface. Consult the [stack READMEs](../README.md#stacks-and-dependencies) before running first-time or destructive procedures.
