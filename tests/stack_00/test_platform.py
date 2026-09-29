@@ -72,7 +72,7 @@ def test_bootstrap_rechecks_platform_despite_own_lock(tmp_path, monkeypatch):
         "STACKS_ROOT": str(tmp_path), "BASE_PATH": str(tmp_path / "runtime"), "PLATFORM_PKI_GID": "1999"
     })
     monkeypatch.setattr(bootstrap, "ensure_group", lambda *args: None)
-    monkeypatch.setattr(bootstrap, "parse_args", lambda: SimpleNamespace(dry_run=False))
+    monkeypatch.setattr(bootstrap, "parse_args", lambda: SimpleNamespace(dry_run=False, platform_only=False))
     monkeypatch.setattr(bootstrap, "build_layout", lambda env: [
         (STACK, lambda: [bootstrap.Dir(tmp_path / "platform-state", 0o700)]),
         (other.name, lambda: pytest.fail("locked stack must not be rebuilt")),
@@ -82,6 +82,30 @@ def test_bootstrap_rechecks_platform_despite_own_lock(tmp_path, monkeypatch):
 
     bootstrap.main()
     assert [spec.path.name for spec in visited] == ["platform-state"]
+
+
+def test_bootstrap_platform_scope_skips_unlocked_application_stacks(tmp_path, monkeypatch):
+    """Limit installer reconciliation to platform and HAProxy prerequisites."""
+    bootstrap = module("00-bootstrap.py")
+    monkeypatch.setattr(bootstrap, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(bootstrap, "ENV_FILE", tmp_path / ".env")
+    monkeypatch.setattr(bootstrap.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda command: "/fake/groupadd")
+    monkeypatch.setattr(bootstrap, "load_env", lambda path: {
+        "STACKS_ROOT": str(tmp_path), "BASE_PATH": str(tmp_path / "runtime"), "PLATFORM_PKI_GID": "1999"
+    })
+    monkeypatch.setattr(bootstrap, "ensure_group", lambda *args: None)
+    monkeypatch.setattr(bootstrap, "parse_args", lambda: SimpleNamespace(dry_run=False, platform_only=True))
+    monkeypatch.setattr(bootstrap, "build_layout", lambda env: [
+        (STACK, lambda: [bootstrap.Dir(tmp_path / "platform", 0o750)]),
+        ("stack-10_-_haproxy_web", lambda: [bootstrap.Dir(tmp_path / "haproxy", 0o750)]),
+        ("stack-40_-_gitea", lambda: pytest.fail("unlocked application stack must not be touched")),
+    ])
+    visited = []
+    monkeypatch.setattr(bootstrap, "ensure_dir", visited.append)
+
+    bootstrap.main()
+    assert [spec.path.name for spec in visited] == ["platform", "haproxy"]
 
 
 def test_prepare_with_lock_still_checks_prerequisites(tmp_path, monkeypatch):
@@ -228,25 +252,27 @@ def test_installer_creates_lock_only_after_success(tmp_path, monkeypatch):
 
     def run(command, **_kwargs):
         """Record installer steps and fail the simulated verification step."""
-        calls.append(Path(command[-1]).name)
-        return SimpleNamespace(returncode=2 if command[-1].endswith("verify.py") else 0)
+        calls.append((Path(command[2]).name, command[3:]))
+        return SimpleNamespace(returncode=2 if command[2].endswith("verify.py") else 0)
 
     monkeypatch.setattr(installer.subprocess, "run", run)
     with pytest.raises(SystemExit) as failure:
         installer.main()
     assert failure.value.code == 2
     assert not (stack / ".lock").exists()
-    assert calls == ["00-bootstrap.py", "01-prepare.py", "install-ca-cert.py", "install-tls-certs.py", "verify.py"]
+    expected = [("00-bootstrap.py", ["--platform-only"]), ("01-prepare.py", []),
+                ("install-ca-cert.py", []), ("install-tls-certs.py", []), ("verify.py", [])]
+    assert calls == expected
 
     calls.clear()
     monkeypatch.setattr(installer.subprocess, "run", lambda command, **_kwargs: (
-        calls.append(Path(command[-1]).name) or SimpleNamespace(returncode=0)
+        calls.append((Path(command[2]).name, command[3:])) or SimpleNamespace(returncode=0)
     ))
     installer.main()
     assert (stack / ".lock").exists()
     calls.clear()
     installer.main()
-    assert calls == ["00-bootstrap.py", "01-prepare.py", "install-ca-cert.py", "install-tls-certs.py", "verify.py"]
+    assert calls == expected
 
     calls.clear()
     monkeypatch.setattr(installer.subprocess, "run", run)

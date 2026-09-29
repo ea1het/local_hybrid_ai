@@ -45,7 +45,7 @@ For Stacks 10–70, `install` prepares but does not start containers. `start` ru
 
 ## Source and runtime
 
-`STACKS_ROOT` in `.env` identifies the checkout; `BASE_PATH` identifies installation-owned runtime directories. The examples assume `/opt/docker/stacks` for the checkout, but the configured paths govern an actual installation. Stack 00 creates the common directory tree, Docker network, and managed per-stack `.env` links. Certificates are sourced from mkcert when missing or explicitly rotated; see the [mkcert guide](program_configs/inference_server/mkcert/README.md). Stack 70 backs up the root `.env` as `.env-backup-YYMMDD-HHMMSS` before changing it and stores its LiteLLM virtual key there without printing it.
+`STACKS_ROOT` in `.env` identifies the checkout; `BASE_PATH` identifies installation-owned runtime directories. The examples assume `/opt/docker/stacks` for the checkout, but the configured paths govern an actual installation. Stack 00 installation reconciles its platform and Stack 10 prerequisite directories, Docker network, and managed per-stack `.env` links; it leaves other unlocked application service directories alone. Certificates are sourced from mkcert when missing or explicitly rotated; see the [mkcert guide](program_configs/inference_server/mkcert/README.md). Stack 70 backs up the root `.env` as `.env-backup-YYMMDD-HHMMSS` before changing it and stores its LiteLLM virtual key there without printing it.
 
 ## Repository map
 

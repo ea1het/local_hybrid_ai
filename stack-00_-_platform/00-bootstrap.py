@@ -10,8 +10,10 @@ the owners and modes expected by each container; individual prepare scripts
 only verify and populate those directories. It also creates the
 local-hybrid-pki group used to read HAProxy's private key. Existing PostgreSQL
 data directories are never re-owned. Stack 0 is audited even with its .lock;
-other locked stacks are left alone to protect running installations. Use
---dry-run to inspect the plan. Importing this module performs no setup."""
+other locked stacks are left alone to protect running installations. The
+Stack 0 installer selects only platform and Stack 10 prerequisite paths;
+other unlocked application stacks remain untouched. Use --dry-run to inspect
+the plan. Importing this module performs no setup."""
 
 from __future__ import annotations
 
@@ -363,11 +365,12 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse the --dry-run command-line option."""
+    """Parse bootstrap scope and dry-run options."""
     parser = argparse.ArgumentParser(
         description="Crea el árbol de carpetas de servicio de todos los stacks y fija sus permisos.",
     )
     parser.add_argument("--dry-run", action="store_true", help="muestra las acciones sin aplicarlas")
+    parser.add_argument("--platform-only", action="store_true", help="limita cambios a Stack 0 y prerrequisitos de Stack 10")
     return parser.parse_args()
 
 
@@ -403,6 +406,8 @@ def main() -> None:
 
     skipped: list[str] = []
     for stack, build in build_layout(env):
+        if args.platform_only and stack not in ("stack-00_-_platform", "stack-10_-_haproxy_web"):
+            continue
         step(f"Carpetas de {stack}")
         lock = ROOT_DIR / stack / ".lock"
         if lock.exists() and stack != "stack-00_-_platform":

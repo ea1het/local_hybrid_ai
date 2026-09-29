@@ -12,7 +12,7 @@ Stack0 is the mandatory foundation for every other stack. It owns the shared pla
 
 ## What it provides
 
-- **Service directory tree**: `00-bootstrap.py` creates every stack's `${BASE_PATH}/service_-_*` directories and sets their owner and mode in one place. The `01-prepare.py` scripts of Stacks 1–7 no longer create directories or fix their permissions; they only verify that they exist and copy/render their files into them.
+- **Service directory tree**: `00-bootstrap.py` owns the `${BASE_PATH}/service_-_*` directory layout. During Stack 00 `install`, it reconciles only platform directories and the HAProxy/web prerequisites needed by Stack 10. A direct invocation without `--platform-only` still visits all unlocked application stacks; use it only after reviewing their runtime state. Application prepare scripts verify that their directories exist.
 - **`local-hybrid-pki` group** (`PLATFORM_PKI_GID`): lets HAProxy (uid 99) read the TLS private key.
 - **Local CA trust**: `install-ca-cert.py` installs the mkcert CA (`rootCA.pem`) in the host trust store (`/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt`).
 - **HAProxy TLS material**: `install-tls-certs.py` installs the mkcert wildcard certificate as `${BASE_PATH}/service_-_haproxy/config/{tls.crt,tls.key}`. Stack1 later places `haproxy.cfg` in the same directory.
@@ -51,7 +51,7 @@ The wrapper runs the complete stack-owned `install.py` workflow and relays its a
 `install.py` runs, in order:
 
 ```bash
-00-bootstrap.py        # group + service directory tree of all stacks (--dry-run available)
+00-bootstrap.py --platform-only  # group + platform and Stack 10 prerequisite directories
 01-prepare.py             # .env links, shared network
 install-ca-cert.py        # /tmp/rootCA.pem -> host trust store
 install-tls-certs.py      # /tmp/tls.{crt,key} -> service_-_haproxy/config (SAN checked against TLS_SAN_DOMAINS)
@@ -69,7 +69,7 @@ verify.py                 # read-only check of the above
 |---|---|
 | `install.py` | Runs every phase, verifies the result and retains the existing lock; creates a lock only after success if missing. |
 | `01-prepare.py` | Checks links and network, creating missing resources without replacing conflicting files. |
-| `00-bootstrap.py` | Reconciles Stack0 directories despite its lock. Other locked stacks remain untouched; unlocked stacks are reconciled. |
+| `00-bootstrap.py` | During `install`, reconciles Stack 00 and Stack 10 prerequisite directories only. Direct invocation without `--platform-only` also reconciles unlocked application stacks; locked stacks remain untouched. |
 | `install-ca-cert.py` | Keeps a valid, trusted installed CA; refreshes missing bundle trust or repairs missing/invalid CA from `/tmp/rootCA.pem`. `--force` rotates it explicitly. |
 | `install-tls-certs.py` | Keeps a valid installed pair, repairs its metadata or reinstalls missing/invalid material from `/tmp/tls.{crt,key}`. `--renew` rotates it explicitly. |
 | `verify.py` | Read-only; works with or without `.lock` and checks the platform state. |
@@ -93,7 +93,7 @@ cd ../stack-10_-_haproxy_web && docker compose restart haproxy
 
 | File | Purpose |
 |---|---|
-| `00-bootstrap.py` | Creates the `local-hybrid-pki` group and the service directory tree of every stack with its owner/mode. PGDATA directories are created only when absent and never modified afterwards. Stack2 directories are owned by the UID/GID of their images. |
+| `00-bootstrap.py` | Creates the `local-hybrid-pki` group and service directories. `--platform-only` limits reconciliation to Stack 00 and Stack 10 prerequisites; without it, all unlocked stacks are visited. PGDATA directories are never modified once present. |
 | `01-prepare.py` | Idempotent preparation: `.env` links and shared Docker network. Requires `00-bootstrap.py`. |
 | `install-ca-cert.py` | Installs the local CA in the host trust store and stops. Does not touch any stack. |
 | `install-tls-certs.py` | Validates and installs `tls.crt` / `tls.key` for HAProxy. |

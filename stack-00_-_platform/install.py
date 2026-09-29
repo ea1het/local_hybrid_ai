@@ -34,7 +34,8 @@ def main() -> None:
         raise SystemExit(f"unsafe preparation lock: {lock_file}")
 
     for script in ("00-bootstrap.py", "01-prepare.py", "install-ca-cert.py", "install-tls-certs.py", "verify.py"):
-        result = subprocess.run([python, "-B", str(stack_dir / script)], env=environment, check=False)
+        arguments = ["--platform-only"] if script == "00-bootstrap.py" else []
+        result = subprocess.run([python, "-B", str(stack_dir / script), *arguments], env=environment, check=False)
         if result.returncode:
             if lock_file.is_file() and not lock_file.is_symlink():
                 lock_file.unlink()
