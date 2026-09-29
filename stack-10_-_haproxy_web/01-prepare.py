@@ -129,13 +129,13 @@ def main():
     driver = subprocess.check_output(["docker", "network", "inspect", "-f", "{{.Driver}}", network], env=env).decode().rstrip("\n")
     if driver != "bridge":
         die(f"{network} usa driver {driver}, no bridge")
-    log("red de Stack0 verificada")
+    log("Stack 00 network verified")
 
     step("Stack 10 service directories")
     for directory in (haproxy_service, haproxy_config, web_service):
         if not directory.is_dir() or directory.is_symlink():
             die(f"falta {directory}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
-    log("carpetas creadas por Stack0 (00-bootstrap.py)")
+    log("Stack 00 service directories verified")
 
     step("TLS certificate")
     for path in (tls_cert, tls_key):
@@ -152,7 +152,7 @@ def main():
         die("certificado y clave TLS no coinciden")
     if cert_pub != key_pub:
         die("certificado y clave TLS no coinciden")
-    log("tls.crt / tls.key verificados")
+    log("tls.crt / tls.key verified")
 
     step("HAProxy configuration")
     for name in ("casa.lan.crt", "casa.lan.key"):
@@ -160,7 +160,7 @@ def main():
         if legacy.is_symlink():
             legacy.unlink()
     run("install", "-m", "0644", "-o", "0", "-g", "0", str(haproxy_source / "haproxy.cfg"), str(haproxy_config / "haproxy.cfg"))
-    log("haproxy.cfg desplegado junto a tls.crt / tls.key")
+    log("haproxy.cfg installed alongside tls.crt / tls.key")
 
     step("Web content")
     run("cp", "-a", str(web_source / "."), str(web_service) + "/")
@@ -174,15 +174,15 @@ def main():
     command += [item for key in HAPROXY_VARS for item in ("-e", f"{key}={env[key]}")]
     command += [ref, "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
     subprocess.run(command, env=env, stdout=subprocess.DEVNULL, check=True)
-    log(f"haproxy.cfg valida con tls.crt / tls.key usando {ref}")
+    log(f"haproxy.cfg validated with tls.crt / tls.key using {ref}")
 
     step("Docker Compose validation")
     run("docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet", env=env)
-    log("compose valido")
+    log("Docker Compose configuration valid")
     os.umask(0o022)
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={datetime.datetime.now(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}\n")
     step("Preparation complete")
-    log(f"lock creado: {LOCK_FILE}")
+    log(f"lock created: {LOCK_FILE}")
     log(f"TLS: {tls_cert} / {tls_key}")
 
 

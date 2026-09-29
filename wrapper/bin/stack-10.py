@@ -33,6 +33,7 @@ PREPARE_MODULE = "stack-10_-_haproxy_web.01-prepare"
 
 def show_start_instructions() -> None:
     """Print the manual deployment command without running Docker Compose."""
+    print()
     print("Stack 10 is PREPARED, not deployed or verified as running.")
     print("To start HAProxy and the web service manually, run:")
     print(f"  cd {shlex.quote(str(STACK_DIR))}")
