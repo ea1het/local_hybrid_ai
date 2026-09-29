@@ -92,7 +92,7 @@ def test_prepare_rejects_unresolved_template_without_target_write(tmp_path):
     source = tmp_path / "app.ini"
     target = tmp_path / "rendered.ini"
     source.write_text("domain=@@GITEA_DOMAIN@@ secret=@@MISSING@@")
-    with pytest.raises(RuntimeError, match="placeholders sin resolver"):
+    with pytest.raises(RuntimeError, match="unresolved placeholders"):
         module.render(source, target, {"GITEA_DOMAIN": "git.example.test"})
     assert not target.exists()
 
@@ -177,5 +177,5 @@ def test_deploy_rejects_missing_runtime_token(tmp_path, monkeypatch):
             return SimpleNamespace(returncode=0)
         pytest.fail(f"unexpected command: {command}")
     monkeypatch.setattr(module.subprocess, "run", fake_run)
-    with pytest.raises(RuntimeError, match="token runtime"):
+    with pytest.raises(RuntimeError, match="runtime token"):
         module.main()

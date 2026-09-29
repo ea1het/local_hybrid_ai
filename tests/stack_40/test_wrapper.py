@@ -43,6 +43,8 @@ def test_existing_lock_is_explained_without_running_prepare(tmp_path, monkeypatc
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "Removing .lock manually" in output
+    assert "\n\nStack 40 is PREPARED" in output
+    assert "For a new deployment only" in output
     assert "python3 -B deploy-gitea.py" in output
 
 
@@ -68,7 +70,7 @@ def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
     assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert "prepared\n" in capsys.readouterr().out
+    assert "prepared\n\nStack 40 is PREPARED" in capsys.readouterr().out
 
 
 def test_prepare_failure_does_not_claim_deployment(tmp_path, monkeypatch, capsys):

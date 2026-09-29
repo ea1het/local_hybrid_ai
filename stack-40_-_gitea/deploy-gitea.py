@@ -50,14 +50,14 @@ def run(command, env=None, capture=False):
 def main():
     """Migrate Gitea, ensure an administrator, and start the stack."""
     if not shutil.which("docker"):
-        die("docker no esta instalado")
+        die("docker is not installed")
     if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die("Docker Compose v2 no esta disponible")
+        die("Docker Compose v2 is not available")
     if not ENV_FILE.is_file():
-        die(f"falta {ENV_FILE}")
+        die(f"missing {ENV_FILE}")
     if not LOCK_FILE.is_file():
-        die(f"Stack4 no esta preparado: falta {LOCK_FILE}; ejecuta primero ./01-prepare.py")
+        die(f"Stack 40 is not prepared: missing {LOCK_FILE}; run preparation first")
     loaded = subprocess.run(["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
                             check=True, stdout=subprocess.PIPE).stdout
     env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)
@@ -67,10 +67,10 @@ def main():
                 "GITEA_RUNNER_INSTANCE_URL GITEA_RUNNER_NAME")
     for key in required.split():
         if not env.get(key):
-            die(f"falta {key} en {ENV_FILE}")
+            die(f"missing {key} in {ENV_FILE}")
     expected = f"{env['STACKS_ROOT'].rstrip('/')}/{STACK_NAME}"
     if str(STACK_DIR) != expected:
-        die(f"este stack debe residir en {expected}; ruta actual: {STACK_DIR}")
+        die(f"this stack must reside in {expected}; current path: {STACK_DIR}")
     app_ini = Path(env["BASE_PATH"].rstrip("/")) / "service_-_gitea/config/app.ini"
     runner_service = Path(env["BASE_PATH"].rstrip("/")) / "service_-_gitea-runner"
     runner_config = runner_service / "data/config.yaml"
@@ -78,9 +78,9 @@ def main():
     state_file = runner_service / "data/.runner"
     for path in (app_ini, runner_config):
         if not path.is_file():
-            die(f"falta {path}; ejecuta primero ./01-prepare.py")
+            die(f"missing {path}; run preparation first")
     if not token_file.is_file() or not token_file.stat().st_size:
-        die("falta el token runtime del runner; ejecuta primero ./01-prepare.py")
+        die("missing runner runtime token; run preparation first")
     compose = ["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE)]
     step("Validation and download")
     run(compose + ["config", "--quiet"], env=env)
@@ -104,14 +104,14 @@ def main():
         inspected = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "gitea-runner"],
                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         if inspected.stdout.strip() == "true" and state_file.is_file() and state_file.stat().st_size:
-            log("runner registrado con identidad persistente")
+            log("runner registered with a persistent identity")
             break
         if attempt == 29:
-            die("el runner no creo/recupero su identidad persistente")
+            die("runner did not create or recover its persistent identity")
         time.sleep(2)
     run(compose + ["ps"], env=env)
     step("Installation complete")
-    log(f"Gitea publico: {env['GITEA_ROOT_URL']}")
+    log(f"Gitea public URL: {env['GITEA_ROOT_URL']}")
     log(f"runner: {env['GITEA_RUNNER_NAME']}")
 
 
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     try:
         main()
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-        message = (f"fallo {error.cmd[0]} (exit {error.returncode})"
+        message = (f"{error.cmd[0]} failed (exit {error.returncode})"
                    if isinstance(error, subprocess.CalledProcessError) else str(error))
         print(f"ERROR: {message}", file=sys.stderr)
         sys.exit(1)

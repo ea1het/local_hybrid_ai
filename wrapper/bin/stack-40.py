@@ -34,8 +34,9 @@ PREPARE_MODULE = "stack-40_-_gitea.01-prepare"
 
 def show_next_steps() -> None:
     """Describe the separate manual Gitea deployment command."""
-    print("Stack 40 is PREPARED, not migrated, deployed, or verified as running.")
-    print("To deploy Gitea and its runner manually, run:")
+    print()
+    print("Stack 40 is PREPARED; this wrapper did not run migrations or deploy containers.")
+    print("For a new deployment only, continue manually with:")
     print(f"  cd {shlex.quote(str(STACK_DIR))}")
     print("  python3 -B deploy-gitea.py")
 
