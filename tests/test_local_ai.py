@@ -35,6 +35,8 @@ def test_forwards_stack_help(number):
                             capture_output=True, text=True, check=False)
     assert result.returncode == 0
     assert "--deep" in result.stdout
+    assert f"usage: ./local-ai stack-{number} status" in result.stdout
+    assert f"stack-{number}.py" not in result.stdout
 
 
 def test_preserves_wrapper_error_and_rejects_missing_command():

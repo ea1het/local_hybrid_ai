@@ -71,7 +71,7 @@ def install() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog="./local-ai stack-00", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("install", help="Reconcile and verify platform prerequisites").set_defaults(handler=install)
     status_parser = commands.add_parser("status", help="Report preparation and container health")

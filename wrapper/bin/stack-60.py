@@ -146,7 +146,7 @@ def run_compose(action: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog="./local-ai stack-60", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("install", help="Prepare without starting services").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(

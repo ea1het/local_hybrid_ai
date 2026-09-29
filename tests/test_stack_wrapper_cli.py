@@ -36,6 +36,8 @@ def test_install_is_required_subcommand(number):
     help_result = subprocess.run([sys.executable, "-B", str(script), "--help"],
                                  capture_output=True, text=True, check=False)
     assert help_result.returncode == 0
+    assert f"usage: ./local-ai stack-{number}" in help_result.stdout
+    assert f"stack-{number}.py" not in help_result.stdout
     assert "install" in help_result.stdout
     assert "status" in help_result.stdout
     if number != "00":
@@ -49,7 +51,8 @@ def test_install_is_required_subcommand(number):
         result = subprocess.run([sys.executable, "-B", str(script), *arguments],
                                 capture_output=True, text=True, check=False)
         assert result.returncode == 2
-        assert "usage:" in result.stderr
+        assert f"usage: ./local-ai stack-{number}" in result.stderr
+        assert f"stack-{number}.py" not in result.stderr
 
     install_help = subprocess.run([sys.executable, "-B", str(script), "install", "--help"],
                                   capture_output=True, text=True, check=False)
@@ -57,6 +60,7 @@ def test_install_is_required_subcommand(number):
     status_help = subprocess.run([sys.executable, "-B", str(script), "status", "--help"],
                                  capture_output=True, text=True, check=False)
     assert status_help.returncode == 0
+    assert f"usage: ./local-ai stack-{number} status" in status_help.stdout
     assert "--deep" in status_help.stdout
 
 
