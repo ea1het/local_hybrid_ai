@@ -2,11 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Report preparation and Compose health without changing stack state.
+"""Report preparation and Docker health without changing stack state.
 
 Wrappers call this module for their status verb. It reads each preparation
-lock, parses Docker Compose's JSON-lines ``ps --all`` output, and separates
-container state from health. Optional services are shown when present but
+lock, inspects Docker containers belonging to the stack's Compose working
+directory, and separates container state from health. Optional services are shown when present but
 do not make an inactive profile look broken. Deep mode adds an authenticated,
 read-only ``SELECT 1`` inside the PostgreSQL containers owned by Stacks 20
 and 30. No environment values or database credentials are printed, and no
@@ -34,6 +34,15 @@ REQUIRED_SERVICES = {
     "70": ("open-webui",),
 }
 OPTIONAL_SERVICES = {"60": ("hermes-memory-sync",)}
+ANCHOR_CONTAINERS = {
+    "10": "haproxy",
+    "20": "firecrawl-postgres",
+    "30": "litellm-postgres",
+    "40": "gitea-runner",
+    "50": "dockhand",
+    "60": "hermes-sandbox",
+    "70": "open-webui",
+}
 DATABASE_PROBES = {
     "20": (
         "firecrawl-postgres",
@@ -55,20 +64,63 @@ def preparation_state(lock_file: Path) -> str:
     return "PREPARED" if lock_file.is_file() else "UNPREPARED"
 
 
-def compose_rows(stack_dir: Path) -> dict[str, dict[str, object]]:
-    """Read service state from Compose without losing stopped containers."""
-    command = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml",
-               "ps", "--all", "--format", "json"]
-    result = subprocess.run(command, cwd=stack_dir, stdin=subprocess.DEVNULL,
+def container_rows(stack_dir: Path) -> dict[str, dict[str, object]]:
+    """Inspect the stack's containers without requiring local Compose inputs."""
+    command = ["docker", "ps", "--all", "--quiet", "--no-trunc", "--filter",
+               "label=com.docker.compose.service"]
+    result = subprocess.run(command, stdin=subprocess.DEVNULL,
                             capture_output=True, text=True, timeout=15, check=False)
     if result.returncode:
-        raise RuntimeError(f"Docker Compose ps failed (exit {result.returncode})")
+        raise RuntimeError(f"Docker ps failed (exit {result.returncode})")
     rows = {}
-    for line in result.stdout.splitlines():
-        item = json.loads(line)
-        if not isinstance(item, dict) or not isinstance(item.get("Service"), str):
-            raise ValueError("invalid Docker Compose ps record")
-        rows[item["Service"]] = item
+    container_ids = result.stdout.split()
+    if not container_ids:
+        return rows
+    result = subprocess.run(["docker", "inspect", "--type", "container", *container_ids],
+                            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                            timeout=15, check=False)
+    if result.returncode:
+        raise RuntimeError(f"Docker inspect failed (exit {result.returncode})")
+    containers = json.loads(result.stdout)
+    if not isinstance(containers, list):
+        raise ValueError("invalid Docker inspect response")
+    prefix, separator, suffix = stack_dir.name.partition("_-_")
+    working_dirs = {stack_dir}
+    if separator and prefix.startswith("stack-") and prefix[6:].isdigit():
+        working_dirs.add(stack_dir.with_name(f"stack{int(prefix[6:]) // 10}_-_{suffix}"))
+    stack_number = prefix.removeprefix("stack-")
+    selected = []
+    for container in containers:
+        if not isinstance(container, dict):
+            raise ValueError("invalid Docker inspect container")
+        labels = (container.get("Config") or {}).get("Labels") or {}
+        if Path(labels.get("com.docker.compose.project.working_dir", "")) in working_dirs:
+            selected.append(container)
+    if not selected:
+        anchor_name = ANCHOR_CONTAINERS.get(stack_number)
+        anchor = next((container for container in containers
+                       if container.get("Name") == f"/{anchor_name}"
+                       and (container.get("Config") or {}).get("Labels", {}).get(
+                           "com.docker.compose.service") in REQUIRED_SERVICES.get(stack_number, ())), None)
+        if anchor is not None:
+            project = anchor["Config"]["Labels"].get("com.docker.compose.project")
+            if project:
+                selected = [container for container in containers
+                            if (container.get("Config") or {}).get("Labels", {}).get(
+                                "com.docker.compose.project") == project]
+    for container in selected:
+        labels = (container.get("Config") or {}).get("Labels") or {}
+        service = labels.get("com.docker.compose.service")
+        state = container.get("State") or {}
+        if not isinstance(service, str) or not isinstance(state, dict):
+            raise ValueError("invalid Docker Compose container metadata")
+        if service in rows:
+            raise ValueError(f"duplicate Docker Compose service: {service}")
+        rows[service] = {
+            "State": state.get("Status", "unknown"),
+            "Health": (state.get("Health") or {}).get("Status", "none"),
+            "ExitCode": state.get("ExitCode"),
+        }
     return rows
 
 
@@ -82,18 +134,11 @@ def database_probe(number: str) -> bool:
 
 
 def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool = False) -> int:
-    """Print a non-mutating summary and return zero only for verified health."""
+    """Print a non-mutating summary and return zero only for prepared, healthy stacks."""
     prepared = preparation_state(lock_file)
     print(f"Stack {number}: preparation={prepared}")
-    env_link = stack_dir / ".env"
-    compose_file = stack_dir / "docker-compose.yml"
-    if (not stack_dir.is_dir() or not env_link.is_symlink()
-            or os.readlink(env_link) != "../.env" or not env_link.is_file()
-            or compose_file.is_symlink() or not compose_file.is_file()):
-        print("runtime=UNKNOWN (missing or unsafe Compose inputs)")
-        return 2
     try:
-        rows = compose_rows(stack_dir)
+        rows = container_rows(stack_dir)
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         print(f"runtime=UNKNOWN ({error})")
         return 2
