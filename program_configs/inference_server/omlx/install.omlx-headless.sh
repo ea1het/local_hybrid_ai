@@ -508,13 +508,29 @@ PY
 verify_all() {
   say "Validating headless deployment"
 
-  local live_limit
+  local live_limit persistent_limit
   live_limit="$(sysctl -n iogpu.wired_limit_mb)"
   [[ "${live_limit}" == "${IOGPU_LIMIT_MB}" ]] \
     || die "IOGPU limit is ${live_limit}, expected ${IOGPU_LIMIT_MB}."
 
+  [[ -r "${IOGPU_PLIST}" ]] \
+    || die "Persistent IOGPU plist is missing: ${IOGPU_PLIST}"
+
+  persistent_limit="$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:2' "${IOGPU_PLIST}" 2>/dev/null || true)"
+  [[ "${persistent_limit}" == "iogpu.wired_limit_mb=${IOGPU_LIMIT_MB}" ]] \
+    || die "Persistent IOGPU plist contains '${persistent_limit:-<missing>}', expected iogpu.wired_limit_mb=${IOGPU_LIMIT_MB}."
+
   sudo launchctl print system/local.iogpu-wired-limit >/dev/null 2>&1 \
     || die "local.iogpu-wired-limit is not registered."
+
+  [[ -r "${MOUNT_PLIST}" ]] \
+    || die "Persistent NVMe LaunchDaemon plist is missing: ${MOUNT_PLIST}"
+
+  [[ -x "${MOUNT_SCRIPT}" ]] \
+    || die "NVMe mount helper is missing or not executable: ${MOUNT_SCRIPT}"
+
+  /usr/bin/grep -Fq "UUID=\"${NVME_UUID}\"" "${MOUNT_SCRIPT}" \
+    || die "NVMe mount helper is not configured for UUID ${NVME_UUID}."
 
   sudo launchctl print system/local.mount-nvme >/dev/null 2>&1 \
     || die "local.mount-nvme is not registered."

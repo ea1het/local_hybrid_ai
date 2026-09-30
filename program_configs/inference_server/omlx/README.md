@@ -15,13 +15,13 @@ Validated baseline:
 - Apple Silicon Mac mini
 - macOS, headless operation over SSH
 - oMLX 0.7.0 validated on 2026-10-01
-- normal service account: i.e. in my case it is `norai`
-- active model directory: `~/.omlx/models` (or any other name in your disk at will)
+- normal service account: `norai` on the validated machine; the installer uses the current normal account
+- active model directory: `~/.omlx/models`
 - external APFS NVMe volume: `/Volumes/NVMe`
 - NVMe UUID: `31C10E28-CE2A-410D-B68C-C1D6B3827F5C`
 - oMLX SSD cache: `/Volumes/NVMe/AI_Models_Cache`
 - oMLX TCP port: `8000`
-- persistent Metal/IOGPU wired-memory limit: `59392` MiB
+- persistent Metal/IOGPU wired-memory limit: `60293` MiB
 
 The design goal is not merely "start oMLX at login". The machine must be able to reboot with **no graphical login**, recover its external storage, restore the Metal memory limit, and start oMLX automatically.
 
@@ -34,7 +34,7 @@ TLS for the oMLX endpoint is documented in the [Caddy guide](../caddy/README.md)
 - [Security and boot assumptions](#security-and-boot-assumptions)
 - [Storage layout](#storage-layout)
 - [Quick start](#quick-start)
-- [`install.omlx-headless.sh` actions](#installsh-actions)
+- [Installer actions](#installer-actions)
 - [Environment overrides](#environment-overrides)
 - [Clean installation](#clean-installation)
 - [Update procedure](#update-procedure)
@@ -59,7 +59,7 @@ macOS boot
    +-- FileVault OFF
    |
    +-- local.iogpu-wired-limit
-   |      `-- iogpu.wired_limit_mb=59392
+   |      `-- iogpu.wired_limit_mb=60293
    |
    +-- local.mount-nvme
    |      +-- runs at boot
@@ -133,7 +133,7 @@ The permanent fix is therefore explicit NVMe automount at system boot.
 This command:
 
 ```bash
-sudo sysctl -w iogpu.wired_limit_mb=59392
+sudo sysctl -w iogpu.wired_limit_mb=60293
 ```
 
 works only until reboot.
@@ -265,7 +265,7 @@ To ask the installed NVMe LaunchDaemon to mount the drive:
 
 Run the script as the normal server account. Do **not** run the complete script with `sudo`.
 
-## `install.omlx-headless.sh` actions
+## Installer actions
 
 ### `install`
 
@@ -704,10 +704,12 @@ PY
 Configured value:
 
 ```text
-iogpu.wired_limit_mb=59392
+iogpu.wired_limit_mb=60293
 ```
 
-This is a ceiling, not 58 GiB immediately reserved at boot.
+This is a kernel/Metal ceiling, not memory reserved at boot.
+
+`60293` MiB is the currently validated value for this Mac mini with oMLX 0.7.0. It is an operational baseline, not a universal constant. Future oMLX releases can change the Memory Guard calculation and may recommend a different kernel limit.
 
 Persistence is provided by:
 
@@ -724,7 +726,7 @@ sysctl -n iogpu.wired_limit_mb
 Expected:
 
 ```text
-59392
+60293
 ```
 
 Inspect the job:
@@ -740,6 +742,14 @@ If the live value is wrong, repair the configuration with:
 ```
 
 and restart oMLX afterwards if required.
+
+If a future oMLX release explicitly recommends another `iogpu.wired_limit_mb` value, apply that value through the installer rather than with a one-off `sysctl` only:
+
+```bash
+IOGPU_LIMIT_MB=<recommended-value> ./install.omlx-headless.sh configure
+```
+
+Then restart oMLX and perform the headless reboot test. Once validated, update the default in `install.omlx-headless.sh` and this runbook so the documented baseline matches the deployed machine.
 
 ## SSH / Remote Login
 
@@ -800,7 +810,7 @@ sudo lsof -nP -iTCP:8000 -sTCP:LISTEN
 Healthy output has these properties:
 
 ```text
-iogpu.wired_limit_mb = 59392
+iogpu.wired_limit_mb = 60293
 
 NVMe:
   Mounted: Yes
