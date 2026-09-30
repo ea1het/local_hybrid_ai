@@ -15,8 +15,8 @@ Validated baseline:
 - Apple Silicon Mac mini
 - macOS, headless operation over SSH
 - oMLX 0.7.0 validated on 2026-10-01
-- normal service account: `norai`
-- active model directory: `~/.omlx/models`
+- normal service account: i.e. in my case it is `norai`
+- active model directory: `~/.omlx/models` (or any other name in your disk at will)
 - external APFS NVMe volume: `/Volumes/NVMe`
 - NVMe UUID: `31C10E28-CE2A-410D-B68C-C1D6B3827F5C`
 - oMLX SSD cache: `/Volumes/NVMe/AI_Models_Cache`
