@@ -25,7 +25,7 @@ Stack 00 owns common host prerequisites. Stack 20 is an optional provider, not a
 
 ## Installation and operations
 
-Run `./local-ai` from the repository root with Python 3 and Docker Compose available. It dispatches `stack-NN` to the matching `wrapper/bin/stack-NN.py` and forwards all remaining arguments and the exit status. Prepare the protected `.env` using [`.env.template`](.env.template); do not commit credentials. Initial preparation and lifecycle commands need root privileges. For example:
+Run `./local-ai` from the repository root with Python 3 and Docker Compose available. It dispatches `stack-NN` to the matching `wrapper/bin/stack-NN.py` and forwards all remaining arguments and the exit status. Run `sudo ./local-ai env bootstrap` before stack installation to create or complete the protected `.env` from [`.env.template`](.env.template). It generates only local secrets, preserves existing values, and backs up an existing `.env` before changing it. PostgreSQL passwords are sourced from `.env`; no runtime password files are created or mounted. External credentials remain pending; do not commit credentials. Initial preparation and lifecycle commands need root privileges. For example:
 
 ```bash
 cd /opt/docker/stacks
@@ -39,13 +39,15 @@ sudo ./local-ai stack-10 stop
 
 Use `./local-ai --help` to list available stacks. The current names are `stack-00`, `stack-10`, …, `stack-70`; `stack-01` is not present. Stack 00 has **`install` and `status` only**: it has no containers to start or stop. Stack 00 `install` audits and repairs missing platform prerequisites even when `.lock` exists, and writes/retains its lock only after verification. Other stacks' `install` normally stops at an existing `.lock`; removing a lock can trigger destructive reconfiguration and requires a deliberate review and backup. A lock means **prepared**, never running or healthy.
 
-For Stacks 10–70, `install` prepares but does not start containers. `start` runs Compose `up -d` (`--build` for 60); `stop` runs Compose `down` without `--volumes`, except 50, which uses Compose `stop` to preserve its container and external volume. `start` requires a regular preparation lock and managed `.env` link. These verbs do not automatically orchestrate dependent stacks or all first-deployment tasks. In particular, 30 needs separate PostgreSQL provisioning, 40 needs its deployment script, and 70 needs **running LiteLLM** to issue a scoped API key when one is missing. Read the relevant stack README before first start.
+For Stacks 10–70, `install` prepares but does not start containers. `start` runs Compose `up -d` (`--build` for 60); `stop` runs Compose `down` without `--volumes`, except 50, which uses Compose `stop` to preserve its container and external volume. `start` requires a regular preparation lock and managed `.env` link. These verbs do not automatically orchestrate dependent stacks or all first-deployment tasks. In particular, 30 needs separate PostgreSQL provisioning, 40 needs its deployment script, and 60/70 need operator-supplied LiteLLM consumer credentials after LiteLLM is configured. Read the relevant stack README before first start.
 
 `status` is read-only and reports the preparation lock separately from live Docker container state and healthchecks. It inspects containers even if the lock or managed `.env` link is missing, so loss of local preparation metadata does not hide a running stack. It distinguishes stopped, partial, degraded, running-without-confirmed-health, and ready services; **a successful `start` is not proof of readiness**. `status --deep` additionally runs Stack 00's platform verifier or an authenticated, read-only PostgreSQL `SELECT 1` for 20 and 30. Other stacks have no additional deep probe yet. Healthchecks establish local service liveness, not end-to-end functionality, model policy, background-job success, or backup validity. See [stack operations](docs/operations.md) for the verb matrix, output interpretation, and first-run exceptions.
 
 ## Source and runtime
 
-`STACKS_ROOT` in `.env` identifies the checkout; `BASE_PATH` identifies installation-owned runtime directories. The examples assume `/opt/docker/stacks` for the checkout, but the configured paths govern an actual installation. Stack 00 installation reconciles its platform and Stack 10 prerequisite directories, Docker network, and managed per-stack `.env` links; it leaves other unlocked application service directories alone. Certificates are sourced from mkcert when missing or explicitly rotated; see the [mkcert guide](program_configs/inference_server/mkcert/README.md). Stack 70 backs up the root `.env` as `.env-backup-YYMMDD-HHMMSS` before changing it and stores its LiteLLM virtual key there without printing it.
+`STACKS_ROOT` in `.env` identifies the checkout; `BASE_PATH` identifies installation-owned runtime directories. The examples assume `/opt/docker/stacks` for the checkout, but the configured paths govern an actual installation. Stack 00 installation reconciles its platform and Stack 10 prerequisite directories, Docker network, and managed per-stack `.env` links; it leaves other unlocked application service directories alone. Certificates are sourced from mkcert when missing or explicitly rotated; see the [mkcert guide](program_configs/inference_server/mkcert/README.md). Stack 70 backs up the root `.env` as `.env-backup-YYMMDD-HHMMSS` before changing its own defaults or signing secret; it never issues a LiteLLM key.
+
+On a fresh database, LiteLLM starts with an empty model and MCP registry. `env bootstrap` supplies its persistent administrative master key, UI password, and salt, but never creates models, MCP registrations, or virtual consumer keys. Configure or restore those in LiteLLM yourself, then place the consumer keys needed by Hermes and Open WebUI in the protected `.env`.
 
 ## Repository map
 
@@ -59,7 +61,7 @@ For Stacks 10–70, `install` prepares but does not start containers. `start` ru
 | `program_configs/` | Client and infrastructure configuration guides |
 | `tests/` | Automated tests grouped by stack and shared behavior |
 
-`./local-ai` is a dispatcher, **not** a cross-stack lifecycle manager, backup/restore CLI, or upgrade engine. It does not add commands beyond those of the selected stack wrapper. Upgrades and recovery need their own reviewed procedures; do not infer either from a successful preparation lock or healthcheck.
+`./local-ai` dispatches stack wrappers and the protected `env bootstrap` command; it is **not** a cross-stack lifecycle manager, general backup/restore CLI, or upgrade engine. Upgrades and recovery need their own reviewed procedures; do not infer either from a successful preparation lock or healthcheck.
 
 ## Validation
 

@@ -4,7 +4,7 @@
 
 """Test idempotent PostgreSQL provisioning for LiteLLM.
 
-The suite simulates database commands and secrets to verify role and
+The suite simulates database commands and environment values to verify role and
 database creation only when needed. It never connects to a live database;
 importing the module only defines tests."""
 
@@ -20,8 +20,8 @@ from tests.helpers import load_module
 
 
 @pytest.mark.parametrize("database_exists", [False, True])
-def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, database_exists):
-    """Create a database only when absent and keep the admin secret private."""
+def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, capsys, database_exists):
+    """Create a database only when absent and keep the admin password private."""
     module = load_module("stack-30_-_litellm", "provision-postgres.py")
     env_file = tmp_path / ".env"
     lock_file = tmp_path / ".lock"
@@ -33,12 +33,10 @@ def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, dat
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setattr(module.shutil, "which", lambda command: command)
     env = {"BASE_PATH": str(tmp_path), "LITELLM_DB_NAME": "litellm",
-           "LITELLM_DB_USER": "app_user", "LITELLM_DB_PASSWORD": "app_password"}
+           "LITELLM_DB_USER": "app_user", "LITELLM_DB_PASSWORD": "app_password",
+           "LITELLM_POSTGRES_ADMIN_PASSWORD": "admin_password"}
     for key, value in env.items():
         monkeypatch.setenv(key, value)
-    secret = tmp_path / "service_-_litellm-postgres/secret/postgres_admin_password"
-    secret.parent.mkdir(parents=True)
-    secret.write_text("admin_password\n")
     commands = []
 
     def fake_subprocess(command, **kwargs):
@@ -64,11 +62,11 @@ def test_provision_creates_database_only_when_missing(tmp_path, monkeypatch, dat
     assert any("ALTER ROLE" in kwargs.get("input_text", "") for _, kwargs in commands)
     assert any(command[-2:] == ["-tAc", "SELECT 1;"] for command, _ in commands)
     assert any(command[0] == "createdb" or "createdb" in command for command, _ in commands) is not database_exists
-    assert all("admin_password" not in str(kwargs) for _, kwargs in commands)
+    assert "admin_password" not in capsys.readouterr().out
 
 
-def test_provision_rejects_symlinked_admin_secret(tmp_path, monkeypatch):
-    """Reject a symlinked admin secret before provisioning starts."""
+def test_provision_rejects_placeholder_admin_password(tmp_path, monkeypatch):
+    """Reject an unconfigured .env password before provisioning starts."""
     module = load_module("stack-30_-_litellm", "provision-postgres.py")
     env_file = tmp_path / ".env"
     lock_file = tmp_path / ".lock"
@@ -78,13 +76,9 @@ def test_provision_rejects_symlinked_admin_secret(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "LOCK_FILE", lock_file)
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setattr(module.shutil, "which", lambda command: command)
-    secret = tmp_path / "service_-_litellm-postgres/secret/postgres_admin_password"
-    secret.parent.mkdir(parents=True)
-    target = tmp_path / "target-secret"
-    target.write_text("password")
-    secret.symlink_to(target)
     env = {"BASE_PATH": str(tmp_path), "LITELLM_DB_NAME": "litellm",
-           "LITELLM_DB_USER": "app_user", "LITELLM_DB_PASSWORD": "app_password"}
+           "LITELLM_DB_USER": "app_user", "LITELLM_DB_PASSWORD": "app_password",
+           "LITELLM_POSTGRES_ADMIN_PASSWORD": "PUT_YOUR_PASSWORD_HERE"}
 
     def fake_subprocess(command, **kwargs):
         """Return sourced environment data for Bash and success otherwise."""
@@ -95,5 +89,5 @@ def test_provision_rejects_symlinked_admin_secret(tmp_path, monkeypatch):
     monkeypatch.setattr(module.subprocess, "run", fake_subprocess)
     monkeypatch.setattr(module, "run", lambda *args, **kwargs: pytest.fail("provisioning must not start"))
 
-    with pytest.raises(RuntimeError, match="administrator secret"):
+    with pytest.raises(RuntimeError, match="template placeholder"):
         module.main()

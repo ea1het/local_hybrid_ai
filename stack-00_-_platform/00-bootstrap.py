@@ -276,11 +276,10 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
             image_dir(rabbitmq / "data", rabbitmq_image, "firecrawl-rabbitmq"),
             Dir(fc_postgres, 0o750),
             Dir(fc_postgres / "data", 0o700, create_only=True),
-            Dir(fc_postgres / "secret", 0o700),
         ]
 
     def stack3() -> list[Dir]:
-        """Describe LiteLLM configuration and PostgreSQL data and secret directories."""
+        """Describe LiteLLM configuration and PostgreSQL data directories."""
         litellm = svc("service_-_litellm")
         litellm_postgres = svc("service_-_litellm-postgres")
         return [
@@ -288,7 +287,6 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
             Dir(litellm / "config", 0o750),
             Dir(litellm_postgres, 0o750),
             Dir(litellm_postgres / "data", 0o700, create_only=True),
-            Dir(litellm_postgres / "secret", 0o700),
         ]
 
     def stack4() -> list[Dir]:

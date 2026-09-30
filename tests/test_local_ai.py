@@ -26,6 +26,16 @@ def test_help_lists_available_wrappers():
     for number in ("00", "10", "20", "30", "40", "50", "60", "70"):
         assert f"stack-{number}" in result.stdout
         assert f"stack-{number}.py" not in result.stdout
+    assert "env" in result.stdout
+
+
+def test_environment_bootstrap_help():
+    """Expose the explicit secret bootstrap verb without running it."""
+    result = subprocess.run([ROOT / "local-ai", "env", "--help"], capture_output=True,
+                            text=True, check=False)
+    assert result.returncode == 0
+    assert "bootstrap" in result.stdout
+    assert "issue-litellm-keys" not in result.stdout
 
 
 @pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70"))

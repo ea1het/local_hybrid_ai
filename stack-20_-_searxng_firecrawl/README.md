@@ -57,7 +57,7 @@ Stack2 uses one PostgreSQL cluster and keeps the database name `postgres` becaus
 
 Two identities are intentionally distinct:
 
-- `postgres` — administrative/bootstrap identity used for initialization, ownership, extensions and cron management. Its password lives in runtime secret storage outside the protected root `.env`.
+- `postgres` — administrative/bootstrap identity used for initialization, ownership, extensions and cron management. `FIRECRAWL_POSTGRES_ADMIN_PASSWORD` lives in the protected root `.env` and is passed into PostgreSQL by Compose; no password file is mounted.
 - `firecrawl` — least-privilege application login used by Firecrawl during normal operation. Its credential is installation-owned configuration.
 
 The bootstrap grants only the schema/table/sequence access needed by the application and establishes default privileges for future NuQ objects created by the administrative role.
@@ -66,7 +66,7 @@ The bootstrap grants only the schema/table/sequence access needed by the applica
 
 Persistent directories include SearXNG state and the Firecrawl Redis, RabbitMQ and PostgreSQL runtime areas. PREPARE must preserve existing persistent state. In particular, an initialized PostgreSQL data directory is runtime-owned and must not be recursively `chown`ed, permission-normalized or recreated as a routine repair action.
 
-The administrative PostgreSQL password is generated once for a new runtime and then preserved. Rotating only one side of a persistent database credential contract is not a supported configuration change.
+Run `sudo ./local-ai env bootstrap` from the repository root before preparation. It generates a password for a new runtime or adopts the existing runtime password into `.env`. Preparation checks that the two copies match and never rotates either one. Rotating only one side of a persistent database credential contract is not a supported configuration change.
 
 ## Capability behaviour
 
@@ -78,7 +78,7 @@ Stack 20 is a provider, not a hard dependency of Stacks 60 or 70. If it is absen
 
 - PostgreSQL is reachable through Docker networking, not by an unnecessary host `5432` publication.
 - Administrative and application database identities remain separate.
-- The administrative database secret stays outside Git and outside the root `.env`.
+- The administrative database secret stays outside Git; `.env` and its private backup contain the canonical value.
 - Existing PGDATA metadata is preserved during PREPARE.
 - Missing Stack2 capability never enables an undeclared external web fallback.
 - The operator entry point is `wrapper/bin/stack-20.py`; it does not automate capability reconciliation.

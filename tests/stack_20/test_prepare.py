@@ -4,8 +4,8 @@
 
 """Test SearXNG and Firecrawl preparation with isolated runtime files.
 
-Cases check platform prerequisites, configuration installation, preserved
-secrets, and the preparation lock. Docker operations are replaced by
+Cases check platform prerequisites, configuration installation, and the
+preparation lock without creating a password file. Docker operations are replaced by
 test doubles. Importing the module does not prepare services."""
 
 import sys
@@ -19,14 +19,14 @@ import pytest
 from tests.helpers import load_module
 
 
-def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeypatch):
-    """Preserve the database secret while installing config and a lock."""
+def test_prepare_uses_env_password_without_file_and_installs_config(tmp_path, monkeypatch):
+    """Keep the database password in .env while installing config and a lock."""
     module = load_module("stack-20_-_searxng_firecrawl", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
     base = tmp_path / "runtime"
     service_paths = ("service_-_searxng/config", "service_-_searxng/data",
                      "service_-_firecrawl-redis/data", "service_-_firecrawl-rabbitmq/data",
-                     "service_-_firecrawl-postgres/data", "service_-_firecrawl-postgres/secret")
+                     "service_-_firecrawl-postgres/data")
     for path in service_paths:
         (base / path).mkdir(parents=True)
     for path in (stack_dir / "config/searxng/settings.yml",
@@ -35,8 +35,6 @@ def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeyp
                  tmp_path / "stack-00_-_platform/.lock"):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("fixture")
-    secret = base / "service_-_firecrawl-postgres/secret/postgres_admin_password"
-    secret.write_text("preserved")
     (stack_dir / ".env").touch()
     (stack_dir / "docker-compose.yml").touch()
     monkeypatch.setattr(module, "STACK_DIR", stack_dir)
@@ -50,7 +48,7 @@ def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeyp
     env = {key: "fixture" for key in module.REQUIRED}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(base), NETWORK_NAME="shared",
                SEARXNG_BASE_URL="https://search.example", FIRECRAWL_DB_USER="firecrawl",
-               FIRECRAWL_DB_NAME="postgres")
+               FIRECRAWL_DB_NAME="postgres", FIRECRAWL_POSTGRES_ADMIN_PASSWORD="admin-password")
     monkeypatch.setattr(module, "sourced_environment", lambda: env)
     commands = []
 
@@ -64,7 +62,7 @@ def test_prepare_preserves_existing_secret_and_installs_config(tmp_path, monkeyp
 
     module.main()
 
-    assert secret.read_text() == "preserved"
+    assert not (base / "service_-_firecrawl-postgres/secret").exists()
     assert module.LOCK_FILE.read_text().startswith("stack=stack-20_-_searxng_firecrawl\n")
     assert [command[0] for command in commands].count("install") == 2
     assert any(command[:2] == ["docker", "compose"] and "config" in command for command in commands)
@@ -91,7 +89,7 @@ def test_prepare_rejects_invalid_database_and_url_settings(tmp_path, monkeypatch
     env = {name: "fixture" for name in module.REQUIRED}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(tmp_path / "base"),
                SEARXNG_BASE_URL="https://search.example", FIRECRAWL_DB_USER="firecrawl",
-               FIRECRAWL_DB_NAME="postgres")
+               FIRECRAWL_DB_NAME="postgres", FIRECRAWL_POSTGRES_ADMIN_PASSWORD="admin")
     env[key] = value
     monkeypatch.setattr(module, "sourced_environment", lambda: env)
 

@@ -35,7 +35,7 @@ Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root a
 
 Without a lock, the wrapper calls `00-bootstrap.py` and then `01-prepare.py`. Bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
 
-If `OPENWEBUI_LITELLM_API_KEY` is missing, bootstrap issues a dedicated LiteLLM virtual key scoped to **all models visible at issuance time** and stores it in root `.env`; Compose passes it to Open WebUI as `OPENAI_API_KEY`. It never prints the key. Newly added models are not automatically included in that existing key's scope. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
+Bootstrap does not issue a LiteLLM key. Configure or restore LiteLLM yourself, supply `OPENWEBUI_LITELLM_API_KEY` in the protected root `.env`, then prepare this stack. Compose passes that operator-supplied key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
 
 `sudo python3 -B wrapper/bin/stack-70.py start` runs `docker compose up -d` after checking `.lock`; `sudo python3 -B wrapper/bin/stack-70.py stop` runs `docker compose down` without `--volumes`. Stop removes the container but preserves bind-mounted Open WebUI data and `.lock`. Start does not run `wait-ready.py` or reconcile/verify model policy, so a successful Compose exit is not a READY result.
 

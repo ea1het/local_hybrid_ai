@@ -32,10 +32,11 @@ Stack3 does not depend on Stack2. Web search/extraction is a separate optional c
 
 Stack3 owns a dedicated PostgreSQL cluster. Administrative bootstrap identity and LiteLLM application identity are deliberately separate:
 
-- `postgres` is reserved for cluster bootstrap and administration. Its administrative password is stored in runtime secret storage outside the protected root `.env`.
+- `postgres` is reserved for cluster bootstrap and administration. `LITELLM_POSTGRES_ADMIN_PASSWORD` lives in the protected root `.env` and is passed into PostgreSQL by Compose; no password file is mounted.
 - the configured LiteLLM database user is the application identity used during normal operation; its database name and credential are installation-owned persistent configuration.
 
 `LITELLM_SALT_KEY`, database identity and persistent credentials are part of the installation identity. PREPARE and routine upgrades must preserve them rather than regenerate them.
+Run `sudo ./local-ai env bootstrap` from the repository root before preparation. It generates the administrative password in the protected `.env`. Neither preparation nor provisioning creates a password file.
 
 ## PGDATA contract
 

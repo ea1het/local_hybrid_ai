@@ -106,8 +106,8 @@ cd ../stack-10_-_haproxy_web && docker compose restart haproxy
 |---|---|
 | 0 | `service_-_platform/{state,logs}` |
 | 1 | `service_-_haproxy/config` (root:`PLATFORM_PKI_GID` 0750), `service_-_web` |
-| 2 | `service_-_searxng/{config,data}`, `service_-_firecrawl-redis/data`, `service_-_firecrawl-rabbitmq/data`, `service_-_firecrawl-postgres/{data,secret}` |
-| 3 | `service_-_litellm/config`, `service_-_litellm-postgres/{data,secret}` |
+| 2 | `service_-_searxng/{config,data}`, `service_-_firecrawl-redis/data`, `service_-_firecrawl-rabbitmq/data`, `service_-_firecrawl-postgres/data` |
+| 3 | `service_-_litellm/config`, `service_-_litellm-postgres/data` |
 | 4 | `service_-_gitea/{config,config/conf,data}`, `service_-_gitea-runner/{data,secret}` |
 | 5 | none (external Docker volume `dockhand_data`, managed by Stack5) |
 | 6 | `${HERMES_SERVICE}/{config,config/ssh,data,logs}`, `${HERMES_MEMORY_SERVICE}/data`, `${MEMORY_SYNC_SERVICE}/ssh`, `${SANDBOX_SERVICE}/{config/ssh-host,data/home/.ssh,data/workspace,data/state,logs}` |

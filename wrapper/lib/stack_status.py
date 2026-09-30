@@ -51,7 +51,7 @@ DATABASE_PROBES = {
     ),
     "30": (
         "litellm-postgres",
-        'PGPASSWORD="$(cat /run/secrets/postgres_admin_password)" psql '
+        'PGPASSWORD="$POSTGRES_PASSWORD" psql '
         '-h 127.0.0.1 -U postgres -d postgres -Atqc "SELECT 1"',
     ),
 }

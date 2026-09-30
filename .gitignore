@@ -12,6 +12,7 @@
 # Operational environment backups (contain secrets)
 .env--*
 .env-backup-*
+.env-bootstrap.lock
 
 
 

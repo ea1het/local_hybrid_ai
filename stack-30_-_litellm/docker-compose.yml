@@ -20,12 +20,11 @@ services:
 
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      POSTGRES_PASSWORD: ${LITELLM_POSTGRES_ADMIN_PASSWORD:?Set LITELLM_POSTGRES_ADMIN_PASSWORD in .env}
       POSTGRES_DB: postgres
 
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm-postgres/data:/var/lib/postgresql/data
-      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm-postgres/secret/postgres_admin_password:/run/secrets/postgres_admin_password:ro
 
     networks:
       - redlocal

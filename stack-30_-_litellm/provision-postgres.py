@@ -63,15 +63,13 @@ def main():
                             check=True, stdout=subprocess.PIPE).stdout
     env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)
     os.environ.update(env)
-    for key in ("BASE_PATH", "LITELLM_DB_NAME", "LITELLM_DB_USER", "LITELLM_DB_PASSWORD"):
+    for key in ("BASE_PATH", "LITELLM_DB_NAME", "LITELLM_DB_USER", "LITELLM_DB_PASSWORD",
+                "LITELLM_POSTGRES_ADMIN_PASSWORD"):
         if not env.get(key):
             die(f"missing {key} in {ENV_FILE}")
-    secret_file = Path(env["BASE_PATH"].rstrip("/")) / "service_-_litellm-postgres/secret/postgres_admin_password"
-    if not secret_file.is_file() or secret_file.is_symlink() or not secret_file.stat().st_size:
-        die("missing PostgreSQL administrator secret; run preparation first")
-    admin_password = secret_file.read_text().rstrip("\n")
-    if not admin_password:
-        die("PostgreSQL administrator secret is empty")
+    admin_password = env["LITELLM_POSTGRES_ADMIN_PASSWORD"]
+    if admin_password.startswith("PUT_YOUR_"):
+        die("PostgreSQL administrator password is a template placeholder")
     compose = ["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE)]
     step("Starting dedicated PostgreSQL")
     run(compose + ["up", "-d", "litellm-postgres"], env=env)

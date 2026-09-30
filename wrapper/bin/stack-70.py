@@ -7,8 +7,8 @@
 
 On a fresh installation, this entrypoint calls the stack package's
 00-bootstrap and 01-prepare modules in order. Bootstrap backs up the root
-.env before changes and obtains a LiteLLM key scoped to all currently visible
-models if one is missing. An existing preparation lock skips both modules.
+.env before changes; an operator-supplied LiteLLM key is required by prepare.
+An existing preparation lock skips both modules.
 Install reports manual startup instructions; separate start and stop verbs
 change Compose state without verifying application or model-policy readiness.
 """

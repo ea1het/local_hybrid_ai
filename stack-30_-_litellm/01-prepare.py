@@ -88,7 +88,10 @@ def main():
     os.environ.update(env)
     require(env, "STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_VERSION "
             "LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
-            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD")
+            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
+            "LITELLM_POSTGRES_ADMIN_PASSWORD")
+    if env["LITELLM_POSTGRES_ADMIN_PASSWORD"].startswith("PUT_YOUR_"):
+        die("PostgreSQL administrator password is a placeholder; run ./local-ai env bootstrap")
     stacks_root = env["STACKS_ROOT"].rstrip("/")
     base_path = env["BASE_PATH"].rstrip("/")
     if not env["STACKS_ROOT"].startswith("/") or not env["BASE_PATH"].startswith("/"):
@@ -117,29 +120,15 @@ def main():
     service_dir = Path(base_path) / "service_-_litellm"
     postgres_dir = Path(base_path) / "service_-_litellm-postgres"
     data_dir = postgres_dir / "data"
-    secret_dir = postgres_dir / "secret"
-    password_file = secret_dir / "postgres_admin_password"
     config_source = STACK_DIR / "config/litellm/config.yaml"
     config_dir = service_dir / "config"
     if not config_source.is_file():
         die(f"missing {config_source}")
     step("Stack 30 runtime")
-    for directory in (service_dir, config_dir, postgres_dir, data_dir, secret_dir):
+    for directory in (service_dir, config_dir, postgres_dir, data_dir):
         if not directory.is_dir() or directory.is_symlink():
             die(f"missing {directory}; run Stack 00 bootstrap first")
     log("service directories verified")
-    if password_file.exists() or password_file.is_symlink():
-        if not password_file.is_file() or password_file.is_symlink() or not password_file.stat().st_size:
-            die(f"invalid PostgreSQL secret state: {password_file}")
-        log("existing PostgreSQL administrator secret preserved")
-    else:
-        password = run(["openssl", "rand", "-hex", "32"], capture=True).stdout
-        descriptor = os.open(password_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as secret:
-            secret.write(password)
-        log("PostgreSQL administrator secret generated once")
-    os.chown(password_file, 0, 0)
-    os.chmod(password_file, 0o600)
     log(f"dedicated PostgreSQL: {data_dir}")
     step("LiteLLM configuration")
     run(["install", "-m", "0644", "-o", "0", "-g", "0", str(config_source), str(config_dir / "config.yaml")])

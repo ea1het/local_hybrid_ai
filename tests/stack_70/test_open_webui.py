@@ -5,15 +5,14 @@
 """Test Open WebUI bootstrap, preparation, and model-policy wrappers.
 
 Cases use temporary environment files and mocked container calls to verify
-secret preservation, readiness, and policy-script wiring. They do not
-issue live LiteLLM keys or modify Open WebUI. Importing this module only
+secret preservation, readiness, and policy-script wiring. They never
+issue LiteLLM keys or modify Open WebUI. Importing this module only
 defines tests."""
 
 import sys
 
 sys.dont_write_bytecode = True
 
-import json
 import re
 import stat
 from datetime import datetime
@@ -37,8 +36,6 @@ def test_bootstrap_updates_only_missing_values_and_keeps_secrets_private(tmp_pat
     backups = []
     monkeypatch.setattr(module, "ENV_FILE", env_file)
     monkeypatch.setattr(module, "require_env_file", lambda: env_file.read_text())
-    monkeypatch.setattr(module, "litellm_running", lambda: None)
-    monkeypatch.setattr(module, "issue_litellm_key", lambda: ("sk-private", ["model-a"]))
     monkeypatch.setattr(module.secrets, "token_hex", lambda _: "secret-private")
     monkeypatch.setattr(module, "backup_env", lambda original: backups.append(original) or tmp_path / "backup")
     monkeypatch.setattr(module, "atomic_write", lambda payload, original: written.append((payload, original)))
@@ -49,12 +46,12 @@ def test_bootstrap_updates_only_missing_values_and_keeps_secrets_private(tmp_pat
     assert written[0][1] == backups[0]
     values, _ = module.parse_values(written[0][0])
     assert values["OPENWEBUI_IMAGE"] == "custom/image"
-    assert values["OPENWEBUI_LITELLM_API_KEY"] == "sk-private"
+    assert values["OPENWEBUI_LITELLM_API_KEY"] == "PUT_YOUR_KEY_HERE"
     assert values["OPENWEBUI_SECRET_KEY"] == "secret-private"
     assert values["OPENWEBUI_VERSION"] == module.DEFAULTS["OPENWEBUI_VERSION"]
     assert "OTHER=keep" in written[0][0]
     output = capsys.readouterr().out
-    assert "sk-private" not in output
+    assert "PUT_YOUR_KEY_HERE" not in output
     assert "secret-private" not in output
 
 
@@ -91,36 +88,24 @@ def test_bootstrap_backup_preserves_exact_bytes_and_rejects_collision(tmp_path, 
     assert backup.read_bytes() == original
 
 
-def test_bootstrap_backup_failure_prevents_key_issuance(monkeypatch, capsys):
-    """Fail before asking LiteLLM for a key when no safe backup can be made."""
+def test_bootstrap_backup_failure_prevents_changes(monkeypatch, capsys):
+    """Fail before changing the environment when no safe backup can be made."""
     module = load_module(STACK, "00-bootstrap.py")
     monkeypatch.setattr(module, "require_env_file", lambda: "OPENWEBUI_LITELLM_API_KEY=PUT_YOUR_KEY_HERE\n")
-    monkeypatch.setattr(module, "litellm_running", lambda: None)
     monkeypatch.setattr(module, "backup_env", lambda original: (_ for _ in ()).throw(
         module.BootstrapError("backup unavailable")
     ))
-    monkeypatch.setattr(module, "issue_litellm_key", lambda: pytest.fail("key must not be issued"))
 
     assert module.main() == 1
     assert "backup unavailable" in capsys.readouterr().err
 
 
-def test_bootstrap_rejects_duplicate_keys_before_issuing_key(monkeypatch, capsys):
-    """Reject duplicate settings before issuing an API key."""
+def test_bootstrap_rejects_duplicate_keys(monkeypatch, capsys):
+    """Reject duplicate settings before changing the environment."""
     module = load_module(STACK, "00-bootstrap.py")
     monkeypatch.setattr(module, "require_env_file", lambda: "OPENWEBUI_IMAGE=a\nOPENWEBUI_IMAGE=b\n")
-    monkeypatch.setattr(module, "litellm_running", lambda: pytest.fail("unexpected Docker probe"))
     assert module.main() == 1
     assert "duplicate Stack 70 variables" in capsys.readouterr().err
-
-
-def test_bootstrap_validates_issued_key_and_model_scope(monkeypatch):
-    """Reject issued keys without an allowed model scope."""
-    module = load_module(STACK, "00-bootstrap.py")
-    monkeypatch.setattr(module, "run", lambda command: SimpleNamespace(
-        returncode=0, stdout=json.dumps({"key": "sk-test", "models": []}), stderr=""))
-    with pytest.raises(module.BootstrapError, match="invalid model scope"):
-        module.issue_litellm_key()
 
 
 def test_prepare_validates_gateway_and_writes_lock(tmp_path, monkeypatch):
