@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 This is the **single technical runbook** for the headless oMLX Mac mini.
 
-It replaces the former split between `README.md` and `README.install.md`. The companion [`install.sh`](install.sh) is the executable implementation of this document.
+It replaces the former split between `README.md` and `README.install.md`. The companion [`install.omlx-headless.sh`](install.sh) is the executable implementation of this document.
 
 Validated baseline:
 
