@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 This is the **single technical runbook** for the headless oMLX Mac mini.
 
-It replaces the former split between `README.md` and `README.install.md`. The companion [`install.omlx-headless.sh`](install.sh) is the executable implementation of this document.
+It replaces the former split between `README.md` and `README.install.md`. The companion [`install.omlx-headless.sh`](install.omlx-headless.sh) is the executable implementation of this document.
 
 Validated baseline:
 
@@ -34,7 +34,7 @@ TLS for the oMLX endpoint is documented in the [Caddy guide](../caddy/README.md)
 - [Security and boot assumptions](#security-and-boot-assumptions)
 - [Storage layout](#storage-layout)
 - [Quick start](#quick-start)
-- [`install.sh` actions](#installsh-actions)
+- [`install.omlx-headless.sh` actions](#installsh-actions)
 - [Environment overrides](#environment-overrides)
 - [Clean installation](#clean-installation)
 - [Update procedure](#update-procedure)
@@ -166,7 +166,7 @@ sudo fdesetup disable
 
 Wait for decryption to complete before treating the machine as unattended.
 
-`install.sh` deliberately **does not disable FileVault automatically**.
+`install.omlx-headless.sh` deliberately **does not disable FileVault automatically**.
 
 ### No automatic GUI login
 
@@ -235,42 +235,42 @@ The mount job always addresses the filesystem by UUID because `/dev/diskN` ident
 From this directory:
 
 ```bash
-chmod +x install.sh
-./install.sh install
+chmod +x install.omlx-headless.sh
+./install.omlx-headless.sh install
 ```
 
 For an existing machine that is already installed and only needs the current headless configuration re-applied:
 
 ```bash
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
 To upgrade oMLX safely through the stable Homebrew formula:
 
 ```bash
-./install.sh update
+./install.omlx-headless.sh update
 ```
 
 To validate without intentionally changing configuration:
 
 ```bash
-./install.sh verify
+./install.omlx-headless.sh verify
 ```
 
 To ask the installed NVMe LaunchDaemon to mount the drive:
 
 ```bash
-./install.sh mount
+./install.omlx-headless.sh mount
 ```
 
 Run the script as the normal server account. Do **not** run the complete script with `sudo`.
 
-## `install.sh` actions
+## `install.omlx-headless.sh` actions
 
 ### `install`
 
 ```bash
-./install.sh install
+./install.omlx-headless.sh install
 ```
 
 Performs a clean bootstrap:
@@ -293,7 +293,7 @@ If oMLX is already installed, `install` does not upgrade it.
 ### `configure`
 
 ```bash
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
 Re-applies the machine configuration without changing the installed oMLX package version.
@@ -303,7 +303,7 @@ Use this after changing this repository's boot policy or after repairing a machi
 ### `update`
 
 ```bash
-./install.sh update
+./install.omlx-headless.sh update
 ```
 
 The update workflow:
@@ -324,7 +324,7 @@ A failed package upgrade is **not ignored**. There is no `brew upgrade omlx || t
 ### `verify`
 
 ```bash
-./install.sh verify
+./install.omlx-headless.sh verify
 ```
 
 Checks:
@@ -342,14 +342,14 @@ The API key is not printed.
 ### `mount`
 
 ```bash
-./install.sh mount
+./install.omlx-headless.sh mount
 ```
 
 Kicks the `local.mount-nvme` LaunchDaemon and waits for the expected mount point.
 
 ## Environment overrides
 
-Defaults are defined in `install.sh` and can be overridden per invocation.
+Defaults are defined in `install.omlx-headless.sh` and can be overridden per invocation.
 
 Example:
 
@@ -358,7 +358,7 @@ NVME_UUID="31C10E28-CE2A-410D-B68C-C1D6B3827F5C" \
 NVME_MOUNT="/Volumes/NVMe" \
 NVME_CACHE_DIR="/Volumes/NVMe/AI_Models_Cache" \
 OMLX_PORT=8000 \
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
 ### Host binding
@@ -374,7 +374,7 @@ For a new settings file, the safe default is the oMLX loopback default:
 To expose oMLX directly to the LAN:
 
 ```bash
-OMLX_HOST=0.0.0.0 ./install.sh configure
+OMLX_HOST=0.0.0.0 ./install.omlx-headless.sh configure
 ```
 
 oMLX 0.7 requires authentication for non-loopback binding. This deployment keeps:
@@ -435,8 +435,8 @@ Complete the Apple installer before continuing.
 ### 4. Run the installer
 
 ```bash
-chmod +x install.sh
-./install.sh install
+chmod +x install.omlx-headless.sh
+./install.omlx-headless.sh install
 ```
 
 ### 5. Enable SSH if needed
@@ -454,7 +454,7 @@ Never make a routine oMLX upgrade with an undocumented sequence and then assume 
 Use:
 
 ```bash
-./install.sh update
+./install.omlx-headless.sh update
 ```
 
 The script preserves a timestamped settings backup such as:
@@ -485,17 +485,17 @@ HEAD-
 
 means the machine is using a development keg.
 
-`./install.sh update` detects a `HEAD-*` install and replaces it with the stable formula.
+`./install.omlx-headless.sh update` detects a `HEAD-*` install and replaces it with the stable formula.
 
 ## Re-apply configuration without upgrading
 
 If Homebrew/oMLX is already correct and only the boot plumbing or settings need repair:
 
 ```bash
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
-This is the preferred operation after editing `install.sh`.
+This is the preferred operation after editing `install.omlx-headless.sh`.
 
 ## NVMe automount
 
@@ -616,7 +616,7 @@ The canonical file is:
 ~/.omlx/settings.json
 ```
 
-`install.sh` does not replace the whole file with a hard-coded schema. It loads the installed version's JSON and modifies only the settings owned by this deployment.
+`install.omlx-headless.sh` does not replace the whole file with a hard-coded schema. It loads the installed version's JSON and modifies only the settings owned by this deployment.
 
 ### Server
 
@@ -736,7 +736,7 @@ sudo launchctl print system/local.iogpu-wired-limit
 If the live value is wrong, repair the configuration with:
 
 ```bash
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
 and restart oMLX afterwards if required.
@@ -761,14 +761,14 @@ macOS privacy controls can require enabling this through:
 System Settings -> General -> Sharing -> Remote Login
 ```
 
-`install.sh` deliberately does not change Remote Login automatically.
+`install.omlx-headless.sh` deliberately does not change Remote Login automatically.
 
 ## Validation
 
 Run:
 
 ```bash
-./install.sh verify
+./install.omlx-headless.sh verify
 ```
 
 Manual equivalent:
@@ -832,7 +832,7 @@ Do **not** log in graphically.
 Reconnect using SSH and run:
 
 ```bash
-./install.sh verify
+./install.omlx-headless.sh verify
 ```
 
 The validated boot sequence on 2026-10-01 showed the NVMe initially unavailable, detected a few seconds later, mounted it automatically, and then oMLX recovered and reached `state = running`.
@@ -844,25 +844,25 @@ That is the behaviour this runbook is designed to preserve.
 ### Check status
 
 ```bash
-./install.sh verify
+./install.omlx-headless.sh verify
 ```
 
 ### Reconfigure
 
 ```bash
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
 ### Upgrade
 
 ```bash
-./install.sh update
+./install.omlx-headless.sh update
 ```
 
 ### Mount NVMe
 
 ```bash
-./install.sh mount
+./install.omlx-headless.sh mount
 ```
 
 or:
@@ -883,13 +883,13 @@ diskutil unmount 31C10E28-CE2A-410D-B68C-C1D6B3827F5C
 To restore service:
 
 ```bash
-./install.sh mount
+./install.omlx-headless.sh mount
 sudo brew services start omlx --sudo-service-user="$(id -un)"
 ```
 
 ### Shell aliases
 
-`install.sh` manages this block in `~/.zshrc`:
+`install.omlx-headless.sh` manages this block in `~/.zshrc`:
 
 ```bash
 alias l='ls -l'
@@ -964,7 +964,7 @@ Mounted: No
 try:
 
 ```bash
-./install.sh mount
+./install.omlx-headless.sh mount
 ```
 
 Then inspect:
@@ -991,7 +991,7 @@ diskutil info 31C10E28-CE2A-410D-B68C-C1D6B3827F5C | \
 Then:
 
 ```bash
-./install.sh mount
+./install.omlx-headless.sh mount
 ```
 
 The Homebrew system service normally retries automatically. Verify afterwards:
@@ -1027,7 +1027,7 @@ sudo lsof -nP -iTCP:8000 -sTCP:LISTEN
 If direct LAN access is required:
 
 ```bash
-OMLX_HOST=0.0.0.0 ./install.sh configure
+OMLX_HOST=0.0.0.0 ./install.omlx-headless.sh configure
 ```
 
 Keep API-key verification enabled.
@@ -1054,7 +1054,7 @@ The supported headless policy is:
 Repair:
 
 ```bash
-./install.sh configure
+./install.omlx-headless.sh configure
 ```
 
 ### Homebrew path contains `HEAD-*`
@@ -1069,7 +1069,7 @@ readlink /opt/homebrew/opt/omlx
 Use:
 
 ```bash
-./install.sh update
+./install.omlx-headless.sh update
 ```
 
 to move the deployment back to the stable formula.
@@ -1087,7 +1087,7 @@ can indicate a broken/incomplete package keg rather than a launchd problem.
 First check whether the package is a `HEAD-*` build, then use:
 
 ```bash
-./install.sh update
+./install.omlx-headless.sh update
 ```
 
 and revalidate.
@@ -1127,7 +1127,7 @@ These are the invariants for future maintenance.
 10. **After any boot-policy or package change, reboot without GUI login and run:**
 
     ```bash
-    ./install.sh verify
+    ./install.omlx-headless.sh verify
     ```
 
 A change is not considered complete until that headless reboot test passes.
