@@ -8,11 +8,11 @@ set -Eeuo pipefail
 # Headless oMLX bootstrap/configuration for Apple Silicon macOS.
 # Run as the normal server account, never as root:
 #
-#   ./install.sh install
-#   ./install.sh configure
-#   ./install.sh update
-#   ./install.sh verify
-#   ./install.sh mount
+#   ./install.omlx-headless.sh install
+#   ./install.omlx-headless.sh configure
+#   ./install.omlx-headless.sh update
+#   ./install.omlx-headless.sh verify
+#   ./install.omlx-headless.sh mount
 #
 # Environment overrides:
 #   IOGPU_LIMIT_MB=59392
@@ -38,11 +38,11 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 usage() {
   cat <<'EOF'
 Usage:
-  ./install.sh install      Install stable oMLX if missing, deploy headless config, start and verify
-  ./install.sh configure    Re-apply headless config without changing the installed oMLX version
-  ./install.sh update       Backup settings, move HEAD installs to stable, upgrade oMLX, reconfigure and verify
-  ./install.sh verify       Read-only validation of the deployed headless configuration
-  ./install.sh mount        Ask the NVMe LaunchDaemon to mount the configured external volume
+  ./install.omlx-headless.sh install      Install stable oMLX if missing, deploy headless config, start and verify
+  ./install.omlx-headless.sh configure    Re-apply headless config without changing the installed oMLX version
+  ./install.omlx-headless.sh update       Backup settings, move HEAD installs to stable, upgrade oMLX, reconfigure and verify
+  ./install.omlx-headless.sh verify       Read-only validation of the deployed headless configuration
+  ./install.omlx-headless.sh mount        Ask the NVMe LaunchDaemon to mount the configured external volume
 
 Run as the normal server account, not with sudo.
 
@@ -162,7 +162,7 @@ backup_settings() {
 update_omlx_stable() {
   say "Updating oMLX stable channel"
   [[ -x "${BREW}" ]] || die "Homebrew is not installed."
-  omlx_installed || die "oMLX is not installed. Run: ./install.sh install"
+  omlx_installed || die "oMLX is not installed. Run: ./install.omlx-headless.sh install"
 
   backup_settings
   stop_omlx
@@ -566,7 +566,7 @@ EOF
 }
 
 mount_only() {
-  [[ -f "${MOUNT_PLIST}" ]] || die "NVMe LaunchDaemon is not installed. Run: ./install.sh configure"
+  [[ -f "${MOUNT_PLIST}" ]] || die "NVMe LaunchDaemon is not installed. Run: ./install.omlx-headless.sh configure"
   sudo launchctl kickstart -k system/local.mount-nvme
   wait_for_nvme
   diskutil info "${NVME_UUID}" | grep -E 'Volume Name|Mounted|Mount Point|Volume UUID'
@@ -576,7 +576,7 @@ configure_system() {
   check_filevault
   ensure_clt
   ensure_homebrew
-  omlx_installed || die "oMLX is not installed. Run: ./install.sh install"
+  omlx_installed || die "oMLX is not installed. Run: ./install.omlx-headless.sh install"
 
   configure_iogpu
   configure_nvme_automount
