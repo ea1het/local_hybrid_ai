@@ -15,7 +15,7 @@ set -Eeuo pipefail
 #   ./install.omlx-headless.sh mount
 #
 # Environment overrides:
-#   IOGPU_LIMIT_MB=59392
+#   IOGPU_LIMIT_MB=60293
 #   NVME_UUID=31C10E28-CE2A-410D-B68C-C1D6B3827F5C
 #   NVME_MOUNT=/Volumes/NVMe
 #   NVME_CACHE_DIR=/Volumes/NVMe/AI_Models_Cache
@@ -24,7 +24,7 @@ set -Eeuo pipefail
 
 ACTION="${1:-install}"
 
-IOGPU_LIMIT_MB="${IOGPU_LIMIT_MB:-59392}"
+IOGPU_LIMIT_MB="${IOGPU_LIMIT_MB:-60293}"
 NVME_UUID="${NVME_UUID:-31C10E28-CE2A-410D-B68C-C1D6B3827F5C}"
 NVME_MOUNT="${NVME_MOUNT:-/Volumes/NVMe}"
 NVME_CACHE_DIR="${NVME_CACHE_DIR:-${NVME_MOUNT}/AI_Models_Cache}"
