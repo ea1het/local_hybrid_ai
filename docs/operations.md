@@ -23,6 +23,8 @@ The root environment bootstrap generates LiteLLM administrative credentials and 
 
 Every wrapper has `install` and `status`; Stacks 10–70 also have `start` and `stop`. Run `sudo ./local-ai stack-NN <verb>` with an available two-digit stack number. `./local-ai --help` lists the current names; an unknown stack is rejected. The wrappers use closed stdin for preparation; they forward output and propagate errors rather than prompting. `stop` is available without a lock; `start` requires one. Neither verb removes persistent bind mounts or the preparation lock. Stack 50's `stop` preserves its existing container and external `dockhand_data` volume; the volume contains runtime state even though Dockhand is reconstructable as a service.
 
+Stack command output begins and ends with a blank line. Installation phases, Compose results, next steps, and status sections are separated by blank lines; this framing leaves room for a future terminal footer without changing command behavior or exit codes.
+
 An existing Stack 10–70 `.lock` makes `install` a no-op. Never remove it simply to rerun a command: backup and assess what re-preparation may overwrite first. Stack 00 differs: every `install` audits/repairs platform and Stack 10 prerequisite directories, not other unlocked application directories, and only leaves a lock after successful verification. A direct `stack-00_-_platform/00-bootstrap.py` invocation without `--platform-only` still reconciles all unlocked stacks; review live runtime state first. Certificate rotation is a separate explicit action.
 
 ## First deployment and follow-up

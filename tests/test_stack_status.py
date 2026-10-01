@@ -54,6 +54,8 @@ def test_ready_status_inspects_docker_containers(tmp_path, monkeypatch, capsys):
                            "label=com.docker.compose.service"]
     assert commands[1][:4] == ["docker", "inspect", "--type", "container"]
     output = capsys.readouterr().out
+    assert "preparation=PREPARED\n\n  hermes:" in output
+    assert "inactive optional profile\n\nruntime=READY" in output
     assert "hermes-memory-sync: inactive optional profile" in output
     assert "runtime=READY" in output
 

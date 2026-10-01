@@ -26,6 +26,7 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-70_-_open-webui"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -71,6 +72,8 @@ def install() -> int:
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
     for module in (BOOTSTRAP_MODULE, PREPARE_MODULE):
+        if module == PREPARE_MODULE:
+            print()
         result = subprocess.run(
             [sys.executable, "-B", "-m", module],
             cwd=STACK_DIR,
@@ -81,7 +84,7 @@ def install() -> int:
             check=False,
         )
         if result.stdout:
-            sys.stdout.write(result.stdout)
+            sys.stdout.write(result.stdout.lstrip("\n"))
         if result.stderr:
             sys.stderr.write(result.stderr)
         if result.returncode:
@@ -139,6 +142,7 @@ def run_compose(action: str) -> int:
     if result.returncode:
         print(f"Stack 70 Compose {action} failed.", file=sys.stderr)
         return result.returncode
+    print()
     if action == "up":
         print("Stack 70 containers started; application readiness has not been verified.")
     else:
@@ -146,6 +150,7 @@ def run_compose(action: str) -> int:
     return 0
 
 
+@spaced_output
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-70", description=__doc__.splitlines()[0])

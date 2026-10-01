@@ -140,9 +140,11 @@ def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool =
     try:
         rows = container_rows(stack_dir)
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print()
         print(f"runtime=UNKNOWN ({error})")
         return 2
 
+    print()
     states = []
     failed_exit = False
     for service in (*REQUIRED_SERVICES[number], *OPTIONAL_SERVICES.get(number, ())):
@@ -174,6 +176,7 @@ def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool =
 
     deep_ok = True
     if deep and number in DATABASE_PROBES:
+        print()
         database_service = DATABASE_PROBES[number][0]
         if rows.get(database_service, {}).get("State") != "running":
             deep_ok = False
@@ -184,6 +187,7 @@ def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool =
                 deep_ok = False
         print(f"  PostgreSQL SELECT 1: {'OK' if deep_ok else 'FAILED'}")
 
+    print()
     print(f"runtime={runtime}")
     if deep and number not in DATABASE_PROBES:
         print("deep=No additional read-only probe is defined for this stack")
@@ -196,6 +200,7 @@ def report_platform_status(stack_dir: Path, lock_file: Path, *, deep: bool = Fal
     """Report Stack 00 lock state and optionally run its read-only verifier."""
     prepared = preparation_state(lock_file)
     print(f"Stack 00: preparation={prepared}; runtime=no containers")
+    print()
     if not deep:
         print("platform=NOT VERIFIED (use status --deep)")
         return 0 if prepared == "PREPARED" else 1
@@ -217,5 +222,6 @@ def report_platform_status(stack_dir: Path, lock_file: Path, *, deep: bool = Fal
         sys.stdout.write(result.stdout)
     if result.stderr:
         sys.stderr.write(result.stderr)
+    print()
     print(f"platform={'VERIFIED' if result.returncode == 0 else 'FAILED'}")
     return 0 if prepared == "PREPARED" and result.returncode == 0 else 1

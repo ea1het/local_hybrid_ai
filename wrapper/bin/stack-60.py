@@ -26,6 +26,7 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-60_-_hermes"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -34,6 +35,7 @@ PREPARE_MODULE = "stack-60_-_hermes.01-prepare"
 
 def show_next_steps() -> None:
     """Identify manual deployment without triggering optional capabilities."""
+    print()
     print("Stack 60 is PREPARED; Hermes and its sandbox are not verified as running.")
     print("To start the default stack manually, run:")
     print(f"  cd {shlex.quote(str(STACK_DIR))}")
@@ -79,7 +81,7 @@ def install() -> int:
         check=False,
     )
     if result.stdout:
-        sys.stdout.write(result.stdout)
+        sys.stdout.write(result.stdout.lstrip("\n"))
     if result.stderr:
         sys.stderr.write(result.stderr)
     if result.returncode:
@@ -140,6 +142,7 @@ def run_compose(action: str) -> int:
     if result.returncode:
         print(f"Stack 60 Compose {action} failed.", file=sys.stderr)
         return result.returncode
+    print()
     if action == "up":
         print("Stack 60 containers started; application readiness has not been verified.")
     else:
@@ -147,6 +150,7 @@ def run_compose(action: str) -> int:
     return 0
 
 
+@spaced_output
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-60", description=__doc__.splitlines()[0])

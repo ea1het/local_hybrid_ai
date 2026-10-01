@@ -23,6 +23,7 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.stack_status import report_platform_status
 STACK_DIR = ROOT / "stack-00_-_platform"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -56,7 +57,7 @@ def install() -> int:
         check=False,
     )
     if result.stdout:
-        sys.stdout.write(result.stdout)
+        sys.stdout.write(result.stdout.lstrip("\n"))
     if result.stderr:
         sys.stderr.write(result.stderr)
     if result.returncode:
@@ -65,10 +66,12 @@ def install() -> int:
     if LOCK_FILE.is_symlink() or not LOCK_FILE.is_file():
         print("ERROR: installation returned success without a regular .lock file.", file=sys.stderr)
         return 1
+    print()
     print("Stack 00 is PREPARED; no application containers were started.")
     return 0
 
 
+@spaced_output
 def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-00", description=__doc__.splitlines()[0])

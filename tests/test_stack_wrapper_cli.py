@@ -36,6 +36,8 @@ def test_install_is_required_subcommand(number):
     help_result = subprocess.run([sys.executable, "-B", str(script), "--help"],
                                  capture_output=True, text=True, check=False)
     assert help_result.returncode == 0
+    assert help_result.stdout.startswith("\n")
+    assert help_result.stdout.endswith("\n\n")
     assert f"usage: ./local-ai stack-{number}" in help_result.stdout
     assert f"stack-{number}.py" not in help_result.stdout
     assert "install" in help_result.stdout
@@ -51,6 +53,7 @@ def test_install_is_required_subcommand(number):
         result = subprocess.run([sys.executable, "-B", str(script), *arguments],
                                 capture_output=True, text=True, check=False)
         assert result.returncode == 2
+        assert result.stdout == "\n\n"
         assert f"usage: ./local-ai stack-{number}" in result.stderr
         assert f"stack-{number}.py" not in result.stderr
 
