@@ -99,3 +99,28 @@ def test_symlink_lock_is_rejected_without_execution(tmp_path, monkeypatch):
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
 
     assert wrapper.main(["install"]) == 1
+
+
+def test_stop_includes_optional_memory_sync_profile(tmp_path, monkeypatch, capsys):
+    """Stop the opt-in sync sidecar without enabling it for normal start."""
+    wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack"
+    stack_dir.mkdir()
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    (stack_dir / ".env").symlink_to("../.env")
+    (tmp_path / ".env").write_text("TEST=1\n")
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        """Capture the Compose command without contacting Docker."""
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
+    assert wrapper.run_compose("down") == 0
+    assert calls[0][0] == ["docker", "compose", "--env-file", ".env", "-f",
+                           "docker-compose.yml", "--profile", "git-memory", "down"]
+    assert calls[0][1]["cwd"] == stack_dir
+    assert "stopped and removed" in capsys.readouterr().out

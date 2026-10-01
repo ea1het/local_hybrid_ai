@@ -114,8 +114,11 @@ def test_start_and_stop_use_expected_compose_commands(number, tmp_path, monkeypa
 
     lock.unlink()
     assert wrapper.main(["stop"]) == 0
-    assert calls[1][0] == ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml",
-                            "stop" if number == "50" else "down"]
+    expected = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml"]
+    if number == "60":
+        expected.extend(["--profile", "git-memory"])
+    expected.append("stop" if number == "50" else "down")
+    assert calls[1][0] == expected
     assert not lock.exists()
 
 

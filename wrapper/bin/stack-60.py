@@ -113,7 +113,10 @@ def run_compose(action: str) -> int:
         print(f"ERROR: stack is not prepared; missing regular lock: {LOCK_FILE}", file=sys.stderr)
         return 1
 
-    command = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml", action]
+    command = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml"]
+    if action == "down":
+        command.extend(["--profile", "git-memory"])
+    command.append(action)
     if action == "up":
         command.append("-d")
     if action == "up":

@@ -74,7 +74,9 @@ configuration or removing it.
 adoption, sidecar setup, capability reconciliation, workaround, readiness,
 or cleanup. Those operations belong to a later, separately scoped phase.
 
-`python3 -B wrapper/bin/stack-60.py start` runs `docker compose up -d --build` after checking `.lock`; `python3 -B wrapper/bin/stack-60.py stop` runs `docker compose down` without `--volumes`. Stop removes the stack's containers but preserves bind-mounted state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
+`python3 -B wrapper/bin/stack-60.py start` runs `docker compose up -d --build` after checking `.lock`; `python3 -B wrapper/bin/stack-60.py stop` runs `docker compose --profile git-memory down` without `--volumes`. The profile is enabled only for shutdown, so the optional `hermes-memory-sync` container is removed even when a default-profile-only `up` started the other services. Stop preserves bind-mounted memory and runtime state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
+
+If stopping manually from the stack directory, use `docker compose --env-file .env -f docker-compose.yml --profile git-memory down`, not plain `docker compose down`; the latter omits the optional memory-sync service.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
