@@ -46,6 +46,8 @@ def test_issues_three_distinct_keys_without_inference(tmp_path, monkeypatch):
         calls.append(command)
         if command[:2] == ["docker", "inspect"]:
             return SimpleNamespace(returncode=1, stdout="")
+        if command[:3] == ["docker", "exec", "-i"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"valid": True}))
         if command[:2] == ["docker", "exec"] and command[-1] in module.KEYS:
             return SimpleNamespace(returncode=0, stdout=json.dumps({"key": f"sk-{command[-1]}"}))
         return SimpleNamespace(returncode=0, stdout="")
@@ -64,6 +66,34 @@ def test_issues_three_distinct_keys_without_inference(tmp_path, monkeypatch):
     assert any(command[:2] == ["docker", "exec"] and command[-1] == module.PROVISION_SCRIPT
                for command in calls)
     assert calls[-1] == ["docker", "rm", "-f", module.CONTAINER]
+
+
+def test_reissues_keys_missing_from_recreated_database(tmp_path, monkeypatch):
+    """A retained .env must not leave fresh LiteLLM with unusable keys."""
+    module, env = prepare_module(tmp_path, monkeypatch)
+    env.write_text(env.read_text().replace("PUT_YOUR_LITELLM_API_KEY_HERE", "sk-old-hermes")
+                   .replace("PUT_YOUR_HERMES_MCP_API_KEY_HERE", "sk-old-mcp")
+                   .replace("PUT_YOUR_OPENWEBUI_LITELLM_API_KEY_HERE", "sk-old-webui"))
+    calls = []
+
+    def fake_run(command, **kwargs):
+        """Treat each existing key as absent from the fresh database."""
+        calls.append(command)
+        if command[:2] == ["docker", "inspect"]:
+            return SimpleNamespace(returncode=1, stdout="")
+        if command[:3] == ["docker", "exec", "-i"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"valid": False}))
+        if command[:2] == ["docker", "exec"] and command[-1] in module.KEYS:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"key": f"sk-{command[-1]}"}))
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    assert module.issue_keys() == list(module.KEYS.values())
+    values = bootstrap_env.assignments(env.read_text())
+    assert values["LITELLM_API_KEY"] == "sk-hermes-model"
+    assert values["LITELLM_MCP_API_KEY"] == "sk-hermes-mcp"
+    assert values["OPENWEBUI_LITELLM_API_KEY"] == "sk-webui-model"
+    assert sum(command[:3] == ["docker", "exec", "-i"] for command in calls) == 3
 
 
 def test_refuses_missing_upstream_key_before_docker(tmp_path, monkeypatch):
@@ -144,6 +174,30 @@ def test_preserves_existing_credential_and_models(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", fake_open)
     exec(module.PROVISION_SCRIPT, {})
     assert all(request.data is None for request in requests)
+
+
+def test_checks_existing_key_by_hash_without_exposing_secret(monkeypatch, capsys):
+    """Confirm key policy without placing the raw key in an HTTP URL."""
+    import hashlib
+    import urllib.request
+
+    module = load_module("stack-30_-_litellm", "issue-consumer-keys.py")
+    requests = []
+
+    def fake_open(request, timeout):
+        """Return an active inference key with all managed models."""
+        requests.append(request)
+        return io.BytesIO(json.dumps({"info": {"status": "active", "models": module.MODELS,
+                                              "allowed_routes": ["llm_api_routes"]}}).encode())
+
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-admin")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("sk-consumer"))
+    monkeypatch.setattr(sys, "argv", ["script", "hermes-model"])
+    exec(module.CHECK_SCRIPT, {})
+    assert json.loads(capsys.readouterr().out) == {"valid": True}
+    assert hashlib.sha256(b"sk-consumer").hexdigest() in requests[0].full_url
+    assert "sk-consumer" not in requests[0].full_url
 
 
 def test_key_payloads_limit_models_and_start_without_mcp_grants(monkeypatch, capsys):

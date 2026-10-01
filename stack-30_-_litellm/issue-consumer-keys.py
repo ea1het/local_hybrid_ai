@@ -74,6 +74,28 @@ for alias, setting in models:
 print(json.dumps({"models": [alias for alias, _ in models]}))
 """
 
+CHECK_SCRIPT = r"""
+import hashlib, json, os, sys, urllib.error, urllib.parse, urllib.request
+key = sys.stdin.read().strip()
+role = sys.argv[1]
+digest = hashlib.sha256(key.encode()).hexdigest()
+url = "http://127.0.0.1:4000/key/info?" + urllib.parse.urlencode({"key": digest})
+request = urllib.request.Request(url, headers={"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"]})
+try:
+    with urllib.request.urlopen(request, timeout=20) as response:
+        info = json.load(response)["info"]
+except urllib.error.HTTPError as error:
+    if error.code != 404:
+        raise
+    info = {}
+models = {"mlx/local-general", "mlx/local-agent", "mlx/local-coding"}
+routes = set(info.get("allowed_routes") or [])
+valid = info.get("status") == "active" and (
+    "mcp_routes" in routes if role == "hermes-mcp" else
+    models.issubset(set(info.get("models") or [])) and "llm_api_routes" in routes)
+print(json.dumps({"valid": valid}))
+"""
+
 KEY_SCRIPT = r"""
 import json, os, sys, urllib.request
 base = "http://127.0.0.1:4000"
@@ -130,7 +152,6 @@ def issue_keys() -> list[str]:
         absent = [key for key in required if missing(values.get(key))]
         if absent:
             raise BootstrapError("required LiteLLM settings missing in .env: " + ", ".join(absent))
-        roles = [role for role, key in KEYS.items() if missing(values.get(key))]
         existing = subprocess.run(["docker", "inspect", "--type", "container", CONTAINER],
                                   stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
         if existing.returncode == 0:
@@ -161,6 +182,22 @@ def issue_keys() -> list[str]:
                                         stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
             if configured.returncode:
                 raise BootstrapError("LiteLLM could not provision oMLX models; inspect installer logs")
+            roles = []
+            for role, variable in KEYS.items():
+                if missing(values.get(variable)):
+                    roles.append(role)
+                    continue
+                checked = subprocess.run(["docker", "exec", "-i", CONTAINER, "python3", "-c",
+                                          CHECK_SCRIPT, role], input=values[variable],
+                                         capture_output=True, text=True, check=False)
+                if checked.returncode:
+                    raise BootstrapError(f"could not validate existing {role} key")
+                try:
+                    valid = json.loads(checked.stdout)["valid"]
+                except (ValueError, KeyError, TypeError) as error:
+                    raise BootstrapError(f"invalid key validation response for {role}") from error
+                if valid is not True:
+                    roles.append(role)
             if roles:
                 backup = backup_path(ENV_FILE)
                 write_private(backup, old)
