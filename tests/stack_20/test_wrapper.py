@@ -49,7 +49,11 @@ def test_existing_lock_reports_status_without_running_prepare(tmp_path, monkeypa
 def test_missing_lock_runs_package_and_requires_new_lock(tmp_path, monkeypatch, capsys):
     """Invoke preparation as a package with closed stdin and validate its lock."""
     wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
     lock = tmp_path / ".lock"
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
@@ -58,22 +62,28 @@ def test_missing_lock_runs_package_and_requires_new_lock(tmp_path, monkeypatch, 
     def fake_run(command, **kwargs):
         """Simulate successful preparation while capturing subprocess options."""
         calls.append((command, kwargs))
-        lock.write_text("prepared")
+        if command[-1] == wrapper.PREPARE_MODULE:
+            lock.write_text("prepared")
         return SimpleNamespace(returncode=0, stdout="prepared\n", stderr="")
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 0
-    command, options = calls[0]
+    assert calls[0][0] == [sys.executable, "-B", str(platform / "00-bootstrap.py"), "--stack", "20"]
+    command, options = calls[1]
     assert command == [sys.executable, "-B", "-m", wrapper.PREPARE_MODULE]
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
-    assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
+    assert str(tmp_path) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
     assert "prepared\n" in capsys.readouterr().out
 
 
 def test_failed_prepare_does_not_claim_ready(tmp_path, monkeypatch, capsys):
     """Preserve a nonzero exit code and withhold deployment instructions."""
     wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
@@ -85,6 +95,18 @@ def test_failed_prepare_does_not_claim_ready(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "missing Stack 0" in captured.err
     assert "docker compose" not in captured.out
+
+
+def test_missing_platform_lock_does_not_create_directories(tmp_path, monkeypatch):
+    """Reject an unprepared platform before starting scoped bootstrap."""
+    wrapper = load_wrapper()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["install"]) == 1
 
 
 def test_symlink_lock_is_rejected(tmp_path, monkeypatch):

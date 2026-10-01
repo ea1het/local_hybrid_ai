@@ -36,8 +36,10 @@ flowchart LR
 ## Unattended preparation wrapper
 
 Run `python3 -B wrapper/bin/stack-20.py install` from the repository root (as root for
-initial preparation). The wrapper invokes the stack's `01-prepare.py` package
-module with closed stdin, forwards its output, and requires a regular `.lock`
+initial preparation). After checking Stack 00's lock, the wrapper creates
+only Stack 20's persistent directories using the scoped platform bootstrap,
+then invokes the stack's `01-prepare.py` package module with closed stdin,
+forwards its output, and requires a regular `.lock`
 after success. If the lock already exists, it does nothing and explains the
 risk of manually removing it before reconfiguration.
 

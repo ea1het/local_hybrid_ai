@@ -5,7 +5,8 @@
 
 """Prepare Stack 20 or control its Compose containers explicitly.
 
-The wrapper calls the SearXNG/Firecrawl package's preparation module and
+The wrapper creates only Stack 20's platform-owned directories, then calls
+the SearXNG/Firecrawl package's preparation module and
 relays its output to the operator. An existing regular .lock prevents any
 preparation attempt; removing it for reconfiguration is an explicit manual
 decision. A successful run must create a regular lock. The wrapper only
@@ -64,28 +65,37 @@ def install() -> int:
     if os.geteuid() != 0:
         print("ERROR: initial Stack 20 preparation requires root privileges.", file=sys.stderr)
         return 1
+    platform_lock = ROOT / "stack-00_-_platform" / ".lock"
+    if platform_lock.is_symlink() or not platform_lock.is_file():
+        print(f"ERROR: Stack 00 is not prepared: {platform_lock}", file=sys.stderr)
+        return 1
 
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    result = subprocess.run(
+    commands = (
+        [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "20"],
         [sys.executable, "-B", "-m", PREPARE_MODULE],
-        cwd=STACK_DIR,
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        check=False,
     )
-    if result.stdout:
-        sys.stdout.write(result.stdout.lstrip("\n"))
-    if result.stderr:
-        sys.stderr.write(result.stderr)
-    if result.returncode:
-        print("Stack 20 preparation failed; containers were not started.", file=sys.stderr)
-        return result.returncode
+    for command in commands:
+        result = subprocess.run(
+            command,
+            cwd=STACK_DIR,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout:
+            sys.stdout.write(result.stdout.lstrip("\n"))
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        if result.returncode:
+            print("Stack 20 preparation failed; containers were not started.", file=sys.stderr)
+            return result.returncode
     if LOCK_FILE.is_symlink() or not LOCK_FILE.is_file():
         print("ERROR: preparation returned success without a regular .lock file.", file=sys.stderr)
         return 1

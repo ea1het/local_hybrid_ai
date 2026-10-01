@@ -13,8 +13,8 @@ data directories are never re-owned. Stack 0 is audited even with its .lock.
 Other locked application stacks are left alone, but Stack 10's platform-owned
 prerequisite paths are reconciled during --platform-only installation. The
 Stack 0 installer selects only platform and Stack 10 prerequisite paths;
-other unlocked application stacks remain untouched. Use --dry-run to inspect
-the plan. Importing this module performs no setup."""
+application installers can select their own directories with --stack. Use
+--dry-run to inspect the plan. Importing this module performs no setup."""
 
 from __future__ import annotations
 
@@ -364,7 +364,10 @@ def parse_args() -> argparse.Namespace:
         description="Create service directories and set their permissions.",
     )
     parser.add_argument("--dry-run", action="store_true", help="show actions without applying them")
-    parser.add_argument("--platform-only", action="store_true", help="limit changes to Stack 0 and Stack 10 prerequisites")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--platform-only", action="store_true", help="limit changes to Stack 0 and Stack 10 prerequisites")
+    scope.add_argument("--stack", choices=("20", "30", "40", "60", "70"),
+                       help="reconcile only the selected application stack directories")
     return parser.parse_args()
 
 
@@ -401,6 +404,8 @@ def main() -> None:
     skipped: list[str] = []
     for stack, build in build_layout(env):
         if args.platform_only and stack not in ("stack-00_-_platform", "stack-10_-_haproxy_web"):
+            continue
+        if args.stack and not stack.startswith(f"stack-{args.stack}_-_"):
             continue
         step(f"Directories for {stack}")
         lock = ROOT_DIR / stack / ".lock"
