@@ -57,16 +57,11 @@ flowchart TD
 
 ## Unattended preparation wrapper
 
-Run `python3 -B wrapper/bin/stack-30.py install` from the repository root (as root for
-initial preparation). The wrapper calls only the stack's `01-prepare.py`
-package module, with closed stdin. It reports an existing `.lock` without
-changing anything and requires a regular lock after successful preparation.
+Before `install`, copy the Mac mini's oMLX API key into `OMLX_API_KEY` in the protected root `.env`; the installer rejects a missing or placeholder value and reports this prerequisite. `OMLX_BASE_URL` defaults to `https://mlx.casa.lan/v1`. Stack 30's managed configuration exposes exactly `mlx/local-general`, `mlx/local-agent`, and `mlx/local-coding` as the initial models.
 
-`install` **does not** execute `provision-postgres.py` or start containers. It prints
-the manual PostgreSQL provisioning and Compose startup commands as separate
-next steps; a preparation lock alone does not prove the database is ready.
+Run `sudo ./local-ai stack-30 install` from the repository root. The wrapper prepares configuration, provisions the PostgreSQL application role/database, briefly runs LiteLLM in a disposable container to issue distinct Hermes inference, Hermes MCP, and Open WebUI keys, then removes the temporary container and stops PostgreSQL if it was started by install. The keys are backed up and written only to the protected `.env`, never printed. The MCP key has no initial server grants; register MCPs and grant access yourself in LiteLLM. `.lock` is written only when all install phases complete. Installation does not perform inference or prove oMLX reachability.
 
-`python3 -B wrapper/bin/stack-30.py start` runs `docker compose up -d` after checking `.lock`; it does **not** provision PostgreSQL first. On a new installation, run `provision-postgres.py` as instructed above before starting LiteLLM. `python3 -B wrapper/bin/stack-30.py stop` runs `docker compose down` without `--volumes`, removing containers but retaining the PostgreSQL bind-mounted data and `.lock`. Neither verb proves LiteLLM is healthy.
+`sudo ./local-ai stack-30 start` runs `docker compose up -d` after checking `.lock`. `stop` runs `docker compose down` without `--volumes`, retaining PostgreSQL data and `.lock`. Neither verb proves model inference succeeds; that belongs to a later verify procedure.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
@@ -80,10 +75,10 @@ MCP traffic follows the same boundary when routed through LiteLLM. Review `confi
 
 ## Security invariants
 
-- Administrative PostgreSQL credentials remain outside Git and outside the root `.env`.
+- Administrative PostgreSQL credentials remain outside Git in the protected root `.env`.
 - LiteLLM consumers receive scoped credentials instead of the master key.
 - Persistent identity material is preserved across PREPARE and guarded upgrades.
 - Applications consume the gateway rather than embedding provider credentials or provider-selection policy.
-- The operator entry point is `wrapper/bin/stack-30.py`; PostgreSQL provisioning remains a separate step.
+- The operator entry point is `wrapper/bin/stack-30.py`; PostgreSQL provisioning is part of `install`.
 
-Key implementation files: `docker-compose.yml`, `config/litellm/config.yaml`, `01-prepare.py`, and `provision-postgres.py`.
+Key implementation files: `docker-compose.yml`, `config/litellm/config.yaml`, `01-prepare.py`, `provision-postgres.py`, and `issue-consumer-keys.py`.

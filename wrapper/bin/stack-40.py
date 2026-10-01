@@ -3,21 +3,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepare Stack 40 or control its Compose containers explicitly.
+"""Install Stack 40 without starting long-lived containers.
 
-The wrapper invokes only the Gitea package's 01-prepare module and relays
-its output. An existing regular .lock stops further work and is never
-removed automatically. A successful new preparation must return zero and
-create a regular lock. Gitea migration, administrator setup, runner
-registration, and initial deployment remain in the separate deploy-gitea.py
-step; the start verb only invokes Compose.
+Install prepares Gitea configuration and initializes the administrator in a
+disposable container. Only then is .lock written. Start invokes Compose to
+launch Gitea and its runner; it does not create the administrator.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -30,19 +27,18 @@ from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-40_-_gitea"
 LOCK_FILE = STACK_DIR / ".lock"
 PREPARE_MODULE = "stack-40_-_gitea.01-prepare"
+INITIALIZE_MODULE = "stack-40_-_gitea.deploy-gitea"
 
 
 def show_next_steps() -> None:
-    """Describe the separate manual Gitea deployment command."""
+    """Show the explicit start operation after initialization."""
     print()
-    print("Stack 40 is PREPARED; this wrapper did not run migrations or deploy containers.")
-    print("For a new deployment only, continue manually with:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  python3 -B deploy-gitea.py")
+    print("Stack 40 is INSTALLED; Gitea and its runner are not running.")
+    print("Start with: ./local-ai stack-40 start")
 
 
 def install() -> int:
-    """Respect .lock or run only package preparation without interactive input."""
+    """Prepare and initialize the administrator before writing .lock."""
     if LOCK_FILE.is_symlink():
         print(f"ERROR: {LOCK_FILE} is a symbolic link; review it manually.", file=sys.stderr)
         return 1
@@ -51,7 +47,7 @@ def install() -> int:
             print(f"ERROR: {LOCK_FILE} is not a regular file.", file=sys.stderr)
             return 1
         print(f"Stack 40 already has a preparation lock: {LOCK_FILE}")
-        print("No configuration was changed and 01-prepare.py was not run.")
+        print("No configuration was changed.")
         print("Removing .lock manually would permit reconfiguration, which may overwrite")
         print("runtime configuration or disrupt a running service. Review first.")
         show_next_steps()
@@ -69,25 +65,22 @@ def install() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    result = subprocess.run(
-        [sys.executable, "-B", "-m", PREPARE_MODULE],
-        cwd=STACK_DIR,
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.stdout:
-        sys.stdout.write(result.stdout)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
-    if result.returncode:
-        print("Stack 40 preparation failed; deployment was not started.", file=sys.stderr)
-        return result.returncode
-    if LOCK_FILE.is_symlink() or not LOCK_FILE.is_file():
-        print("ERROR: preparation returned success without a regular .lock file.", file=sys.stderr)
-        return 1
+    for module in (PREPARE_MODULE, INITIALIZE_MODULE):
+        result = subprocess.run([sys.executable, "-B", "-m", module], cwd=STACK_DIR,
+                                env=environment, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, check=False)
+        if result.stdout:
+            sys.stdout.write(result.stdout)
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        if result.returncode:
+            print(f"Stack 40 {module.rsplit('.', 1)[-1]} failed; no install lock was written.",
+                  file=sys.stderr)
+            return result.returncode
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    descriptor = os.open(LOCK_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(descriptor, "w") as output:
+        output.write(f"stack=stack-40_-_gitea\nprepared_at_utc={timestamp}\n")
 
     show_next_steps()
     return 0
@@ -146,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-40", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("install", help="Prepare without starting services").set_defaults(handler=install)
+    commands.add_parser("install", help="Prepare Gitea and initialize its administrator").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")
     )

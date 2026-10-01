@@ -3,21 +3,19 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Prepare Stack 30 or control its Compose containers explicitly.
+"""Install Stack 30, including PostgreSQL and minimal LiteLLM access.
 
-The wrapper invokes the LiteLLM package's 01-prepare module once when no
-regular .lock exists. It forwards the module's output and requires both a
-zero exit code and a new regular lock before reporting PREPARED. Existing
-locks are informational stops; they are never removed automatically.
-Database provisioning and container startup remain explicit later steps;
-the start verb does not provision PostgreSQL or verify gateway readiness.
+Install prepares configuration, provisions the database, issues three
+least-privilege consumer keys in a disposable LiteLLM container, and writes
+.lock only after every phase succeeds. It stops PostgreSQL if install started
+it. Start and stop remain explicit; install never tests model inference.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -30,20 +28,20 @@ from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-30_-_litellm"
 LOCK_FILE = STACK_DIR / ".lock"
 PREPARE_MODULE = "stack-30_-_litellm.01-prepare"
+PROVISION_MODULE = "stack-30_-_litellm.provision-postgres"
+KEYS_MODULE = "stack-30_-_litellm.issue-consumer-keys"
 
 
 def show_next_steps() -> None:
-    """Explain the separate database provisioning and startup commands."""
+    """Explain how to start the installed stack without claiming readiness."""
     print()
-    print("Stack 30 is PREPARED; PostgreSQL is not provisioned by this wrapper.")
-    print("For a new database only, continue manually with:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  python3 -B provision-postgres.py")
-    print("  docker compose --env-file .env -f docker-compose.yml up -d")
+    print("Stack 30 is INSTALLED; no services were started for ongoing operation.")
+    print("Start with: ./local-ai stack-30 start")
+    print("Model inference and oMLX reachability remain for a later verify phase.")
 
 
 def install() -> int:
-    """Respect .lock or call only the package preparation module without stdin."""
+    """Complete preparation, provisioning, and key setup before locking."""
     if LOCK_FILE.is_symlink():
         print(f"ERROR: {LOCK_FILE} is a symbolic link; review it manually.", file=sys.stderr)
         return 1
@@ -52,7 +50,7 @@ def install() -> int:
             print(f"ERROR: {LOCK_FILE} is not a regular file.", file=sys.stderr)
             return 1
         print(f"Stack 30 already has a preparation lock: {LOCK_FILE}")
-        print("No configuration was changed and 01-prepare.py was not run.")
+        print("No configuration was changed.")
         print("Removing .lock manually would permit reconfiguration, which may overwrite")
         print("runtime configuration or disrupt a running service. Review first.")
         show_next_steps()
@@ -70,25 +68,43 @@ def install() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    result = subprocess.run(
-        [sys.executable, "-B", "-m", PREPARE_MODULE],
-        cwd=STACK_DIR,
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.stdout:
-        sys.stdout.write(result.stdout)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
-    if result.returncode:
-        print("Stack 30 preparation failed; database provisioning was not started.", file=sys.stderr)
-        return result.returncode
-    if LOCK_FILE.is_symlink() or not LOCK_FILE.is_file():
-        print("ERROR: preparation returned success without a regular .lock file.", file=sys.stderr)
-        return 1
+    running = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "litellm-postgres"],
+                             stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+    postgres_was_running = running.returncode == 0 and running.stdout.strip() == "true"
+    provision_attempted = False
+    phase_exit = 0
+    stop_failed = False
+    try:
+        for module in (PREPARE_MODULE, PROVISION_MODULE, KEYS_MODULE):
+            if module == PROVISION_MODULE:
+                provision_attempted = True
+            result = subprocess.run([sys.executable, "-B", "-m", module], cwd=STACK_DIR,
+                                    env=environment, stdin=subprocess.DEVNULL,
+                                    capture_output=True, text=True, check=False)
+            if result.stdout:
+                sys.stdout.write(result.stdout)
+            if result.stderr:
+                sys.stderr.write(result.stderr)
+            if result.returncode:
+                print(f"Stack 30 {module.rsplit('.', 1)[-1]} failed; no install lock was written.",
+                      file=sys.stderr)
+                phase_exit = result.returncode
+                break
+    finally:
+        if provision_attempted and not postgres_was_running:
+            stopped = subprocess.run(["docker", "compose", "--env-file", ".env", "-f",
+                                      "docker-compose.yml", "stop", "litellm-postgres"],
+                                     cwd=STACK_DIR, stdin=subprocess.DEVNULL,
+                                     capture_output=True, text=True, check=False)
+            if stopped.returncode:
+                print("ERROR: could not stop installation-only PostgreSQL container.", file=sys.stderr)
+                stop_failed = True
+    if phase_exit or stop_failed:
+        return phase_exit or 1
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    descriptor = os.open(LOCK_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(descriptor, "w") as output:
+        output.write(f"stack=stack-30_-_litellm\nprepared_at_utc={timestamp}\n")
 
     show_next_steps()
     return 0
@@ -147,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-30", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("install", help="Prepare without starting services").set_defaults(handler=install)
+    commands.add_parser("install", help="Provision PostgreSQL and minimal LiteLLM access").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")
     )

@@ -19,7 +19,7 @@ import pytest
 from tests.helpers import load_module
 
 
-def test_prepare_uses_env_password_and_creates_lock(tmp_path, monkeypatch):
+def test_prepare_uses_env_password_without_lock(tmp_path, monkeypatch):
     """Prepare LiteLLM without creating a database password file."""
     module = load_module("stack-30_-_litellm", "01-prepare.py")
     stack_dir = tmp_path / module.STACK_NAME
@@ -42,10 +42,11 @@ def test_prepare_uses_env_password_and_creates_lock(tmp_path, monkeypatch):
     env = {key: "fixture" for key in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE "
            "LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
-           "LITELLM_POSTGRES_ADMIN_PASSWORD").split()}
+           "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY").split()}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(base), NETWORK_NAME="shared",
                LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_DB_NAME="litellm",
-               LITELLM_DB_USER="app_user", LITELLM_POSTGRES_ADMIN_PASSWORD="generated-secret")
+               LITELLM_DB_USER="app_user", LITELLM_POSTGRES_ADMIN_PASSWORD="generated-secret",
+               OMLX_BASE_URL="https://mlx.example/v1", OMLX_API_KEY="upstream-secret")
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(module, "load_env", lambda: env)
@@ -69,7 +70,7 @@ def test_prepare_uses_env_password_and_creates_lock(tmp_path, monkeypatch):
     module.main()
 
     assert not (base / "service_-_litellm-postgres/secret").exists()
-    assert module.LOCK_FILE.read_text().startswith("stack=stack-30_-_litellm\n")
+    assert not module.LOCK_FILE.exists()
     assert any(command[0] == "install" and "config.yaml" in command[-1] for command in commands)
     assert any(command[:2] == ["docker", "compose"] and "config" in command for command in commands)
 
@@ -94,9 +95,10 @@ def test_prepare_rejects_unsafe_settings(tmp_path, monkeypatch, key, value, mess
     env = {name: "fixture" for name in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE "
            "LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
-           "LITELLM_POSTGRES_ADMIN_PASSWORD").split()}
+           "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY").split()}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(tmp_path / "runtime"),
-               LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_DB_USER="app_user")
+               LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_DB_USER="app_user",
+               OMLX_BASE_URL="https://mlx.example/v1", OMLX_API_KEY="upstream-secret")
     env[key] = value
     for name, item in env.items():
         monkeypatch.setenv(name, item)

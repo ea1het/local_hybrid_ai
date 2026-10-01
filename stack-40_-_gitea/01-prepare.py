@@ -7,11 +7,11 @@
 
 The script checks Stack 0 prerequisites, required source files, environment
 values, and runtime directories. It renders service configuration and
-preserves an existing runner token before writing a preparation lock.
-deploy-gitea.py performs the later service migration and startup; importing
-this module does not run either phase."""
+preserves an existing runner token without writing a preparation lock.
+The install wrapper next initializes the administrator in a disposable
+Gitea container, writes .lock, and leaves startup to its start verb.
+Importing this module has no side effects."""
 
-import datetime
 import os
 import re
 import shutil
@@ -176,12 +176,9 @@ def main():
     step("Docker Compose validation")
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
     log("Docker Compose configuration valid")
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
     step("Preparation complete")
-    log(f"lock created: {LOCK_FILE}")
+    log("administrator initialization is the next install step")
     log("runner token: persistent runtime state, not required in .env")
-    log("for a new deployment only, run the Gitea deployment step to migrate and start the stack")
 
 
 if __name__ == "__main__":

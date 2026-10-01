@@ -35,7 +35,7 @@ Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root a
 
 Without a lock, the wrapper calls `00-bootstrap.py` and then `01-prepare.py`. Bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
 
-Bootstrap does not issue a LiteLLM key. Configure or restore LiteLLM yourself, supply `OPENWEBUI_LITELLM_API_KEY` in the protected root `.env`, then prepare this stack. Compose passes that operator-supplied key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
+Bootstrap does not issue a LiteLLM key. Stack 30 install writes the dedicated `OPENWEBUI_LITELLM_API_KEY` to the protected root `.env`; prepare this stack after Stack 30 install. Compose passes that key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
 
 `sudo python3 -B wrapper/bin/stack-70.py start` runs `docker compose up -d` after checking `.lock`; `sudo python3 -B wrapper/bin/stack-70.py stop` runs `docker compose down` without `--volumes`. Stop removes the container but preserves bind-mounted Open WebUI data and `.lock`. Start does not run `wait-ready.py` or reconcile/verify model policy, so a successful Compose exit is not a READY result.
 

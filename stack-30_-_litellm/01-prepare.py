@@ -6,12 +6,11 @@
 """Prepare LiteLLM configuration and its dedicated PostgreSQL storage.
 
 The entrypoint verifies Stack 0 prerequisites, the service source files,
-and pre-created runtime directories. It provisions required secrets and
-configuration while preserving an existing PostgreSQL data directory;
-database role creation is handled separately by provision-postgres.py.
-The .lock marks successful preparation, not service health. Import is inert."""
+and pre-created runtime directories. It installs configuration while
+preserving the PostgreSQL data directory. The install wrapper provisions
+the database, issues consumer keys, and writes .lock after all phases.
+Importing this module has no side effects."""
 
-import datetime
 import os
 import re
 import shutil
@@ -66,7 +65,7 @@ def require(env, keys):
 
 
 def main():
-    """Check dependencies, prepare the secret and configuration, and write the lock."""
+    """Check dependencies and prepare configuration without writing the lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
         print(f"Stack already prepared. {LOCK_FILE} exists; no changes made.")
         return
@@ -89,9 +88,13 @@ def main():
     require(env, "STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_VERSION "
             "LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
             "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
-            "LITELLM_POSTGRES_ADMIN_PASSWORD")
+            "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY")
     if env["LITELLM_POSTGRES_ADMIN_PASSWORD"].startswith("PUT_YOUR_"):
         die("PostgreSQL administrator password is a placeholder; run ./local-ai env bootstrap")
+    if env["OMLX_API_KEY"].startswith("PUT_YOUR_"):
+        die("OMLX_API_KEY is required before Stack 30 install; copy the key from the oMLX server into .env")
+    if not env["OMLX_BASE_URL"].startswith("https://"):
+        die("OMLX_BASE_URL must use HTTPS")
     stacks_root = env["STACKS_ROOT"].rstrip("/")
     base_path = env["BASE_PATH"].rstrip("/")
     if not env["STACKS_ROOT"].startswith("/") or not env["BASE_PATH"].startswith("/"):
@@ -137,10 +140,8 @@ def main():
     step("Docker Compose validation")
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
     log("Docker Compose configuration valid")
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
     step("Preparation complete")
-    log(f"lock created: {LOCK_FILE}")
+    log("PostgreSQL provisioning and consumer credentials are the next install steps")
     log("PostgreSQL is managed by Stack 30")
 
 

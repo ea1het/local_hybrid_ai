@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Test the Stack 30 wrapper without provisioning or deploying services.
+"""Test the Stack 30 install sequence without provisioning real services.
 
 Temporary locks and mocked subprocess calls exercise the Python
 wrapper's lock handling, package invocation, and failure reporting.
@@ -43,14 +43,12 @@ def test_existing_lock_prevents_prepare_and_describes_next_steps(tmp_path, monke
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "Removing .lock manually" in output
-    assert "\n\nStack 30 is PREPARED" in output
-    assert "For a new database only" in output
-    assert "python3 -B provision-postgres.py" in output
-    assert "docker compose --env-file .env -f docker-compose.yml up -d" in output
+    assert "\n\nStack 30 is INSTALLED" in output
+    assert "./local-ai stack-30 start" in output
 
 
-def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
-    """Run the package noninteractively and require its preparation lock."""
+def test_missing_lock_runs_all_install_phases(tmp_path, monkeypatch, capsys):
+    """Provision and issue keys before creating the installation lock."""
     wrapper = load_wrapper()
     lock = tmp_path / ".lock"
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
@@ -59,19 +57,21 @@ def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
     calls = []
 
     def fake_run(command, **kwargs):
-        """Record the subprocess invocation and simulate lock creation."""
+        """Record each subprocess without creating the lock on its behalf."""
         calls.append((command, kwargs))
-        lock.write_text("prepared")
-        return SimpleNamespace(returncode=0, stdout="prepared\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="prepared\n" if command[0] == sys.executable else "", stderr="")
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 0
-    command, options = calls[0]
+    command, options = calls[1]
     assert command == [sys.executable, "-B", "-m", wrapper.PREPARE_MODULE]
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
     assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert "prepared\n\nStack 30 is PREPARED" in capsys.readouterr().out
+    assert [command[3] for command, _ in calls if command[0] == sys.executable] == [
+        wrapper.PREPARE_MODULE, wrapper.PROVISION_MODULE, wrapper.KEYS_MODULE]
+    assert lock.is_file()
+    assert "Stack 30 is INSTALLED" in capsys.readouterr().out
 
 
 def test_failed_prepare_does_not_claim_database_is_ready(tmp_path, monkeypatch, capsys):
@@ -80,14 +80,14 @@ def test_failed_prepare_does_not_claim_database_is_ready(tmp_path, monkeypatch, 
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
-        returncode=4, stdout="", stderr="missing prerequisite\n"
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda command, **kwargs: SimpleNamespace(
+        returncode=4 if command[0] == sys.executable else 0, stdout="", stderr="missing prerequisite\n"
     ))
 
     assert wrapper.main(["install"]) == 4
     captured = capsys.readouterr()
     assert "missing prerequisite" in captured.err
-    assert "provision-postgres.py" not in captured.out
+    assert not (tmp_path / ".lock").exists()
 
 
 def test_symlink_lock_is_rejected_without_execution(tmp_path, monkeypatch):

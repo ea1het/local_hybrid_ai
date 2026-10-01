@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check that the Stack 40 wrapper never deploys Gitea implicitly.
+"""Check that Stack 40 initializes Gitea without starting services.
 
 The tests load the Python wrapper with a temporary lock and mocked
 subprocess results. They verify package invocation, safety around an
@@ -43,13 +43,12 @@ def test_existing_lock_is_explained_without_running_prepare(tmp_path, monkeypatc
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "Removing .lock manually" in output
-    assert "\n\nStack 40 is PREPARED" in output
-    assert "For a new deployment only" in output
-    assert "python3 -B deploy-gitea.py" in output
+    assert "\n\nStack 40 is INSTALLED" in output
+    assert "./local-ai stack-40 start" in output
 
 
-def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
-    """Invoke preparation with closed stdin and require its new lock."""
+def test_missing_lock_prepares_and_initializes_admin(tmp_path, monkeypatch, capsys):
+    """Invoke both phases with closed stdin, then create .lock."""
     wrapper = load_wrapper()
     lock = tmp_path / ".lock"
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
@@ -58,9 +57,8 @@ def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
     calls = []
 
     def fake_run(command, **kwargs):
-        """Simulate preparation without deploying the Gitea service."""
+        """Simulate preparation and one-off administrator initialization."""
         calls.append((command, kwargs))
-        lock.write_text("prepared")
         return SimpleNamespace(returncode=0, stdout="prepared\n", stderr="")
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
@@ -70,7 +68,9 @@ def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
     assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert "prepared\n\nStack 40 is PREPARED" in capsys.readouterr().out
+    assert calls[1][0] == [sys.executable, "-B", "-m", wrapper.INITIALIZE_MODULE]
+    assert lock.is_file()
+    assert "Stack 40 is INSTALLED" in capsys.readouterr().out
 
 
 def test_prepare_failure_does_not_claim_deployment(tmp_path, monkeypatch, capsys):
@@ -86,7 +86,7 @@ def test_prepare_failure_does_not_claim_deployment(tmp_path, monkeypatch, capsys
     assert wrapper.main(["install"]) == 5
     captured = capsys.readouterr()
     assert "missing source" in captured.err
-    assert "deploy-gitea.py" not in captured.out
+    assert not (tmp_path / ".lock").exists()
 
 
 def test_symlink_lock_is_rejected(tmp_path, monkeypatch):

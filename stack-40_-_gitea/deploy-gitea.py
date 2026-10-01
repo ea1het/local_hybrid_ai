@@ -3,18 +3,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Deploy a prepared Gitea installation and check its runner.
+"""Initialize a fresh Gitea SQLite database and its administrator.
 
-This entrypoint requires the stack lock, rendered files, and runner token
-produced during preparation. It performs the Gitea deployment steps and
-checks that the runner registers successfully. Importing the module is safe;
-deployment only occurs through its explicit CLI main function."""
+The Stack 40 installer invokes this module after configuration preparation.
+Gitea's CLI initializes the empty database schema while creating the admin
+specified in .env. Only disposable Compose run containers are used; the
+long-lived Gitea and runner services are started by the separate start verb.
+Importing this module does not change host or container state."""
 
 import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -23,7 +23,6 @@ STACK_NAME = "stack-40_-_gitea"
 STACK_DIR = Path(__file__).resolve().parent
 ENV_FILE = STACK_DIR / ".env"
 COMPOSE_FILE = STACK_DIR / "docker-compose.yml"
-LOCK_FILE = STACK_DIR / ".lock"
 
 
 def die(message):
@@ -48,7 +47,7 @@ def run(command, env=None, capture=False):
 
 
 def main():
-    """Migrate Gitea, ensure an administrator, and start the stack."""
+    """Initialize Gitea and its administrator without starting services."""
     if not shutil.which("docker"):
         die("docker is not installed")
     if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,
@@ -56,8 +55,6 @@ def main():
         die("Docker Compose v2 is not available")
     if not ENV_FILE.is_file():
         die(f"missing {ENV_FILE}")
-    if not LOCK_FILE.is_file():
-        die(f"Stack 40 is not prepared: missing {LOCK_FILE}; run preparation first")
     loaded = subprocess.run(["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
                             check=True, stdout=subprocess.PIPE).stdout
     env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)
@@ -75,7 +72,6 @@ def main():
     runner_service = Path(env["BASE_PATH"].rstrip("/")) / "service_-_gitea-runner"
     runner_config = runner_service / "data/config.yaml"
     token_file = runner_service / "secret/registration-token"
-    state_file = runner_service / "data/.runner"
     for path in (app_ini, runner_config):
         if not path.is_file():
             die(f"missing {path}; run preparation first")
@@ -85,34 +81,19 @@ def main():
     step("Validation and download")
     run(compose + ["config", "--quiet"], env=env)
     run(compose + ["pull"], env=env)
-    step("Gitea migrations")
-    run(compose + ["run", "--rm", "gitea", "gitea", "migrate", "--config", "/etc/gitea/app.ini"], env=env)
     step("Administrator user")
-    admins = subprocess.run(compose + ["run", "--rm", "gitea", "gitea", "admin", "user", "list",
+    admins = subprocess.run(compose + ["run", "--rm", "--no-deps", "gitea", "gitea", "admin", "user", "list",
                                     "--config", "/etc/gitea/app.ini", "--admin"],
                             env=env, stdout=subprocess.PIPE, text=True)
     if admins.returncode or env["GITEA_ADMIN_USERNAME"] not in admins.stdout:
-        run(compose + ["run", "--rm", "-e", "GITEA_ADMIN_USERNAME", "-e", "GITEA_ADMIN_EMAIL",
+        run(compose + ["run", "--rm", "--no-deps", "-e", "GITEA_ADMIN_USERNAME", "-e", "GITEA_ADMIN_EMAIL",
                        "-e", "GITEA_ADMIN_PASSWORD", "gitea", "sh", "-ceu",
                        'gitea admin user create --config /etc/gitea/app.ini '
                        '--username "$GITEA_ADMIN_USERNAME" --email "$GITEA_ADMIN_EMAIL" '
                        '--password "$GITEA_ADMIN_PASSWORD" --admin --must-change-password=false'], env=env)
-    step("Startup")
-    run(compose + ["up", "-d"], env=env)
-    step("Runner validation")
-    for attempt in range(30):
-        inspected = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "gitea-runner"],
-                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        if inspected.stdout.strip() == "true" and state_file.is_file() and state_file.stat().st_size:
-            log("runner registered with a persistent identity")
-            break
-        if attempt == 29:
-            die("runner did not create or recover its persistent identity")
-        time.sleep(2)
-    run(compose + ["ps"], env=env)
-    step("Installation complete")
-    log(f"Gitea public URL: {env['GITEA_ROOT_URL']}")
-    log(f"runner: {env['GITEA_RUNNER_NAME']}")
+    step("Administrator initialization complete")
+    log(f"Gitea administrator: {env['GITEA_ADMIN_USERNAME']}")
+    log("no long-lived Gitea or runner containers were started")
 
 
 if __name__ == "__main__":

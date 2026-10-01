@@ -7,8 +7,8 @@
 #
 # Configuracion base del proxy.
 #
-# Los modelos se gestionan dinamicamente desde la Admin UI y se almacenan
-# en PostgreSQL, por eso model_list comienza vacio.
+# Three installation-owned oMLX aliases are always present. Additional
+# models can be managed in LiteLLM after installation.
 #
 # Los MCP servers, virtual keys, access groups y permisos MCP tambien se
 # gestionan dinamicamente desde LiteLLM/PostgreSQL. No se declaran aqui para
@@ -23,11 +23,23 @@
 # Modelos
 # -----------------------------------------------------------------------------
 
-# No definimos modelos estaticamente.
-#
-# Los modelos se daran de alta desde la interfaz administrativa de LiteLLM
-# una vez conectado PostgreSQL.
-model_list: []
+# These three aliases need the Mac mini's operator-supplied API key.
+model_list:
+  - model_name: mlx/local-general
+    litellm_params:
+      model: openai/mlx/local-general
+      api_base: os.environ/OMLX_BASE_URL
+      api_key: os.environ/OMLX_API_KEY
+  - model_name: mlx/local-agent
+    litellm_params:
+      model: openai/mlx/local-agent
+      api_base: os.environ/OMLX_BASE_URL
+      api_key: os.environ/OMLX_API_KEY
+  - model_name: mlx/local-coding
+    litellm_params:
+      model: openai/mlx/local-coding
+      api_base: os.environ/OMLX_BASE_URL
+      api_key: os.environ/OMLX_API_KEY
 
 
 # -----------------------------------------------------------------------------

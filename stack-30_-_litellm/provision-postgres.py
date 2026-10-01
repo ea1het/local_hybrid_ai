@@ -5,8 +5,8 @@
 
 """Provision LiteLLM's PostgreSQL role and database after preparation.
 
-This operator-run script requires the Stack 30 lock and its administrative
-secret, then executes database commands in the dedicated PostgreSQL service.
+This install phase requires the administrative password from .env, then
+executes database commands in the dedicated PostgreSQL service.
 It avoids recreating an existing database and does not reset persistent
 PostgreSQL data. Importing the module does not connect to the database."""
 
@@ -57,8 +57,6 @@ def main():
         die("Docker Compose v2 is not available")
     if not ENV_FILE.is_file():
         die(f"missing {ENV_FILE}")
-    if not LOCK_FILE.is_file():
-        die(f"Stack 30 is not prepared: missing {LOCK_FILE}; run preparation first")
     loaded = subprocess.run(["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
                             check=True, stdout=subprocess.PIPE).stdout
     env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)

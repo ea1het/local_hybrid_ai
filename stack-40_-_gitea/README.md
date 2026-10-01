@@ -35,20 +35,13 @@ Gitea and its runner have separate runtime areas. Existing runner registration i
 
 Historical TLS-specific runner artifacts are not part of the current architecture. The runner reaches Gitea over internal HTTP on `redlocal`; external TLS termination belongs to Stack 10.
 
-`.lock` means **PREPARED only**. It does not prove migrations have run, the configured administrator exists, the runner is registered or either service is healthy.
+`.lock` means configuration and initial administrator setup completed. It does not prove the runner is registered or either service is running or healthy.
 
 ## Unattended preparation wrapper
 
-Run `python3 -B wrapper/bin/stack-40.py install` from the repository root (as root for
-initial preparation). It invokes only the stack's `01-prepare.py` package
-module, forwards its output, and requires a regular `.lock` after success.
-An existing lock is explained without changing configuration or removing it.
+Run `sudo ./local-ai stack-40 install` from the repository root. It prepares configuration and initializes the SQLite schema and configured administrator using disposable Gitea CLI containers. It does not run an upgrade-migration step or start long-lived Gitea/runner containers. Only after administrator initialization succeeds does it write `.lock`. An existing lock skips the install phases.
 
-`install` **does not** run `deploy-gitea.py`. It prints that command as a
-manual next step for migrations, administrator setup, runner registration,
-and startup. PREPARED does not mean Gitea is running.
-
-`python3 -B wrapper/bin/stack-40.py start` runs `docker compose up -d` after checking `.lock`; it does **not** perform Gitea migrations, create the administrator or register the runner. On first deployment, run `deploy-gitea.py` separately. `python3 -B wrapper/bin/stack-40.py stop` runs `docker compose down` without `--volumes`; it removes containers, not Gitea's bind-mounted state or `.lock`. Start is not a health check.
+`sudo ./local-ai stack-40 start` runs `docker compose up -d` after checking `.lock`. Gitea and the runner then start; the runner's registration and health can be inspected with `status`. `stop` runs `docker compose down` without `--volumes`; it removes containers, not Gitea's bind-mounted state or `.lock`. Start is not a health check.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
@@ -56,7 +49,7 @@ Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing
 
 ## Lifecycle
 
-Use `wrapper/bin/stack-40.py` for preparation, start, stop, and status. `deploy-gitea.py` is still a separate first-deployment phase; no wrapper performs upgrades or recovery. Re-preparation may converge managed configuration while preserving application runtime, but should only follow a reviewed removal of `.lock`.
+Use `wrapper/bin/stack-40.py` for installation, start, stop, and status. No wrapper performs upgrades or recovery. Re-preparation may converge managed configuration while preserving application runtime, but should only follow a reviewed removal of `.lock`.
 
 ## Security and recovery invariants
 
