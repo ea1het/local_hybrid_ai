@@ -25,15 +25,15 @@ Stack0 has no application container.
 ## Prerequisites
 
 1. The worktree at `STACKS_ROOT` and the operational `.env` at `${STACKS_ROOT}/.env` (root:root 0600).
-2. For missing, invalid, or deliberately rotated certificates, copy the files from the mkcert CA into `/tmp` — see [section 6 of the mkcert guide](../program_configs/inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack0). Existing valid certificates do not require the `/tmp` sources:
+2. For missing, invalid, or deliberately rotated certificates, copy the mkcert files to the absolute paths configured in `.env` — see [section 6 of the mkcert guide](../program_configs/inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack0). Defaults are under `/tmp`, but paths such as `/opt/temporal/rootCA.pem`, `/opt/temporal/tls.crt`, and `/opt/temporal/tls.key` are supported. Existing valid certificates do not require source files:
 
    | File | Consumed by |
    |---|---|
-   | `/tmp/rootCA.pem` | `install-ca-cert.py` |
-   | `/tmp/tls.crt` | `install-tls-certs.py` |
-   | `/tmp/tls.key` | `install-tls-certs.py` |
+   | `LOCAL_CA_SOURCE_PATH` | `install-ca-cert.py` |
+   | `TLS_CERT_SOURCE_PATH` | `install-tls-certs.py` |
+   | `TLS_KEY_SOURCE_PATH` | `install-tls-certs.py` |
 
-   The scripts do not delete these files; remove at least `/tmp/tls.key` afterwards.
+   The scripts do not delete source files. Keep `TLS_KEY_SOURCE_PATH` restricted to root and remove temporary copies when no longer needed.
 
 ## Usage
 
@@ -53,8 +53,8 @@ The wrapper runs the complete stack-owned `install.py` workflow and relays its a
 ```bash
 00-bootstrap.py --platform-only  # group + platform and Stack 10 prerequisite directories
 01-prepare.py             # .env links, shared network
-install-ca-cert.py        # /tmp/rootCA.pem -> host trust store
-install-tls-certs.py      # /tmp/tls.{crt,key} -> service_-_haproxy/config (SAN checked against TLS_SAN_DOMAINS)
+install-ca-cert.py        # LOCAL_CA_SOURCE_PATH -> host trust store
+install-tls-certs.py      # TLS_CERT_SOURCE_PATH / TLS_KEY_SOURCE_PATH -> service_-_haproxy/config
 verify.py                 # read-only check of the above
 # writes .lock atomically after successful verification
 ```
@@ -63,15 +63,15 @@ verify.py                 # read-only check of the above
 
 ## `.lock` and running systems
 
-`.lock` records a successful verification, but does not suppress the Stack0 audit. Each invocation checks platform resources and repairs missing or invalid state where safe; an existing valid certificate is preserved even when `/tmp` sources are absent. Certificate rotation is separate and explicit (`install-ca-cert.py --force` or `install-tls-certs.py --renew`).
+`.lock` records a successful verification, but does not suppress the Stack0 audit. Each invocation checks platform resources and repairs missing or invalid state where safe; an existing valid certificate is preserved even when the configured sources are absent. Certificate rotation is separate and explicit (`install-ca-cert.py --force` or `install-tls-certs.py --renew`).
 
 | Script | `stack-00_-_platform/.lock` present |
 |---|---|
 | `install.py` | Runs every phase, verifies the result and retains the existing lock; creates a lock only after success if missing. |
 | `01-prepare.py` | Checks links and network, creating missing resources without replacing conflicting files. |
 | `00-bootstrap.py` | During `install`, reconciles Stack 00 and Stack 10 prerequisite directories only. Direct invocation without `--platform-only` also reconciles unlocked application stacks; locked stacks remain untouched. |
-| `install-ca-cert.py` | Keeps a valid, trusted installed CA; refreshes missing bundle trust or repairs missing/invalid CA from `/tmp/rootCA.pem`. `--force` rotates it explicitly. |
-| `install-tls-certs.py` | Keeps a valid installed pair, repairs its metadata or reinstalls missing/invalid material from `/tmp/tls.{crt,key}`. `--renew` rotates it explicitly. |
+| `install-ca-cert.py` | Keeps a valid, trusted installed CA; refreshes missing bundle trust or repairs missing/invalid CA from `LOCAL_CA_SOURCE_PATH`. `--ca` overrides the source; `--force` rotates it explicitly. |
+| `install-tls-certs.py` | Keeps a valid installed pair, repairs its metadata or reinstalls missing/invalid material from `TLS_CERT_SOURCE_PATH` and `TLS_KEY_SOURCE_PATH`. `--cert` / `--key` override the sources; `--renew` rotates explicitly. |
 | `verify.py` | Read-only; works with or without `.lock` and checks the platform state. |
 
 Stacks 10–70 skip their wrapper `install` when their `.lock` exists and require `stack-00_-_platform/.lock` for preparation. Stack 70 has its own `00-bootstrap.py` before `01-prepare.py`; the other application wrappers invoke only `01-prepare.py`. To reconfigure one deliberately, stop it, back up affected state, review the stack-specific instructions, and only then remove its lock and rerun its wrapper `install`.
@@ -82,7 +82,7 @@ If any phase fails, `install.py` removes an existing Stack0 `.lock` and leaves n
 
 The source directories changed from `stack0_-_*` … `stack7_-_*` to `stack-00_-_*` … `stack-70_-_*`. In an existing checkout, Git may leave ignored `.lock` files and `.env` symlinks in the old directories. Check and migrate that local state during a maintenance window before running preparation from the new paths; a missing `.lock` would otherwise make a previously prepared stack eligible for reconciliation. Keep the central `${STACKS_ROOT}/.env` and `${BASE_PATH}` runtime data in place. The Compose project names remain `Stack1` … `Stack7`, so this source-directory rename does not itself rename those Docker projects.
 
-**Renewing the certificate** on a running system: copy the new `tls.crt` / `tls.key` to `/tmp`, then
+**Renewing the certificate** on a running system: copy the new `tls.crt` / `tls.key` to the paths configured in `.env`, then
 
 ```bash
 ./install-tls-certs.py --renew

@@ -8,7 +8,8 @@
 The script validates that the supplied PEM is a CA certificate, installs it
 under /usr/local/share/ca-certificates using LOCAL_CA_NAME from .env, refreshes
 the host certificate bundle, and verifies that the new CA is trusted. The
-default input is /tmp/rootCA.pem; the host needs update-ca-certificates.
+default input is LOCAL_CA_SOURCE_PATH from .env; the host needs
+update-ca-certificates.
 An installed, trusted CA is preserved without requiring the source PEM, even
 when Stack 0 has a lock. Missing or invalid CA state is repaired from the
 source; --force explicitly authorizes rotation. Importing is safe."""
@@ -28,7 +29,6 @@ from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent
 ENV_FILE = STACK_DIR.parent / ".env"
-DEFAULT_CA = Path("/tmp/rootCA.pem")
 # Rutas fijadas por update-ca-certificates (Debian/Ubuntu), no por el despliegue:
 # Only reads *.crt files from SYSTEM_CA_DIR and generates HOST_CA_BUNDLE.
 SYSTEM_CA_DIR = Path("/usr/local/share/ca-certificates")
@@ -108,8 +108,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ca",
         type=Path,
-        default=DEFAULT_CA,
-        help=f"Ruta al certificado de la CA (por defecto: {DEFAULT_CA})",
+        default=None,
+        help="CA source path (default: LOCAL_CA_SOURCE_PATH in .env)",
     )
     parser.add_argument(
         "--force",
@@ -125,6 +125,14 @@ def find_ca(path: Path) -> Path:
     if not source.is_file() or path.is_symlink():
         die(f"No existe el certificado CA (o es un symlink): {path}. Cópialo desde la CA mkcert.")
     return source
+
+
+def source_path(env: dict[str, str]) -> Path:
+    """Require an absolute CA source path from the central environment."""
+    value = env.get("LOCAL_CA_SOURCE_PATH", "")
+    if not value or not Path(value).is_absolute():
+        die("LOCAL_CA_SOURCE_PATH must be an absolute path in .env")
+    return Path(value)
 
 
 def validate_ca(source: Path) -> None:
@@ -189,7 +197,8 @@ def main() -> None:
     require_root()
     require_commands()
 
-    dest = local_ca_path(load_env(ENV_FILE))
+    env = load_env(ENV_FILE)
+    dest = local_ca_path(env)
     if dest.is_symlink() or (dest.exists() and not dest.is_file()):
         die(f"destino de CA no seguro: {dest}")
 
@@ -206,7 +215,7 @@ def main() -> None:
         print(f"CA ya instalada y confiable; sin cambios: {dest}")
         return
 
-    source = find_ca(args.ca)
+    source = find_ca(args.ca if args.ca is not None else source_path(env))
     print(f"CA origen: {source}")
 
     validate_ca(source)

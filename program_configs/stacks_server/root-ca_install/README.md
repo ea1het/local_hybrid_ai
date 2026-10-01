@@ -30,7 +30,7 @@ After installing on each client, compare the SHA-256 fingerprint with the one fr
 
 ### 1.1 Linux Docker host (stack0 / LiteLLM)
 
-Copy the CA to `/tmp`, where [stack-00_-_platform/install-ca-cert.py](../../../stack-00_-_platform/install-ca-cert.py) expects it:
+Copy the CA to `LOCAL_CA_SOURCE_PATH` in the root `.env` (default `/tmp/rootCA.pem`), where [stack-00_-_platform/install-ca-cert.py](../../../stack-00_-_platform/install-ca-cert.py) expects it:
 
 ```sh
 scp /Users/norai/Documents/MKCert/rootCA.pem <user>@<docker-host>:/tmp/rootCA.pem
@@ -45,7 +45,7 @@ sudo ./install-ca-cert.py
 
 (Or pass the CA explicitly: `sudo ./install-ca-cert.py --ca /path/to/rootCA.pem`.) Once Stack0 is PREPARED (`stack-00_-_platform/.lock`) the script changes nothing unless `--force` is given, e.g. to rotate the CA.
 
-It validates the CA, installs it as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` (`LOCAL_CA_NAME` from the central `.env`, default `casa-local-ca`), runs `update-ca-certificates`, checks the host bundle and stops. It does not modify any stack: LiteLLM (Stack3) already mounts the host bundle `/etc/ssl/certs/ca-certificates.crt` and sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` in its own Compose file. If LiteLLM is already running, restart it to pick up the updated bundle.
+It validates the CA, installs it as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` (`LOCAL_CA_NAME` from the central `.env`, default `casa-local-ca`), runs `update-ca-certificates`, checks the host bundle and stops. Set `LOCAL_CA_SOURCE_PATH` to an absolute path such as `/opt/temporal/rootCA.pem` if the source is not in `/tmp`. It does not modify any stack: LiteLLM (Stack3) already mounts the host bundle `/etc/ssl/certs/ca-certificates.crt` and sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` in its own Compose file. If LiteLLM is already running, restart it to pick up the updated bundle.
 
 The certificate HAProxy **serves** (`tls.crt` / `tls.key`) is installed separately by `install-tls-certs.py`, see [section 6 of the mkcert guide](../../inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack0).
 

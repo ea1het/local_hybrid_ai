@@ -129,6 +129,9 @@ def test_ca_installer_validates_name_and_rejects_symlink(tmp_path, monkeypatch):
     assert ca.local_ca_path({"LOCAL_CA_NAME": "local-ai"}) == tmp_path / "local-ai.crt"
     with pytest.raises(SystemExit):
         ca.local_ca_path({"LOCAL_CA_NAME": "../unsafe"})
+    assert ca.source_path({"LOCAL_CA_SOURCE_PATH": str(tmp_path / "rootCA.pem")}) == tmp_path / "rootCA.pem"
+    with pytest.raises(SystemExit):
+        ca.source_path({"LOCAL_CA_SOURCE_PATH": "relative/rootCA.pem"})
     source = tmp_path / "source.pem"
     source.write_text("certificate")
     link = tmp_path / "link.pem"
@@ -162,10 +165,12 @@ def test_ca_installer_repairs_missing_destination(tmp_path, monkeypatch):
     destination = tmp_path / "local.crt"
     source = tmp_path / "rootCA.pem"
     source.write_text("source CA")
-    monkeypatch.setattr(ca, "parse_args", lambda: SimpleNamespace(ca=source, force=False))
+    monkeypatch.setattr(ca, "parse_args", lambda: SimpleNamespace(ca=None, force=False))
     monkeypatch.setattr(ca, "require_root", lambda: None)
     monkeypatch.setattr(ca, "require_commands", lambda: None)
-    monkeypatch.setattr(ca, "load_env", lambda path: {"LOCAL_CA_NAME": "local"})
+    monkeypatch.setattr(ca, "load_env", lambda path: {
+        "LOCAL_CA_NAME": "local", "LOCAL_CA_SOURCE_PATH": str(source)
+    })
     monkeypatch.setattr(ca, "SYSTEM_CA_DIR", tmp_path)
     calls = []
     monkeypatch.setattr(ca, "validate_ca", lambda path: calls.append("validate"))
@@ -182,6 +187,10 @@ def test_tls_installer_checks_domains_and_atomic_copy(tmp_path, monkeypatch):
     assert tls.parse_san_domains("one.local, two.local") == ["one.local", "two.local"]
     with pytest.raises(SystemExit):
         tls.parse_san_domains("../unsafe")
+    assert tls.source_path({"TLS_CERT_SOURCE_PATH": str(tmp_path / "tls.crt")},
+                           "TLS_CERT_SOURCE_PATH") == tmp_path / "tls.crt"
+    with pytest.raises(SystemExit):
+        tls.source_path({"TLS_KEY_SOURCE_PATH": "relative/tls.key"}, "TLS_KEY_SOURCE_PATH")
     source = tmp_path / "source"
     target = tmp_path / "target"
     source.write_bytes(b"certificate")
@@ -227,11 +236,12 @@ def test_tls_installer_repairs_missing_pair(tmp_path, monkeypatch):
     key = tmp_path / "source.key"
     for path in (ca, cert, key):
         path.write_text("source")
-    monkeypatch.setattr(tls, "parse_args", lambda: SimpleNamespace(cert=cert, key=key, ca=ca, renew=False))
+    monkeypatch.setattr(tls, "parse_args", lambda: SimpleNamespace(cert=None, key=None, ca=ca, renew=False))
     monkeypatch.setattr(tls.os, "geteuid", lambda: 0)
     monkeypatch.setattr(tls.shutil, "which", lambda name: "/fake/openssl")
     monkeypatch.setattr(tls, "load_env", lambda path: {
-        "BASE_PATH": str(tmp_path), "TLS_SAN_DOMAINS": "one.local", "PLATFORM_PKI_GID": "1999"
+        "BASE_PATH": str(tmp_path), "TLS_SAN_DOMAINS": "one.local", "PLATFORM_PKI_GID": "1999",
+        "TLS_CERT_SOURCE_PATH": str(cert), "TLS_KEY_SOURCE_PATH": str(key)
     })
     calls = []
     monkeypatch.setattr(tls, "validate_pair", lambda *args: calls.append("validate"))

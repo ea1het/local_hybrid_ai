@@ -32,8 +32,6 @@ STACK_DIR = Path(__file__).resolve().parent
 ROOT_DIR = STACK_DIR.parent
 ENV_FILE = ROOT_DIR / ".env"
 
-DEFAULT_CERT = Path("/tmp/tls.crt")
-DEFAULT_KEY = Path("/tmp/tls.key")
 # Directory used by update-ca-certificates (Debian/Ubuntu); the filename
 # comes from LOCAL_CA_NAME in the central .env file.
 SYSTEM_CA_DIR = Path("/usr/local/share/ca-certificates")
@@ -87,8 +85,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Instala tls.crt / tls.key en la carpeta de servicio de HAProxy.",
     )
-    parser.add_argument("--cert", type=Path, default=DEFAULT_CERT, help=f"certificado (por defecto: {DEFAULT_CERT})")
-    parser.add_argument("--key", type=Path, default=DEFAULT_KEY, help=f"clave privada (por defecto: {DEFAULT_KEY})")
+    parser.add_argument("--cert", type=Path, default=None,
+                        help="certificate source (default: TLS_CERT_SOURCE_PATH in .env)")
+    parser.add_argument("--key", type=Path, default=None,
+                        help="private-key source (default: TLS_KEY_SOURCE_PATH in .env)")
     parser.add_argument(
         "--ca",
         type=Path,
@@ -111,6 +111,14 @@ def local_ca_path(env: dict[str, str]) -> Path:
     if not LOCAL_CA_NAME_RE.match(name):
         die(f"LOCAL_CA_NAME no válido (solo letras, dígitos, '.', '_', '-'; sin extensión): {name!r}")
     return SYSTEM_CA_DIR / f"{name}.crt"
+
+
+def source_path(env: dict[str, str], key: str) -> Path:
+    """Require an absolute TLS source path from the central environment."""
+    value = env.get(key, "")
+    if not value or not Path(value).is_absolute():
+        die(f"{key} must be an absolute path in .env")
+    return Path(value)
 
 
 def parse_san_domains(raw: str) -> list[str]:
@@ -281,13 +289,15 @@ def main() -> None:
             print("Permisos TLS reparados; comprueba HAProxy y reinícialo si es necesario.")
         return
 
-    require_regular_file(args.cert, "certificado")
-    require_regular_file(args.key, "clave privada")
-    validate_pair(args.cert, args.key, ca, san_domains)
+    cert_source = args.cert if args.cert is not None else source_path(env, "TLS_CERT_SOURCE_PATH")
+    key_source = args.key if args.key is not None else source_path(env, "TLS_KEY_SOURCE_PATH")
+    require_regular_file(cert_source, "certificado")
+    require_regular_file(key_source, "clave privada")
+    validate_pair(cert_source, key_source, ca, san_domains)
 
     step("2/2 Installing in HAProxy service directory")
-    changed_cert = install_atomic(args.cert, cert_target, 0o644, pki_gid)
-    changed_key = install_atomic(args.key, key_target, 0o640, pki_gid)
+    changed_cert = install_atomic(cert_source, cert_target, 0o644, pki_gid)
+    changed_key = install_atomic(key_source, key_target, 0o640, pki_gid)
     log(f"{cert_target}: {'actualizado' if changed_cert else 'sin cambios'} (0644 root:{pki_gid})")
     log(f"{key_target}: {'actualizado' if changed_key else 'sin cambios'} (0640 root:{pki_gid})")
 

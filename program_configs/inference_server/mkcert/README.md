@@ -334,15 +334,23 @@ sudo ./install.py
 
 `install.py` runs, in order:
 
-| Script | What it does with the files in `/tmp` |
+| Script | What it does with the source files configured in `.env` |
 | --- | --- |
 | `00-bootstrap.py` | Nothing: creates the service directory tree of every stack, including `${BASE_PATH}/service_-_haproxy/config`. |
 | `01-prepare.py` | Nothing: `.env` links and the shared Docker network. |
-| `install-ca-cert.py` | Installs `/tmp/rootCA.pem` as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` (`LOCAL_CA_NAME` from `.env`) and runs `update-ca-certificates`. |
-| `install-tls-certs.py` | Validates `/tmp/tls.crt` / `/tmp/tls.key` (pair matches, signed by the CA, SAN contains every name in `TLS_SAN_DOMAINS` from `.env`, not expired) and installs them as `${BASE_PATH}/service_-_haproxy/config/tls.crt` (`0644`) and `tls.key` (`0640`, `root:local-hybrid-pki`). |
+| `install-ca-cert.py` | Installs `LOCAL_CA_SOURCE_PATH` as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` and runs `update-ca-certificates`. |
+| `install-tls-certs.py` | Validates `TLS_CERT_SOURCE_PATH` / `TLS_KEY_SOURCE_PATH` (pair matches, signed by the CA, SAN contains every name in `TLS_SAN_DOMAINS`, not expired) and installs them as `${BASE_PATH}/service_-_haproxy/config/tls.crt` (`0644`) and `tls.key` (`0640`, `root:local-hybrid-pki`). |
 | `verify.py` | Checks all of the above before `install.py` creates `.lock`. |
 
-The files in `/tmp` are **not** deleted by the scripts. Remove at least the private key when you are done:
+The paths default to `/tmp`, but you can set all three source paths in the protected root `.env` before Stack 00 installation, for example:
+
+```dotenv
+LOCAL_CA_SOURCE_PATH=/opt/temporal/rootCA.pem
+TLS_CERT_SOURCE_PATH=/opt/temporal/tls.crt
+TLS_KEY_SOURCE_PATH=/opt/temporal/tls.key
+```
+
+Source files are **not** deleted by the scripts. Keep the private key root-restricted, and remove a temporary copy when you are done:
 
 ```sh
 rm -f /tmp/tls.key
