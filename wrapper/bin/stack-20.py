@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -35,12 +34,11 @@ PREPARE_MODULE = "stack-20_-_searxng_firecrawl.01-prepare"
 
 
 def show_start_instructions() -> None:
-    """Describe manual deployment without starting the search services."""
+    """Describe the wrapper start command without starting search services."""
     print()
     print("Stack 20 is PREPARED, not deployed or verified as ready.")
-    print("To start SearXNG and Firecrawl manually, run:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  docker compose --env-file .env -f docker-compose.yml up -d")
+    print("To start SearXNG and Firecrawl, run from the repository root:")
+    print("  ./local-ai stack-20 start")
 
 
 def install() -> int:

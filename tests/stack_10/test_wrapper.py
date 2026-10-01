@@ -46,7 +46,7 @@ def test_existing_lock_is_informational_only(tmp_path, monkeypatch, capsys):
     assert "No configuration was changed" in output
     assert "Removing .lock manually" in output
     assert "\n\nStack 10 is PREPARED" in output
-    assert "docker compose --env-file .env -f docker-compose.yml up -d" in output
+    assert "./local-ai stack-10 start" in output
 
 
 def test_missing_lock_runs_package_once_and_reports_start_command(tmp_path, monkeypatch, capsys):

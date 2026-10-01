@@ -45,11 +45,11 @@ Run `sudo ./local-ai stack-40 install` from the repository root. After checking 
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`python3 -B wrapper/bin/stack-40.py status` reports Gitea HTTP health and runner container health. The runner healthcheck requires its persistent registration marker; it cannot prove that the runner accepts or completes jobs. `status --deep` currently has no additional probe.
+`./local-ai stack-40 status` reports Gitea HTTP health and runner container health. The runner healthcheck requires its persistent registration marker; it cannot prove that the runner accepts or completes jobs. `status --deep` currently has no additional probe.
 
 ## Lifecycle
 
-Use `wrapper/bin/stack-40.py` for installation, start, stop, and status. No wrapper performs upgrades or recovery. Re-preparation may converge managed configuration while preserving application runtime, but should only follow a reviewed removal of `.lock`.
+Use `./local-ai stack-40` for installation, start, stop, and status. No wrapper performs upgrades or recovery. Re-preparation may converge managed configuration while preserving application runtime, but should only follow a reviewed removal of `.lock`.
 
 ## Security and recovery invariants
 

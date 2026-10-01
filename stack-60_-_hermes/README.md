@@ -64,7 +64,7 @@ A `.lock` means **PREPARED only**. It says nothing about Hermes health, sandbox 
 
 ## Unattended preparation wrapper
 
-Run `python3 -B wrapper/bin/stack-60.py install` from the repository root (as root for
+Run `./local-ai stack-60 install` from the repository root (as root for
 initial preparation). It invokes only the stack's `01-prepare.py` package
 module with closed stdin, forwards the preparation audit, and checks for a
 regular `.lock` on success. An existing lock is reported without changing
@@ -74,13 +74,13 @@ configuration or removing it.
 adoption, sidecar setup, capability reconciliation, workaround, readiness,
 or cleanup. Those operations belong to a later, separately scoped phase.
 
-`python3 -B wrapper/bin/stack-60.py start` runs `docker compose up -d --build` after checking `.lock`; `python3 -B wrapper/bin/stack-60.py stop` runs `docker compose --profile git-memory down` without `--volumes`. The profile is enabled only for shutdown, so the optional `hermes-memory-sync` container is removed even when a default-profile-only `up` started the other services. Stop preserves bind-mounted memory and runtime state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
+`./local-ai stack-60 start` runs `docker compose up -d --build` after checking `.lock`; `./local-ai stack-60 stop` runs `docker compose --profile git-memory down` without `--volumes`. The profile is enabled only for shutdown, so the optional `hermes-memory-sync` container is removed even when a default-profile-only `up` started the other services. Stop preserves bind-mounted memory and runtime state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
 
-If stopping manually from the stack directory, use `docker compose --env-file .env -f docker-compose.yml --profile git-memory down`, not plain `docker compose down`; the latter omits the optional memory-sync service.
+Use `./local-ai stack-60 stop` from the repository root; it enables the `git-memory` profile for shutdown so the optional memory-sync service is removed too. Plain `docker compose down` from the stack directory omits that service.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`python3 -B wrapper/bin/stack-60.py status` reports Hermes, sandbox and cleanup-sidecar health; an absent `git-memory` profile is shown as optional, not failed. The memory-sync healthcheck confirms a Git checkout is mounted, not that its last synchronization succeeded. The cleanup healthcheck confirms its state DB and generation marker exist, not that a sweep succeeded. These workers expose no independent readiness endpoint, so `status --deep` currently has no additional probe and must not claim those background jobs completed.
+`./local-ai stack-60 status` reports Hermes, sandbox and cleanup-sidecar health; an absent `git-memory` profile is shown as optional, not failed. The memory-sync healthcheck confirms a Git checkout is mounted, not that its last synchronization succeeded. The cleanup healthcheck confirms its state DB and generation marker exist, not that a sweep succeeded. These workers expose no independent readiness endpoint, so `status --deep` currently has no additional probe and must not claim those background jobs completed.
 
 ## Memory contract
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -33,12 +32,11 @@ PREPARE_MODULE = "stack-10_-_haproxy_web.01-prepare"
 
 
 def show_start_instructions() -> None:
-    """Print the manual deployment command without running Docker Compose."""
+    """Print the wrapper lifecycle command without starting services."""
     print()
     print("Stack 10 is PREPARED, not deployed or verified as running.")
-    print("To start HAProxy and the web service manually, run:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  docker compose --env-file .env -f docker-compose.yml up -d")
+    print("To start HAProxy and the web service, run from the repository root:")
+    print("  ./local-ai stack-10 start")
 
 
 def install() -> int:

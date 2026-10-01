@@ -65,7 +65,7 @@ Run `sudo ./local-ai stack-30 install` from the repository root. After checking 
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`python3 -B wrapper/bin/stack-30.py status` reports PostgreSQL and LiteLLM health. The existing PostgreSQL `pg_isready` healthcheck only tests server readiness; `status --deep` adds an authenticated, read-only `SELECT 1` inside the PostgreSQL container. This still does not prove that a model inference request succeeds.
+`./local-ai stack-30 status` reports PostgreSQL and LiteLLM health. The existing PostgreSQL `pg_isready` healthcheck only tests server readiness; `status --deep` adds an authenticated, read-only `SELECT 1` inside the PostgreSQL container. This still does not prove that a model inference request succeeds.
 
 ## Credential and policy boundary
 
@@ -79,6 +79,6 @@ MCP traffic follows the same boundary when routed through LiteLLM. Review `confi
 - LiteLLM consumers receive scoped credentials instead of the master key.
 - Persistent identity material is preserved across PREPARE and guarded upgrades.
 - Applications consume the gateway rather than embedding provider credentials or provider-selection policy.
-- The operator entry point is `wrapper/bin/stack-30.py`; PostgreSQL provisioning is part of `install`.
+- The operator entry point is `./local-ai stack-30`; PostgreSQL provisioning is part of `install`.
 
 Key implementation files: `docker-compose.yml`, `config/litellm/config.yaml`, `01-prepare.py`, `provision-postgres.py`, and `issue-consumer-keys.py`.

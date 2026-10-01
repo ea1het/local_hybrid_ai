@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -34,12 +33,11 @@ PREPARE_MODULE = "stack-50_-_dockhand.01-prepare"
 
 
 def show_start_instructions() -> None:
-    """Explain how to start Dockhand manually without running Compose."""
+    """Explain the wrapper start command without starting Dockhand."""
     print()
     print("Stack 50 is PREPARED; Dockhand has not been started by this wrapper.")
-    print("To start Dockhand manually, run:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  docker compose --env-file .env -f docker-compose.yml up -d")
+    print("To start Dockhand, run from the repository root:")
+    print("  ./local-ai stack-50 start")
 
 
 def install() -> int:

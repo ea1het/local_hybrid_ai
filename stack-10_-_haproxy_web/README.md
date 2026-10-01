@@ -39,27 +39,27 @@ Updating a file on disk does not necessarily reload the HAProxy process. Configu
 
 ## Unattended preparation wrapper
 
-Run `python3 -B wrapper/bin/stack-10.py install` from the repository root (as root for
+Run `./local-ai stack-10 install` from the repository root (as root for
 initial preparation). The wrapper calls the stack's Python package without
 interactive input, forwards the preparation output, and checks both its exit
 status and the resulting `.lock`. `install` never starts or restarts containers.
 
 When `.lock` already exists, the wrapper changes nothing and explains the
 reconfiguration risk. It does not remove the lock. After a successful
-preparation, it prints the manual `docker compose ... up -d` command; running
+preparation, it prints `./local-ai stack-10 start`; running
 that command remains a separate operator decision.
 
-`python3 -B wrapper/bin/stack-10.py start` runs `docker compose up -d` for HAProxy and web after checking the preparation lock. `python3 -B wrapper/bin/stack-10.py stop` runs `docker compose down` without `--volumes`: it removes the containers but retains Stack0's external network, service files and `.lock`. Neither verb verifies endpoint readiness or renews TLS; Stack0 owns certificates.
+`./local-ai stack-10 start` runs `docker compose up -d` for HAProxy and web after checking the preparation lock. `./local-ai stack-10 stop` runs `docker compose down` without `--volumes`: it removes the containers but retains Stack0's external network, service files and `.lock`. Neither verb verifies endpoint readiness or renews TLS; Stack0 owns certificates.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`python3 -B wrapper/bin/stack-10.py status` reads Compose container state and health without changing anything. HAProxy's healthcheck validates its mounted configuration, while the BusyBox web check fetches its local homepage. HAProxy health does not prove that every optional upstream or public TLS route works. `status --deep` currently has no additional probe.
+`./local-ai stack-10 status` reads Compose container state and health without changing anything. HAProxy's healthcheck validates its mounted configuration, while the BusyBox web check fetches its local homepage. HAProxy health does not prove that every optional upstream or public TLS route works. `status --deep` currently has no additional probe.
 
 ## Security invariants
 
 - `tls.key` is installed by Stack0 as `root:PLATFORM_PKI_GID 0640`; HAProxy (uid 99) reads it only through that supplementary group. Stack1 never copies or rewrites it.
 - Backend services stay on `redlocal` unless an explicit architecture decision publishes them.
 - Stack1 does not become owner of application state merely because it exposes an application route.
-- The operator entry point is `wrapper/bin/stack-10.py`; certificate rotation remains a Stack 00 task.
+- The operator entry point is `./local-ai stack-10`; certificate rotation remains a Stack 00 task.
 
 Key implementation files: `docker-compose.yml`, `config/haproxy/haproxy.cfg`, and `01-prepare.py`.

@@ -32,24 +32,24 @@ Dockhand persists through the external Docker volume `dockhand_data`; there is i
 
 ## Unattended preparation wrapper
 
-Run `python3 -B wrapper/bin/stack-50.py install` from the repository root (as root for
+Run `./local-ai stack-50 install` from the repository root (as root for
 initial preparation). The wrapper invokes only the stack's `01-prepare.py`
 package module with closed stdin. Preparation may create the missing
 `dockhand_data` volume, as authorized, but preserves an existing volume.
 
 If `.lock` already exists, the wrapper changes nothing and explains the risk
 of manually removing it. After successful preparation, `install` shows how to
-run Docker Compose manually; `install` never starts Dockhand itself.
+run `./local-ai stack-50 start`; `install` never starts Dockhand itself.
 
 ## Lifecycle behaviour
 
-From the repository root, `python3 -B wrapper/bin/stack-50.py start` runs `docker compose up -d` after checking `.lock`. `python3 -B wrapper/bin/stack-50.py stop` deliberately runs **`docker compose stop`**, unlike the `down` used by Stacks 10–40 and 60–70. It stops Dockhand but preserves the existing container and the external `dockhand_data` volume; a later `start` can reuse the container without needlessly recreating this optional, reconstructable management UI. Dockhand is ephemeral in the recovery sense—it is not a platform dependency or DR target—but its Docker volume holds runtime application state and must not be treated as disposable merely because the container is. `down` would also leave this external volume intact by default; preserving the container, not rescuing the volume from `down`, is the reason for this exception.
+From the repository root, `./local-ai stack-50 start` runs `docker compose up -d` after checking `.lock`. `./local-ai stack-50 stop` deliberately runs **`docker compose stop`**, unlike the `down` used by Stacks 10–40 and 60–70. It stops Dockhand but preserves the existing container and the external `dockhand_data` volume; a later `start` can reuse the container without needlessly recreating this optional, reconstructable management UI. Dockhand is ephemeral in the recovery sense—it is not a platform dependency or DR target—but its Docker volume holds runtime application state and must not be treated as disposable merely because the container is. `down` would also leave this external volume intact by default; preserving the container, not rescuing the volume from `down`, is the reason for this exception.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`python3 -B wrapper/bin/stack-50.py status` reports Dockhand's container state and local HTTP health. After `stop`, the preserved container appears stopped rather than absent. HTTP health does not prove that Dockhand can manage Docker or that its external volume is backed up; `status --deep` currently has no additional probe.
+`./local-ai stack-50 status` reports Dockhand's container state and local HTTP health. After `stop`, the preserved container appears stopped rather than absent. HTTP health does not prove that Dockhand can manage Docker or that its external volume is backed up; `status --deep` currently has no additional probe.
 
-The operator lifecycle is `wrapper/bin/stack-50.py start` / `stop`. Neither verb verifies Dockhand health or changes the preparation lock; use `status` separately. Dockhand must not become a hidden prerequisite for operating other stacks.
+The operator lifecycle is `./local-ai stack-50 start` / `stop`. Neither verb verifies Dockhand health or changes the preparation lock; use `status` separately. Dockhand must not become a hidden prerequisite for operating other stacks.
 
 ## Security invariants
 

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -34,12 +33,11 @@ PREPARE_MODULE = "stack-60_-_hermes.01-prepare"
 
 
 def show_next_steps() -> None:
-    """Identify manual deployment without triggering optional capabilities."""
+    """Identify the wrapper start command without triggering optional capabilities."""
     print()
     print("Stack 60 is PREPARED; Hermes and its sandbox are not verified as running.")
-    print("To start the default stack manually, run:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  docker compose --env-file .env -f docker-compose.yml up -d --build")
+    print("To start the default stack, run from the repository root:")
+    print("  ./local-ai stack-60 start")
     print("Buzz, Git memory, sidecars, reconciliation, and cleanup are separate operations.")
 
 

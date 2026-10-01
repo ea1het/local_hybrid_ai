@@ -53,7 +53,7 @@ def test_existing_lock_skips_bootstrap_and_prepare(tmp_path, monkeypatch, capsys
     assert "bootstrap and prepare were not run" in output
     assert "Removing .lock manually" in output
     assert "\n\nStack 70 is PREPARED" in output
-    assert "docker compose --env-file .env -f docker-compose.yml up -d --build" in output
+    assert "./local-ai stack-70 start" in output
 
 
 def test_fresh_stack_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):

@@ -31,15 +31,15 @@ flowchart LR
 
 ## Initial preparation
 
-Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root after Stack0 and Stack3 are prepared and LiteLLM is running. `install` does not start Open WebUI. If `stack-70_-_open-webui/.lock` already exists, it changes nothing and shows the manual startup command; remove the lock only after reviewing the impact of reconfiguration.
+Run `./local-ai stack-70 install` from the repository root after Stack0 and Stack3 are prepared and LiteLLM is running. `install` does not start Open WebUI. If `stack-70_-_open-webui/.lock` already exists, it changes nothing and shows `./local-ai stack-70 start`; remove the lock only after reviewing the impact of reconfiguration.
 
 Without a lock, the wrapper first creates only Stack 70's service directories using the scoped platform bootstrap, then calls its own `00-bootstrap.py` and `01-prepare.py`. The stack bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
 
-Bootstrap does not issue a LiteLLM key. Stack 30 install writes the dedicated `OPENWEBUI_LITELLM_API_KEY` to the protected root `.env`; prepare this stack after Stack 30 install. Compose passes that key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
+Bootstrap does not issue a LiteLLM key. Stack 30 install writes the dedicated `OPENWEBUI_LITELLM_API_KEY` to the protected root `.env`; prepare this stack after Stack 30 install. Compose passes that key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, use the `./local-ai stack-70 start` command printed by the wrapper.
 
-`sudo python3 -B wrapper/bin/stack-70.py start` runs `docker compose up -d` after checking `.lock`; `sudo python3 -B wrapper/bin/stack-70.py stop` runs `docker compose down` without `--volumes`. Stop removes the container but preserves bind-mounted Open WebUI data and `.lock`. Start does not run `wait-ready.py` or reconcile/verify model policy, so a successful Compose exit is not a READY result.
+`./local-ai stack-70 start` runs `docker compose up -d` after checking `.lock`; `./local-ai stack-70 stop` runs `docker compose down` without `--volumes`. Stop removes the container but preserves bind-mounted Open WebUI data and `.lock`. Start does not run `wait-ready.py` or reconcile/verify model policy, so a successful Compose exit is not a READY result.
 
-`sudo python3 -B wrapper/bin/stack-70.py status` reports the container's `/health` result from Compose. This tests the WebUI process, not the LiteLLM key scope or model policy; `status --deep` currently has no additional probe. Run the separate policy verifier when that contract matters.
+`./local-ai stack-70 status` reports the container's `/health` result from Compose. This tests the WebUI process, not the LiteLLM key scope or model policy; `status --deep` currently has no additional probe. Run the separate policy verifier when that contract matters.
 
 ## Policy lifecycle
 

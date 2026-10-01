@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -36,12 +35,11 @@ PREPARE_MODULE = "stack-70_-_open-webui.01-prepare"
 
 
 def show_next_steps() -> None:
-    """Print the manual deployment command after preparation."""
+    """Print the wrapper start command after preparation."""
     print()
     print("Stack 70 is PREPARED; this wrapper did not start Open WebUI.")
-    print("If Open WebUI is not already running, start it manually with:")
-    print(f"  cd {shlex.quote(str(STACK_DIR))}")
-    print("  docker compose --env-file .env -f docker-compose.yml up -d --build")
+    print("If Open WebUI is not already running, start it from the repository root:")
+    print("  ./local-ai stack-70 start")
 
 
 def install() -> int:

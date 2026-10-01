@@ -41,12 +41,12 @@ Run as root:
 
 ```bash
 cd /opt/docker/stacks
-sudo python3 -B wrapper/bin/stack-00.py install
+./local-ai stack-00 install
 ```
 
 The wrapper runs the complete stack-owned `install.py` workflow and relays its audit output. It never deploys containers. Direct `./install.py` invocation from the stack directory remains available.
 
-`sudo python3 -B wrapper/bin/stack-00.py status` reports the preparation lock without changing anything; it cannot infer platform health from a lock. Add `--deep` to run the read-only `verify.py` checks of directories, permissions, Docker network, CA and TLS. Stack0 has no application containers to inspect.
+`./local-ai stack-00 status` reports the preparation lock without changing anything; it cannot infer platform health from a lock. Add `--deep` to run the read-only `verify.py` checks of directories, permissions, Docker network, CA and TLS. Stack0 has no application containers to inspect.
 
 `install.py` runs, in order:
 

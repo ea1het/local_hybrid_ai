@@ -43,7 +43,7 @@ def test_existing_lock_explains_state_without_running_prepare(tmp_path, monkeypa
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "Removing .lock manually" in output
-    assert "docker compose --env-file .env -f docker-compose.yml up -d" in output
+    assert "./local-ai stack-50 start" in output
 
 
 def test_missing_lock_calls_package_prepare_once(tmp_path, monkeypatch, capsys):

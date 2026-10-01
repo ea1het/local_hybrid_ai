@@ -35,7 +35,7 @@ flowchart LR
 
 ## Unattended preparation wrapper
 
-Run `python3 -B wrapper/bin/stack-20.py install` from the repository root (as root for
+Run `./local-ai stack-20 install` from the repository root (as root for
 initial preparation). After checking Stack 00's lock, the wrapper creates
 only Stack 20's persistent directories using the scoped platform bootstrap,
 then invokes the stack's `01-prepare.py` package module with closed stdin,
@@ -43,15 +43,15 @@ forwards its output, and requires a regular `.lock`
 after success. If the lock already exists, it does nothing and explains the
 risk of manually removing it before reconfiguration.
 
-The `install` verb prints the manual Docker Compose start command but never runs it.
+The `install` verb prints `./local-ai stack-20 start` but never runs it.
 `wait-ready.py` is a separate check for after the containers are started; it
 is not part of unattended preparation.
 
-`python3 -B wrapper/bin/stack-20.py start` runs `docker compose up -d` after checking `.lock`; `python3 -B wrapper/bin/stack-20.py stop` runs `docker compose down` without `--volumes`. Stop removes this stack's containers, not its persistent bind-mounted data or Stack0's external network. Start does not run `wait-ready.py` or reconcile optional consumers; run those phases separately before claiming `web.search` or `web.extract` is READY.
+`./local-ai stack-20 start` runs `docker compose up -d` after checking `.lock`; `./local-ai stack-20 stop` runs `docker compose down` without `--volumes`. Stop removes this stack's containers, not its persistent bind-mounted data or Stack0's external network. Start does not run `wait-ready.py` or reconcile optional consumers; run those phases separately before claiming `web.search` or `web.extract` is READY.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`python3 -B wrapper/bin/stack-20.py status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role. It does not wait or alter the database.
+`./local-ai stack-20 status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role. It does not wait or alter the database.
 
 ## PostgreSQL identity model
 
@@ -83,6 +83,6 @@ Stack 20 is a provider, not a hard dependency of Stacks 60 or 70. If it is absen
 - The administrative database secret stays outside Git; `.env` and its private backup contain the canonical value.
 - Existing PGDATA metadata is preserved during PREPARE.
 - Missing Stack2 capability never enables an undeclared external web fallback.
-- The operator entry point is `wrapper/bin/stack-20.py`; it does not automate capability reconciliation.
+- The operator entry point is `./local-ai stack-20`; it does not automate capability reconciliation.
 
 Key implementation files: `docker-compose.yml`, `config/searxng/`, `config/postgres/020-firecrawl-app-role.sh`, `01-prepare.py`, and `wait-ready.py`.
