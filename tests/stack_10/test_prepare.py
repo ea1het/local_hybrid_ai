@@ -29,7 +29,7 @@ def test_sourced_environment_rejects_redacted_values(tmp_path, monkeypatch, caps
 
     with pytest.raises(SystemExit, match="1"):
         module.sourced_environment()
-    assert "saneados/incompletos" in capsys.readouterr().err
+    assert "redacted or incomplete" in capsys.readouterr().err
 
 
 def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monkeypatch):
@@ -108,4 +108,4 @@ def test_prepare_rejects_invalid_pki_group_before_network_access(tmp_path, monke
 
     with pytest.raises(SystemExit, match="1"):
         module.main()
-    assert "entero positivo" in capsys.readouterr().err
+    assert "positive integer" in capsys.readouterr().err

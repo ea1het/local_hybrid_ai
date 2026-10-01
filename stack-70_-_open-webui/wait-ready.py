@@ -32,17 +32,17 @@ def inspect(template):
     result = subprocess.run(("docker", "inspect", "-f", template, CONTAINER),
                             text=True, capture_output=True, check=False)
     if result.returncode:
-        raise WaitError(f"docker inspect fallo para {CONTAINER}")
+        raise WaitError(f"docker inspect failed for {CONTAINER}")
     return result.stdout.strip()
 
 
 def main():
     """Poll Docker health until ready, terminal failure, or timeout."""
     if os.geteuid() != 0:
-        raise WaitError("ejecuta este script como root")
+        raise WaitError("run this command as root")
     timeout_text = os.environ.get("OPENWEBUI_READY_TIMEOUT", "240")
     if not re.fullmatch(r"[0-9]+", timeout_text):
-        raise WaitError("OPENWEBUI_READY_TIMEOUT invalido")
+        raise WaitError("invalid OPENWEBUI_READY_TIMEOUT")
     timeout = int(timeout_text)
     start = int(time.time())
 
@@ -52,9 +52,9 @@ def main():
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      check=False).returncode == 0
         except OSError as exc:
-            raise WaitError(f"docker inspect fallo: {exc}") from exc
+            raise WaitError(f"docker inspect failed: {exc}") from exc
         if not present:
-            raise WaitError(f"falta el contenedor {CONTAINER}")
+            raise WaitError(f"missing container {CONTAINER}")
 
         running = inspect("{{.State.Running}}")
         status = inspect("{{.State.Status}}")
@@ -63,9 +63,9 @@ def main():
             print(f"[stack7-ready] Open WebUI: READY ({status}/{health})")
             return
         if status in ("exited", "dead", "removing"):
-            raise WaitError(f"{CONTAINER} entro en estado terminal {status}")
+            raise WaitError(f"{CONTAINER} entered terminal state {status}")
         if int(time.time()) - start >= timeout:
-            raise WaitError(f"timeout esperando Open WebUI ({status}/{health})")
+            raise WaitError(f"timed out waiting for Open WebUI ({status}/{health})")
         time.sleep(2)
 
 

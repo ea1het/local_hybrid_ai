@@ -49,7 +49,7 @@ def run(command, env=None, capture=False):
 
 
 def load_env():
-    """Carga con Bash el .env del stack y devuelve las variables exportadas."""
+    """Load the stack .env with Bash and return exported variables."""
     result = subprocess.run(
         ["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
         check=True, stdout=subprocess.PIPE,

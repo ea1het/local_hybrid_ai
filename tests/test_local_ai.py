@@ -9,6 +9,7 @@ selects real stack wrappers and preserves their CLI behavior and exit codes.
 """
 
 import subprocess
+import shutil
 import sys
 
 sys.dont_write_bytecode = True
@@ -60,3 +61,52 @@ def test_preserves_wrapper_error_and_rejects_missing_command():
                              capture_output=True, text=True, check=False)
     assert unknown.returncode == 2
     assert "Unknown command: stack-01" in unknown.stderr
+
+
+@pytest.mark.parametrize("words,expected", [
+    ([], "stack-60"),
+    (["stack-00", ""], "status"),
+    (["stack-60", ""], "start"),
+    (["stack-60", "status", ""], "--deep"),
+    (["env", ""], "bootstrap"),
+    (["completion", ""], "zsh"),
+])
+def test_completion_candidates(words, expected):
+    """Offer top-level commands, verbs, and verb-specific options."""
+    result = subprocess.run([ROOT / "local-ai", "__complete", *words], capture_output=True,
+                            text=True, check=False)
+    assert result.returncode == 0
+    assert expected in result.stdout.splitlines()
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_completion_scripts_are_valid_shell(shell):
+    """Produce a sourceable completion definition for supported shells."""
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} is not installed")
+    result = subprocess.run([ROOT / "local-ai", "completion", shell], capture_output=True,
+                            text=True, check=False)
+    assert result.returncode == 0
+    checked = subprocess.run([shell, "-n"], input=result.stdout, capture_output=True,
+                             text=True, check=False)
+    assert checked.returncode == 0, checked.stderr
+
+
+@pytest.mark.parametrize("number,verbs", [
+    ("00", ("install", "status")),
+    *((number, ("install", "start", "stop", "status"))
+      for number in ("10", "20", "30", "40", "50", "60", "70")),
+])
+def test_completion_matches_stack_parser_options(number, verbs):
+    """Reject completion metadata that invents a verb or omits its options."""
+    command = f"stack-{number}"
+    for verb in verbs:
+        help_result = subprocess.run([ROOT / "local-ai", command, verb, "--help"],
+                                     capture_output=True, text=True, check=False)
+        candidates = subprocess.run([ROOT / "local-ai", "__complete", command, verb, ""],
+                                    capture_output=True, text=True, check=False)
+        assert help_result.returncode == candidates.returncode == 0
+        for option in candidates.stdout.splitlines():
+            assert option in help_result.stdout
+        if verb == "status":
+            assert "--deep" in candidates.stdout.splitlines()

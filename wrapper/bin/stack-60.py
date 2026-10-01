@@ -27,6 +27,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-60_-_hermes"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -74,7 +75,7 @@ def install() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    bootstrap = subprocess.run(
+    bootstrap = run_with_progress("Preparing Stack 60 directories",
         [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "60"],
         cwd=STACK_DIR,
         env=environment,
@@ -91,7 +92,7 @@ def install() -> int:
         print("Stack 60 directory preparation failed; no containers were started.", file=sys.stderr)
         return bootstrap.returncode
     print()
-    result = subprocess.run(
+    result = run_with_progress("Preparing Stack 60 Hermes runtime",
         [sys.executable, "-B", "-m", PREPARE_MODULE],
         cwd=STACK_DIR,
         env=environment,
@@ -144,7 +145,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         command.append("--build")
     try:
-        result = subprocess.run(
+        result = run_with_progress("Running Stack 60 Compose",
             command,
             cwd=STACK_DIR,
             stdin=subprocess.DEVNULL,

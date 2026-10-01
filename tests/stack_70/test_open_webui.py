@@ -222,7 +222,7 @@ def test_wait_ready_rejects_invalid_timeout(monkeypatch, timeout):
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setenv("OPENWEBUI_READY_TIMEOUT", timeout)
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected Docker call"))
-    with pytest.raises(module.WaitError, match="invalido"):
+    with pytest.raises(module.WaitError, match="invalid"):
         module.main()
 
 

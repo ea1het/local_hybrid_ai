@@ -25,6 +25,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-10_-_haproxy_web"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -67,7 +68,7 @@ def install() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    result = subprocess.run(
+    result = run_with_progress("Preparing Stack 10",
         [sys.executable, "-B", "-m", PREPARE_MODULE],
         cwd=STACK_DIR,
         env=environment,
@@ -115,7 +116,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         command.append("-d")
     try:
-        result = subprocess.run(
+        result = run_with_progress("Running Stack 10 Compose",
             command,
             cwd=STACK_DIR,
             stdin=subprocess.DEVNULL,

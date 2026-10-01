@@ -52,7 +52,7 @@ def test_prepare_rejects_missing_dependency_before_writing(tmp_path, monkeypatch
 
     with pytest.raises(SystemExit, match="1"):
         prepare.Prepare()
-    assert "Stack3" in capsys.readouterr().err
+    assert "Stack 30 is not prepared" in capsys.readouterr().err
     assert sorted(path.name for path in stack.iterdir()) == [".env"]
 
 

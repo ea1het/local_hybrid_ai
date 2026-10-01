@@ -27,6 +27,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-70_-_open-webui"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -83,7 +84,7 @@ def install() -> int:
     for name, command in phases:
         if name != "directories":
             print()
-        result = subprocess.run(
+        result = run_with_progress(f"Preparing Stack 70 {name}",
             command,
             cwd=STACK_DIR,
             env=environment,
@@ -133,7 +134,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         command.append("-d")
     try:
-        result = subprocess.run(
+        result = run_with_progress("Running Stack 70 Compose",
             command,
             cwd=STACK_DIR,
             stdin=subprocess.DEVNULL,

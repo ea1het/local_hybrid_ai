@@ -41,13 +41,13 @@ def log(message):
 
 
 def run(command, *, env=None, input_text=None, capture=False):
-    """Ejecuta un comando con entrada opcional y posible captura de salida."""
+    """Run a command with optional input and optional output capture."""
     return subprocess.run(command, env=env, input=input_text, text=True, check=True,
                           stdout=subprocess.PIPE if capture else None)
 
 
 def main():
-    """Arranca PostgreSQL, crea o actualiza rol y base, y verifica acceso."""
+    """Start PostgreSQL, create or update the role and database, and verify access."""
     if os.geteuid() != 0:
         die("run this command as root")
     if not shutil.which("docker"):

@@ -279,7 +279,7 @@ def main() -> None:
     key_target = target_dir / "tls.key"
     for target in (cert_target, key_target):
         if target.is_symlink() or (target.exists() and not target.is_file()):
-            die(f"destino TLS no seguro: {target}")
+            die(f"unsafe TLS destination: {target}")
 
     if not args.renew and pair_healthy(cert_target, key_target, ca, san_domains):
         changed_cert = ensure_metadata(cert_target, 0o644, pki_gid)

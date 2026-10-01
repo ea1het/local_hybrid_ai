@@ -51,71 +51,71 @@ def run(command, env=None, capture=False):
 def main():
     """Check prerequisites, preserve or create the volume, and write the lock."""
     if LOCK_FILE.exists() or LOCK_FILE.is_symlink():
-        print(f"Stack ya preparado. Existe {LOCK_FILE}; no se realiza ningun cambio.")
+        print(f"Stack already prepared. {LOCK_FILE} exists; nothing was changed.")
         return
     if os.geteuid() != 0:
-        die("ejecuta este script como root")
+        die("run this command as root")
     if not shutil.which("docker"):
-        die("docker no esta instalado")
+        die("Docker is not installed")
     if subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die("Docker Compose v2 no esta disponible")
+        die("Docker Compose v2 is unavailable")
     for path in (ENV_FILE, COMPOSE_FILE):
         if not path.is_file():
-            die(f"falta {path}")
+            die(f"missing {path}")
     loaded = subprocess.run(["bash", "-Eeuo", "pipefail", "-c", 'set -a; source "$1"; env -0', "bash", str(ENV_FILE)],
                             check=True, stdout=subprocess.PIPE).stdout
     env = dict(item.decode().split("=", 1) for item in loaded.split(b"\0") if item)
     os.environ.update(env)
     for key in ("STACKS_ROOT", "BASE_PATH", "NETWORK_NAME"):
         if not env.get(key):
-            die(f"falta {key} en {ENV_FILE}")
+            die(f"missing {key} in {ENV_FILE}")
     stacks_root = env["STACKS_ROOT"].rstrip("/")
     base_path = env["BASE_PATH"].rstrip("/")
     if not env["STACKS_ROOT"].startswith("/") or not env["BASE_PATH"].startswith("/"):
-        die("STACKS_ROOT y BASE_PATH deben ser rutas absolutas")
+        die("STACKS_ROOT and BASE_PATH must be absolute paths")
     if str(STACK_DIR) != f"{stacks_root}/{STACK_NAME}":
-        die(f"este stack debe residir en {stacks_root}/{STACK_NAME}; ruta actual: {STACK_DIR}")
+        die(f"this stack must be at {stacks_root}/{STACK_NAME}; current path: {STACK_DIR}")
     if stacks_root == base_path:
-        die("STACKS_ROOT y BASE_PATH deben ser distintos")
+        die("STACKS_ROOT and BASE_PATH must differ")
     network = env["NETWORK_NAME"]
     step(f"Shared Docker network {network}")
     if subprocess.run(["docker", "network", "inspect", network], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die(f"falta la red Docker compartida {network}")
+        die(f"missing shared Docker network {network}")
     driver = run(["docker", "network", "inspect", "-f", "{{.Driver}}", network], capture=True).stdout.strip()
     if driver != "bridge":
-        die(f"{network} usa driver {driver}, no bridge")
-    log("red Docker compartida verificada")
+        die(f"{network} uses driver {driver}, not bridge")
+    log("Shared Docker network verified")
     step(f"Persistent volume {VOLUME}")
     if subprocess.run(["docker", "volume", "inspect", VOLUME], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
         run(["docker", "volume", "create", VOLUME], capture=True)
-        log("volumen creado")
+        log("Volume created")
     else:
-        log("volumen existente preservado")
+        log("Existing volume preserved")
     if subprocess.run(["docker", "volume", "inspect", VOLUME], stdout=subprocess.DEVNULL,
                       stderr=subprocess.DEVNULL).returncode:
-        die(f"no se pudo preparar el volumen {VOLUME}")
+        die(f"could not prepare volume {VOLUME}")
     volume_name = run(["docker", "volume", "inspect", "-f", "{{.Name}}", VOLUME], capture=True).stdout.strip()
     if volume_name != VOLUME:
-        die(f"volumen inesperado: {volume_name}")
+        die(f"unexpected volume: {volume_name}")
     step("Docker Compose validation")
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
-    log("compose valido")
+    log("Docker Compose configuration valid")
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     LOCK_FILE.write_text(f"stack={STACK_NAME}\nprepared_at_utc={timestamp}\n")
     LOCK_FILE.chmod(0o644)
     step("Preparation complete")
-    log(f"lock creado: {LOCK_FILE}")
-    log(f"volumen {VOLUME}: propiedad de Stack5 y preservado entre despliegues")
+    log(f"Lock created: {LOCK_FILE}")
+    log(f"Volume {VOLUME}: managed by Stack 50 and preserved across deployments")
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-        message = (f"fallo {error.cmd[0]} (exit {error.returncode})"
+        message = (f"{error.cmd[0]} failed (exit {error.returncode})"
                    if isinstance(error, subprocess.CalledProcessError) else str(error))
         print(f"ERROR: {message}", file=sys.stderr)
         sys.exit(1)

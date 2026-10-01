@@ -7,8 +7,8 @@
 
 The executable name omits the wrapper's .py suffix. Arguments after the name
 are passed through unchanged, so each stack wrapper retains ownership of its
-own verbs, options, output, and exit status. New stack wrappers become
-available automatically without changing this dispatcher.
+own verbs, options, output, and exit status. The completion command emits
+Bash or Zsh integration for the currently supported verbs and options.
 """
 
 from __future__ import annotations
@@ -20,6 +20,25 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 BIN_DIR = Path(__file__).resolve().parent / "wrapper" / "bin"
+STACK_VERBS = ("install", "start", "stop", "status")
+HELP_OPTIONS = ("-h", "--help")
+
+BASH_COMPLETION = r'''_local_ai_complete() {
+    local current="${COMP_WORDS[COMP_CWORD]}"
+    local candidates
+    candidates="$("${COMP_WORDS[0]}" __complete "${COMP_WORDS[@]:1:COMP_CWORD}")"
+    COMPREPLY=($(compgen -W "$candidates" -- "$current"))
+}
+complete -F _local_ai_complete local-ai ./local-ai
+'''
+
+ZSH_COMPLETION = r'''_local_ai_complete() {
+    local -a candidates
+    candidates=("${(@f)$("${words[1]}" __complete "${(@)words[2,-1]}")}")
+    compadd -- ${candidates:#}
+}
+compdef _local_ai_complete local-ai ./local-ai
+'''
 
 
 def available_commands() -> dict[str, Path]:
@@ -31,20 +50,53 @@ def available_commands() -> dict[str, Path]:
     }
 
 
+def completion_candidates(words: list[str], commands: dict[str, Path]) -> list[str]:
+    """Return safe, current CLI names for the word being completed."""
+    if len(words) <= 1:
+        return sorted((*commands, "completion", *HELP_OPTIONS))
+    command = words[0]
+    if command == "completion":
+        return ["bash", "zsh"] if len(words) == 2 else []
+    if command not in commands:
+        return []
+    if len(words) == 2:
+        verbs = ("bootstrap",) if command == "env" else (
+            ("install", "status") if command == "stack-00" else STACK_VERBS
+        )
+        return [*verbs, *HELP_OPTIONS]
+    verb = words[1]
+    if verb == "status" and command != "env":
+        return [*HELP_OPTIONS, "--deep"]
+    if (command == "env" and verb == "bootstrap") or (
+        command == "stack-00" and verb == "install"
+    ) or (command not in {"env", "stack-00"} and verb in STACK_VERBS):
+        return list(HELP_OPTIONS)
+    return []
+
+
 def main(arguments: list[str] | None = None) -> int:
     """Show available commands or replace this process with the chosen wrapper."""
     arguments = sys.argv[1:] if arguments is None else arguments
     commands = available_commands()
+    if arguments and arguments[0] == "__complete":
+        print("\n".join(completion_candidates(arguments[1:], commands)))
+        return 0
+    if arguments and arguments[0] == "completion":
+        if len(arguments) == 2 and arguments[1] in {"bash", "zsh"}:
+            print(BASH_COMPLETION if arguments[1] == "bash" else ZSH_COMPLETION, end="")
+            return 0
+        print("Usage: ./local-ai completion {bash,zsh}", file=sys.stderr)
+        return 2
     if not arguments or arguments[0] in {"-h", "--help"}:
         print("Usage: ./local-ai <command> [parameters]", file=sys.stderr if not arguments else sys.stdout)
-        print("Available commands: " + ", ".join(sorted(commands)),
+        print("Available commands: " + ", ".join(sorted((*commands, "completion"))),
               file=sys.stderr if not arguments else sys.stdout)
         return 2 if not arguments else 0
 
     command = arguments[0]
     if command not in commands:
         print(f"Unknown command: {command}", file=sys.stderr)
-        print("Available commands: " + ", ".join(sorted(commands)), file=sys.stderr)
+        print("Available commands: " + ", ".join(sorted((*commands, "completion"))), file=sys.stderr)
         return 2
 
     os.execv(sys.executable, [sys.executable, "-B", str(commands[command]), *arguments[1:]])

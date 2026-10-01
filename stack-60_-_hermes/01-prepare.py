@@ -66,7 +66,7 @@ def step(message: str) -> None:
 
 def warn(message: str) -> None:
     """Print a preparation warning to stderr."""
-    print(f"  AVISO: {message}", file=sys.stderr)
+    print(f"  WARNING: {message}", file=sys.stderr)
 
 
 def die(message: str) -> None:
@@ -117,57 +117,57 @@ class Prepare:
         lines = ENV_FILE.read_text().splitlines()
         for key in ALL_KEYS:
             if not any(line.startswith(f"{key}=") for line in lines):
-                die(f"falta la variable {key} en .env")
+                die(f"missing {key} in .env")
         self.env = load_env(ENV_FILE)
         for key in ALL_KEYS:
             if key in OPTIONAL_EMPTY:
                 continue
             value = self.env.get(key, "")
             if not value:
-                die(f"{key} esta vacia en .env")
+                die(f"{key} is empty in .env")
             if value.startswith("CHANGE_ME"):
-                die(f"{key} sigue sin definir: {value}")
+                die(f"{key} is still unset: {value}")
             if value.startswith("PUT_YOUR_"):
-                die(f"{key} sigue usando un placeholder: {value}")
+                die(f"{key} still uses a placeholder: {value}")
         env = self.env
         if len(env["API_SERVER_KEY"]) < 8:
-            die("API_SERVER_KEY debe tener al menos 8 caracteres")
+            die("API_SERVER_KEY must contain at least 8 characters")
         if len(env["LITELLM_MCP_API_KEY"]) < 8:
-            die("LITELLM_MCP_API_KEY debe tener al menos 8 caracteres")
+            die("LITELLM_MCP_API_KEY must contain at least 8 characters")
         if env["HERMES_VERSION"] == "latest":
-            die("HERMES_VERSION no puede ser latest")
+            die("HERMES_VERSION cannot be latest")
         if env["HERMES_IMAGE"].endswith(":latest"):
-            die("HERMES_IMAGE no puede incluir :latest")
+            die("HERMES_IMAGE cannot use :latest")
         if not re.fullmatch(r"https?://\S+/mcp/?", env["LITELLM_MCP_URL"]):
-            die("LITELLM_MCP_URL debe ser un endpoint HTTP(S) terminado en /mcp")
+            die("LITELLM_MCP_URL must be an HTTP(S) endpoint ending in /mcp")
         token = env.get("TELEGRAM_BOT_TOKEN", "")
         if token:
             if token.startswith("CHANGE_ME"):
-                die("TELEGRAM_BOT_TOKEN sigue sin definir")
+                die("TELEGRAM_BOT_TOKEN is still unset")
             if token.startswith("PUT_YOUR_"):
-                die("TELEGRAM_BOT_TOKEN sigue usando un placeholder")
+                die("TELEGRAM_BOT_TOKEN still uses a placeholder")
             if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]{30,}", token):
-                die("TELEGRAM_BOT_TOKEN no tiene el formato esperado de BotFather")
+                die("TELEGRAM_BOT_TOKEN does not match the expected BotFather format")
         for key in ("STACKS_ROOT", "BASE_PATH"):
             if not env[key].startswith("/"):
-                die(f"{key} debe ser una ruta absoluta")
+                die(f"{key} must be an absolute path")
             env[key] = env[key][:-1] if env[key].endswith("/") else env[key]
             if not env[key]:
-                die(f"{key} no puede ser /")
+                die(f"{key} cannot be /")
         if str(STACK_DIR) != f"{env['STACKS_ROOT']}/stack-60_-_hermes":
-            die(f"Stack6 debe residir en {env['STACKS_ROOT']}/stack-60_-_hermes; ruta actual: {STACK_DIR}")
+            die(f"Stack 60 must be at {env['STACKS_ROOT']}/stack-60_-_hermes; current path: {STACK_DIR}")
         for number, name in ((0, "platform"), (3, "litellm")):
             lock = Path(env["STACKS_ROOT"]) / f"stack-{number * 10:02d}_-_{name}" / ".lock"
             if not lock.is_file():
-                die(f"Stack{number} no esta preparado: falta {lock}")
+                die(f"Stack {number * 10:02d} is not prepared: missing {lock}")
         for key in ("HERMES_SERVICE", "HERMES_MEMORY_SERVICE", "MEMORY_SYNC_SERVICE", "SANDBOX_SERVICE"):
             if not re.fullmatch(r"service_-_[A-Za-z0-9._-]+", env[key]):
-                die(f"{key} debe seguir el patron service_-_*")
+                die(f"{key} must match service_-_*")
         for first, second in (("HERMES_SERVICE", "SANDBOX_SERVICE"),
                               ("HERMES_SERVICE", "HERMES_MEMORY_SERVICE"),
                               ("SANDBOX_SERVICE", "HERMES_MEMORY_SERVICE")):
             if env[first] == env[second]:
-                die(f"{first} y {second} no pueden ser iguales")
+                die(f"{first} and {second} must differ")
         base = Path(env["BASE_PATH"])
         self.hermes_root = base / env["HERMES_SERVICE"]
         self.memory_root = base / env["HERMES_MEMORY_SERVICE"]
@@ -184,12 +184,12 @@ class Prepare:
         self.authorized_keys = self.sandbox_data / "home/.ssh/authorized_keys"
         self.host_private = self.sandbox_config / "ssh-host/ssh_host_ed25519_key"
         self.host_public = Path(f"{self.host_private}.pub")
-        log(".env completo; no se ha modificado")
-        log(f"Hermes fijado a {env['HERMES_IMAGE']}:{env['HERMES_VERSION']}")
-        log(f"memoria externa declarada: {self.memory_data}")
+        log(".env is complete and unchanged")
+        log(f"Hermes image pinned to {env['HERMES_IMAGE']}:{env['HERMES_VERSION']}")
+        log(f"External memory directory: {self.memory_data}")
         log(f"MCP gateway: {env['LITELLM_MCP_URL']}")
-        log("Telegram: habilitado; token presente y formato valido" if token else
-            "Telegram: deshabilitado; TELEGRAM_BOT_TOKEN vacio")
+        log("Telegram: enabled; token format is valid" if token else
+            "Telegram: disabled; TELEGRAM_BOT_TOKEN is empty")
 
     def run(self, *args: str, capture: bool = False, quiet: bool = False,
             check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -213,49 +213,49 @@ class Prepare:
         )
         for source in sources:
             if not source.is_file() or source.stat().st_size == 0:
-                die(f"falta o esta vacio {source}")
+                die(f"missing or empty source file: {source}")
         text = self.config_source.read_text()
         for key in ("HERMES_MODEL", "LITELLM_MCP_URL", "LITELLM_MCP_API_KEY"):
             if "${" + key + "}" not in text:
-                die(f"config/hermes/config.yaml debe contener ${{{key}}}")
+                die(f"config/hermes/config.yaml must contain ${{{key}}}")
         model = self.env["HERMES_MODEL"]
         if not re.fullmatch(r"[A-Za-z0-9._:/+@-]+", model):
-            die(f"HERMES_MODEL contiene caracteres no admitidos para render seguro: {model}")
+            die(f"HERMES_MODEL contains characters that cannot be rendered safely: {model}")
         if model_default(text) != MODEL_REFERENCE:
-            die("model.default en config/hermes/config.yaml debe ser ${HERMES_MODEL}")
+            die("model.default in config/hermes/config.yaml must be ${HERMES_MODEL}")
         for line in text.splitlines():
             match = re.match(r"\s+model:\s+(.+)", line)
             if match and match.group(1) != MODEL_REFERENCE:
-                die(f"referencia de modelo hardcodeada en config/hermes/config.yaml: {match.group(1)}")
+                die(f"hard-coded model reference in config/hermes/config.yaml: {match.group(1)}")
         summary = next((match.group(1) for line in text.splitlines()
                         if (match := re.match(r"\s*summary_model:\s*(.*)", line))), "")
         if summary and summary != MODEL_REFERENCE:
-            die("compression.summary_model debe ser ${HERMES_MODEL}")
+            die("compression.summary_model must be ${HERMES_MODEL}")
         if re.search(r"(^|\s)(install|chown|chmod)(\s|$)|hermes_authorized_key|AUTHORIZED_SOURCE",
                      self.sandbox_entrypoint.read_text(), re.MULTILINE):
-            die("entrypoint.sh contiene logica de preparacion antigua; no se instala")
-        log("fuentes presentes y coherentes")
+            die("entrypoint.sh contains obsolete preparation logic; refusing to install")
+        log("Source files are present and consistent")
 
     def docker_preflight(self) -> None:
         """Require the shared bridge network and stopped Hermes containers."""
         name = self.env["NETWORK_NAME"]
         step(f"Docker network {name}")
         if self.run("docker", "network", "inspect", name, quiet=True, check=False).returncode:
-            die(f"falta la red compartida {name}; debe crearla Stack0")
+            die(f"missing shared network {name}; Stack 00 must create it")
         driver = self.run("docker", "network", "inspect", "-f", "{{.Driver}}", name, capture=True).stdout.strip()
         if driver != "bridge":
-            die(f"la red {name} existe pero usa driver '{driver}', no bridge")
-        log("existe, es bridge y permanece propiedad de Stack0")
+            die(f"network {name} uses driver '{driver}', not bridge")
+        log("Network exists, uses bridge, and remains managed by Stack 00")
         step("Hermes status")
         for container in (self.env["HERMES_CONTAINER"], self.env["SANDBOX_CONTAINER"]):
             if self.run("docker", "inspect", container, quiet=True, check=False).returncode == 0:
                 running = self.run("docker", "inspect", "-f", "{{.State.Running}}", container,
                                    capture=True).stdout.strip()
                 if running == "true":
-                    die(f"el contenedor '{container}' sigue corriendo; ejecutar docker compose stop")
-                log(f"{container}: detenido")
+                    die(f"container '{container}' is still running; run ./local-ai stack-60 stop first")
+                log(f"{container}: stopped")
             else:
-                log(f"{container}: no creado")
+                log(f"{container}: absent")
 
     def persistent_filesystem(self) -> None:
         """Verify bootstrapped directories and preserve or create memory files."""
@@ -267,24 +267,24 @@ class Prepare:
                  self.sandbox_data / "workspace", self.sandbox_data / "state", self.sandbox_logs)
         for path in paths:
             if not path.is_dir() or path.is_symlink():
-                die(f"falta {path}; ejecuta primero stack-00_-_platform/00-bootstrap.py")
+                die(f"missing {path}; run ./local-ai stack-60 install to create service directories")
         uid, gid = self.env["HERMES_UID"], self.env["HERMES_GID"]
         for name in ("MEMORY.md", "USER.md"):
             path = self.memory_data / name
             if path.exists():
                 if not path.is_file() or path.is_symlink():
-                    die(f"{path} debe ser un fichero regular")
-                log(f"memoria existente preservada: {name}")
+                    die(f"{path} must be a regular file")
+                log(f"Existing memory file preserved: {name}")
             else:
                 self.run("install", "-m", "0640", "-o", uid, "-g", gid, "/dev/null", str(path))
-                log(f"memoria local inicial creada: {name}")
+                log(f"Initial local memory file created: {name}")
             self.run("chown", f"{uid}:{gid}", str(path))
             self.run("chmod", "0640", str(path))
         log(f"{self.hermes_root}/{{config,data,logs}}")
-        log(f"{self.memory_data}: memoria persistente local")
+        log(f"{self.memory_data}: persistent local memory")
         log(f"{self.sandbox_root}/{{config,data,logs}}")
-        log("data/, logs/, workspace, memoria y data/bin se preservan")
-        log("Git memory-sync es opcional y no forma parte del Stack6 minimo")
+        log("Existing data/, logs/, workspace, memory, and data/bin are preserved")
+        log("Git memory sync is optional and not part of the minimal Stack 60 install")
 
     def audit_shadow(self) -> None:
         """Reject shadow config and runtime overrides of managed environment keys."""
@@ -292,28 +292,28 @@ class Prepare:
         runtime_config = self.hermes_data / "config.yaml"
         shadow = self.hermes_data / ".hermes"
         if present(shadow):
-            die(f"configuracion shadow detectada: {shadow}; ejecutar cleanup.py")
+            die(f"shadow configuration detected: {shadow}; review cleanup.py")
         if runtime_config.is_symlink():
-            die(f"configuracion shadow detectada (symlink): {runtime_config}; ejecutar cleanup.py")
+            die(f"shadow configuration symlink detected: {runtime_config}; review cleanup.py")
         if runtime_config.exists():
             if not runtime_config.is_file():
-                die(f"configuracion shadow invalida: {runtime_config}; ejecutar cleanup.py")
+                die(f"invalid shadow configuration: {runtime_config}; review cleanup.py")
             if runtime_config.stat().st_size:
-                die(f"configuracion shadow activa y no vacia: {runtime_config}; ejecutar cleanup.py")
-            warn("data/config.yaml vacio permitido; queda oculto por el bind mount gestionado")
+                die(f"active, nonempty shadow configuration: {runtime_config}; review cleanup.py")
+            warn("empty data/config.yaml is allowed; the managed bind mount hides it")
         if runtime_env.is_symlink():
-            die(f"runtime .env no puede ser un symlink: {runtime_env}")
+            die(f"runtime .env cannot be a symlink: {runtime_env}")
         if runtime_env.exists():
             if not runtime_env.is_file():
-                die(f"runtime .env no es un fichero regular: {runtime_env}")
+                die(f"runtime .env is not a regular file: {runtime_env}")
             managed = ENV_FILE.read_text().splitlines()
             for line in runtime_env.read_text().splitlines():
                 match = RUNTIME_KEY.match(line)
                 if match and match.group(1) not in RUNTIME_ALLOWED:
                     key = match.group(1)
                     if any(entry.startswith(f"{key}=") for entry in managed):
-                        die(f"runtime .env intenta redefinir variable gestionada por el stack: {key}")
-            log("data/.env runtime permitido; sin colisiones con variables gestionadas por el stack")
+                        die(f"runtime .env attempts to override a stack-managed variable: {key}")
+            log("data/.env is allowed; it does not override stack-managed variables")
         log("shadow config: OK")
 
     def deploy_config(self, rendered: Path) -> None:
@@ -323,13 +323,13 @@ class Prepare:
         lines = self.config_source.read_text().splitlines()
         rendered.write_text("\n".join(line.replace(MODEL_REFERENCE, model) for line in lines) + "\n")
         if rendered.stat().st_size == 0:
-            die("config.yaml renderizado esta vacio")
+            die("rendered config.yaml is empty")
         text = rendered.read_text()
         if MODEL_REFERENCE in text:
-            die("config.yaml renderizado conserva ${HERMES_MODEL}; se aborta")
+            die("rendered config.yaml still contains ${HERMES_MODEL}")
         deployed_model = model_default(text)
         if deployed_model != model:
-            die(f"model.default renderizado '{deployed_model}' no coincide con HERMES_MODEL='{model}'")
+            die(f"rendered model.default '{deployed_model}' does not match HERMES_MODEL='{model}'")
         uid, gid = self.env["HERMES_UID"], self.env["HERMES_GID"]
         self.run("install", "-m", "0640", "-o", uid, "-g", gid, str(rendered),
                  str(self.hermes_config / "config.yaml"))
@@ -337,19 +337,19 @@ class Prepare:
                  str(self.sandbox_config / "Dockerfile"))
         self.run("install", "-m", "0755", "-o", "0", "-g", "0", str(self.sandbox_entrypoint),
                  str(self.sandbox_config / "entrypoint.sh"))
-        log(f"configuracion sincronizada; HERMES_MODEL renderizado como {model}")
+        log(f"Configuration synchronized; HERMES_MODEL rendered as {model}")
 
     def keypair(self, private: Path, public: Path, comment: str, uid: str, gid: str) -> None:
         """Preserve a valid SSH keypair or generate one with expected permissions."""
         if private.exists() or public.exists():
             if not private.is_file() or not public.is_file() or not private.stat().st_size or not public.stat().st_size:
-                die(f"pareja SSH incompleta: {private} / {public}")
-            self.assert_keypair(private, public, f"pareja SSH incoherente: {private} / {public}")
-            log(f"clave existente conservada: {private}")
+                die(f"incomplete SSH key pair: {private} / {public}")
+            self.assert_keypair(private, public, f"inconsistent SSH key pair: {private} / {public}")
+            log(f"Existing key preserved: {private}")
         else:
             os.umask(0o077)
             self.run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", comment, "-f", str(private))
-            log(f"clave creada: {private}")
+            log(f"Key created: {private}")
         self.run("chown", f"{uid}:{gid}", str(private), str(public))
         self.run("chmod", "0600", str(private))
         self.run("chmod", "0644", str(public))
@@ -363,23 +363,23 @@ class Prepare:
         self.run("install", "-m", "0600", "-o", self.env["SANDBOX_UID"], "-g",
                  self.env["SANDBOX_GID"], str(self.ssh_public), str(self.authorized_keys))
         log(f"Hermes -> sandbox: {self.authorized_keys}")
-        log(f"host key sandbox: {self.host_private}")
+        log(f"Sandbox host key: {self.host_private}")
 
     def dependencies(self) -> None:
         """Require a running LiteLLM container on the shared network."""
         step("Existing dependencies")
         container = "litellm"
         if self.run("docker", "inspect", container, quiet=True, check=False).returncode:
-            die(f"no existe el contenedor requerido '{container}'")
+            die(f"required container '{container}' does not exist")
         running = self.run("docker", "inspect", "-f", "{{.State.Running}}", container,
                            capture=True).stdout.strip()
         if running != "true":
-            die(f"el contenedor '{container}' no esta corriendo")
+            die(f"container '{container}' is not running")
         network = self.env["NETWORK_NAME"]
         template = '{{if index .NetworkSettings.Networks "' + network + '"}}yes{{else}}no{{end}}'
         attached = self.run("docker", "inspect", "-f", template, container, capture=True).stdout.strip()
         if attached != "yes":
-            die(f"el contenedor '{container}' no esta conectado a {network}")
+            die(f"container '{container}' is not connected to {network}")
         log(f"{container}: running + {network}")
 
     def assert_node(self, path: Path, uid: str, gid: str, mode: int,
@@ -387,22 +387,22 @@ class Prepare:
         """Verify a managed file or directory's type, owner, group, and mode."""
         valid = path.is_dir() if directory else path.is_file()
         if not valid or path.is_symlink() or (not directory and nonempty and not path.stat().st_size):
-            kind = ("directorio ausente o invalido" if directory else
-                    "fichero ausente, vacio o invalido" if nonempty else "fichero ausente o invalido")
+            kind = ("missing or invalid directory" if directory else
+                    "missing, empty, or invalid file" if nonempty else "missing or invalid file")
             die(f"{kind}: {path}")
         metadata = path.stat()
         actual = f"{metadata.st_uid}:{metadata.st_gid}:{stat.S_IMODE(metadata.st_mode):o}"
         expected = f"{uid}:{gid}:{mode:o}"
         if actual != expected:
-            die(f"permisos/propietario incorrectos en {path}: {actual} esperado {expected}")
+            die(f"incorrect owner or mode for {path}: {actual}; expected {expected}")
 
     def assert_tree(self, root: Path, expected: list[str], recursive: bool) -> None:
         """Verify the exact expected entries under a managed directory."""
         actual = tree_entries(root, recursive)
         if actual != expected:
-            kind = "arbol" if recursive else "top-level"
-            die(f"{kind} inesperado bajo {root}\n--- esperado ---\n" + "\n".join(expected)
-                + "\n--- real ---\n" + "\n".join(actual))
+            kind = "tree" if recursive else "top-level entries"
+            die(f"unexpected {kind} under {root}\n--- expected ---\n" + "\n".join(expected)
+                + "\n--- actual ---\n" + "\n".join(actual))
 
     def assert_keypair(self, private: Path, public: Path, label: str) -> None:
         """Verify that a public key matches its private key."""
@@ -422,7 +422,7 @@ class Prepare:
         self.assert_tree(self.sandbox_config, ["Dockerfile", "entrypoint.sh", "ssh-host",
                                                "ssh-host/ssh_host_ed25519_key",
                                                "ssh-host/ssh_host_ed25519_key.pub"], True)
-        log("arbol gestionado: OK")
+        log("Managed tree: OK")
         uid, gid = self.env["HERMES_UID"], self.env["HERMES_GID"]
         suid, sgid = self.env["SANDBOX_UID"], self.env["SANDBOX_GID"]
         for path, owner, group, mode in (
@@ -450,29 +450,29 @@ class Prepare:
             (self.authorized_keys, suid, sgid, 0o600, True),
         ):
             self.assert_node(path, owner, group, mode, nonempty=nonempty)
-        log("propietarios/permisos: OK")
+        log("Owners and permissions: OK")
         for source, deployed, message in (
-            (rendered, self.hermes_config / "config.yaml", "config.yaml desplegado no coincide con el render esperado"),
-            (self.sandbox_dockerfile, self.sandbox_config / "Dockerfile", "Dockerfile desplegado no coincide con la fuente"),
-            (self.sandbox_entrypoint, self.sandbox_config / "entrypoint.sh", "entrypoint.sh desplegado no coincide con la fuente"),
-            (self.ssh_public, self.authorized_keys, "authorized_keys no coincide con la clave publica de Hermes"),
+            (rendered, self.hermes_config / "config.yaml", "deployed config.yaml differs from the rendered source"),
+            (self.sandbox_dockerfile, self.sandbox_config / "Dockerfile", "deployed Dockerfile differs from its source"),
+            (self.sandbox_entrypoint, self.sandbox_config / "entrypoint.sh", "deployed entrypoint.sh differs from its source"),
+            (self.ssh_public, self.authorized_keys, "authorized_keys differs from Hermes's public key"),
         ):
             if source.read_bytes() != deployed.read_bytes():
                 die(message)
-        log("ficheros gestionados: OK")
-        self.assert_keypair(self.ssh_private, self.ssh_public, "la pareja SSH Hermes -> sandbox no es coherente")
-        self.assert_keypair(self.host_private, self.host_public, "la pareja de host keys del sandbox no es coherente")
-        log("claves SSH: OK")
+        log("Managed files: OK")
+        self.assert_keypair(self.ssh_private, self.ssh_public, "Hermes-to-sandbox SSH key pair is inconsistent")
+        self.assert_keypair(self.host_private, self.host_public, "sandbox host key pair is inconsistent")
+        log("SSH keys: OK")
         self.audit_shadow()
         deployed_text = (self.hermes_config / "config.yaml").read_text()
         if MODEL_REFERENCE in deployed_text:
-            die("config.yaml desplegado contiene ${HERMES_MODEL}")
+            die("deployed config.yaml still contains ${HERMES_MODEL}")
         if model_default(deployed_text) != self.env["HERMES_MODEL"]:
-            die(f"model.default desplegado '{model_default(deployed_text)}' no coincide con HERMES_MODEL='{self.env['HERMES_MODEL']}'")
-        log("modelo renderizado / shadow config: OK")
+            die(f"deployed model.default '{model_default(deployed_text)}' does not match HERMES_MODEL='{self.env['HERMES_MODEL']}'")
+        log("Rendered model and shadow configuration: OK")
         if sha256(ENV_FILE) != self.env_hash:
-            die(".env ha cambiado durante la preparacion; se aborta")
-        log(".env inmutable: OK")
+            die(".env changed during preparation; aborting")
+        log(".env unchanged: OK")
 
     def execute(self) -> None:
         """Prepare and audit the stack before writing its prepared-state lock."""
@@ -496,57 +496,29 @@ class Prepare:
         step("Lock")
         # The lock represents completed preparation only after all audits pass.
         self.run("install", "-m", "0600", "-o", "0", "-g", "0", "/dev/null", str(LOCK_FILE))
-        log(f"creado {LOCK_FILE}")
-        print(f"""
-Stack preparado y auditado. No se ha arrancado ningun contenedor.
-
-Siguiente paso:
-
-  cd {STACK_DIR}
-  docker compose up -d --build
-  python3 ./reconcile-capabilities.py --restart
-  docker compose ps
-
-Git-backed memory es opcional. Para habilitarla posteriormente:
-
-  python3 ./prepare-git-memory.py
-  python3 ./prepare-maintenance-sidecars.py
-  docker compose --profile git-memory up -d --build hermes-memory-sync
-
-La salida correcta del prepare incluye:
-
-  arbol gestionado: OK
-  propietarios/permisos: OK
-  ficheros gestionados: OK
-  claves SSH: OK
-  modelo renderizado / shadow config: OK
-  .env inmutable: OK
-
-IMPORTANTE:
-  - .lock significa PREPARED; no significa desplegado ni healthy.
-  - 01-prepare.py crea o conserva la memoria persistente local de Stack6.
-  - prepare-git-memory.py habilita/valida opcionalmente el working tree Git de memoria.
-  - reconcile-capabilities.py adapta la configuracion a providers opcionales.
-  - 01-prepare.py no borra data/, logs/, workspace, memoria, state.db ni data/bin.
-  - la limpieza/reset/factory-reset corresponde a cleanup.py.
-  - .env no se modifica nunca.""")
+        log(f"Created {LOCK_FILE}")
+        print("\nStack 60 is prepared and audited; no containers were started.")
+        print("Start from the repository root with: ./local-ai stack-60 start")
+        print("Then check readiness with: ./local-ai stack-60 status")
+        print("Git memory sync and other optional capabilities require separate setup.")
+        print(".lock certifies preparation only; .env was not changed.")
 
 
 def main() -> None:
     """Run preparation unless already locked, after root and tool checks."""
     if LOCK_FILE.is_file():
-        print(f"LOCK: {LOCK_FILE} existe. No se valida ni se modifica nada.")
+        print(f"LOCK: {LOCK_FILE} exists. Nothing was validated or changed.")
         return
     if os.geteuid() != 0:
-        die("ejecutar como root")
+        die("run this command as root")
     for command in ("docker", "ssh-keygen", "install", "grep", "chmod", "chown", "stat", "find",
                     "sort", "cmp", "sha256sum", "awk", "rm", "mktemp"):
         if shutil.which(command) is None:
-            die(f"falta el comando requerido: {command}")
+            die(f"missing required command: {command}")
     if subprocess.run(["docker", "compose", "version"], capture_output=True, check=False).returncode:
-        die("se requiere Docker Compose v2 ('docker compose')")
+        die("Docker Compose v2 is required ('docker compose')")
     if not ENV_FILE.is_file():
-        die(f"falta {ENV_FILE}; el script no lo crea")
+        die(f"missing {ENV_FILE}; this command does not create it")
     Prepare().execute()
 
 

@@ -89,7 +89,7 @@ def test_prepare_rejects_non_bridge_network_before_volume_creation(tmp_path, mon
     monkeypatch.setattr(module.shutil, "which", lambda _: "/fake/docker")
     monkeypatch.setattr(module.subprocess, "run", fake_run)
 
-    with pytest.raises(RuntimeError, match="no bridge"):
+    with pytest.raises(RuntimeError, match="not bridge"):
         module.main()
     assert not any(command[:2] == ["docker", "volume"] for command in commands)
     assert not (stack_dir / ".lock").exists()

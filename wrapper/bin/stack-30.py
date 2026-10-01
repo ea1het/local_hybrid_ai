@@ -26,6 +26,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-30_-_litellm"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -74,7 +75,7 @@ def install() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    bootstrap = subprocess.run(
+    bootstrap = run_with_progress("Preparing Stack 30 directories",
         [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "30"],
         cwd=STACK_DIR, env=environment, stdin=subprocess.DEVNULL,
         capture_output=True, text=True, check=False,
@@ -87,7 +88,7 @@ def install() -> int:
         print("Stack 30 directory preparation failed; no containers were started.", file=sys.stderr)
         return bootstrap.returncode
     print()
-    running = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "litellm-postgres"],
+    running = run_with_progress("Checking Stack 30 PostgreSQL", ["docker", "inspect", "-f", "{{.State.Running}}", "litellm-postgres"],
                              stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
     postgres_was_running = running.returncode == 0 and running.stdout.strip() == "true"
     provision_attempted = False
@@ -99,7 +100,7 @@ def install() -> int:
                 provision_attempted = True
             if module != PREPARE_MODULE:
                 print()
-            result = subprocess.run([sys.executable, "-B", "-m", module], cwd=STACK_DIR,
+            result = run_with_progress(f"Running {module.rsplit('.', 1)[-1]}", [sys.executable, "-B", "-m", module], cwd=STACK_DIR,
                                     env=environment, stdin=subprocess.DEVNULL,
                                     capture_output=True, text=True, check=False)
             if result.stdout:
@@ -113,7 +114,7 @@ def install() -> int:
                 break
     finally:
         if provision_attempted and not postgres_was_running:
-            stopped = subprocess.run(["docker", "compose", "--env-file", ".env", "-f",
+            stopped = run_with_progress("Stopping temporary Stack 30 PostgreSQL", ["docker", "compose", "--env-file", ".env", "-f",
                                       "docker-compose.yml", "stop", "litellm-postgres"],
                                      cwd=STACK_DIR, stdin=subprocess.DEVNULL,
                                      capture_output=True, text=True, check=False)
@@ -155,7 +156,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         command.append("-d")
     try:
-        result = subprocess.run(
+        result = run_with_progress("Running Stack 30 Compose",
             command,
             cwd=STACK_DIR,
             stdin=subprocess.DEVNULL,

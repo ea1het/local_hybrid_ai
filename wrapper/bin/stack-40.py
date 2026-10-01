@@ -25,6 +25,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-40_-_gitea"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -71,7 +72,7 @@ def install() -> int:
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    bootstrap = subprocess.run(
+    bootstrap = run_with_progress("Preparing Stack 40 directories",
         [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "40"],
         cwd=STACK_DIR, env=environment, stdin=subprocess.DEVNULL,
         capture_output=True, text=True, check=False,
@@ -87,7 +88,7 @@ def install() -> int:
     for module in (PREPARE_MODULE, INITIALIZE_MODULE):
         if module == INITIALIZE_MODULE:
             print()
-        result = subprocess.run([sys.executable, "-B", "-m", module], cwd=STACK_DIR,
+        result = run_with_progress(f"Running {module.rsplit('.', 1)[-1]}", [sys.executable, "-B", "-m", module], cwd=STACK_DIR,
                                 env=environment, stdin=subprocess.DEVNULL,
                                 capture_output=True, text=True, check=False)
         if result.stdout:
@@ -131,7 +132,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         command.append("-d")
     try:
-        result = subprocess.run(
+        result = run_with_progress("Running Stack 40 Compose",
             command,
             cwd=STACK_DIR,
             stdin=subprocess.DEVNULL,
