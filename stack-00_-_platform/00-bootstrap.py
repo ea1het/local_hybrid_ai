@@ -52,7 +52,7 @@ class Dir:
     uid: int | None = 0          # None: keep the current owner (created as root)
     gid: int | None = 0
     recursive: bool = False      # reconcile ownership of existing contents
-    create_only: bool = False    # PGDATA: create if absent, never alter if present
+    create_only: bool = False    # database mount: create if absent, never alter if present
 
 
 def die(message: str, code: int = 1) -> None:
@@ -192,7 +192,7 @@ def ensure_dir(spec: Dir) -> None:
     description = f"{path} {spec.mode:04o} {owner}{' (recursive)' if spec.recursive else ''}"
 
     if spec.create_only and path.is_dir():
-        log(f"{path}: existing PGDATA preserved")
+        log(f"{path}: existing database mount preserved")
         return
 
     if DRY_RUN:
@@ -278,14 +278,14 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack3() -> list[Dir]:
-        """Describe LiteLLM configuration and PostgreSQL data directories."""
+        """Keep PostgreSQL 18's mount traversable after it drops root privileges."""
         litellm = svc("service_-_litellm")
         litellm_postgres = svc("service_-_litellm-postgres")
         return [
             Dir(litellm, 0o750),
             Dir(litellm / "config", 0o750),
             Dir(litellm_postgres, 0o750),
-            Dir(litellm_postgres / "data", 0o700, create_only=True),
+            Dir(litellm_postgres / "data", 0o755, create_only=True),
         ]
 
     def stack4() -> list[Dir]:

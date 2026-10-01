@@ -56,6 +56,24 @@ def test_bootstrap_keeps_correct_directory_metadata(tmp_path, monkeypatch):
     bootstrap.ensure_dir(bootstrap.Dir(directory, 0o700, stat_result.st_uid, stat_result.st_gid))
 
 
+def test_postgres_18_mount_is_traversable_but_existing_data_is_preserved(tmp_path, monkeypatch):
+    """Create a traversable parent for PostgreSQL 18 without rewriting prior data."""
+    bootstrap = module("00-bootstrap.py")
+    stack_30 = dict(bootstrap.build_layout({"BASE_PATH": str(tmp_path)}))["stack-30_-_litellm"]()
+    mount = next(spec for spec in stack_30 if spec.path == tmp_path / "service_-_litellm-postgres/data")
+    assert mount.mode == 0o755
+    assert mount.create_only
+    monkeypatch.setattr(bootstrap.os, "chown", lambda *args: None)
+    bootstrap.ensure_dir(mount)
+    assert mount.path.stat().st_mode & 0o777 == 0o755
+
+    mount.path.chmod(0o700)
+    (mount.path / "PG_VERSION").write_text("18\n")
+    bootstrap.ensure_dir(mount)
+    assert mount.path.stat().st_mode & 0o777 == 0o700
+    assert (mount.path / "PG_VERSION").read_text() == "18\n"
+
+
 def test_bootstrap_rechecks_platform_despite_own_lock(tmp_path, monkeypatch):
     """Audit Stack0 directories but preserve other locked stacks."""
     bootstrap = module("00-bootstrap.py")
