@@ -76,6 +76,8 @@ or cleanup. Those operations belong to a later, separately scoped phase.
 
 `./local-ai stack-60 start` runs `docker compose up -d --build` after checking `.lock`; `./local-ai stack-60 stop` runs `docker compose --profile git-memory down` without `--volumes`. The profile is enabled only for shutdown, so the optional `hermes-memory-sync` container is removed even when a default-profile-only `up` started the other services. Stop preserves bind-mounted memory and runtime state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
 
+Before `start`, the wrapper removes any runtime `.env` assignments shadowing the protected root `.env` and restores managed LiteLLM gateway settings in the bind-mounted `config.yaml` to environment references. When needed, it stops Hermes, creates private backups of only the changed runtime files, and recreates the service from the protected root `.env`. Other runtime settings and memory are preserved. This does not invoke Hermes `/setup` or grant MCP access; assign MCP permissions in LiteLLM separately.
+
 Use `./local-ai stack-60 stop` from the repository root; it enables the `git-memory` profile for shutdown so the optional memory-sync service is removed too. Plain `docker compose down` from the stack directory omits that service.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.

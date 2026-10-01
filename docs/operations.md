@@ -8,20 +8,22 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 Run commands from the repository root. First run `sudo ./local-ai env bootstrap` to create or complete the protected root `.env` from [`.env.template`](../.env.template). This command generates missing local secrets, including PostgreSQL administrator passwords, directly in `.env`. PostgreSQL receives its password from `.env`, with no password-file mount. The command preserves existing values, never prints secret values, and creates `.env-backup-YYMMDD-HHMMSS` before changing an existing file. Keep those backups private. Stack 00 creates per-stack `.env` links. Use `sudo` for preparation and container lifecycle operations. `./local-ai stack-NN <verb> [parameters]` dispatches to `wrapper/bin/stack-NN.py` with arguments unchanged; direct invocation of the Python wrapper still works.
 
-The root environment bootstrap generates LiteLLM administrative credentials and salt but cannot generate the Mac mini's oMLX API key. Copy that key into `OMLX_API_KEY` before Stack 30 install. Stack 30 provisions PostgreSQL, configures the three fixed oMLX model aliases and issues separate minimal Hermes/Open WebUI virtual keys into `.env`. The Hermes MCP key initially has no server grants; you configure MCP registrations and permissions in LiteLLM later. Installation does not test inference or end-to-end MCP calls.
+The root environment bootstrap generates LiteLLM administrative credentials and salt but cannot generate the Mac mini's oMLX API key. Copy that key into `OMLX_API_KEY` before Stack 30 install. LiteLLM models and provider credentials are database-managed so they remain editable in the Admin UI; `config.yaml` does not declare them. Until database-model provisioning is implemented, a fresh Stack 30 install cannot finish issuing inference keys because it expects the three public model aliases to exist. The Hermes MCP key initially has no server grants; configure MCP registrations and permissions in LiteLLM later. Installation does not test inference or end-to-end MCP calls.
 
 | Stack | `install` | `start` | `stop` | `status --deep` |
 |---|---|---|---|---|
 | 00 | Reconcile bootstrap, network, CA, TLS, then verify and lock | Not applicable | Not applicable | Read-only platform verifier (root required) |
 | 10 | HAProxy/Web prepare | Compose `up -d` | Compose `down` | No extra probe |
 | 20 | Search/Firecrawl prepare | Compose `up -d` | Compose `down` | Firecrawl PostgreSQL `SELECT 1` |
-| 30 | Prepare, provision PostgreSQL, issue minimal keys in a disposable LiteLLM container | Compose `up -d` | Compose `down` | LiteLLM PostgreSQL `SELECT 1` |
+| 30 | Prepare, provision PostgreSQL, attempt minimal keys in a disposable LiteLLM container (requires pre-existing database models until automated provisioning is added) | Compose `up -d` | Compose `down` | LiteLLM PostgreSQL `SELECT 1` |
 | 40 | Prepare and initialize the administrator in disposable Gitea containers | Compose `up -d` | Compose `down` | No extra probe |
 | 50 | Check shared network and prepare Dockhand volume; no Stack 00 lock required | Compose `up -d` | Compose **`stop`** | No extra probe |
 | 60 | Hermes prepare only | Compose `up -d --build` | Compose `down` | No extra probe |
 | 70 | Bootstrap local config, then prepare using the Stack 30-issued LiteLLM key | Compose `up -d` | Compose `down` | No extra probe |
 
 Every wrapper has `install` and `status`; Stacks 10–70 also have `start` and `stop`. Run `sudo ./local-ai stack-NN <verb>` with an available two-digit stack number. `./local-ai --help` lists the current names; an unknown stack is rejected. The wrappers use closed stdin for preparation; they forward output and propagate errors rather than prompting. `stop` is available without a lock; `start` requires one. Neither verb removes persistent bind mounts or the preparation lock. Stack 50's `stop` preserves its existing container and external `dockhand_data` volume; the volume contains runtime state even though Dockhand is reconstructable as a service.
+
+Stack 60 `start` removes stale LiteLLM overrides from Hermes' ephemeral runtime `.env` and restores environment references in its managed configuration before Compose starts; unrelated runtime settings remain. Stack 70 `start` synchronizes only the saved LiteLLM connection key in Open WebUI's SQLite configuration from the root `.env`, preserving other Admin UI settings. These changes occur only when values differ, with private backups of the affected files. Neither operation runs Hermes `/setup` or resets all Open WebUI persistent configuration.
 
 Stack command output begins and ends with a blank line. Installation phases, Compose results, next steps, and status sections are separated by blank lines; this framing leaves room for a future terminal footer without changing command behavior or exit codes.
 

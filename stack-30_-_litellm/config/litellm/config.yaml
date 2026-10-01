@@ -5,50 +5,25 @@
 # =============================================================================
 # Stack3 - LiteLLM
 #
-# Configuracion base del proxy.
+# Base proxy configuration.
 #
-# Three installation-owned oMLX aliases are always present. Additional
-# models can be managed in LiteLLM after installation.
+# Models and provider credentials are managed in LiteLLM's database so they
+# remain editable in the Admin UI. Do not declare model_list here.
 #
-# Los MCP servers, virtual keys, access groups y permisos MCP tambien se
-# gestionan dinamicamente desde LiteLLM/PostgreSQL. No se declaran aqui para
-# no convertir el stack estatico en un catalogo de clientes o integraciones.
+# MCP servers, virtual keys, access groups, and MCP permissions are also
+# managed in LiteLLM/PostgreSQL, not in this static configuration.
 #
-# Las credenciales, DATABASE_URL y demas secretos se proporcionan mediante
-# variables de entorno desde docker-compose.yml.
+# Secrets and DATABASE_URL are supplied through Compose environment variables.
 # =============================================================================
 
 
 # -----------------------------------------------------------------------------
-# Modelos
-# -----------------------------------------------------------------------------
-
-# These three aliases need the Mac mini's operator-supplied API key.
-model_list:
-  - model_name: mlx/local-general
-    litellm_params:
-      model: openai/mlx/local-general
-      api_base: os.environ/OMLX_BASE_URL
-      api_key: os.environ/OMLX_API_KEY
-  - model_name: mlx/local-agent
-    litellm_params:
-      model: openai/mlx/local-agent
-      api_base: os.environ/OMLX_BASE_URL
-      api_key: os.environ/OMLX_API_KEY
-  - model_name: mlx/local-coding
-    litellm_params:
-      model: openai/mlx/local-coding
-      api_base: os.environ/OMLX_BASE_URL
-      api_key: os.environ/OMLX_API_KEY
-
-
-# -----------------------------------------------------------------------------
-# Configuracion general del proxy
+# General proxy configuration
 # -----------------------------------------------------------------------------
 
 general_settings:
 
-  # Credencial administrativa principal de LiteLLM.
+  # LiteLLM administrative credential.
   #
-  # El valor real vive exclusivamente en .env y sera inyectado por Docker.
+  # The actual value lives only in .env and is injected by Docker.
   master_key: os.environ/LITELLM_MASTER_KEY

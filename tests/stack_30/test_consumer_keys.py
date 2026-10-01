@@ -78,12 +78,11 @@ def test_refuses_missing_upstream_key_before_docker(tmp_path, monkeypatch):
         raise AssertionError("missing oMLX key was accepted")
 
 
-def test_fixed_models_are_declared_in_proxy_config():
-    """Expose exactly the three installation-owned oMLX model aliases."""
+def test_models_are_not_declared_in_proxy_config():
+    """Leave database-managed models editable in the LiteLLM Admin UI."""
     config = (ROOT / "stack-30_-_litellm/config/litellm/config.yaml").read_text()
-    for model in ("mlx/local-general", "mlx/local-agent", "mlx/local-coding"):
-        assert f"model_name: {model}" in config
-        assert f"model: openai/{model}" in config
+    assert "model_list:" not in config
+    assert "credential_list:" not in config
 
 
 def test_key_payloads_limit_models_and_start_without_mcp_grants(monkeypatch, capsys):

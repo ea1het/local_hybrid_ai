@@ -11,6 +11,8 @@ handling, and manual-only startup instructions.
 
 import importlib.machinery
 import importlib.util
+import json
+import sqlite3
 import sys
 from types import SimpleNamespace
 
@@ -137,3 +139,47 @@ def test_symlink_lock_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
 
     assert wrapper.main(["install"]) == 1
+
+
+def test_start_updates_only_stale_litellm_key_before_compose(tmp_path, monkeypatch):
+    """Stop a running WebUI before rotating its SQLite key, then start it."""
+    wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack-70_-_open-webui"
+    stack_dir.mkdir()
+    (stack_dir / ".env").symlink_to("../.env")
+    (tmp_path / ".env").write_text("protected\n")
+    (stack_dir / "docker-compose.yml").touch()
+    lock = stack_dir / ".lock"
+    lock.touch()
+    data = tmp_path / "runtime/service_-_open-webui/data"
+    data.mkdir(parents=True)
+    database = data / "webui.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE config (key TEXT PRIMARY KEY, value JSON NOT NULL, updated_at BIGINT)")
+        for name, value in (("openai.api_base_urls", ["http://litellm:4000/v1"]),
+                            ("openai.api_keys", ["old"]), ("web.search", {"enabled": True})):
+            connection.execute("INSERT INTO config VALUES (?, ?, 0)", (name, json.dumps(value)))
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+        f"BASE_PATH={tmp_path / 'runtime'}\nOPENWEBUI_LITELLM_BASE_URL=http://litellm:4000/v1\n"
+        "OPENWEBUI_LITELLM_API_KEY=new\n"))
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[:2] == ["docker", "ps"]:
+            return SimpleNamespace(returncode=0, stdout="open-webui running\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
+    monkeypatch.setattr(wrapper, "run_with_progress", lambda label, command, **kwargs: fake_run(command, **kwargs))
+    assert wrapper.run_compose("up") == 0
+    assert any(command[-2:] == ["stop", "open-webui"] for command in calls)
+    assert calls[-1][-2:] == ["up", "-d"]
+    with sqlite3.connect(database) as connection:
+        assert json.loads(connection.execute("SELECT value FROM config WHERE key='openai.api_keys'").fetchone()[0]) == ["new"]
+        assert json.loads(connection.execute("SELECT value FROM config WHERE key='web.search'").fetchone()[0]) == {
+            "enabled": True}

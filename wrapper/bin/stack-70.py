@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -27,8 +28,10 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.open_webui_connection import ConnectionError, needs_update, reconcile
 from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
+from wrapper.stubs.bootstrap_env import BootstrapError, assignments, missing, protected_text
 STACK_DIR = ROOT / "stack-70_-_open-webui"
 LOCK_FILE = STACK_DIR / ".lock"
 BOOTSTRAP_MODULE = "stack-70_-_open-webui.00-bootstrap"
@@ -132,6 +135,30 @@ def run_compose(action: str) -> int:
 
     command = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml", action]
     if action == "up":
+        try:
+            values = assignments(protected_text(env_link.resolve()))
+            endpoint = values.get("OPENWEBUI_LITELLM_BASE_URL", "")
+            key = values.get("OPENWEBUI_LITELLM_API_KEY", "")
+            base_path = values.get("BASE_PATH", "")
+            if not endpoint or missing(key) or not base_path.startswith("/"):
+                raise ConnectionError("LiteLLM URL, key, or BASE_PATH is missing from .env")
+            database = Path(base_path) / "service_-_open-webui/data/webui.db"
+            if needs_update(database, endpoint, key):
+                state = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}} {{.State}}"],
+                                       stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+                if state.returncode:
+                    raise ConnectionError("cannot inspect Docker before updating Open WebUI")
+                running = any(line == "open-webui running" for line in state.stdout.splitlines())
+                if running:
+                    stopped = subprocess.run([*command[:-1], "stop", "open-webui"], cwd=STACK_DIR,
+                                             stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+                    if stopped.returncode:
+                        raise ConnectionError("could not stop Open WebUI before updating its connection")
+                if reconcile(database, endpoint, key):
+                    print("Open WebUI LiteLLM connection synchronized from .env; other settings preserved.")
+        except (BootstrapError, ConnectionError, OSError, sqlite3.DatabaseError, ValueError) as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 1
         command.append("-d")
     try:
         result = run_with_progress("Running Stack 70 Compose",

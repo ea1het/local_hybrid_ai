@@ -57,9 +57,11 @@ flowchart TD
 
 ## Unattended preparation wrapper
 
-Before `install`, copy the Mac mini's oMLX API key into `OMLX_API_KEY` in the protected root `.env`; the installer rejects a missing or placeholder value and reports this prerequisite. `OMLX_BASE_URL` defaults to `https://mlx.casa.lan/v1`. Stack 30's managed configuration exposes exactly `mlx/local-general`, `mlx/local-agent`, and `mlx/local-coding` as the initial models.
+Before `install`, copy the Mac mini's oMLX API key into `OMLX_API_KEY` in the protected root `.env`; the installer rejects a missing or placeholder value and reports this prerequisite. `OMLX_BASE_URL` defaults to `https://mlx.casa.lan/v1`. Model and provider-credential definitions are deliberately absent from `config.yaml` so they remain editable in LiteLLM's Admin UI. The intended initial public aliases are `mlx/local-general`, `mlx/local-agent`, and `mlx/local-coding`.
 
 Run `sudo ./local-ai stack-30 install` from the repository root. After checking Stack 00's lock, the wrapper creates only Stack 30's service directories using the scoped platform bootstrap, prepares configuration, provisions the PostgreSQL application role/database, briefly runs LiteLLM in a disposable container to issue distinct Hermes inference, Hermes MCP, and Open WebUI keys, then removes the temporary container and stops PostgreSQL if it was started by install. The keys are backed up and written only to the protected `.env`, never printed. The MCP key has no initial server grants; register MCPs and grant access yourself in LiteLLM. `.lock` is written only when all install phases complete. Installation does not perform inference or prove oMLX reachability.
+
+Until database-model provisioning is implemented, a fresh `install` cannot finish issuing inference keys: the installer expects all three aliases to exist when it checks key visibility. Configure the credential and models in LiteLLM before relying on this install flow for a new deployment. Existing running services and database-managed models are not changed by editing the repository YAML alone; deploying its updated copy requires a deliberate configuration update and restart.
 
 `sudo ./local-ai stack-30 start` runs `docker compose up -d` after checking `.lock`. `stop` runs `docker compose down` without `--volumes`, retaining PostgreSQL data and `.lock`. Neither verb proves model inference succeeds; that belongs to a later verify procedure.
 

@@ -27,8 +27,11 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
+from wrapper.lib.hermes_runtime_env import (RuntimeEnvironmentError, config_needs_update,
+                                            needs_update, reconcile, reconcile_config)
 from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
+from wrapper.stubs.bootstrap_env import BootstrapError, assignments, protected_text
 STACK_DIR = ROOT / "stack-60_-_hermes"
 LOCK_FILE = STACK_DIR / ".lock"
 PREPARE_MODULE = "stack-60_-_hermes.01-prepare"
@@ -137,6 +140,39 @@ def run_compose(action: str) -> int:
         return 1
 
     command = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml"]
+    gateway_changed = False
+    if action == "up":
+        try:
+            values = assignments(protected_text(env_link.resolve()))
+            base_path = values.get("BASE_PATH", "")
+            service = values.get("HERMES_SERVICE", "")
+            if (not base_path.startswith("/") or not service.startswith("service_-_")
+                    or Path(service).name != service):
+                raise RuntimeEnvironmentError("invalid Hermes runtime location in .env")
+            runtime_env = Path(base_path) / service / "data/.env"
+            managed_config = Path(base_path) / service / "config/config.yaml"
+            managed_keys = frozenset(values)
+            if needs_update(runtime_env, managed_keys) or config_needs_update(managed_config):
+                state = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}} {{.State}}"],
+                                       stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+                if state.returncode:
+                    raise RuntimeEnvironmentError("cannot inspect Docker before updating Hermes")
+                container = values.get("HERMES_CONTAINER", "hermes")
+                running = any(line == f"{container} running" for line in state.stdout.splitlines())
+                if running:
+                    stopped = subprocess.run([*command, "stop", "hermes"], cwd=STACK_DIR,
+                                             stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+                    if stopped.returncode:
+                        raise RuntimeEnvironmentError("could not stop Hermes before updating its runtime environment")
+                if reconcile(runtime_env, managed_keys):
+                    print("Hermes runtime overrides removed; Compose will supply central .env values.")
+                    gateway_changed = True
+                if reconcile_config(managed_config):
+                    print("Hermes managed gateway configuration restored to .env references.")
+                    gateway_changed = True
+        except (BootstrapError, RuntimeEnvironmentError, OSError, ValueError, UnicodeError) as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 1
     if action == "down":
         command.extend(["--profile", "git-memory"])
     command.append(action)
@@ -144,6 +180,8 @@ def run_compose(action: str) -> int:
         command.append("-d")
     if action == "up":
         command.append("--build")
+        if gateway_changed:
+            command.append("--force-recreate")
     try:
         result = run_with_progress("Running Stack 60 Compose",
             command,

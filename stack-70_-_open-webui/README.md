@@ -37,6 +37,8 @@ Without a lock, the wrapper first creates only Stack 70's service directories us
 
 Bootstrap does not issue a LiteLLM key. Stack 30 install writes the dedicated `OPENWEBUI_LITELLM_API_KEY` to the protected root `.env`; prepare this stack after Stack 30 install. Compose passes that key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, use the `./local-ai stack-70 start` command printed by the wrapper.
 
+Open WebUI persists connection keys in its own SQLite configuration, which normally overrides Compose environment values after first launch. On `start`, the wrapper checks the saved LiteLLM endpoint and, if its key differs from the root `.env`, stops only Open WebUI, backs up `webui.db` privately, updates that one key, then starts the container. Other GUI settings and connections remain intact. An unfamiliar database schema or ambiguous LiteLLM endpoint aborts startup rather than resetting all settings. Keep the `webui.db-backup-*` files protected and include them in backup retention planning.
+
 `./local-ai stack-70 start` runs `docker compose up -d` after checking `.lock`; `./local-ai stack-70 stop` runs `docker compose down` without `--volumes`. Stop removes the container but preserves bind-mounted Open WebUI data and `.lock`. Start does not run `wait-ready.py` or reconcile/verify model policy, so a successful Compose exit is not a READY result.
 
 `./local-ai stack-70 status` reports the container's `/health` result from Compose. This tests the WebUI process, not the LiteLLM key scope or model policy; `status --deep` currently has no additional probe. Run the separate policy verifier when that contract matters.

@@ -82,6 +82,20 @@ def test_status_dispatches_read_only_reporter(number, monkeypatch):
 STACK_NUMBERS = ("10", "20", "30", "40", "50", "60", "70")
 
 
+def stub_clean_consumer_runtime(number, wrapper, root, monkeypatch):
+    """Keep lifecycle tests focused on Compose when runtime secrets are current."""
+    if number == "60":
+        monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+            f"BASE_PATH={root / 'runtime'}\nHERMES_SERVICE=service_-_hermes\n"))
+        monkeypatch.setattr(wrapper, "needs_update", lambda *args: False)
+        monkeypatch.setattr(wrapper, "config_needs_update", lambda _: False)
+    elif number == "70":
+        monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+            f"BASE_PATH={root / 'runtime'}\nOPENWEBUI_LITELLM_BASE_URL=http://litellm:4000/v1\n"
+            "OPENWEBUI_LITELLM_API_KEY=sk-test\n"))
+        monkeypatch.setattr(wrapper, "needs_update", lambda *args: False)
+
+
 @pytest.mark.parametrize("number", STACK_NUMBERS)
 def test_start_and_stop_use_expected_compose_commands(number, tmp_path, monkeypatch, capsys):
     """Keep Compose scoped to the stack and use stop only for Dockhand."""
@@ -98,6 +112,7 @@ def test_start_and_stop_use_expected_compose_commands(number, tmp_path, monkeypa
     monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    stub_clean_consumer_runtime(number, wrapper, root, monkeypatch)
     calls = []
 
     def fake_run(command, **kwargs):
@@ -163,6 +178,7 @@ def test_compose_error_is_returned(number, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
     monkeypatch.setattr(wrapper, "LOCK_FILE", stack_dir / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    stub_clean_consumer_runtime(number, wrapper, root, monkeypatch)
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
         returncode=9, stdout="", stderr="compose failed\n"
     ))
