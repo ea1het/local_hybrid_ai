@@ -5,7 +5,8 @@
 
 """Install Stack 40 without starting long-lived containers.
 
-Install prepares Gitea configuration and initializes the administrator in a
+Install creates only Stack 40's service directories, prepares Gitea
+configuration, and initializes the administrator in a
 disposable container. Only then is .lock written. Start invokes Compose to
 launch Gitea and its runner; it does not create the administrator.
 """
@@ -60,12 +61,29 @@ def install() -> int:
     if os.geteuid() != 0:
         print("ERROR: initial Stack 40 preparation requires root privileges.", file=sys.stderr)
         return 1
+    platform_lock = ROOT / "stack-00_-_platform" / ".lock"
+    if platform_lock.is_symlink() or not platform_lock.is_file():
+        print(f"ERROR: Stack 00 is not prepared: {platform_lock}", file=sys.stderr)
+        return 1
 
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
+    bootstrap = subprocess.run(
+        [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "40"],
+        cwd=STACK_DIR, env=environment, stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, check=False,
+    )
+    if bootstrap.stdout:
+        sys.stdout.write(bootstrap.stdout.lstrip("\n"))
+    if bootstrap.stderr:
+        sys.stderr.write(bootstrap.stderr)
+    if bootstrap.returncode:
+        print("Stack 40 directory preparation failed; no containers were started.", file=sys.stderr)
+        return bootstrap.returncode
+    print()
     for module in (PREPARE_MODULE, INITIALIZE_MODULE):
         if module == INITIALIZE_MODULE:
             print()

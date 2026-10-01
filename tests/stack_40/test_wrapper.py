@@ -50,7 +50,11 @@ def test_existing_lock_is_explained_without_running_prepare(tmp_path, monkeypatc
 def test_missing_lock_prepares_and_initializes_admin(tmp_path, monkeypatch, capsys):
     """Invoke both phases with closed stdin, then create .lock."""
     wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
     lock = tmp_path / ".lock"
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
@@ -63,12 +67,13 @@ def test_missing_lock_prepares_and_initializes_admin(tmp_path, monkeypatch, caps
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 0
-    command, options = calls[0]
+    assert calls[0][0] == [sys.executable, "-B", str(platform / "00-bootstrap.py"), "--stack", "40"]
+    command, options = calls[1]
     assert command == [sys.executable, "-B", "-m", wrapper.PREPARE_MODULE]
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
-    assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert calls[1][0] == [sys.executable, "-B", "-m", wrapper.INITIALIZE_MODULE]
+    assert str(tmp_path) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
+    assert calls[2][0] == [sys.executable, "-B", "-m", wrapper.INITIALIZE_MODULE]
     assert lock.is_file()
     assert "Stack 40 is INSTALLED" in capsys.readouterr().out
 
@@ -76,17 +81,33 @@ def test_missing_lock_prepares_and_initializes_admin(tmp_path, monkeypatch, caps
 def test_prepare_failure_does_not_claim_deployment(tmp_path, monkeypatch, capsys):
     """Forward failures and omit the manual deployment command."""
     wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
-        returncode=5, stdout="", stderr="missing source\n"
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda command, **kwargs: SimpleNamespace(
+        returncode=5 if "-m" in command else 0, stdout="", stderr="missing source\n"
     ))
 
     assert wrapper.main(["install"]) == 5
     captured = capsys.readouterr()
     assert "missing source" in captured.err
     assert not (tmp_path / ".lock").exists()
+
+
+def test_missing_platform_lock_stops_before_bootstrap(tmp_path, monkeypatch):
+    """Do not create Gitea directories before the platform is prepared."""
+    wrapper = load_wrapper()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["install"]) == 1
 
 
 def test_symlink_lock_is_rejected(tmp_path, monkeypatch):
