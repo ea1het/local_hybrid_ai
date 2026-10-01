@@ -29,9 +29,29 @@ sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.progress import run_with_progress
 from wrapper.lib.stack_status import report_status
+from wrapper.stubs.bootstrap_env import BootstrapError, assignments, protected_text
 STACK_DIR = ROOT / "stack-20_-_searxng_firecrawl"
 LOCK_FILE = STACK_DIR / ".lock"
 PREPARE_MODULE = "stack-20_-_searxng_firecrawl.01-prepare"
+
+
+def configuration_error() -> str | None:
+    """Detect missing or replaced files that the preparation lock certifies."""
+    try:
+        values = assignments(protected_text((STACK_DIR / ".env").resolve()))
+        base_path = values.get("BASE_PATH", "")
+        if not base_path.startswith("/"):
+            return "BASE_PATH is missing or not absolute in .env"
+        config_dir = Path(base_path) / "service_-_searxng/config"
+        for name in ("settings.yml", "limiter.toml"):
+            source = STACK_DIR / "config/searxng" / name
+            target = config_dir / name
+            if (not source.is_file() or source.is_symlink() or not target.is_file()
+                    or target.is_symlink() or source.read_bytes() != target.read_bytes()):
+                return f"missing or changed managed SearXNG configuration: {target}"
+    except (BootstrapError, OSError, ValueError) as error:
+        return f"cannot verify SearXNG configuration: {error}"
+    return None
 
 
 def show_start_instructions() -> None:
@@ -50,6 +70,10 @@ def install() -> int:
     if LOCK_FILE.exists():
         if not LOCK_FILE.is_file():
             print(f"ERROR: {LOCK_FILE} is not a regular file.", file=sys.stderr)
+            return 1
+        error = configuration_error()
+        if error:
+            print(f"ERROR: {error}; .lock alone does not certify the current runtime.", file=sys.stderr)
             return 1
         print(f"Stack 20 already has a preparation lock: {LOCK_FILE}")
         print("No configuration was changed and 01-prepare.py was not run.")
@@ -122,6 +146,12 @@ def run_compose(action: str) -> int:
     if action == "up" and (LOCK_FILE.is_symlink() or not LOCK_FILE.is_file()):
         print(f"ERROR: stack is not prepared; missing regular lock: {LOCK_FILE}", file=sys.stderr)
         return 1
+    if action == "up":
+        error = configuration_error()
+        if error:
+            print(f"ERROR: {error}; restore the files from the repository before starting Stack 20.",
+                  file=sys.stderr)
+            return 1
 
     command = ["docker", "compose", "--env-file", ".env", "-f", "docker-compose.yml", action]
     if action == "up":

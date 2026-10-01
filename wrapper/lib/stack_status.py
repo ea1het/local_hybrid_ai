@@ -9,7 +9,7 @@ lock, inspects Docker containers belonging to the stack's Compose working
 directory, and separates container state from health. Optional services are shown when present but
 do not make an inactive profile look broken. Deep mode adds an authenticated,
 read-only ``SELECT 1`` inside the PostgreSQL containers owned by Stacks 20
-and 30. No environment values or database credentials are printed, and no
+and 30, plus a JSON search through SearXNG on Stack 20. No environment values or database credentials are printed, and no
 waiting, deployment, repair, or network mutation is performed on import.
 """
 
@@ -133,6 +133,21 @@ def database_probe(number: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "1"
 
 
+def searxng_search_probe() -> bool:
+    """Check the JSON search API, which the container healthcheck does not cover."""
+    script = (
+        "import json, urllib.request; "
+        "response = urllib.request.urlopen("
+        "'http://127.0.0.1:8080/search?q=test&format=json', timeout=10); "
+        "data = json.load(response); "
+        "assert isinstance(data.get('results'), list)"
+    )
+    result = subprocess.run(["docker", "exec", "searxng", "python3", "-c", script],
+                            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                            timeout=15, check=False)
+    return result.returncode == 0
+
+
 def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool = False) -> int:
     """Print a non-mutating summary and return zero only for prepared, healthy stacks."""
     prepared = preparation_state(lock_file)
@@ -186,6 +201,15 @@ def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool =
             except (OSError, subprocess.TimeoutExpired):
                 deep_ok = False
         print(f"  PostgreSQL SELECT 1: {'OK' if deep_ok else 'FAILED'}")
+    if deep and number == "20":
+        search_ok = False
+        if rows.get("searxng", {}).get("State") == "running":
+            try:
+                search_ok = searxng_search_probe()
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        print(f"  SearXNG JSON search: {'OK' if search_ok else 'FAILED'}")
+        deep_ok &= search_ok
 
     print()
     print(f"runtime={runtime}")

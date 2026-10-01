@@ -49,9 +49,11 @@ is not part of unattended preparation.
 
 `./local-ai stack-20 start` runs `docker compose up -d` after checking `.lock`; `./local-ai stack-20 stop` runs `docker compose down` without `--volumes`. Stop removes this stack's containers, not its persistent bind-mounted data or Stack0's external network. Start does not run `wait-ready.py` or reconcile optional consumers; run those phases separately before claiming `web.search` or `web.extract` is READY.
 
+When the lock exists, `install` and `start` also verify that the managed SearXNG `settings.yml` and `limiter.toml` still match the repository. If either file is missing or replaced by the container's default template, they fail rather than silently treating the old lock as sufficient. Back up unexpected runtime files and restore the managed copies before starting; do not delete the lock merely to mask missing configuration.
+
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`./local-ai stack-20 status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role. It does not wait or alter the database.
+`./local-ai stack-20 status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role and makes a JSON test search through SearXNG. It does not wait or alter the database.
 
 ## PostgreSQL identity model
 

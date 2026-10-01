@@ -2,26 +2,199 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-# Configuracion de SearXNG para uso local con Firecrawl.
+# Configuración de SearXNG para [subdominio].casa.lan (uso privado: navegador + agentes).
 # 01-prepare.py la instala en ${BASE_PATH}/service_-_searxng/config/settings.yml.
+#
+# Verificado contra el código de SearXNG 2026.9.30-a9d990033 (commit a9d9900).
+#
+# Reglas de mezcla con use_default_settings: true (searx/settings_loader.py):
+#   - Las secciones (server, search, outgoing...) se mezclan clave a clave.
+#   - "engines" se mezcla por "name": solo se escriben las claves que cambian.
+#   - "plugins" y "categories_as_tabs" REEMPLAZAN la lista por defecto entera.
+#     Por eso no se tocan aquí: se mantienen los valores por defecto.
 
 use_default_settings: true
 
-server:
-  # secret_key y base_url se sobreescriben mediante variables de entorno
-  # desde docker-compose.yml.
-  secret_key: "ultrasecretkey"
-
-  # El limiter se mantiene desactivado porque esta instancia se usa como
-  # backend local/API. Con limiter=false no se necesita Valkey.
-  limiter: false
-  public_instance: false
-  image_proxy: true
+general:
+  instance_name: "Buscar · casa.lan"
+  debug: false
+  # /stats y /stats/errors permiten ver qué motores fallan, dan CAPTCHA o
+  # están suspendidos. Imprescindible para ajustar la lista de motores.
+  enable_metrics: true
 
 search:
-  # Firecrawl utiliza la salida JSON de SearXNG.
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  autocomplete_min: 3
+  # "auto" detecta el idioma de la consulta; útil al mezclar castellano/inglés.
+  default_lang: "auto"
+  # Favicons servidos a través de la propia instancia (no desde el navegador).
+  favicon_resolver: "duckduckgo"
+  # Firecrawl, Hermes, Open WebUI y searxng-mcp consumen la salida JSON.
   formats:
     - html
     - json
-  safe_search: 0
-  autocomplete: "duckduckgo"
+  # Suspensión de motores ante bloqueos (segundos). Valores por defecto
+  # explícitos para poder ajustarlos sin buscar en el código.
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  suspended_times:
+    SearxEngineAccessDenied: 180
+    SearxEngineCaptcha: 3600
+    SearxEngineTooManyRequests: 180
+    cf_SearxEngineCaptcha: 1296000
+    cf_SearxEngineAccessDenied: 86400
+    recaptcha_SearxEngineCaptcha: 604800
+
+server:
+  # secret_key y base_url se sobrescriben con SEARXNG_SECRET y
+  # SEARXNG_BASE_URL desde docker-compose.yml.
+  secret_key: "ultrasecretkey"
+
+  # Limiter desactivado: instancia privada en LAN, sin Valkey.
+  # limiter.toml se lee igualmente (trusted_proxies se usa para resolver la
+  # IP real detrás de HAProxy). Para activarlo, ver notas en limiter.toml.
+  limiter: false
+  public_instance: false
+
+  image_proxy: true
+  method: "GET"
+
+valkey:
+  # Sin Valkey. Si se activa el limiter, NO poner la URL con contraseña aquí:
+  # usar la variable de entorno SEARXNG_VALKEY_URL en docker-compose.yml.
+  url: false
+
+ui:
+  default_locale: "es"
+  query_in_title: false
+  results_on_new_tab: false
+  url_formatting: "pretty"
+
+outgoing:
+  # Timeout por motor (s). Algo más alto que el defecto (3.0): los agentes
+  # toleran latencia y ganan resultados de motores lentos.
+  request_timeout: 4.0
+  # Techo para el parámetro timeout_limit que puede enviar un cliente.
+  max_request_timeout: 10.0
+  pool_connections: 100
+  enable_http2: true
+  # Sin reintentos: reintentar contra un motor que bloquea empeora el bloqueo.
+  retries: 0
+
+
+  # Salida alternativa para motores concretos (ver aparte).
+  # Ejemplo: túnel SOCKS5 hacia un VPS propio; los motores que bloquean IP
+  # residencial se enrutan por él con "network: vps" en su entrada de engines.
+  # networks:
+  #   vps:
+  #     proxies: "socks5h://<host-del-tunel>:1080"
+
+
+# Reordenación/filtrado de resultados (plugin "hostnames", activo por defecto;
+# solo se carga si existe esta sección). Ajuste a gusto.
+hostnames:
+  remove:
+    - '(.*\.)?pinterest\.[a-z.]+$'
+  high_priority:
+    - '(.*\.)?wikipedia\.org$'
+    - '(.*\.)?github\.com$'
+    - '(.*\.)?stackoverflow\.com$'
+    - '(.*\.)?developer\.mozilla\.org$'
+    - '(.*\.)?docs\.python\.org$'
+    - '(.*\.)?docs\.docker\.com$'
+    - '(.*\.)?arxiv\.org$'
+
+# ---------------------------------------------------------------------------
+# Motores
+#
+# disabled: true  -> cargado pero fuera de las búsquedas por defecto. Sigue
+#                    disponible con !atajo o con el parámetro engines=...
+#                    (útil para que un agente lo pida explícitamente).
+# inactive: true  -> no se carga en absoluto.
+#
+# Web general habilitada por defecto en esta versión: duckduckgo, brave,
+# wikipedia, wikidata. startpage y mojeek están "inactive" upstream por usar
+# CAPTCHA Proof-of-Work; no se reactivan.
+# ---------------------------------------------------------------------------
+engines:
+
+  # --- Web general: candidatos con riesgo de CAPTCHA -----------------------
+  # Desactivados upstream. Disponibles con !go / !bi / !qw. Para incluirlos en
+  # las búsquedas por defecto, poner disabled: false y vigilar /stats/errors.
+  - name: google
+    disabled: true
+  - name: bing
+    disabled: true
+  - name: qwant
+    disabled: true
+
+  # --- IT / desarrollo ----------------------------------------------------
+  - name: crates.io
+    disabled: false
+  - name: npm
+    disabled: false
+  - name: pkg.go.dev
+    disabled: false
+  - name: huggingface
+    disabled: false
+  - name: ollama
+    disabled: false
+  - name: codeberg
+    disabled: false
+  - name: gitlab
+    disabled: false
+  - name: hackernews
+    disabled: false
+  - name: lobste.rs
+    disabled: false
+  - name: alpine linux packages
+    disabled: false
+
+  # --- Ciencia ------------------------------------------------------------
+  - name: openalex
+    disabled: false
+  # crossref tiene timeout de 30 s upstream: se deja desactivado (!cr).
+  - name: crossref
+    disabled: true
+
+
+  # --- Ruido para agentes: activos por defecto upstream --------------------
+  # Torrents (categoría "files"). Siguen disponibles con su !atajo.
+  - name: piratebay
+    disabled: true
+  - name: kickass
+    disabled: true
+  - name: solidtorrents
+    disabled: true
+  - name: bt4g
+    disabled: true
+  # Imágenes de Pinterest (el plugin hostnames ya las filtra en web).
+  - name: pinterest
+    disabled: true
+
+  # --- Motores por API oficial (sin scraping, sin CAPTCHA) -----------------
+  # Inactivos hasta tener clave. Para activar uno: poner la clave y
+  # inactive: false. ATENCIÓN: SearXNG NO expande variables de entorno en
+  # este fichero; la clave quedaría en texto plano. OJO CON NO SUBIR A GIT:
+  # generar el fichero en 01-prepare.py a partir de .env.
+  #
+  # Brave Search API. Si se activa, desactivar el scraper "brave" (fiabilidad
+  # 0 % en la instancia) para no duplicar ni perder tiempo.
+  - name: braveapi
+    api_key: ""
+    results_per_page: 20
+    inactive: true
+
+  # Exa: buscador orientado a agentes de IA.
+  - name: exaapi
+    api_key: ""
+    search_type: auto
+    content_mode: highlights
+    inactive: true
+
+  # Jina: índice propio (jina_engine: reader).
+  - name: jina
+    api_key: ""
+    jina_engine: reader
+    inactive: true

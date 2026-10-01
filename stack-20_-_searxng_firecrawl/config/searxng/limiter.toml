@@ -2,3 +2,73 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+# Configuración de botdetection / limiter de SearXNG.
+# 01-prepare.py la instala en ${BASE_PATH}/service_-_searxng/config/limiter.toml.
+#
+# Verificado contra SearXNG 2026.9.30-a9d990033 (searx/limiter.toml como esquema).
+# Solo se sobrescriben valores; lo no indicado toma el valor por defecto.
+#
+# Este fichero se lee SIEMPRE, aunque server.limiter sea false:
+# botdetection.trusted_proxies determina la IP real del cliente detrás de
+# HAProxy (la usa, p. ej., el plugin self_info: buscar "ip").
+#
+# AVISO sobre redes: redlocal se crea sin subred explícita, así que Docker
+# elige una. 172.16.0.0/12 cubre los pools por defecto de Docker (172.17-31).
+# Comprobar y, si no encaja, sustituir en las dos listas de abajo:
+#   docker network inspect redlocal -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+# Un valor que no sea una red IP válida en trusted_proxies rompe las peticiones.
+
+[botdetection]
+
+ipv4_prefix = 32
+ipv6_prefix = 48
+
+# Si la petición llega desde una IP de esta lista, la IP del cliente se toma
+# de X-Forwarded-For (HAProxy tiene "option forwardfor"). SearXNG recorre XFF
+# de derecha a izquierda y usa la primera IP NO confiable, así que un
+# X-Forwarded-For falsificado por el cliente no sirve para suplantar.
+# Las listas se AÑADEN a las del esquema por defecto (que ya incluye
+# 127.0.0.0/8 y ::1), por eso aquí solo va redlocal.
+trusted_proxies = [
+    '172.16.0.0/12',  # redlocal (HAProxy)
+    '192.168.0.0/16', # redlocal (ejemplo de red local de usuario)
+]
+
+[botdetection.ip_limit]
+
+filter_link_local = false
+# link_token solo tiene sentido para navegadores; los clientes API no cargan
+# el CSS/token y serían marcados como sospechosos.
+link_token = false
+
+[botdetection.ip_lists]
+
+pass_ip = [
+    '172.16.0.0/12',  # redlocal: contenedores que llaman directo a searxng:8080
+    '192.168.0.0/16', # redlocal: usuarios que llaman directo a searxng:8080
+]
+
+block_ip = []
+
+# Instancia privada no listada en searx.space: no dar paso a las IPs de
+# check.searx.space.
+pass_searxng_org = false
+
+# ---------------------------------------------------------------------------
+# Activar el limiter (opcional)
+#
+# 1. settings.yml -> server.limiter: true
+# 2. Valkey/Redis accesible. Opción mínima, reutilizando firecrawl-redis con
+#    otra base de datos (la 1). En docker-compose.yml, servicio searxng:
+#      environment:
+#        SEARXNG_VALKEY_URL: "redis://:${REDIS_PASSWORD}@firecrawl-redis:6379/1"
+#      depends_on: firecrawl-redis (condition: service_healthy)
+#    Sin Valkey, con limiter: true y public_instance: false, SearXNG solo
+#    registra un error y NO aplica el limiter (searx/limiter.py).
+# ---------------------------------------------------------------------------
+# pass_ip tiene prioridad sobre todos los demás métodos (cabeceras, ip_limit).
+# CRÍTICO si se activa el limiter: ip_limit permite solo 4 peticiones/hora por
+# IP para format != html (API_MAX en searx/botdetection/ip_limit.py). Sin esta
+# entrada, Firecrawl, Hermes, Open WebUI y searxng-mcp quedarían bloqueados
+# casi de inmediato (HTTP 429). Además fallarían las comprobaciones de
+# cabeceras (Accept-Language, User-Agent...) que esos clientes no envían.

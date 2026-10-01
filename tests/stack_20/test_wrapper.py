@@ -38,6 +38,7 @@ def test_existing_lock_reports_status_without_running_prepare(tmp_path, monkeypa
     lock.write_text("prepared")
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
+    monkeypatch.setattr(wrapper, "configuration_error", lambda: None)
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
 
     assert wrapper.main(["install"]) == 0
@@ -120,3 +121,41 @@ def test_symlink_lock_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
 
     assert wrapper.main(["install"]) == 1
+
+
+def test_managed_config_must_match_prepared_files(tmp_path, monkeypatch):
+    """Detect an image-generated settings file or missing limiter file."""
+    wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack-20_-_searxng_firecrawl"
+    source_dir = stack_dir / "config/searxng"
+    target_dir = tmp_path / "runtime/service_-_searxng/config"
+    source_dir.mkdir(parents=True)
+    target_dir.mkdir(parents=True)
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper, "protected_text", lambda path: f"BASE_PATH={tmp_path / 'runtime'}\n")
+    for name in ("settings.yml", "limiter.toml"):
+        (source_dir / name).write_text("managed")
+        (target_dir / name).write_text("managed")
+
+    assert wrapper.configuration_error() is None
+    (target_dir / "settings.yml").write_text("image-generated")
+    assert "settings.yml" in wrapper.configuration_error()
+    (target_dir / "settings.yml").write_text("managed")
+    (target_dir / "limiter.toml").unlink()
+    assert "limiter.toml" in wrapper.configuration_error()
+
+
+def test_start_rejects_stale_managed_config(tmp_path, monkeypatch, capsys):
+    """Never launch containers behind a valid lock with missing config."""
+    wrapper = load_wrapper()
+    (tmp_path / ".env").write_text("BASE_PATH=/tmp/runtime\n")
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    (tmp_path / ".lock").touch()
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "configuration_error", lambda: "missing settings.yml")
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["start"]) == 1
+    assert "missing settings.yml" in capsys.readouterr().err

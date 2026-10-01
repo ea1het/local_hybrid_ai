@@ -93,10 +93,28 @@ def test_deep_status_runs_authenticated_read_only_database_query(tmp_path, monke
         return SimpleNamespace(returncode=0, stdout="1\n", stderr="")
 
     monkeypatch.setattr(stack_status.subprocess, "run", fake_run)
+    monkeypatch.setattr(stack_status, "searxng_search_probe", lambda: True)
     assert stack_status.report_status(number, stack_dir, lock_file, deep=True) == 0
     assert calls[0][:3] == ["docker", "exec", stack_status.DATABASE_PROBES[number][0]]
     assert "SELECT 1" in calls[0][-1]
     assert "PostgreSQL SELECT 1: OK" in capsys.readouterr().out
+
+
+def test_stack_20_deep_status_detects_search_failure(tmp_path, monkeypatch, capsys):
+    """A healthy HTTP process is insufficient when JSON search returns 403."""
+    stack_dir, lock_file = stack_paths(tmp_path)
+    monkeypatch.setattr(stack_status, "container_rows", lambda path: {
+        service: {"State": "running", "Health": "healthy"}
+        for service in stack_status.REQUIRED_SERVICES["20"]
+    })
+    monkeypatch.setattr(stack_status, "database_probe", lambda number: True)
+    monkeypatch.setattr(stack_status, "searxng_search_probe", lambda: False)
+
+    assert stack_status.report_status("20", stack_dir, lock_file, deep=True) == 1
+    output = capsys.readouterr().out
+    assert "SearXNG JSON search: FAILED" in output
+    assert "runtime=READY" in output
+    assert "overall=NOT READY" in output
 
 
 def test_deep_query_failure_does_not_report_ready(tmp_path, monkeypatch, capsys):
