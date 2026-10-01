@@ -163,7 +163,7 @@ def main():
     log("haproxy.cfg installed alongside tls.crt / tls.key")
 
     step("Web content")
-    run("cp", "-a", str(web_source / "."), str(web_service) + "/")
+    run("cp", "-a", str(web_source) + "/.", str(web_service) + "/")
     os.chmod(web_service / "index.html", 0o644)
 
     step("HAProxy validation")

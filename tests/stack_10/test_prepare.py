@@ -43,7 +43,6 @@ def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monke
         path.mkdir(parents=True)
     (stack_dir / "config/haproxy/haproxy.cfg").write_text("global\n")
     (stack_dir / "config/web/index.html").write_text("hello")
-    (base / "service_-_web/index.html").write_text("hello")
     for name in ("tls.crt", "tls.key"):
         (base / "service_-_haproxy/config" / name).write_text("test fixture")
     (tmp_path / "stack-00_-_platform/.lock").touch()
@@ -61,6 +60,7 @@ def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monke
                PLATFORM_PKI_GID="1999")
     monkeypatch.setattr(module, "sourced_environment", lambda: env)
     commands = []
+    real_run = module.subprocess.run
 
     def fake_subprocess(command, **kwargs):
         """Record subprocess calls and simulate successful commands."""
@@ -73,10 +73,18 @@ def test_prepare_validates_tls_and_writes_lock_in_temporary_tree(tmp_path, monke
 
     monkeypatch.setattr(module.subprocess, "run", fake_subprocess)
     monkeypatch.setattr(module.subprocess, "check_output", fake_output)
-    monkeypatch.setattr(module, "run", lambda *command, **kwargs: commands.append(command))
+    def fake_run(*command, **kwargs):
+        """Run only the web copy so the test checks its actual destination."""
+        commands.append(command)
+        if command[0] == "cp":
+            real_run(command, check=True)
+
+    monkeypatch.setattr(module, "run", fake_run)
 
     module.main()
 
+    assert (base / "service_-_web/index.html").read_text() == "hello"
+    assert not (base / "service_-_web/web").exists()
     assert "stack=stack-10_-_haproxy_web" in module.LOCK_FILE.read_text()
     assert any(command[:3] == ["docker", "run", "--rm"] and "--group-add" in command
                for command in commands)
