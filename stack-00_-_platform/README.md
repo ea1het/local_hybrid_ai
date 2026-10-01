@@ -69,7 +69,7 @@ verify.py                 # read-only check of the above
 |---|---|
 | `install.py` | Runs every phase, verifies the result and retains the existing lock; creates a lock only after success if missing. |
 | `01-prepare.py` | Checks links and network, creating missing resources without replacing conflicting files. |
-| `00-bootstrap.py` | During `install`, reconciles Stack 00 and Stack 10 prerequisite directories only. Direct invocation without `--platform-only` also reconciles unlocked application stacks; locked stacks remain untouched. |
+| `00-bootstrap.py` | During `install`, reconciles Stack 00 and platform-owned Stack 10 prerequisite directories even if Stack 10 has a lock. Direct invocation without `--platform-only` also reconciles unlocked application stacks; other locked stacks remain untouched. |
 | `install-ca-cert.py` | Keeps a valid, trusted installed CA; refreshes missing bundle trust or repairs missing/invalid CA from `LOCAL_CA_SOURCE_PATH`. `--ca` overrides the source; `--force` rotates it explicitly. |
 | `install-tls-certs.py` | Keeps a valid installed pair, repairs its metadata or reinstalls missing/invalid material from `TLS_CERT_SOURCE_PATH` and `TLS_KEY_SOURCE_PATH`. `--cert` / `--key` override the sources; `--renew` rotates explicitly. |
 | `verify.py` | Read-only; works with or without `.lock` and checks the platform state. |

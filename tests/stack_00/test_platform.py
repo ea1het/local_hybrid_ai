@@ -108,6 +108,34 @@ def test_bootstrap_platform_scope_skips_unlocked_application_stacks(tmp_path, mo
     assert [spec.path.name for spec in visited] == ["platform", "haproxy"]
 
 
+def test_platform_install_repairs_locked_stack_10_prerequisites(tmp_path, monkeypatch):
+    """A stale Stack 10 lock cannot hide missing platform-owned directories."""
+    bootstrap = module("00-bootstrap.py")
+    stack_10 = tmp_path / "stack-10_-_haproxy_web"
+    stack_10.mkdir()
+    (stack_10 / ".lock").write_text("old preparation")
+    monkeypatch.setattr(bootstrap, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(bootstrap, "ENV_FILE", tmp_path / ".env")
+    monkeypatch.setattr(bootstrap.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda command: "/fake/groupadd")
+    monkeypatch.setattr(bootstrap, "load_env", lambda path: {
+        "STACKS_ROOT": str(tmp_path), "BASE_PATH": str(tmp_path / "runtime"), "PLATFORM_PKI_GID": "1999"
+    })
+    monkeypatch.setattr(bootstrap, "ensure_group", lambda *args: None)
+    monkeypatch.setattr(bootstrap, "parse_args", lambda: SimpleNamespace(dry_run=False, platform_only=True))
+    monkeypatch.setattr(bootstrap, "build_layout", lambda env: [
+        (STACK, lambda: [bootstrap.Dir(tmp_path / "platform", 0o750)]),
+        (stack_10.name, lambda: [bootstrap.Dir(tmp_path / "runtime" / "service_-_haproxy" / "config", 0o750)]),
+    ])
+    visited = []
+    monkeypatch.setattr(bootstrap, "ensure_dir", visited.append)
+
+    bootstrap.main()
+
+    assert [spec.path.name for spec in visited] == ["platform", "config"]
+    assert (stack_10 / ".lock").read_text() == "old preparation"
+
+
 def test_prepare_with_lock_still_checks_prerequisites(tmp_path, monkeypatch):
     """Do not let an existing lock hide a missing operational environment."""
     prepare = module("01-prepare.py")

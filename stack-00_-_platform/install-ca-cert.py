@@ -29,7 +29,6 @@ from pathlib import Path
 
 STACK_DIR = Path(__file__).resolve().parent
 ENV_FILE = STACK_DIR.parent / ".env"
-# Rutas fijadas por update-ca-certificates (Debian/Ubuntu), no por el despliegue:
 # Only reads *.crt files from SYSTEM_CA_DIR and generates HOST_CA_BUNDLE.
 SYSTEM_CA_DIR = Path("/usr/local/share/ca-certificates")
 HOST_CA_BUNDLE = Path("/etc/ssl/certs/ca-certificates.crt")
@@ -43,7 +42,7 @@ def die(message: str, code: int = 1) -> None:
 
 
 def run(cmd: list[str], *, capture: bool = False) -> subprocess.CompletedProcess:
-    """Ejecuta un comando y termina si falla; puede capturar su salida."""
+    """Run a command and fail on error, optionally capturing its output."""
     print("+", " ".join(cmd))
     try:
         return subprocess.run(cmd, text=True, check=True, capture_output=capture)
@@ -53,21 +52,21 @@ def run(cmd: list[str], *, capture: bool = False) -> subprocess.CompletedProcess
                 print(exc.stdout, file=sys.stderr, end="")
             if exc.stderr:
                 print(exc.stderr, file=sys.stderr, end="")
-        die(f"falló el comando: {' '.join(cmd)}")
+        die(f"command failed: {' '.join(cmd)}")
         raise
 
 
 def load_env(env_file: Path) -> dict[str, str]:
-    """Carga el .env central con las mismas reglas que los scripts bash (source)."""
+    """Load the central .env using the shell's source rules."""
     if not env_file.is_file() or env_file.is_symlink():
-        die(f"falta el entorno operativo raíz: {env_file}")
+        die(f"missing root environment: {env_file}")
     result = subprocess.run(
         ["bash", "-c", 'set -a; source "$1"; set +a; env -0', "_", str(env_file)],
         capture_output=True,
         check=False,
     )
     if result.returncode != 0:
-        die(f"no se pudo cargar {env_file}: {result.stderr.decode(errors='replace').strip()}")
+        die(f"could not load {env_file}: {result.stderr.decode(errors='replace').strip()}")
     env: dict[str, str] = {}
     for item in result.stdout.split(b"\0"):
         if b"=" in item:
@@ -77,19 +76,19 @@ def load_env(env_file: Path) -> dict[str, str]:
 
 
 def local_ca_path(env: dict[str, str]) -> Path:
-    """Ruta de la CA en el trust store: SYSTEM_CA_DIR/<LOCAL_CA_NAME>.crt."""
+    """Return the installed CA path under SYSTEM_CA_DIR."""
     name = env.get("LOCAL_CA_NAME", "")
     if not name:
-        die(f"falta LOCAL_CA_NAME en {ENV_FILE}")
+        die(f"missing LOCAL_CA_NAME in {ENV_FILE}")
     if not LOCAL_CA_NAME_RE.match(name):
-        die(f"LOCAL_CA_NAME no válido (solo letras, dígitos, '.', '_', '-'; sin extensión): {name!r}")
+        die(f"invalid LOCAL_CA_NAME (letters, digits, '.', '_', '-' only; no extension): {name!r}")
     return SYSTEM_CA_DIR / f"{name}.crt"
 
 
 def require_root() -> None:
     """Require root privileges before changing the CA trust store."""
     if os.geteuid() != 0:
-        die("Ejecuta el script con sudo/root.")
+        die("run this script as root")
 
 
 def require_commands() -> None:
@@ -97,13 +96,13 @@ def require_commands() -> None:
     required = ("openssl", "install", "update-ca-certificates")
     missing = [cmd for cmd in required if shutil.which(cmd) is None]
     if missing:
-        die("Faltan comandos requeridos: " + ", ".join(missing))
+        die("missing required commands: " + ", ".join(missing))
 
 
 def parse_args() -> argparse.Namespace:
     """Parse the optional CA path and explicit replacement permission."""
     parser = argparse.ArgumentParser(
-        description="Instala la CA local (rootCA.pem) en el trust store del host.",
+        description="Install the local CA (rootCA.pem) in the host trust store.",
     )
     parser.add_argument(
         "--ca",
@@ -114,16 +113,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="sustituye la CA instalada aunque ya sea válida (rotación explícita)",
+        help="replace an installed CA even if it is valid (explicit rotation)",
     )
     return parser.parse_args()
 
 
 def find_ca(path: Path) -> Path:
-    """Devuelve la ruta resuelta de un certificado CA regular, sin symlink."""
+    """Return a regular CA source file, rejecting symlinks."""
     source = path.resolve()
     if not source.is_file() or path.is_symlink():
-        die(f"No existe el certificado CA (o es un symlink): {path}. Cópialo desde la CA mkcert.")
+        die(f"CA source is missing or is a symlink: {path}. Copy it from the mkcert CA.")
     return source
 
 
@@ -136,11 +135,11 @@ def source_path(env: dict[str, str]) -> Path:
 
 
 def validate_ca(source: Path) -> None:
-    """Comprueba CA:TRUE y muestra los datos del certificado origen."""
+    """Check CA:TRUE and display the source certificate details."""
     print("\n== 1/3 Validating CA ==")
     result = run(["openssl", "x509", "-in", str(source), "-noout", "-text"], capture=True)
     if "CA:TRUE" not in result.stdout:
-        die(f"El certificado no parece ser una CA (no contiene CA:TRUE): {source}")
+        die(f"certificate is not a CA (CA:TRUE missing): {source}")
 
     summary = run(
         [
@@ -161,10 +160,10 @@ def install_ca_on_host(source: Path, dest: Path) -> None:
 
 
 def verify_bundle(dest: Path) -> None:
-    """Verifica la CA instalada frente al bundle de certificados del host."""
+    """Verify the installed CA against the host certificate bundle."""
     print("\n== 3/3 Verifying host CA bundle ==")
     if not HOST_CA_BUNDLE.is_file():
-        die(f"No existe el bundle del sistema esperado: {HOST_CA_BUNDLE}")
+        die(f"missing expected system certificate bundle: {HOST_CA_BUNDLE}")
     verify = run(["openssl", "verify", "-CAfile", str(HOST_CA_BUNDLE), str(dest)], capture=True)
     print(verify.stdout, end="")
 
@@ -200,31 +199,31 @@ def main() -> None:
     env = load_env(ENV_FILE)
     dest = local_ca_path(env)
     if dest.is_symlink() or (dest.exists() and not dest.is_file()):
-        die(f"destino de CA no seguro: {dest}")
+        die(f"unsafe CA destination: {dest}")
 
     if not args.force and certificate_valid(dest):
         dest_stat = dest.stat()
         if (dest_stat.st_uid, dest_stat.st_gid, dest_stat.st_mode & 0o7777) != (0, 0, 0o644):
             os.chown(dest, 0, 0)
             os.chmod(dest, 0o644)
-            print(f"Permisos de CA reparados: {dest}")
+            print(f"CA permissions repaired: {dest}")
         if not bundle_trusts(dest):
-            print(f"CA instalada pero sin confianza en el bundle; actualizando: {dest}")
+            print(f"CA installed but not trusted by the bundle; refreshing: {dest}")
             run(["update-ca-certificates"])
         verify_bundle(dest)
-        print(f"CA ya instalada y confiable; sin cambios: {dest}")
+        print(f"CA already installed and trusted; unchanged: {dest}")
         return
 
     source = find_ca(args.ca if args.ca is not None else source_path(env))
-    print(f"CA origen: {source}")
+    print(f"CA source: {source}")
 
     validate_ca(source)
     install_ca_on_host(source, dest)
     verify_bundle(dest)
 
     print("\nSUCCESS")
-    print(f"CA local instalada:  {dest}")
-    print(f"Bundle del host:     {HOST_CA_BUNDLE}")
+    print(f"Local CA installed: {dest}")
+    print(f"Host bundle:        {HOST_CA_BUNDLE}")
 
 
 if __name__ == "__main__":

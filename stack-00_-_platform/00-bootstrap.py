@@ -9,8 +9,9 @@ This operator-run entrypoint creates service directories below BASE_PATH with
 the owners and modes expected by each container; individual prepare scripts
 only verify and populate those directories. It also creates the
 local-hybrid-pki group used to read HAProxy's private key. Existing PostgreSQL
-data directories are never re-owned. Stack 0 is audited even with its .lock;
-other locked stacks are left alone to protect running installations. The
+data directories are never re-owned. Stack 0 is audited even with its .lock.
+Other locked application stacks are left alone, but Stack 10's platform-owned
+prerequisite paths are reconciled during --platform-only installation. The
 Stack 0 installer selects only platform and Stack 10 prerequisite paths;
 other unlocked application stacks remain untouched. Use --dry-run to inspect
 the plan. Importing this module performs no setup."""
@@ -44,7 +45,7 @@ DRY_RUN = False
 
 @dataclass(frozen=True)
 class Dir:
-    """Describe la ruta, permisos y propietario deseados de un directorio."""
+    """Describe a directory's desired path, mode, and ownership."""
 
     path: Path
     mode: int
@@ -71,21 +72,21 @@ def log(message: str) -> None:
 
 
 def step(message: str) -> None:
-    """Muestra el encabezado de una fase."""
+    """Print a phase heading."""
     print(f"\n== {message}")
 
 
 def load_env(env_file: Path) -> dict[str, str]:
-    """Carga el .env central con las mismas reglas que los scripts bash (source)."""
+    """Load the central .env using the same shell rules as the stack scripts."""
     if not env_file.is_file() or env_file.is_symlink():
-        die(f"falta el entorno operativo raíz: {env_file}")
+        die(f"missing root environment: {env_file}")
     result = subprocess.run(
         ["bash", "-c", 'set -a; source "$1"; set +a; env -0', "_", str(env_file)],
         capture_output=True,
         check=False,
     )
     if result.returncode != 0:
-        die(f"no se pudo cargar {env_file}: {result.stderr.decode(errors='replace').strip()}")
+        die(f"could not load {env_file}: {result.stderr.decode(errors='replace').strip()}")
     env: dict[str, str] = {}
     for item in result.stdout.split(b"\0"):
         if b"=" in item:
@@ -98,23 +99,23 @@ def require(env: dict[str, str], key: str) -> str:
     """Return a nonempty environment value or exit with an error."""
     value = env.get(key, "")
     if not value:
-        die(f"falta {key} en {ENV_FILE}")
+        die(f"missing {key} in {ENV_FILE}")
     return value
 
 
 def require_int(env: dict[str, str], key: str, default: str | None = None) -> int:
-    """Obtiene un entero no negativo de la variable o su valor por defecto."""
+    """Read a nonnegative integer from the environment or its default."""
     raw = env.get(key) or default or ""
     if not raw.isdigit():
-        die(f"{key} debe ser un entero no negativo (valor: {raw!r})")
+        die(f"{key} must be a nonnegative integer (value: {raw!r})")
     return int(raw)
 
 
 def require_service_name(env: dict[str, str], key: str) -> str:
-    """Valida y devuelve el nombre de servicio configurado."""
+    """Validate and return a configured service directory name."""
     value = require(env, key)
     if not SERVICE_NAME_RE.match(value):
-        die(f"{key} debe seguir el patrón service_-_*: {value}")
+        die(f"{key} must match service_-_*: {value}")
     return value
 
 
@@ -126,7 +127,7 @@ def image_ref(env: dict[str, str], image_key: str, version_key: str) -> str:
 
 @functools.lru_cache(maxsize=None)
 def image_owner(image: str) -> tuple[int, int] | None:
-    """UID/GID con el que se ejecuta una imagen; None si no se puede determinar."""
+    """Return an image's UID/GID, or None if it cannot be determined."""
     if not image or shutil.which("docker") is None:
         return None
     ids = []
@@ -145,7 +146,7 @@ def image_owner(image: str) -> tuple[int, int] | None:
 
 
 def ensure_group(name: str, gid: int) -> None:
-    """Comprueba o crea el grupo local con el GID esperado."""
+    """Check or create the local group with the expected GID."""
     step(f"Group {name}")
     try:
         existing = grp.getgrnam(name)
@@ -153,24 +154,24 @@ def ensure_group(name: str, gid: int) -> None:
         existing = None
     if existing is not None:
         if existing.gr_gid != gid:
-            die(f"{name} existe con GID {existing.gr_gid}, se esperaba {gid}")
-        log(f"{name} ({gid}) existe")
+            die(f"{name} has GID {existing.gr_gid}; expected {gid}")
+        log(f"{name} ({gid}) already exists")
         return
     try:
         other = grp.getgrgid(gid)
     except KeyError:
         other = None
     if other is not None:
-        die(f"el GID {gid} ya lo usa el grupo {other.gr_name}; elige otro PLATFORM_PKI_GID")
+        die(f"GID {gid} is already used by group {other.gr_name}; choose another PLATFORM_PKI_GID")
     if DRY_RUN:
         log(f"[dry-run] groupadd --gid {gid} {name}")
         return
     subprocess.run(["groupadd", "--gid", str(gid), name], check=True)
-    log(f"creado {name} ({gid})")
+    log(f"created {name} ({gid})")
 
 
 def chown_tree(root: Path, uid: int, gid: int) -> None:
-    """Reconcilia el propietario del contenido de un directorio, sin seguir enlaces."""
+    """Reconcile ownership beneath a directory without following symlinks."""
     for current, dirs, files in os.walk(root):
         for name in dirs + files:
             child = os.path.join(current, name)
@@ -183,15 +184,15 @@ def ensure_dir(spec: Dir) -> None:
     """Create or reconcile a directory according to its specification and dry-run mode."""
     path = spec.path
     if path.is_symlink():
-        die(f"la ruta de servicio no puede ser un symlink: {path}")
+        die(f"service path cannot be a symlink: {path}")
     if path.exists() and not path.is_dir():
-        die(f"la ruta de servicio existe y no es un directorio: {path}")
+        die(f"service path exists and is not a directory: {path}")
 
-    owner = "sin cambios" if spec.uid is None else f"{spec.uid}:{spec.gid}"
-    description = f"{path} {spec.mode:04o} {owner}{' (recursivo)' if spec.recursive else ''}"
+    owner = "unchanged" if spec.uid is None else f"{spec.uid}:{spec.gid}"
+    description = f"{path} {spec.mode:04o} {owner}{' (recursive)' if spec.recursive else ''}"
 
     if spec.create_only and path.is_dir():
-        log(f"{path}: existente, preservado (PGDATA)")
+        log(f"{path}: existing PGDATA preserved")
         return
 
     if DRY_RUN:
@@ -221,11 +222,11 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
     base = Path(env["BASE_PATH"].rstrip("/"))
 
     def svc(name: str) -> Path:
-        """Devuelve la ruta de servicio bajo BASE_PATH."""
+        """Return a service directory beneath BASE_PATH."""
         return base / name
 
     def stack0() -> list[Dir]:
-        """Define los directorios de estado y registros de la plataforma."""
+        """Define platform state and log directories."""
         platform = svc("service_-_platform")
         return [
             Dir(base, 0o750),
@@ -235,9 +236,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack1() -> list[Dir]:
-        """Define los directorios de HAProxy y la web con acceso PKI."""
-        # HAProxy (uid 99) lee config/ (haproxy.cfg + tls.crt + tls.key) gracias
-        # al grupo suplementario PLATFORM_PKI_GID.
+        """Define HAProxy and web directories with PKI group access."""
         pki_gid = require_int(env, "PLATFORM_PKI_GID", "1999")
         haproxy = svc("service_-_haproxy")
         return [
@@ -247,12 +246,12 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack2() -> list[Dir]:
-        """Define los datos persistentes de SearXNG y Firecrawl."""
+        """Define persistent SearXNG and Firecrawl directories."""
         def image_dir(path: Path, image: str, label: str) -> Dir:
-            """Usa el UID/GID de la imagen o conserva el propietario si se desconoce."""
+            """Use the image UID/GID or preserve ownership when unknown."""
             owner = image_owner(image)
             if owner is None:
-                warn(f"{label}: no se pudo determinar UID/GID de la imagen '{image}'; se conserva el propietario")
+                warn(f"{label}: could not determine image UID/GID for '{image}'; preserving ownership")
                 return Dir(path, 0o755, None, None)
             uid, gid = owner
             if uid == 0:
@@ -290,7 +289,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack4() -> list[Dir]:
-        """Define los directorios de Gitea y su runner."""
+        """Define Gitea and runner directories."""
         gitea_uid = require_int(env, "GITEA_UID")
         gitea_gid = require_int(env, "GITEA_GID")
         gitea = svc("service_-_gitea")
@@ -305,11 +304,8 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
             Dir(runner / "secret", 0o750, 0, gitea_gid),
         ]
 
-    # Stack5: Dockhand usa un volumen Docker externo (dockhand_data), no
-    # carpetas en BASE_PATH; lo gestiona su propio 01-prepare.py.
-
     def stack6() -> list[Dir]:
-        """Define los directorios de Hermes, memoria y sandbox."""
+        """Define Hermes, memory, and sandbox directories."""
         hermes_owner = (require_int(env, "HERMES_UID"), require_int(env, "HERMES_GID"))
         sandbox_owner = (require_int(env, "SANDBOX_UID"), require_int(env, "SANDBOX_GID"))
         names = {
@@ -317,7 +313,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
             for key in ("HERMES_SERVICE", "HERMES_MEMORY_SERVICE", "MEMORY_SYNC_SERVICE", "SANDBOX_SERVICE")
         }
         if len(set(names.values())) != len(names):
-            die("HERMES_SERVICE, HERMES_MEMORY_SERVICE, MEMORY_SYNC_SERVICE y SANDBOX_SERVICE deben ser distintos")
+            die("HERMES_SERVICE, HERMES_MEMORY_SERVICE, MEMORY_SYNC_SERVICE, and SANDBOX_SERVICE must differ")
         hermes = svc(names["HERMES_SERVICE"])
         memory = svc(names["HERMES_MEMORY_SERVICE"])
         memory_sync = svc(names["MEMORY_SYNC_SERVICE"])
@@ -344,7 +340,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ]
 
     def stack7() -> list[Dir]:
-        """Define el directorio de datos de Open WebUI."""
+        """Define the Open WebUI data directory."""
         openwebui = svc("service_-_open-webui")
         return [
             Dir(openwebui, 0o750),
@@ -365,10 +361,10 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
 def parse_args() -> argparse.Namespace:
     """Parse bootstrap scope and dry-run options."""
     parser = argparse.ArgumentParser(
-        description="Crea el árbol de carpetas de servicio de todos los stacks y fija sus permisos.",
+        description="Create service directories and set their permissions.",
     )
-    parser.add_argument("--dry-run", action="store_true", help="muestra las acciones sin aplicarlas")
-    parser.add_argument("--platform-only", action="store_true", help="limita cambios a Stack 0 y prerrequisitos de Stack 10")
+    parser.add_argument("--dry-run", action="store_true", help="show actions without applying them")
+    parser.add_argument("--platform-only", action="store_true", help="limit changes to Stack 0 and Stack 10 prerequisites")
     return parser.parse_args()
 
 
@@ -380,25 +376,25 @@ def main() -> None:
     DRY_RUN = args.dry_run
 
     if os.geteuid() != 0 and not DRY_RUN:
-        die("ejecuta el script con sudo/root")
+        die("run this script as root")
     if shutil.which("groupadd") is None and not DRY_RUN:
-        die("falta el comando requerido: groupadd")
+        die("missing required command: groupadd")
 
     env = load_env(ENV_FILE)
     stacks_root = require(env, "STACKS_ROOT").rstrip("/")
     base_path = require(env, "BASE_PATH").rstrip("/")
     if not stacks_root.startswith("/") or not base_path.startswith("/"):
-        die("STACKS_ROOT y BASE_PATH deben ser rutas absolutas")
+        die("STACKS_ROOT and BASE_PATH must be absolute paths")
     if not base_path or base_path == "/":
-        die("BASE_PATH no puede ser /")
+        die("BASE_PATH cannot be /")
     if str(ROOT_DIR) != stacks_root:
-        die(f"el worktree debe estar en {stacks_root}; ruta actual: {ROOT_DIR}")
+        die(f"worktree must be at {stacks_root}; current path: {ROOT_DIR}")
     if stacks_root == base_path:
-        die("STACKS_ROOT y BASE_PATH deben ser distintos")
+        die("STACKS_ROOT and BASE_PATH must differ")
 
     pki_gid = require_int(env, "PLATFORM_PKI_GID", "1999")
     if pki_gid <= 0:
-        die("PLATFORM_PKI_GID debe ser un entero positivo")
+        die("PLATFORM_PKI_GID must be a positive integer")
 
     ensure_group(PLATFORM_PKI_GROUP, pki_gid)
 
@@ -408,8 +404,9 @@ def main() -> None:
             continue
         step(f"Directories for {stack}")
         lock = ROOT_DIR / stack / ".lock"
-        if lock.exists() and stack != "stack-00_-_platform":
-            log(f"PREPARADO ({lock}): carpetas y permisos no se modifican")
+        platform_prerequisite = args.platform_only and stack == "stack-10_-_haproxy_web"
+        if lock.exists() and stack != "stack-00_-_platform" and not platform_prerequisite:
+            log(f"PREPARED ({lock}): directories and permissions left unchanged")
             skipped.append(stack)
             continue
         for spec in build():
@@ -418,7 +415,7 @@ def main() -> None:
     step("Base directory layout complete" if not DRY_RUN else "Dry run complete; no changes made")
     log(f"BASE_PATH: {base_path}")
     if skipped:
-        log("stacks preparados omitidos (borra su .lock para reconciliarlos): " + ", ".join(skipped))
+        log("prepared stacks skipped (remove their .lock before reconciling): " + ", ".join(skipped))
 
 
 if __name__ == "__main__":

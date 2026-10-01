@@ -52,7 +52,7 @@ def log(message: str) -> None:
 
 
 def step(message: str) -> None:
-    """Muestra el encabezado de una fase."""
+    """Print a phase heading."""
     print(f"\n== {message}")
 
 
@@ -62,16 +62,16 @@ def openssl(*args: str) -> subprocess.CompletedProcess:
 
 
 def load_env(env_file: Path) -> dict[str, str]:
-    """Carga el .env central con las mismas reglas que los scripts bash (source)."""
+    """Load the central .env using the shell's source rules."""
     if not env_file.is_file() or env_file.is_symlink():
-        die(f"falta el entorno operativo raíz: {env_file}")
+        die(f"missing root environment: {env_file}")
     result = subprocess.run(
         ["bash", "-c", 'set -a; source "$1"; set +a; env -0', "_", str(env_file)],
         capture_output=True,
         check=False,
     )
     if result.returncode != 0:
-        die(f"no se pudo cargar {env_file}: {result.stderr.decode(errors='replace').strip()}")
+        die(f"could not load {env_file}: {result.stderr.decode(errors='replace').strip()}")
     env: dict[str, str] = {}
     for item in result.stdout.split(b"\0"):
         if b"=" in item:
@@ -83,7 +83,7 @@ def load_env(env_file: Path) -> dict[str, str]:
 def parse_args() -> argparse.Namespace:
     """Parse certificate, key, and CA paths and the renewal option."""
     parser = argparse.ArgumentParser(
-        description="Instala tls.crt / tls.key en la carpeta de servicio de HAProxy.",
+        description="Install tls.crt and tls.key in the HAProxy service directory.",
     )
     parser.add_argument("--cert", type=Path, default=None,
                         help="certificate source (default: TLS_CERT_SOURCE_PATH in .env)")
@@ -93,23 +93,23 @@ def parse_args() -> argparse.Namespace:
         "--ca",
         type=Path,
         default=None,
-        help=f"CA contra la que se valida la cadena (por defecto: {SYSTEM_CA_DIR}/<LOCAL_CA_NAME>.crt)",
+        help=f"CA used to validate the chain (default: {SYSTEM_CA_DIR}/<LOCAL_CA_NAME>.crt)",
     )
     parser.add_argument(
         "--renew",
         action="store_true",
-        help="sustituye el par TLS aunque el instalado sea válido (rotación explícita)",
+        help="replace the TLS pair even if it is valid (explicit rotation)",
     )
     return parser.parse_args()
 
 
 def local_ca_path(env: dict[str, str]) -> Path:
-    """Ruta de la CA en el trust store: SYSTEM_CA_DIR/<LOCAL_CA_NAME>.crt."""
+    """Return the installed CA path under SYSTEM_CA_DIR."""
     name = env.get("LOCAL_CA_NAME", "")
     if not name:
-        die(f"falta LOCAL_CA_NAME en {ENV_FILE}")
+        die(f"missing LOCAL_CA_NAME in {ENV_FILE}")
     if not LOCAL_CA_NAME_RE.match(name):
-        die(f"LOCAL_CA_NAME no válido (solo letras, dígitos, '.', '_', '-'; sin extensión): {name!r}")
+        die(f"invalid LOCAL_CA_NAME (letters, digits, '.', '_', '-' only; no extension): {name!r}")
     return SYSTEM_CA_DIR / f"{name}.crt"
 
 
@@ -122,53 +122,53 @@ def source_path(env: dict[str, str], key: str) -> Path:
 
 
 def parse_san_domains(raw: str) -> list[str]:
-    """Separa y valida los nombres DNS requeridos en TLS_SAN_DOMAINS."""
+    """Split and validate the required DNS names in TLS_SAN_DOMAINS."""
     names = raw.replace(",", " ").split()
     if not names:
-        die(f"TLS_SAN_DOMAINS está vacío en {ENV_FILE}")
+        die(f"TLS_SAN_DOMAINS is empty in {ENV_FILE}")
     for name in names:
         if not SAN_NAME_RE.match(name):
-            die(f"nombre no válido en TLS_SAN_DOMAINS: {name!r}")
+            die(f"invalid name in TLS_SAN_DOMAINS: {name!r}")
     return names
 
 
 def require_regular_file(path: Path, label: str) -> None:
     """Require a nonempty regular file rather than a symbolic link."""
     if path.is_symlink() or not path.is_file() or path.stat().st_size == 0:
-        die(f"falta o no es un fichero regular no vacío ({label}): {path}")
+        die(f"missing or invalid nonempty regular file ({label}): {path}")
 
 
 def validate_pair(cert: Path, key: Path, ca: Path, san_domains: list[str]) -> None:
-    """Comprueba clave, cadena CA, SAN y vigencia del certificado TLS."""
+    """Check TLS key, CA chain, SAN names, and certificate validity."""
     step("1/2 Validating certificate and key")
 
     if openssl("x509", "-in", str(cert), "-noout").returncode != 0:
-        die(f"certificado X.509 inválido: {cert}")
+        die(f"invalid X.509 certificate: {cert}")
     if openssl("pkey", "-in", str(key), "-noout").returncode != 0:
-        die(f"clave privada inválida: {key}")
+        die(f"invalid private key: {key}")
 
     cert_pub = openssl("x509", "-in", str(cert), "-noout", "-pubkey").stdout
     key_pub = openssl("pkey", "-in", str(key), "-pubout").stdout
     if not cert_pub or cert_pub != key_pub:
-        die("el certificado y la clave privada no se corresponden")
-    log("certificado y clave se corresponden")
+        die("certificate and private key do not match")
+    log("certificate and private key match")
 
     verify = openssl("verify", "-CAfile", str(ca), str(cert))
     if verify.returncode != 0:
-        die(f"el certificado no está firmado por la CA {ca}: {verify.stderr.strip() or verify.stdout.strip()}")
-    log(f"cadena válida contra {ca}")
+        die(f"certificate is not signed by CA {ca}: {verify.stderr.strip() or verify.stdout.strip()}")
+    log(f"chain validates against {ca}")
 
     san_output = openssl("x509", "-in", str(cert), "-noout", "-ext", "subjectAltName").stdout
     san = {entry.strip() for line in san_output.splitlines()[1:] for entry in line.split(",")}
     missing = [name for name in san_domains if f"DNS:{name}" not in san]
     if missing:
-        die("el certificado no incluye en subjectAltName: " + ", ".join(f"DNS:{name}" for name in missing))
-    log("SAN incluye " + ", ".join(san_domains))
+        die("certificate subjectAltName is missing: " + ", ".join(f"DNS:{name}" for name in missing))
+    log("SAN includes " + ", ".join(san_domains))
 
     if openssl("x509", "-in", str(cert), "-noout", "-checkend", "0").returncode != 0:
-        die("el certificado ha caducado")
+        die("certificate has expired")
     if openssl("x509", "-in", str(cert), "-noout", "-checkend", str(EXPIRY_WARNING_SECONDS)).returncode != 0:
-        print("WARNING: el certificado caduca en menos de 30 días; renuévalo con mkcert", file=sys.stderr)
+        print("WARNING: certificate expires within 30 days; renew it with mkcert", file=sys.stderr)
 
     summary = openssl("x509", "-in", str(cert), "-noout", "-subject", "-issuer", "-dates", "-fingerprint", "-sha256")
     print(summary.stdout, end="")
@@ -210,7 +210,7 @@ def ensure_metadata(path: Path, mode: int, gid: int) -> bool:
 def install_atomic(source: Path, target: Path, mode: int, gid: int) -> bool:
     """Atomically copy source to target with root:gid ownership and mode; report whether it changed."""
     if target.is_symlink() or (target.exists() and not target.is_file()):
-        die(f"el destino no es un fichero regular: {target}")
+        die(f"destination is not a regular file: {target}")
 
     data = source.read_bytes()
     unchanged = target.is_file() and target.read_bytes() == data
@@ -247,34 +247,34 @@ def haproxy_running() -> bool:
 
 
 def main() -> None:
-    """Valida e instala el par TLS y avisa si HAProxy necesita recarga."""
+    """Validate and install TLS material, noting when HAProxy needs a reload."""
     args = parse_args()
 
     if os.geteuid() != 0:
-        die("ejecuta el script con sudo/root")
+        die("run this script as root")
     if shutil.which("openssl") is None:
-        die("falta el comando requerido: openssl")
+        die("missing required command: openssl")
 
     env = load_env(ENV_FILE)
     for key in ("BASE_PATH", "TLS_SAN_DOMAINS"):
         if not env.get(key):
-            die(f"falta {key} en {ENV_FILE}")
+            die(f"missing {key} in {ENV_FILE}")
     base_path = env["BASE_PATH"].rstrip("/")
     if not base_path.startswith("/"):
-        die("BASE_PATH debe ser una ruta absoluta")
+        die("BASE_PATH must be an absolute path")
     san_domains = parse_san_domains(env["TLS_SAN_DOMAINS"])
     ca = args.ca if args.ca is not None else local_ca_path(env)
 
     pki_gid_raw = env.get("PLATFORM_PKI_GID") or "1999"
     if not pki_gid_raw.isdigit() or int(pki_gid_raw) <= 0:
-        die("PLATFORM_PKI_GID debe ser un entero positivo")
+        die("PLATFORM_PKI_GID must be a positive integer")
     pki_gid = int(pki_gid_raw)
 
     target_dir = Path(base_path) / "service_-_haproxy" / "config"
     if target_dir.is_symlink() or not target_dir.is_dir():
-        die(f"falta la carpeta de servicio {target_dir}; ejecuta primero 00-bootstrap.py")
+        die(f"missing service directory {target_dir}; run Stack 00 bootstrap first")
 
-    require_regular_file(ca, "CA (instálala con install-ca-cert.py)")
+    require_regular_file(ca, "CA (install it with install-ca-cert.py)")
     cert_target = target_dir / "tls.crt"
     key_target = target_dir / "tls.key"
     for target in (cert_target, key_target):
@@ -284,26 +284,26 @@ def main() -> None:
     if not args.renew and pair_healthy(cert_target, key_target, ca, san_domains):
         changed_cert = ensure_metadata(cert_target, 0o644, pki_gid)
         changed_key = ensure_metadata(key_target, 0o640, pki_gid)
-        print("Par TLS instalado y válido; certificados conservados.")
+        print("Installed TLS pair is valid; certificates preserved.")
         if (changed_cert or changed_key) and haproxy_running():
-            print("Permisos TLS reparados; comprueba HAProxy y reinícialo si es necesario.")
+            print("TLS permissions repaired; check HAProxy and restart it if necessary.")
         return
 
     cert_source = args.cert if args.cert is not None else source_path(env, "TLS_CERT_SOURCE_PATH")
     key_source = args.key if args.key is not None else source_path(env, "TLS_KEY_SOURCE_PATH")
-    require_regular_file(cert_source, "certificado")
-    require_regular_file(key_source, "clave privada")
+    require_regular_file(cert_source, "certificate")
+    require_regular_file(key_source, "private key")
     validate_pair(cert_source, key_source, ca, san_domains)
 
     step("2/2 Installing in HAProxy service directory")
     changed_cert = install_atomic(cert_source, cert_target, 0o644, pki_gid)
     changed_key = install_atomic(key_source, key_target, 0o640, pki_gid)
-    log(f"{cert_target}: {'actualizado' if changed_cert else 'sin cambios'} (0644 root:{pki_gid})")
-    log(f"{key_target}: {'actualizado' if changed_key else 'sin cambios'} (0640 root:{pki_gid})")
+    log(f"{cert_target}: {'updated' if changed_cert else 'unchanged'} (0644 root:{pki_gid})")
+    log(f"{key_target}: {'updated' if changed_key else 'unchanged'} (0640 root:{pki_gid})")
 
     print("\nSUCCESS")
     if (changed_cert or changed_key) and haproxy_running():
-        print("HAProxy está en ejecución; recárgalo para usar el nuevo certificado:")
+        print("HAProxy is running; restart it to use the new certificate:")
         print(f"  cd {ROOT_DIR}/stack-10_-_haproxy_web && docker compose restart haproxy")
 
 
