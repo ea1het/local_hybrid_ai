@@ -31,6 +31,14 @@ def load_wrapper():
     return module
 
 
+def prepare_prerequisite_locks(root):
+    """Create the two installation prerequisites in an isolated worktree."""
+    for name in ("stack-00_-_platform", "stack-30_-_litellm"):
+        stack = root / name
+        stack.mkdir()
+        (stack / ".lock").touch()
+
+
 def test_existing_lock_skips_bootstrap_and_prepare(tmp_path, monkeypatch, capsys):
     """Leave credentials untouched when preparation was already recorded."""
     wrapper = load_wrapper()
@@ -49,9 +57,11 @@ def test_existing_lock_skips_bootstrap_and_prepare(tmp_path, monkeypatch, capsys
 
 
 def test_fresh_stack_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):
-    """Call only the two package modules with closed stdin and validate the lock."""
+    """Create directories before the two package modules and validate the lock."""
     wrapper = load_wrapper()
+    prepare_prerequisite_locks(tmp_path)
     lock = tmp_path / ".lock"
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
@@ -67,19 +77,22 @@ def test_fresh_stack_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 0
     assert [call[0] for call in calls] == [
+        [sys.executable, "-B", str(tmp_path / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "70"],
         [sys.executable, "-B", "-m", wrapper.BOOTSTRAP_MODULE],
         [sys.executable, "-B", "-m", wrapper.PREPARE_MODULE],
     ]
     assert all(options["stdin"] == wrapper.subprocess.DEVNULL for _, options in calls)
     assert all(options["cwd"] == tmp_path for _, options in calls)
-    assert str(ROOT) in calls[0][1]["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
+    assert str(tmp_path) in calls[0][1]["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
     assert "audit passed\n\nStack 70 is PREPARED" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("failed_module", ["bootstrap", "prepare"])
+@pytest.mark.parametrize("failed_module", ["directories", "bootstrap", "prepare"])
 def test_failure_stops_without_startup_guidance(tmp_path, monkeypatch, capsys, failed_module):
     """Propagate a failed phase and never claim that preparation completed."""
     wrapper = load_wrapper()
+    prepare_prerequisite_locks(tmp_path)
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
@@ -88,17 +101,29 @@ def test_failure_stops_without_startup_guidance(tmp_path, monkeypatch, capsys, f
     def fake_run(command, **kwargs):
         """Fail at the selected package module and record invocation order."""
         calls.append(command[-1])
-        failed = (failed_module == "bootstrap" and command[-1] == wrapper.BOOTSTRAP_MODULE) or (
-            failed_module == "prepare" and command[-1] == wrapper.PREPARE_MODULE
-        )
+        failed = (failed_module == "directories" and command[-1] == "70") or (
+            failed_module == "bootstrap" and command[-1] == wrapper.BOOTSTRAP_MODULE
+        ) or (failed_module == "prepare" and command[-1] == wrapper.PREPARE_MODULE)
         return SimpleNamespace(returncode=7 if failed else 0, stdout="", stderr="audit failed\n" if failed else "")
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 7
-    assert len(calls) == (1 if failed_module == "bootstrap" else 2)
+    assert len(calls) == {"directories": 1, "bootstrap": 2, "prepare": 3}[failed_module]
     captured = capsys.readouterr()
     assert "audit failed" in captured.err
     assert "docker compose" not in captured.out
+
+
+def test_missing_prerequisite_lock_stops_before_bootstrap(tmp_path, monkeypatch):
+    """Avoid filesystem or environment changes without Stack 00 and Stack 30."""
+    wrapper = load_wrapper()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["install"]) == 1
 
 
 def test_symlink_lock_is_rejected(tmp_path, monkeypatch):

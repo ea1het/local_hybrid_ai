@@ -5,8 +5,9 @@
 
 """Bootstrap and prepare Stack 70 or control its Compose container.
 
-On a fresh installation, this entrypoint calls the stack package's
-00-bootstrap and 01-prepare modules in order. Bootstrap backs up the root
+On a fresh installation, this entrypoint creates Stack 70's service directories,
+then calls the stack package's 00-bootstrap and 01-prepare modules in order.
+Bootstrap backs up the root
 .env before changes; the Stack 30-issued LiteLLM key is required by prepare.
 An existing preparation lock skips both modules.
 Install reports manual startup instructions; separate start and stop verbs
@@ -65,17 +66,27 @@ def install() -> int:
     if os.geteuid() != 0:
         print("ERROR: initial Stack 70 preparation requires root privileges.", file=sys.stderr)
         return 1
+    for stack in ("stack-00_-_platform", "stack-30_-_litellm"):
+        prerequisite_lock = ROOT / stack / ".lock"
+        if prerequisite_lock.is_symlink() or not prerequisite_lock.is_file():
+            print(f"ERROR: prerequisite stack is not prepared: {prerequisite_lock}", file=sys.stderr)
+            return 1
 
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
-    for module in (BOOTSTRAP_MODULE, PREPARE_MODULE):
-        if module == PREPARE_MODULE:
+    phases = (
+        ("directories", [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "70"]),
+        ("bootstrap", [sys.executable, "-B", "-m", BOOTSTRAP_MODULE]),
+        ("prepare", [sys.executable, "-B", "-m", PREPARE_MODULE]),
+    )
+    for name, command in phases:
+        if name != "directories":
             print()
         result = subprocess.run(
-            [sys.executable, "-B", "-m", module],
+            command,
             cwd=STACK_DIR,
             env=environment,
             stdin=subprocess.DEVNULL,
@@ -88,7 +99,7 @@ def install() -> int:
         if result.stderr:
             sys.stderr.write(result.stderr)
         if result.returncode:
-            print(f"Stack 70 {module.rsplit('.', 1)[-1]} failed; deployment was not started.",
+            print(f"Stack 70 {name} failed; deployment was not started.",
                   file=sys.stderr)
             return result.returncode
 

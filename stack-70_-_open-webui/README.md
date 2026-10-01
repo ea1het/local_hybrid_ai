@@ -33,7 +33,7 @@ flowchart LR
 
 Run `sudo python3 -B wrapper/bin/stack-70.py install` from the repository root after Stack0 and Stack3 are prepared and LiteLLM is running. `install` does not start Open WebUI. If `stack-70_-_open-webui/.lock` already exists, it changes nothing and shows the manual startup command; remove the lock only after reviewing the impact of reconfiguration.
 
-Without a lock, the wrapper calls `00-bootstrap.py` and then `01-prepare.py`. Bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
+Without a lock, the wrapper first creates only Stack 70's service directories using the scoped platform bootstrap, then calls its own `00-bootstrap.py` and `01-prepare.py`. The stack bootstrap keeps existing values and fills only missing or placeholder values in the protected root `.env`. Before any change, it saves the original bytes in a root-owned, mode-0600 `.env-backup-YYMMDD-HHMMSS` file, ignored by Git. Keep this backup protected because it may contain other secrets.
 
 Bootstrap does not issue a LiteLLM key. Stack 30 install writes the dedicated `OPENWEBUI_LITELLM_API_KEY` to the protected root `.env`; prepare this stack after Stack 30 install. Compose passes that key to Open WebUI as `OPENAI_API_KEY`. Once preparation succeeds, start the stack manually with the command printed by the wrapper.
 
