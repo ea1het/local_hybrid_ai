@@ -86,6 +86,7 @@ def main():
     env = load_env()
     os.environ.update(env)
     require(env, "STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_VERSION "
+            "LITELLM_POSTGRES_IMAGE "
             "LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
             "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
             "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY")
@@ -107,6 +108,10 @@ def main():
         die("LITELLM_IMAGE must not use :latest")
     if env["LITELLM_VERSION"] == "latest":
         die("LITELLM_VERSION cannot be latest")
+    postgres_image = env["LITELLM_POSTGRES_IMAGE"].split("@", 1)[0]
+    image_name, separator, image_tag = postgres_image.rpartition(":")
+    if not separator or not image_name or not re.match(r"^18(?:\.|-|$)", image_tag):
+        die("LITELLM_POSTGRES_IMAGE must include a repository name and a PostgreSQL 18 tag")
     for key in ("LITELLM_DB_NAME", "LITELLM_DB_USER"):
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env[key]):
             die(f"{key} is invalid")

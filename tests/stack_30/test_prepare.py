@@ -39,12 +39,13 @@ def test_prepare_uses_env_password_without_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setattr(module.os, "chown", lambda *args: None)
     monkeypatch.setattr(module.shutil, "which", lambda command: command)
-    env = {key: "fixture" for key in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE "
+    env = {key: "fixture" for key in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_POSTGRES_IMAGE "
            "LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
            "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY").split()}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(base), NETWORK_NAME="shared",
-               LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_DB_NAME="litellm",
+               LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_POSTGRES_IMAGE="postgres:18.6-alpine3.24",
+               LITELLM_DB_NAME="litellm",
                LITELLM_DB_USER="app_user", LITELLM_POSTGRES_ADMIN_PASSWORD="generated-secret",
                OMLX_BASE_URL="https://mlx.example/v1", OMLX_API_KEY="upstream-secret")
     for key, value in env.items():
@@ -78,6 +79,8 @@ def test_prepare_uses_env_password_without_lock(tmp_path, monkeypatch):
 @pytest.mark.parametrize("key,value,message", [
     ("LITELLM_IMAGE", "image:latest", "must not use :latest"),
     ("LITELLM_VERSION", "latest", "cannot be latest"),
+    ("LITELLM_POSTGRES_IMAGE", "18.6-alpine3.24", "must include a repository name"),
+    ("LITELLM_POSTGRES_IMAGE", "postgres:17.10-alpine", "PostgreSQL 18 tag"),
     ("LITELLM_DB_USER", "bad-user", "is invalid"),
 ])
 def test_prepare_rejects_unsafe_settings(tmp_path, monkeypatch, key, value, message):
@@ -92,12 +95,13 @@ def test_prepare_rejects_unsafe_settings(tmp_path, monkeypatch, key, value, mess
     monkeypatch.setattr(module.os, "geteuid", lambda: 0)
     monkeypatch.setattr(module.shutil, "which", lambda command: command)
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
-    env = {name: "fixture" for name in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE "
+    env = {name: "fixture" for name in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_POSTGRES_IMAGE "
            "LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
            "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY").split()}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(tmp_path / "runtime"),
-               LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_DB_USER="app_user",
+               LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_POSTGRES_IMAGE="postgres:18.6-alpine3.24",
+               LITELLM_DB_USER="app_user",
                OMLX_BASE_URL="https://mlx.example/v1", OMLX_API_KEY="upstream-secret")
     env[key] = value
     for name, item in env.items():

@@ -14,7 +14,7 @@ x-logging: &logging
 services:
 
   litellm-postgres:
-    image: ${LITELLM_POSTGRES_IMAGE:-postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193}
+    image: ${LITELLM_POSTGRES_IMAGE:-postgres:18.6-alpine3.24}
     container_name: litellm-postgres
     restart: unless-stopped
 
@@ -24,7 +24,7 @@ services:
       POSTGRES_DB: postgres
 
     volumes:
-      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm-postgres/data:/var/lib/postgresql/data
+      - ${BASE_PATH:?Set BASE_PATH in .env}/service_-_litellm-postgres/data:/var/lib/postgresql
 
     networks:
       - redlocal

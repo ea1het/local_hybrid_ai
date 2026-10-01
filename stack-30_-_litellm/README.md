@@ -40,7 +40,7 @@ Run `sudo ./local-ai env bootstrap` from the repository root before preparation.
 
 ## PGDATA contract
 
-The Stack3 PostgreSQL data directory is runtime-owned state. Stack0 `00-bootstrap.py` creates it only when absent; PREPARE validates and preserves an existing PGDATA directory; it must not recursively change owner/mode, replace its inode, reset the database or recreate the cluster as a routine configuration repair.
+The Stack3 PostgreSQL data directory is runtime-owned state. Stack0 `00-bootstrap.py` creates it only when absent; PREPARE validates and preserves an existing PGDATA directory; it must not recursively change owner/mode, replace its inode, reset the database or recreate the cluster as a routine configuration repair. PostgreSQL 18 uses `/var/lib/postgresql/18/docker` as PGDATA, so Compose mounts the host's `service_-_litellm-postgres/data` at `/var/lib/postgresql`. PostgreSQL 17 and older images are not compatible with this mount contract. A major-version change requires a deliberate database migration, not an image-only edit.
 
 ```mermaid
 flowchart TD
