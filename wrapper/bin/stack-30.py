@@ -5,7 +5,8 @@
 
 """Install Stack 30, including PostgreSQL and minimal LiteLLM access.
 
-Install prepares configuration, provisions the database, issues three
+Install creates Stack 30's service directories, prepares configuration,
+provisions the database, issues three
 least-privilege consumer keys in a disposable LiteLLM container, and writes
 .lock only after every phase succeeds. It stops PostgreSQL if install started
 it. Start and stop remain explicit; install never tests model inference.
@@ -63,12 +64,29 @@ def install() -> int:
     if os.geteuid() != 0:
         print("ERROR: initial Stack 30 preparation requires root privileges.", file=sys.stderr)
         return 1
+    platform_lock = ROOT / "stack-00_-_platform" / ".lock"
+    if platform_lock.is_symlink() or not platform_lock.is_file():
+        print(f"ERROR: Stack 00 is not prepared: {platform_lock}", file=sys.stderr)
+        return 1
 
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
+    bootstrap = subprocess.run(
+        [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "30"],
+        cwd=STACK_DIR, env=environment, stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, check=False,
+    )
+    if bootstrap.stdout:
+        sys.stdout.write(bootstrap.stdout.lstrip("\n"))
+    if bootstrap.stderr:
+        sys.stderr.write(bootstrap.stderr)
+    if bootstrap.returncode:
+        print("Stack 30 directory preparation failed; no containers were started.", file=sys.stderr)
+        return bootstrap.returncode
+    print()
     running = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", "litellm-postgres"],
                              stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
     postgres_was_running = running.returncode == 0 and running.stdout.strip() == "true"

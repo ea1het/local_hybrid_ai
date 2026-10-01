@@ -50,7 +50,11 @@ def test_existing_lock_prevents_prepare_and_describes_next_steps(tmp_path, monke
 def test_missing_lock_runs_all_install_phases(tmp_path, monkeypatch, capsys):
     """Provision and issue keys before creating the installation lock."""
     wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
     lock = tmp_path / ".lock"
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
@@ -63,12 +67,13 @@ def test_missing_lock_runs_all_install_phases(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 0
-    command, options = calls[1]
+    assert calls[0][0] == [sys.executable, "-B", str(platform / "00-bootstrap.py"), "--stack", "30"]
+    command, options = calls[2]
     assert command == [sys.executable, "-B", "-m", wrapper.PREPARE_MODULE]
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
-    assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
-    assert [command[3] for command, _ in calls if command[0] == sys.executable] == [
+    assert str(tmp_path) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
+    assert [command[3] for command, _ in calls if command[0] == sys.executable and "-m" in command] == [
         wrapper.PREPARE_MODULE, wrapper.PROVISION_MODULE, wrapper.KEYS_MODULE]
     assert lock.is_file()
     assert "Stack 30 is INSTALLED" in capsys.readouterr().out
@@ -77,17 +82,33 @@ def test_missing_lock_runs_all_install_phases(tmp_path, monkeypatch, capsys):
 def test_failed_prepare_does_not_claim_database_is_ready(tmp_path, monkeypatch, capsys):
     """Propagate failure without printing database or startup commands."""
     wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
     monkeypatch.setattr(wrapper.subprocess, "run", lambda command, **kwargs: SimpleNamespace(
-        returncode=4 if command[0] == sys.executable else 0, stdout="", stderr="missing prerequisite\n"
+        returncode=4 if "-m" in command else 0, stdout="", stderr="missing prerequisite\n"
     ))
 
     assert wrapper.main(["install"]) == 4
     captured = capsys.readouterr()
     assert "missing prerequisite" in captured.err
     assert not (tmp_path / ".lock").exists()
+
+
+def test_missing_platform_lock_stops_before_bootstrap(tmp_path, monkeypatch):
+    """Avoid touching runtime when Stack 00 was not prepared."""
+    wrapper = load_wrapper()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["install"]) == 1
 
 
 def test_symlink_lock_is_rejected_without_execution(tmp_path, monkeypatch):
