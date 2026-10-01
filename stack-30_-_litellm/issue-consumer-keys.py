@@ -60,7 +60,7 @@ if not any(item.get("credential_name") == "oMLX"
     call("/credentials", {"credential_name": "oMLX",
         "credential_values": {"api_base": os.environ["OMLX_BASE_URL"],
                               "api_key": os.environ["OMLX_API_KEY"]},
-        "credential_info": {"custom_llm_provider": "openai"}})
+        "credential_info": {"custom_llm_provider": "openai_like"}})
 configured = {item.get("id") for item in call("/v1/models").get("data", [])}
 models = (("mlx/local-general", "OMLX_MODEL_GENERAL"),
           ("mlx/local-agent", "OMLX_MODEL_AGENT"),
@@ -68,7 +68,7 @@ models = (("mlx/local-general", "OMLX_MODEL_GENERAL"),
 for alias, setting in models:
     if alias not in configured:
         call("/model/new", {"model_name": alias,
-             "litellm_params": {"model": "openai/" + os.environ[setting],
+             "litellm_params": {"model": os.environ[setting],
                                 "custom_llm_provider": "openai",
                                 "litellm_credential_name": "oMLX"}})
 print(json.dumps({"models": [alias for alias, _ in models]}))

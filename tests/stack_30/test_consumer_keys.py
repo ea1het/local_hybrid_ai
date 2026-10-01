@@ -147,9 +147,12 @@ def test_provisions_editable_credential_and_models(monkeypatch, capsys):
     assert writes[0][0] == "credentials"
     assert writes[0][1]["credential_values"] == {"api_base": "https://mlx.example/v1",
                                                    "api_key": "upstream-secret"}
+    assert writes[0][1]["credential_info"]["custom_llm_provider"] == "openai_like"
     assert [payload["model_name"] for _, payload in writes[1:]] == list(module.MODELS)
     assert [payload["litellm_params"]["model"] for _, payload in writes[1:]] == [
-        "openai/qwen36:general", "openai/qwen36:agent", "openai/qwen36:coding"]
+        "qwen36:general", "qwen36:agent", "qwen36:coding"]
+    assert all(payload["litellm_params"]["custom_llm_provider"] == "openai"
+               for _, payload in writes[1:])
     assert all(payload["litellm_params"]["litellm_credential_name"] == "oMLX"
                for _, payload in writes[1:])
     assert "upstream-secret" not in capsys.readouterr().out

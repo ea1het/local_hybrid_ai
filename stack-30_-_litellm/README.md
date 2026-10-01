@@ -64,6 +64,7 @@ Run `sudo ./local-ai stack-30 install` from the repository root. After checking 
 Model and provider-credential definitions are deliberately absent from `config.yaml` so they remain editable in LiteLLM's Admin UI. Existing running services and database-managed models are not changed by editing the repository YAML alone; deploying its updated copy requires a deliberate configuration update and restart.
 
 The installer copies the oMLX API key from `.env` into LiteLLM's encrypted database credential at creation time. Changing `OMLX_API_KEY` later does not update that existing credential; rotate it in the LiteLLM Admin UI before restarting consumers. The installer never overwrites an existing credential or model alias.
+It registers the credential as **Openai Like** and the three models as **OpenAI-Compatible** endpoints: each upstream model identifier is the bare oMLX profile (for example, `qwen36:agent`), without an `openai/` prefix. The public `mlx/local-*` aliases remain independent of those upstream identifiers.
 
 `sudo ./local-ai stack-30 start` runs `docker compose up -d` after checking `.lock`. `stop` runs `docker compose down` without `--volumes`, retaining PostgreSQL data and `.lock`. Neither verb proves model inference succeeds; that belongs to a later verify procedure.
 
