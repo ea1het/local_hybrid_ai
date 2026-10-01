@@ -3,10 +3,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Issue the three minimal LiteLLM consumer keys during Stack 30 install.
+"""Provision editable oMLX models and issue LiteLLM consumer keys.
 
 A disposable LiteLLM Compose container connects to the already provisioned
-PostgreSQL database. Hermes and Open WebUI receive separate inference keys
+PostgreSQL database. The installer creates a reusable oMLX credential and
+three database-managed model aliases through LiteLLM's administrative API,
+leaving them editable in the Admin UI. Existing names are preserved. Hermes
+and Open WebUI receive separate inference keys
 limited to the three fixed oMLX models; Hermes also receives a separate MCP
 key with no initial server grants. The operator configures MCP servers and
 their key permissions later. Each issued key is stored immediately in the
@@ -39,6 +42,37 @@ CONTAINER = "local-ai-litellm-install"
 MODELS = ("mlx/local-general", "mlx/local-agent", "mlx/local-coding")
 KEYS = {"hermes-model": "LITELLM_API_KEY", "hermes-mcp": "LITELLM_MCP_API_KEY",
         "webui-model": "OPENWEBUI_LITELLM_API_KEY"}
+
+PROVISION_SCRIPT = r"""
+import json, os, urllib.request
+base = "http://127.0.0.1:4000"
+headers = {"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"],
+           "Content-Type": "application/json"}
+def call(path, body=None):
+    request = urllib.request.Request(base + path,
+        data=None if body is None else json.dumps(body).encode(), headers=headers,
+        method="GET" if body is None else "POST")
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.load(response)
+credentials = call("/credentials")
+if not any(item.get("credential_name") == "oMLX"
+           for item in credentials.get("credentials", [])):
+    call("/credentials", {"credential_name": "oMLX",
+        "credential_values": {"api_base": os.environ["OMLX_BASE_URL"],
+                              "api_key": os.environ["OMLX_API_KEY"]},
+        "credential_info": {"custom_llm_provider": "openai"}})
+configured = {item.get("id") for item in call("/v1/models").get("data", [])}
+models = (("mlx/local-general", "OMLX_MODEL_GENERAL"),
+          ("mlx/local-agent", "OMLX_MODEL_AGENT"),
+          ("mlx/local-coding", "OMLX_MODEL_CODING"))
+for alias, setting in models:
+    if alias not in configured:
+        call("/model/new", {"model_name": alias,
+             "litellm_params": {"model": "openai/" + os.environ[setting],
+                                "custom_llm_provider": "openai",
+                                "litellm_credential_name": "oMLX"}})
+print(json.dumps({"models": [alias for alias, _ in models]}))
+"""
 
 KEY_SCRIPT = r"""
 import json, os, sys, urllib.request
@@ -80,7 +114,7 @@ def compose(*arguments: str) -> list[str]:
 
 
 def issue_keys() -> list[str]:
-    """Issue only missing credentials and remove the disposable proxy."""
+    """Provision initial models, issue missing keys, and remove the proxy."""
     if os.geteuid() != 0:
         raise BootstrapError("run Stack 30 install as root")
     lock = ROOT / ".env-bootstrap.lock"
@@ -92,11 +126,11 @@ def issue_keys() -> list[str]:
         fcntl.flock(descriptor, fcntl.LOCK_EX)
         old = protected_text(ENV_FILE)
         values = assignments(old)
-        if missing(values.get("OMLX_API_KEY")) or missing(values.get("LITELLM_MASTER_KEY")):
-            raise BootstrapError("OMLX_API_KEY and LITELLM_MASTER_KEY must be set in .env")
+        required = ("OMLX_API_KEY", "OMLX_BASE_URL", "LITELLM_MASTER_KEY")
+        absent = [key for key in required if missing(values.get(key))]
+        if absent:
+            raise BootstrapError("required LiteLLM settings missing in .env: " + ", ".join(absent))
         roles = [role for role, key in KEYS.items() if missing(values.get(key))]
-        if not roles:
-            return []
         existing = subprocess.run(["docker", "inspect", "--type", "container", CONTAINER],
                                   stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
         if existing.returncode == 0:
@@ -123,8 +157,13 @@ def issue_keys() -> list[str]:
                 if attempt == 44:
                     raise BootstrapError("temporary LiteLLM did not become live")
                 time.sleep(2)
-            backup = backup_path(ENV_FILE)
-            write_private(backup, old)
+            configured = subprocess.run(["docker", "exec", CONTAINER, "python3", "-c", PROVISION_SCRIPT],
+                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+            if configured.returncode:
+                raise BootstrapError("LiteLLM could not provision oMLX models; inspect installer logs")
+            if roles:
+                backup = backup_path(ENV_FILE)
+                write_private(backup, old)
             for role in roles:
                 result = subprocess.run(["docker", "exec", CONTAINER, "python3", "-c", KEY_SCRIPT, role],
                                         stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
@@ -154,6 +193,7 @@ def issue_keys() -> list[str]:
 if __name__ == "__main__":
     try:
         issued = issue_keys()
+        print("LiteLLM oMLX credential and model aliases: prepared")
         print(f"LiteLLM consumer keys: {len(issued)} issued; values stored in protected .env")
     except (BootstrapError, OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

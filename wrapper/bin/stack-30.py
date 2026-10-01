@@ -6,7 +6,7 @@
 """Install Stack 30, including PostgreSQL and minimal LiteLLM access.
 
 Install creates Stack 30's service directories, prepares configuration,
-provisions the database, issues three
+provisions the database and editable oMLX models, issues three
 least-privilege consumer keys in a disposable LiteLLM container, and writes
 .lock only after every phase succeeds. It stops PostgreSQL if install started
 it. Start and stop remain explicit; install never tests model inference.

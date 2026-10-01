@@ -21,6 +21,7 @@ def prepare_module(tmp_path, monkeypatch):
     module = load_module("stack-30_-_litellm", "issue-consumer-keys.py")
     env = tmp_path / ".env"
     env.write_text("LITELLM_MASTER_KEY=sk-admin\nOMLX_API_KEY=upstream-secret\n"
+                   "OMLX_BASE_URL=https://mlx.example/v1\n"
                    "LITELLM_API_KEY=PUT_YOUR_LITELLM_API_KEY_HERE\n"
                    "LITELLM_MCP_API_KEY=PUT_YOUR_HERMES_MCP_API_KEY_HERE\n"
                    "OPENWEBUI_LITELLM_API_KEY=PUT_YOUR_OPENWEBUI_LITELLM_API_KEY_HERE\n")
@@ -60,7 +61,9 @@ def test_issues_three_distinct_keys_without_inference(tmp_path, monkeypatch):
     assert not any("chat/completions" in " ".join(command) for command in calls)
     calls.clear()
     assert module.issue_keys() == []
-    assert calls == []
+    assert any(command[:2] == ["docker", "exec"] and command[-1] == module.PROVISION_SCRIPT
+               for command in calls)
+    assert calls[-1] == ["docker", "rm", "-f", module.CONTAINER]
 
 
 def test_refuses_missing_upstream_key_before_docker(tmp_path, monkeypatch):
@@ -83,6 +86,64 @@ def test_models_are_not_declared_in_proxy_config():
     config = (ROOT / "stack-30_-_litellm/config/litellm/config.yaml").read_text()
     assert "model_list:" not in config
     assert "credential_list:" not in config
+
+
+def test_provisions_editable_credential_and_models(monkeypatch, capsys):
+    """Create missing database records through the management API only."""
+    import urllib.request
+
+    module = load_module("stack-30_-_litellm", "issue-consumer-keys.py")
+    requests = []
+
+    def fake_open(request, timeout):
+        """Expose an empty LiteLLM and capture management writes."""
+        requests.append(request)
+        if request.data:
+            result = {"success": True}
+        elif request.full_url.endswith("/credentials"):
+            result = {"credentials": []}
+        else:
+            result = {"data": []}
+        return io.BytesIO(json.dumps(result).encode())
+
+    for name, value in {"LITELLM_MASTER_KEY": "sk-admin", "OMLX_BASE_URL": "https://mlx.example/v1",
+                        "OMLX_API_KEY": "upstream-secret", "OMLX_MODEL_GENERAL": "qwen36:general",
+                        "OMLX_MODEL_AGENT": "qwen36:agent", "OMLX_MODEL_CODING": "qwen36:coding"}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    exec(module.PROVISION_SCRIPT, {})
+    writes = [(request.full_url.rsplit("/", 1)[-1], json.loads(request.data))
+              for request in requests if request.data]
+    assert writes[0][0] == "credentials"
+    assert writes[0][1]["credential_values"] == {"api_base": "https://mlx.example/v1",
+                                                   "api_key": "upstream-secret"}
+    assert [payload["model_name"] for _, payload in writes[1:]] == list(module.MODELS)
+    assert [payload["litellm_params"]["model"] for _, payload in writes[1:]] == [
+        "openai/qwen36:general", "openai/qwen36:agent", "openai/qwen36:coding"]
+    assert all(payload["litellm_params"]["litellm_credential_name"] == "oMLX"
+               for _, payload in writes[1:])
+    assert "upstream-secret" not in capsys.readouterr().out
+
+
+def test_preserves_existing_credential_and_models(monkeypatch):
+    """Never overwrite settings already editable through the Admin UI."""
+    import urllib.request
+
+    module = load_module("stack-30_-_litellm", "issue-consumer-keys.py")
+    requests = []
+
+    def fake_open(request, timeout):
+        """Return all managed names without performing a write."""
+        requests.append(request)
+        result = ({"credentials": [{"credential_name": "oMLX"}]}
+                  if request.full_url.endswith("/credentials") else
+                  {"data": [{"id": alias} for alias in module.MODELS]})
+        return io.BytesIO(json.dumps(result).encode())
+
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-admin")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    exec(module.PROVISION_SCRIPT, {})
+    assert all(request.data is None for request in requests)
 
 
 def test_key_payloads_limit_models_and_start_without_mcp_grants(monkeypatch, capsys):
