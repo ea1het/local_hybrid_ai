@@ -39,7 +39,7 @@ Historical TLS-specific runner artifacts are not part of the current architectur
 
 ## Unattended preparation wrapper
 
-Run `sudo ./local-ai stack-40 install` from the repository root. After checking Stack 00's lock, it creates only Stack 40's service directories using the scoped platform bootstrap, prepares configuration, and initializes the SQLite schema and configured administrator using disposable Gitea CLI containers. It does not run an upgrade-migration step or start long-lived Gitea/runner containers. Only after administrator initialization succeeds does it write `.lock`. An existing lock skips the install phases.
+Run `sudo ./local-ai stack-40 install` from the repository root. After checking Stack 00's lock, it creates only Stack 40's service directories using the scoped platform bootstrap, prepares configuration, then runs Gitea's idempotent `migrate` CLI command to initialize the empty SQLite schema before creating the configured administrator. Both CLI commands run in disposable containers; no long-lived Gitea or runner container is started. This initializes a fresh installation; it does not import or upgrade an older Gitea installation. Only after administrator initialization succeeds does it write `.lock`. An existing lock skips the install phases.
 
 `sudo ./local-ai stack-40 start` runs `docker compose up -d` after checking `.lock`. Gitea and the runner then start; the runner's registration and health can be inspected with `status`. `stop` runs `docker compose down` without `--volumes`; it removes containers, not Gitea's bind-mounted state or `.lock`. Start is not a health check.
 

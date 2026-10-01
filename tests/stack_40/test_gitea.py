@@ -137,9 +137,10 @@ def test_initialize_creates_missing_admin_without_starting_services(tmp_path, mo
 
     module.main()
 
-    assert any("user create" in " ".join(command) for command in commands)
+    migrate_index = next(index for index, command in enumerate(commands) if "migrate" in command)
+    create_index = next(index for index, command in enumerate(commands) if "user create" in " ".join(command))
+    assert migrate_index < create_index
     assert not any(command[-2:] == ["up", "-d"] for command in commands)
-    assert not any("migrate" in command for command in commands)
     assert any("--no-deps" in command for command in commands)
 
 

@@ -6,8 +6,8 @@
 """Initialize a fresh Gitea SQLite database and its administrator.
 
 The Stack 40 installer invokes this module after configuration preparation.
-Gitea's CLI initializes the empty database schema while creating the admin
-specified in .env. Only disposable Compose run containers are used; the
+Gitea's migrate command initializes the empty database schema before the
+admin specified in .env is created. Only disposable Compose run containers are used; the
 long-lived Gitea and runner services are started by the separate start verb.
 Importing this module does not change host or container state."""
 
@@ -81,6 +81,9 @@ def main():
     step("Validation and download")
     run(compose + ["config", "--quiet"], env=env)
     run(compose + ["pull"], env=env)
+    step("SQLite schema initialization")
+    run(compose + ["run", "--rm", "--no-deps", "gitea", "gitea", "migrate",
+                   "--config", "/etc/gitea/app.ini"], env=env)
     step("Administrator user")
     admins = subprocess.run(compose + ["run", "--rm", "--no-deps", "gitea", "gitea", "admin", "user", "list",
                                     "--config", "/etc/gitea/app.ini", "--admin"],
