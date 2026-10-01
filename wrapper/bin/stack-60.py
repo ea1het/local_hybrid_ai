@@ -5,9 +5,10 @@
 
 """Prepare Stack 60 or control its Compose containers explicitly.
 
-The wrapper invokes only the Hermes package's 01-prepare module. It relays
-the preparation audit output, stops without changes when a regular .lock
-already exists, and requires a new regular lock after successful execution.
+Install first creates Stack 60's service directories with the scoped platform
+bootstrap, then invokes the Hermes package's 01-prepare module. It relays the
+preparation audit output, stops without changes when a regular .lock already
+exists, and requires a new regular lock after successful execution.
 Install never starts containers. Start and stop change only Compose state;
 neither installs Buzz, adopts Git memory, prepares sidecars, reconciles
 capabilities, applies workarounds, or cleans up state.
@@ -42,7 +43,7 @@ def show_next_steps() -> None:
 
 
 def install() -> int:
-    """Respect .lock or run one noninteractive Hermes preparation attempt."""
+    """Respect .lock or bootstrap directories and prepare Hermes noninteractively."""
     if LOCK_FILE.is_symlink():
         print(f"ERROR: {LOCK_FILE} is a symbolic link; review it manually.", file=sys.stderr)
         return 1
@@ -51,7 +52,7 @@ def install() -> int:
             print(f"ERROR: {LOCK_FILE} is not a regular file.", file=sys.stderr)
             return 1
         print(f"Stack 60 already has a preparation lock: {LOCK_FILE}")
-        print("No configuration was changed and 01-prepare.py was not run.")
+        print("No configuration was changed; bootstrap and prepare were not run.")
         print("Removing .lock manually would permit reconfiguration, which may overwrite")
         print("runtime configuration or disrupt a running service. Review first.")
         show_next_steps()
@@ -63,12 +64,33 @@ def install() -> int:
     if os.geteuid() != 0:
         print("ERROR: initial Stack 60 preparation requires root privileges.", file=sys.stderr)
         return 1
+    platform_lock = ROOT / "stack-00_-_platform" / ".lock"
+    if platform_lock.is_symlink() or not platform_lock.is_file():
+        print(f"ERROR: Stack 00 is not prepared: {platform_lock}", file=sys.stderr)
+        return 1
 
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(ROOT), environment.get("PYTHONPATH", "")) if part
     )
+    bootstrap = subprocess.run(
+        [sys.executable, "-B", str(ROOT / "stack-00_-_platform" / "00-bootstrap.py"), "--stack", "60"],
+        cwd=STACK_DIR,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if bootstrap.stdout:
+        sys.stdout.write(bootstrap.stdout.lstrip("\n"))
+    if bootstrap.stderr:
+        sys.stderr.write(bootstrap.stderr)
+    if bootstrap.returncode:
+        print("Stack 60 directory preparation failed; no containers were started.", file=sys.stderr)
+        return bootstrap.returncode
+    print()
     result = subprocess.run(
         [sys.executable, "-B", "-m", PREPARE_MODULE],
         cwd=STACK_DIR,

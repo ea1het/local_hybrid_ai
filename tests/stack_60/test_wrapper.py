@@ -5,8 +5,8 @@
 """Test the Stack 60 wrapper without touching Hermes runtime state.
 
 The Python entrypoint is loaded without running its CLI. Temporary
-locks and mocked subprocess calls verify package invocation, lock safety,
-failure propagation, and exclusion of optional Hermes operations.
+locks and mocked subprocess calls verify scoped bootstrap ordering, package
+invocation, lock safety, failure propagation, and optional-operation exclusion.
 """
 
 import importlib.machinery
@@ -47,28 +47,35 @@ def test_existing_lock_skips_preparation_and_optional_actions(tmp_path, monkeypa
     assert "cleanup are separate operations" in output
 
 
-def test_missing_lock_calls_only_prepare_package(tmp_path, monkeypatch, capsys):
-    """Run Hermes preparation with closed stdin and validate its lock."""
+def test_missing_lock_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):
+    """Create service directories before Hermes preparation with closed stdin."""
     wrapper = load_wrapper()
     lock = tmp_path / ".lock"
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").write_text("prepared")
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
     calls = []
 
     def fake_run(command, **kwargs):
-        """Capture the single preparation call and simulate audit success."""
+        """Capture both phases and simulate a successful preparation audit."""
         calls.append((command, kwargs))
-        lock.write_text("prepared")
+        if command[-1] == wrapper.PREPARE_MODULE:
+            lock.write_text("prepared")
         return SimpleNamespace(returncode=0, stdout="audit passed\n", stderr="")
 
     monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
     assert wrapper.main(["install"]) == 0
-    command, options = calls[0]
+    assert calls[0][0] == [sys.executable, "-B", str(platform / "00-bootstrap.py"), "--stack", "60"]
+    command, options = calls[1]
     assert command == [sys.executable, "-B", "-m", wrapper.PREPARE_MODULE]
+    assert len(calls) == 2
     assert options["stdin"] == wrapper.subprocess.DEVNULL
     assert options["cwd"] == tmp_path
-    assert str(ROOT) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
+    assert str(tmp_path) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
     assert "audit passed\n" in capsys.readouterr().out
 
 
@@ -78,14 +85,62 @@ def test_prepare_failure_does_not_claim_hermes_ready(tmp_path, monkeypatch, caps
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
-        returncode=8, stdout="", stderr="audit failed\n"
-    ))
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").write_text("prepared")
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        """Succeed during bootstrap and fail during Hermes preparation."""
+        calls.append(command)
+        if command[-1] == wrapper.PREPARE_MODULE:
+            return SimpleNamespace(returncode=8, stdout="", stderr="audit failed\n")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
 
     assert wrapper.main(["install"]) == 8
     captured = capsys.readouterr()
     assert "audit failed" in captured.err
     assert "docker compose" not in captured.out
+    assert len(calls) == 2
+
+
+def test_bootstrap_failure_does_not_run_prepare(tmp_path, monkeypatch, capsys):
+    """Stop after directory bootstrap fails without invoking Hermes preparation."""
+    wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").write_text("prepared")
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        """Record the sole bootstrap call and its failure."""
+        calls.append(command)
+        return SimpleNamespace(returncode=7, stdout="", stderr="bootstrap failed\n")
+
+    monkeypatch.setattr(wrapper.subprocess, "run", fake_run)
+    assert wrapper.main(["install"]) == 7
+    assert len(calls) == 1
+    assert calls[0][-2:] == ["--stack", "60"]
+    assert "directory preparation failed" in capsys.readouterr().err
+
+
+def test_missing_platform_lock_stops_before_bootstrap(tmp_path, monkeypatch):
+    """Avoid creating Hermes directories without a prepared platform."""
+    wrapper = load_wrapper()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["install"]) == 1
 
 
 def test_symlink_lock_is_rejected_without_execution(tmp_path, monkeypatch):
