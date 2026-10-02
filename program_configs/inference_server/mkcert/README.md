@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # MKCert (CA)
 
+[Reading guide](../../../README.md#reading-guide) · Next: [Caddy](../caddy/README.md)
+
 The `mkcert` package is used to create a self-signed CA (certificate authority) for the certificates to be used in the local domain `*.casa.lan`, as an example. You can configure any other.
 
 Later, it is necessary to distribute the certificates with the CA certificate for complete certificate path validation in local machines, workstations and similar devices like tablets and mobile devices.

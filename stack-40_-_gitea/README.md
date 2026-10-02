@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 40 — Gitea + Runner
 
-[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
+[Reading guide](../README.md#reading-guide) · [Operations](../docs/operations.md) · Next: [Stack 50 · Dockhand](../stack-50_-_dockhand/README.md)
 
 Local Git server with a Gitea Actions runner. Optionally, it also hosts Hermes' memory repository.
 

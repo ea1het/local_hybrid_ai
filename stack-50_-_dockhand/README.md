@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 50 — Dockhand
 
-[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
+[Reading guide](../README.md#reading-guide) · [Operations](../docs/operations.md) · Next: [Tests](../tests/README.md)
 
 Optional web UI for managing Docker. No other stack depends on it.
 

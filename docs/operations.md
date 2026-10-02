@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Operations
 
+[Reading guide](../README.md#reading-guide) · Next: [Program configs](../program_configs/README.md)
+
 Run every command as root from the repository root. Each stack is managed on its own: `./local-ai` never starts, stops, or installs another stack for you.
 
 ## Stack lifecycle

@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Pending work
 
+[Reading guide](README.md#reading-guide)
+
 Only open items. Finished work belongs in Git history.
 
 ## Operations

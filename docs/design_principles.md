@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Design principles
 
+[Reading guide](../README.md#reading-guide) · Next: [Operations](operations.md)
+
 The rules the code follows. Changes should keep them true.
 
 ## Operation

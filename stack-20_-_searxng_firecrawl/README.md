@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 20 — SearXNG + Firecrawl
 
-[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
+[Reading guide](../README.md#reading-guide) · [Operations](../docs/operations.md) · Next: [Stack 40 · Gitea](../stack-40_-_gitea/README.md)
 
 Local web search (SearXNG) and page extraction (Firecrawl), also exposed as MCP servers. It is optional: without it, consumers keep web tools disabled rather than falling back to an external service.
 

@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Program configs
 
+[Reading guide](../README.md#reading-guide) · Next: [oMLX](inference_server/omlx/README.md)
+
 Setup guides for the hosts around the stacks server. Nothing here is installed by `./local-ai`.
 
 ```mermaid

@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 10 — HAProxy + Web
 
-[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
+[Reading guide](../README.md#reading-guide) · [Operations](../docs/operations.md) · Next: [Stack 30 · LiteLLM](../stack-30_-_litellm/README.md)
 
 The single HTTPS entry point. HAProxy terminates TLS and routes each host name to its stack over `redlocal`. A small static page answers on the root domain.
 

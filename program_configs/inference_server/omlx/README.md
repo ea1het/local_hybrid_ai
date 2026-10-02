@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # oMLX headless Mac mini
 
+[Reading guide](../../../README.md#reading-guide) · Next: [mkcert](../mkcert/README.md)
+
 This is the **single technical runbook** for the headless oMLX Mac mini.
 
 It replaces the former split between `README.md` and `README.install.md`. The companion [`install.omlx-headless.sh`](install.omlx-headless.sh) is the executable implementation of this document.

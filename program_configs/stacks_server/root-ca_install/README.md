@@ -6,6 +6,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Root CA installation
 
+[Reading guide](../../../README.md#reading-guide) · Next: [Stack 00 · Platform](../../../stack-00_-_platform/README.md)
+
 The CA is created with mkcert on the inference server (Mac mini), see [../../inference_server/mkcert/README.md](../../inference_server/mkcert/README.md).
 
 The stacks server domains are configurable through environment variables in its central `.env`; `casa.lan` and `*.casa.lan` are defaults, not fixed names. Set the domain with `ROOT_HOSTNAME`, and set the service subdomains with `SEARCH_HOSTNAME`, `CHAT_HOSTNAME`, `GIT_HOSTNAME`, `GWIA_HOSTNAME`, `HOMELAB_HOSTNAME`, and `NORAI_HOSTNAME` (see [`.env.template`](../../../.env.template)). Set `TLS_SAN_DOMAINS` to the DNS names the issued server certificate must cover, and pass those same names to mkcert when issuing it. The inference server's `mlx.casa.lan` example is configured separately in its Caddyfile. Distributing `rootCA.pem` establishes trust in the CA; it does not change the certificate's DNS names.

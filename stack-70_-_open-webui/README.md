@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 70 — Open WebUI
 
-[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
+[Reading guide](../README.md#reading-guide) · [Operations](../docs/operations.md) · Next: [Stack 60 · Hermes](../stack-60_-_hermes/README.md)
 
 The chat interface. It uses LiteLLM for models and, when available, Stack 20 for web search and page loading.
 

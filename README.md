@@ -8,6 +8,8 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 Local-first AI infrastructure: eight Docker Compose stacks on one Linux server, using a Mac mini running oMLX for inference. One command, `./local-ai`, prepares, starts, stops, and inspects each stack.
 
+New to the project? Follow the [reading guide](#reading-guide).
+
 ## Architecture
 
 ```mermaid
@@ -109,3 +111,57 @@ python3 -B .github/workflows/gha_apply_python_shebangs.py --check
 ```
 
 The tests mock Docker and the host; they do not validate a live installation.
+
+## Reading guide
+
+All documentation, in the suggested reading order. Each step builds on the previous ones.
+
+### 1. Understand the system
+
+| # | Document | What you learn |
+| --- | --- | --- |
+| 1 | This README | Architecture, stacks, the `local-ai` command |
+| 2 | [Design principles](docs/design_principles.md) | The rules behind every decision; they explain the "why" in the rest of the docs |
+
+### 2. Learn how stacks are operated
+
+| # | Document | What you learn |
+| --- | --- | --- |
+| 3 | [Operations](docs/operations.md) | Lifecycle (`install`, `start`, `stop`, `status`), install order, how to read `status`, maintenance tools |
+
+### 3. Prepare the hosts around the server
+
+Read these before your first deployment. They set up the Mac mini and the certificates that Stacks 00 and 30 need.
+
+| # | Document | What you learn |
+| --- | --- | --- |
+| 4 | [Program configs](program_configs/README.md) | Which host needs what, and how certificates flow between them |
+| 5 | [oMLX](program_configs/inference_server/omlx/README.md) | Inference server on the Mac mini (long runbook; read the overview first) |
+| 6 | [mkcert](program_configs/inference_server/mkcert/README.md) | Local CA and wildcard certificate |
+| 7 | [Caddy](program_configs/inference_server/caddy/README.md) | TLS in front of oMLX |
+| 8 | [Root CA installation](program_configs/stacks_server/root-ca_install/README.md) | Trusting the CA on the server and on clients |
+
+### 4. Learn the stacks
+
+First the core path that every AI request follows, from the bottom up. Then the optional stacks.
+
+| # | Document | What you learn |
+| --- | --- | --- |
+| 9 | [Stack 00 · Platform](stack-00_-_platform/README.md) | Foundation: directories, network, certificates |
+| 10 | [Stack 10 · HAProxy](stack-10_-_haproxy_web/README.md) | How every service is published |
+| 11 | [Stack 30 · LiteLLM](stack-30_-_litellm/README.md) | The AI gateway: models, keys, MCP |
+| 12 | [Stack 70 · Open WebUI](stack-70_-_open-webui/README.md) | The simplest consumer of the gateway |
+| 13 | [Stack 60 · Hermes](stack-60_-_hermes/README.md) | The agent: sandbox, optional web and memory (most complex) |
+| 14 | [Stack 20 · SearXNG + Firecrawl](stack-20_-_searxng_firecrawl/README.md) | Optional web search used by 60 and 70 |
+| 15 | [Stack 40 · Gitea](stack-40_-_gitea/README.md) | Optional Git server, also for Hermes memory |
+| 16 | [Stack 50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker UI |
+
+### 5. Contribute
+
+| # | Document | What you learn |
+| --- | --- | --- |
+| 17 | [Tests](tests/README.md) | How to run and extend the test suite |
+| 18 | [MPL header exceptions](docs/license-header-exceptions.md) | Files exempt from license headers (generated) |
+| 19 | [Pending work](pending.md) | Open items and known inconsistencies |
+
+Optional workstation setup: [Syncthing for an Obsidian vault](program_configs/workstations/syncthing/README.md) and the [opencode configuration](program_configs/workstations/opencode/opencode.jsonc).

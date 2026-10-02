@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 30 — LiteLLM
 
-[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
+[Reading guide](../README.md#reading-guide) · [Operations](../docs/operations.md) · Next: [Stack 70 · Open WebUI](../stack-70_-_open-webui/README.md)
 
 The AI gateway. Every consumer reaches models (and MCP servers) through LiteLLM with its own scoped key. Models are served by oMLX on the Mac mini.
 
