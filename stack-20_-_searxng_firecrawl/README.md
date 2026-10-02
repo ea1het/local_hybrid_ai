@@ -53,7 +53,7 @@ When the lock exists, `install` and `start` also verify that the managed SearXNG
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 
-`./local-ai stack-20 status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role and makes a JSON test search through SearXNG. It does not wait or alter the database.
+`./local-ai stack-20 status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role and makes a JSON test search through SearXNG restricted to Wikipedia to avoid probing every search engine. It does not wait or alter the database.
 
 ## PostgreSQL identity model
 

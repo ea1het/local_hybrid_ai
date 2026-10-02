@@ -130,6 +130,7 @@ def test_searxng_search_probe_reports_http_result(monkeypatch, exit_code, expect
     assert stack_status.searxng_search_probe() is expected
     assert calls[0][:4] == ["docker", "exec", "searxng", "python3"]
     assert "format=json" in calls[0][-1]
+    assert "%21wikipedia%20test" in calls[0][-1]
 
 
 def test_deep_query_failure_does_not_report_ready(tmp_path, monkeypatch, capsys):

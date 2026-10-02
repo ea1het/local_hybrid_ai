@@ -138,7 +138,7 @@ def searxng_search_probe() -> bool:
     script = (
         "import json, urllib.request; "
         "response = urllib.request.urlopen("
-        "'http://127.0.0.1:8080/search?q=test&format=json', timeout=10); "
+        "'http://127.0.0.1:8080/search?q=%21wikipedia%20test&format=json', timeout=10); "
         "data = json.load(response); "
         "assert isinstance(data.get('results'), list)"
     )
