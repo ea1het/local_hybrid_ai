@@ -14,7 +14,7 @@ The stacks server domains are configurable through environment variables in its 
 | --- | --- | --- |
 | `rootCA.pem` | CA certificate (public) | **Yes** — this guide |
 | `rootCA-key.pem` | CA private key | **Never** |
-| `tls.crt` / `tls.key` | Server certificate and key for the names in `TLS_SAN_DOMAINS` (default `casa.lan` / `*.casa.lan`) | **No** — only to servers that terminate TLS (Caddy, Stack0/HAProxy); see the mkcert guide |
+| `tls.crt` / `tls.key` | Server certificate and key for the names in `TLS_SAN_DOMAINS` (default `casa.lan` / `*.casa.lan`) | **No** — only to servers that terminate TLS (Caddy, Stack 00/HAProxy); see the mkcert guide |
 
 ## 1. Distribute the CA to other machines
 
@@ -28,7 +28,7 @@ cp "$(mkcert -CAROOT)/rootCA.pem" /Users/norai/Documents/MKCert/rootCA.pem
 
 After installing on each client, compare the SHA-256 fingerprint with the one from [step 3.3 of the mkcert guide](../../inference_server/mkcert/README.md#33-inspect-the-ca).
 
-### 1.1 Linux Docker host (stack0 / LiteLLM)
+### 1.1 Linux stacks server (Stack 00)
 
 Copy the CA to `LOCAL_CA_SOURCE_PATH` in the root `.env` (default `/tmp/rootCA.pem`), where [stack-00_-_platform/install-ca-cert.py](../../../stack-00_-_platform/install-ca-cert.py) expects it:
 
@@ -36,18 +36,18 @@ Copy the CA to `LOCAL_CA_SOURCE_PATH` in the root `.env` (default `/tmp/rootCA.p
 scp /Users/norai/Documents/MKCert/rootCA.pem <user>@<docker-host>:/tmp/rootCA.pem
 ```
 
-Then run on that host (it is also run by `stack-00_-_platform/install.py`):
+`./local-ai stack-00 install` runs it for you. To run it on its own:
 
 ```sh
 cd /opt/docker/stacks/stack-00_-_platform
 sudo ./install-ca-cert.py
 ```
 
-(Or pass the CA explicitly: `sudo ./install-ca-cert.py --ca /path/to/rootCA.pem`.) Once Stack0 is PREPARED (`stack-00_-_platform/.lock`) the script changes nothing unless `--force` is given, e.g. to rotate the CA.
+(Or pass the CA explicitly: `sudo ./install-ca-cert.py --ca /path/to/rootCA.pem`.) A valid, trusted CA that is already installed is kept; use `--force` to replace it (for example to rotate the CA).
 
-It validates the CA, installs it as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` (`LOCAL_CA_NAME` from the central `.env`, default `casa-local-ca`), runs `update-ca-certificates`, checks the host bundle and stops. Set `LOCAL_CA_SOURCE_PATH` to an absolute path such as `/opt/temporal/rootCA.pem` if the source is not in `/tmp`. It does not modify any stack: LiteLLM (Stack3) already mounts the host bundle `/etc/ssl/certs/ca-certificates.crt` and sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` in its own Compose file. If LiteLLM is already running, restart it to pick up the updated bundle.
+It validates the CA, installs it as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` (`LOCAL_CA_NAME` from the central `.env`, default `casa-local-ca`), runs `update-ca-certificates`, checks the host bundle and stops. Set `LOCAL_CA_SOURCE_PATH` to an absolute path such as `/opt/temporal/rootCA.pem` if the source is not in `/tmp`. It does not modify any stack: LiteLLM (Stack 30) already mounts the host bundle `/etc/ssl/certs/ca-certificates.crt` and sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` in its own Compose file. If LiteLLM is already running, restart it to pick up the updated bundle.
 
-The certificate HAProxy **serves** (`tls.crt` / `tls.key`) is installed separately by `install-tls-certs.py`, see [section 6 of the mkcert guide](../../inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack0).
+The certificate HAProxy **serves** (`tls.crt` / `tls.key`) is installed separately by `install-tls-certs.py`, see [section 6 of the mkcert guide](../../inference_server/mkcert/README.md#6-use-the-certificate-on-the-stacks-server-stack-00).
 
 Manual equivalent on Debian/Ubuntu (without the script):
 
@@ -102,6 +102,6 @@ Some tools ship their own CA bundle and need to be told about the CA explicitly:
 | Python.org installer on macOS | run `/Applications/Python 3.x/Install Certificates.command`, then set the variables above |
 | `curl` with a custom CA | `curl --cacert /path/to/rootCA.pem https://mlx.casa.lan` |
 | Firefox | installed automatically by `mkcert -install` if `nss` is present; otherwise Settings → Privacy & Security → Certificates → Import |
-| Docker containers | mount the host bundle and set `SSL_CERT_FILE` (what Stack3's Compose file does) |
+| Docker containers | mount the host bundle and set `SSL_CERT_FILE` (what Stack 30's Compose file does) |
 
 For Python, `bundle.pem` should be the system bundle **plus** the CA (e.g. `/etc/ssl/certs/ca-certificates.crt` on Debian after `update-ca-certificates`), otherwise public HTTPS sites stop validating.

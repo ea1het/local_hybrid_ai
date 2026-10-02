@@ -6,60 +6,33 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 10 — HAProxy + Web
 
-[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
+[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
 
-Stack1 owns the platform HTTP/HTTPS ingress and the small static landing page. Application backends remain owned by their own stacks; Stack1 only publishes selected services.
+The single HTTPS entry point. HAProxy terminates TLS and routes each host name to its stack over `redlocal`. A small static page answers on the root domain.
 
 ```mermaid
-flowchart LR
-    Client[Client] -->|HTTP / HTTPS| HAProxy[Stack1 HAProxy]
-    HAProxy --> Static[Stack1 static web]
-    HAProxy -.->|optional routes| Apps[Application stacks on redlocal]
-    TLS["tls.crt / tls.key (Stack0)"] -->|read-only mount| HAProxy
-    Network[Stack0 redlocal] --- HAProxy
+flowchart TB
+    Client -->|"HTTPS :443 (:80 redirects)"| HAProxy
+    TLS["tls.crt / tls.key (Stack 00)"] -.-> HAProxy
+    HAProxy --> web["web · root domain"]
+    HAProxy --> Apps["Stacks 20–70 · by subdomain"]
 ```
 
-## Contract
+| | |
+| --- | --- |
+| Install requires | Stack 00 |
+| Containers | `haproxy`, `web` (Compose project `Stack1 - HAProxy + Web`) |
+| Ports | host `HAPROXY_HTTP_PORT` (80) and `HAPROXY_HTTPS_PORT` (443) |
+| Runtime data | `${BASE_PATH}/service_-_haproxy/config` (`haproxy.cfg` next to the TLS pair), `service_-_web` |
+| `status` | `haproxy -c` config check; `web` homepage fetch |
 
-- **Requires:** Stack0.
-- **Provides:** ingress/web publication capability.
-- **Owns:** `haproxy` and `web` containers plus their Stack1 runtime directories.
-- **DR:** reconstructable; Stack1 has no durable recovery artifact.
-- **Security boundary:** application backends should normally remain internal to `redlocal` instead of publishing host ports directly.
+The routing table is in the [main README](../README.md#architecture). Host names and backend targets come from `.env` (`*_HOSTNAME`, `*_TARGET`).
 
-Stack0 owns `redlocal`, the service directories (`00-bootstrap.py`) and the TLS material: `install-tls-certs.py` installs the mkcert wildcard certificate as `tls.crt` / `tls.key` in `${BASE_PATH}/service_-_haproxy/config`. Stack1's `01-prepare.py` only verifies that pair and places `haproxy.cfg` next to it; that directory is mounted read-only as `/usr/local/etc/haproxy`. Stack1 never creates, renews or replaces certificates.
+## Notes
 
-## Runtime behaviour
+- **Missing backends are tolerated.** HAProxy starts even if a routed stack is down; that route fails until the backend appears.
+- **Changes need a restart.** After editing `haproxy.cfg` or rotating certificates, run `docker compose restart haproxy`; `start` does not reload a running container.
+- **Certificates belong to Stack 00.** `01-prepare.py` checks the TLS pair but never creates or replaces it.
+- **Keep backends private.** Application stacks should publish through HAProxy, not through their own host ports. The one exception is Gitea SSH.
 
-HAProxy is deliberately tolerant of optional backends. A backend that is absent or temporarily unavailable must not prevent Stack1 itself from starting. This allows stacks to remain independently deployable while sharing one ingress layer.
-
-Updating a file on disk does not necessarily reload the HAProxy process. Configuration, mount, group or certificate changes require a deliberate reload or recreation; `start` does not guarantee that an already-running container reloads changed files.
-
-`.lock` means **PREPARED only**. It does not mean HAProxy is running, healthy or serving every optional backend.
-
-## Unattended preparation wrapper
-
-Run `./local-ai stack-10 install` from the repository root (as root for
-initial preparation). The wrapper calls the stack's Python package without
-interactive input, forwards the preparation output, and checks both its exit
-status and the resulting `.lock`. `install` never starts or restarts containers.
-
-When `.lock` already exists, the wrapper changes nothing and explains the
-reconfiguration risk. It does not remove the lock. After a successful
-preparation, it prints `./local-ai stack-10 start`; running
-that command remains a separate operator decision.
-
-`./local-ai stack-10 start` runs `docker compose up -d` for HAProxy and web after checking the preparation lock. `./local-ai stack-10 stop` runs `docker compose down` without `--volumes`: it removes the containers but retains Stack0's external network, service files and `.lock`. Neither verb verifies endpoint readiness or renews TLS; Stack0 owns certificates.
-
-Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
-
-`./local-ai stack-10 status` reads Compose container state and health without changing anything. HAProxy's healthcheck validates its mounted configuration, while the BusyBox web check fetches its local homepage. HAProxy health does not prove that every optional upstream or public TLS route works. `status --deep` currently has no additional probe.
-
-## Security invariants
-
-- `tls.key` is installed by Stack0 as `root:PLATFORM_PKI_GID 0640`; HAProxy (uid 99) reads it only through that supplementary group. Stack1 never copies or rewrites it.
-- Backend services stay on `redlocal` unless an explicit architecture decision publishes them.
-- Stack1 does not become owner of application state merely because it exposes an application route.
-- The operator entry point is `./local-ai stack-10`; certificate rotation remains a Stack 00 task.
-
-Key implementation files: `docker-compose.yml`, `config/haproxy/haproxy.cfg`, and `01-prepare.py`.
+Files: `docker-compose.yml`, `config/haproxy/haproxy.cfg`, `config/web/index.html`, `01-prepare.py`.

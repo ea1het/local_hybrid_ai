@@ -17,7 +17,7 @@ This guide covers the full setup on the inference server of this project, a **Ma
 3. Create the local CA and trust it on the Mac mini.
 4. Issue a wildcard certificate for `casa.lan` / `*.casa.lan`.
 5. Wire the certificate (`tls.crt` / `tls.key`) into Caddy.
-6. Install the CA and the same certificate (`tls.crt` / `tls.key`) on the stacks server with Stack0 (HAProxy).
+6. Install the CA and the same certificate (`tls.crt` / `tls.key`) on the stacks server with Stack 00 (for HAProxy).
 7. Verify, renew and (if needed) revoke/rotate.
 
 Distributing the CA certificate (`rootCA.pem`) to clients is covered in [../../stacks_server/root-ca_install/README.md](../../stacks_server/root-ca_install/README.md).
@@ -25,7 +25,7 @@ Distributing the CA certificate (`rootCA.pem`) to clients is covered in [../../s
 File naming used across the project:
 
 - **CA**: `rootCA.pem` (public, distributed to clients) and `rootCA-key.pem` (private, never leaves the Mac mini).
-- **Wildcard server certificate**: `tls.crt` (certificate) and `tls.key` (private key). These are the names Caddy is configured with and the names Stack0 installs for HAProxy (`${BASE_PATH}/service_-_haproxy/config/{tls.crt,tls.key}`).
+- **Wildcard server certificate**: `tls.crt` (certificate) and `tls.key` (private key). These are the names Caddy is configured with and the names Stack 00 installs for HAProxy (`${BASE_PATH}/service_-_haproxy/config/{tls.crt,tls.key}`).
 
 ---
 
@@ -44,7 +44,7 @@ File naming used across the project:
 | Wildcard server private key | `tls.key` |
 | Names covered | `casa.lan`, `*.casa.lan` |
 
-The certificate paths match the ones referenced in [../caddy/Caddyfile](../caddy/Caddyfile). If you change them, update the `Caddyfile` too. Keep the file names `tls.crt` / `tls.key`: they are also the names expected by Stack0 (section 6).
+The certificate paths match the ones referenced in [../caddy/Caddyfile](../caddy/Caddyfile). If you change them, update the `Caddyfile` too. Keep the file names `tls.crt` / `tls.key`: they are also the names expected by Stack 00 (section 6).
 
 > **Important:** all commands are run **as the user `norai`**, not with `sudo`, unless explicitly stated. `mkcert` stores the CA in the invoking user's home directory; running it with `sudo` would create a different CA under root's home.
 
@@ -224,7 +224,7 @@ Notes:
 - `*.casa.lan` covers **one** label level only: `mlx.casa.lan`, `litellm.casa.lan`, … It does **not** cover the apex `casa.lan` (hence it is listed explicitly) nor deeper names like `a.b.casa.lan`. For  deeper names, add them explicitly (e.g. `"*.svc.casa.lan"`).
 - It is also possible to add IPs or short hostnames to the same certificate if needed, e.g. `localhost 127.0.0.1 ::1`. Preference is to avoid this option.
 - Always quote `"*.casa.lan"` so `zsh` does not try to expand the `*`.
-- The names passed to mkcert must include every name listed in `TLS_SAN_DOMAINS` in the stacks server `.env` (default `"casa.lan *.casa.lan"`); Stack0 `install-tls-certs.py` refuses a certificate that misses any of them.
+- The names passed to mkcert must include every name listed in `TLS_SAN_DOMAINS` in the stacks server `.env` (default `"casa.lan *.casa.lan"`); Stack 00 `install-tls-certs.py` refuses a certificate that misses any of them.
 - The leaf certificate is valid for **2 years and 3 months** (below Apple's 825-day limit for trusted TLS certificates). Note the expiry date to renew it in time (section 7). This certificae lifespan is forced by this situation.
 
 Expected output (similar to):
@@ -309,9 +309,9 @@ Any additional `*.casa.lan` site block can reuse the same `tls` line.
 
 ---
 
-## 6. Use the certificate on the stacks server (Stack0)
+## 6. Use the certificate on the stacks server (Stack 00)
 
-HAProxy (Stack1) serves the same wildcard certificate. Stack0 installs it, together with the CA, from files copied into `/tmp` on the stacks server (see [stack0 README](../../../stack-00_-_platform/README.md)).
+HAProxy (Stack 10) serves the same wildcard certificate. Stack 00 installs it, together with the CA.
 
 ### 6.1 Copy the files to the stacks server
 
@@ -323,40 +323,25 @@ cp "$(mkcert -CAROOT)/rootCA.pem" .
 scp rootCA.pem tls.crt tls.key <user>@<docker-host>:/tmp
 ```
 
-### 6.2 Install with Stack0
+The destination must match `LOCAL_CA_SOURCE_PATH`, `TLS_CERT_SOURCE_PATH`, and `TLS_KEY_SOURCE_PATH` in the server's `.env` (default `/tmp/...`).
 
-On the stacks server:
+### 6.2 Install with Stack 00
+
+On the stacks server, from the repository root:
 
 ```sh
-cd /opt/docker/stacks/stack-00_-_platform
-sudo ./install.py
+sudo ./local-ai stack-00 install
 ```
 
-`install.py` runs, in order:
+`install-ca-cert.py` adds the CA to the host trust store. `install-tls-certs.py` checks the pair (matching key, signed by the CA, every name in `TLS_SAN_DOMAINS`, not expired) and installs it as `${BASE_PATH}/service_-_haproxy/config/tls.crt` (`0644`) and `tls.key` (`0640`, `root:local-hybrid-pki`). See the [Stack 00 README](../../../stack-00_-_platform/README.md).
 
-| Script | What it does with the source files configured in `.env` |
-| --- | --- |
-| `00-bootstrap.py` | Nothing: creates the service directory tree of every stack, including `${BASE_PATH}/service_-_haproxy/config`. |
-| `01-prepare.py` | Nothing: `.env` links and the shared Docker network. |
-| `install-ca-cert.py` | Installs `LOCAL_CA_SOURCE_PATH` as `/usr/local/share/ca-certificates/${LOCAL_CA_NAME}.crt` and runs `update-ca-certificates`. |
-| `install-tls-certs.py` | Validates `TLS_CERT_SOURCE_PATH` / `TLS_KEY_SOURCE_PATH` (pair matches, signed by the CA, SAN contains every name in `TLS_SAN_DOMAINS`, not expired) and installs them as `${BASE_PATH}/service_-_haproxy/config/tls.crt` (`0644`) and `tls.key` (`0640`, `root:local-hybrid-pki`). |
-| `verify.py` | Checks all of the above before `install.py` creates `.lock`. |
-
-The paths default to `/tmp`, but you can set all three source paths in the protected root `.env` before Stack 00 installation, for example:
-
-```dotenv
-LOCAL_CA_SOURCE_PATH=/opt/temporal/rootCA.pem
-TLS_CERT_SOURCE_PATH=/opt/temporal/tls.crt
-TLS_KEY_SOURCE_PATH=/opt/temporal/tls.key
-```
-
-Source files are **not** deleted by the scripts. Keep the private key root-restricted, and remove a temporary copy when you are done:
+The scripts never delete the source files. Remove the private key copy when you are done:
 
 ```sh
 rm -f /tmp/tls.key
 ```
 
-Then prepare (or re-prepare) Stack1, which places `haproxy.cfg` in the same directory, and restart HAProxy so it loads the pair.
+If HAProxy is already running, restart it to load the pair: `cd stack-10_-_haproxy_web && sudo docker compose restart haproxy`.
 
 ---
 
@@ -398,7 +383,7 @@ chmod 600 tls.key
 brew services restart caddy
 ```
 
-Then copy the new `tls.crt` / `tls.key` to `/tmp` on the stacks server, run `sudo ./install-tls-certs.py --renew` in `stack-00_-_platform` (without `--renew` it refuses to touch a prepared system) and restart HAProxy (section 6). If you add names to the certificate, add them to `TLS_SAN_DOMAINS` in `.env` as well.
+Then copy the new `tls.crt` / `tls.key` to the stacks server, run `sudo ./install-tls-certs.py --renew` in `stack-00_-_platform` (without `--renew` a still-valid installed pair is kept), and restart HAProxy (section 6). If you add names to the certificate, add them to `TLS_SAN_DOMAINS` in `.env` as well.
 
 Because the same CA signs it, **clients need no changes**.
 
@@ -410,8 +395,8 @@ mkcert has no revocation (no CRL/OCSP). If the CA key is compromised, the only r
 mkcert -uninstall                          # remove old CA from the Mac mini trust stores
 rm -rf "$(mkcert -CAROOT)"                 # delete old CA files
 mkcert -install                            # create and trust a new CA
-# then repeat sections 4-6 (new tls.crt / tls.key for Caddy and Stack0),
-# redistribute the new rootCA.pem (stacks_server/root-ca_install/README.md)
+# then repeat sections 4-6 (new tls.crt / tls.key for Caddy and Stack 00;
+# use install-ca-cert.py --force), redistribute the new rootCA.pem
 # and remove the old CA from each client's trust store.
 ```
 
@@ -433,9 +418,9 @@ chmod 600 tls.key
 openssl verify -CAfile "$(mkcert -CAROOT)/rootCA.pem" tls.crt
 openssl x509 -in tls.crt -noout -dates -ext subjectAltName
 
-# Stack0 (on the stacks server, files in /tmp)
-sudo ./install.py                      # first install
-sudo ./install-tls-certs.py --renew    # renewal on a running system
+# Stacks server (files copied to the paths set in .env)
+sudo ./local-ai stack-00 install                            # first install
+cd stack-00_-_platform && sudo ./install-tls-certs.py --renew   # renewal
 
 # CA to distribute (public only)
 echo "$(mkcert -CAROOT)/rootCA.pem"

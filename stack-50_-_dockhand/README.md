@@ -6,55 +6,29 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 50 — Dockhand
 
-[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
+[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
 
-Stack5 provides the Dockhand container-management UI. It is an operational convenience surface, not part of the AI request path and not a required dependency of other application stacks.
+Optional web UI for managing Docker. No other stack depends on it.
 
 ```mermaid
-flowchart LR
-    Operator[Operator] --> Dockhand[Stack5 Dockhand]
-    Dockhand --> Docker[Docker management surface]
-    Ingress[Stack1 HAProxy] -.->|optional publication| Dockhand
-    Network[Stack0 redlocal] --- Dockhand
+flowchart TB
+    Operator -->|HTTPS via Stack 10| Dockhand
+    Dockhand -->|docker.sock| Docker["Docker engine"]
+    Dockhand --> Vol[("dockhand_data")]
 ```
 
-## Contract
+| | |
+| --- | --- |
+| Install requires | Only the `redlocal` network and the `.env` link (normally created by Stack 00); no `.lock` from Stack 00 |
+| Containers | `dockhand` (Compose project `Stack5 - Dockhand`) |
+| Published at | `homelab.casa.lan` through Stack 10 |
+| Runtime data | External Docker volume `dockhand_data` (no `BASE_PATH` directory) |
+| `status` | Local HTTP check on port 3000 |
 
-- **Requires:** the configured shared Docker bridge network, root `.env`, and Docker Compose; it does not require Stack 00's `.lock` or host CA. Stack 00 normally creates the network and managed `.env` link.
-- **Optional relation:** Stack1 may publish the UI.
-- **Owns:** the `dockhand` container and external Docker volume `dockhand_data`.
-- **DR:** reconstructable; Dockhand application state is not a recovery target.
-- **Purpose:** operational convenience, not a prerequisite for the Python stack wrappers.
+## Notes
 
-Dockhand persists through the external Docker volume `dockhand_data`; there is intentionally no Stack5 bind-mounted `service_-_dockhand` runtime directory. PREPARE creates the volume if absent and validates it, but does not migrate or rewrite existing contents.
+- **Root-equivalent access.** Dockhand mounts the Docker socket, so anyone logged into it controls the host. Protect its login, and do not publish it beyond your LAN.
+- **`stop` keeps the container.** Unlike the other stacks, `stop` runs `docker compose stop`, so the next `start` reuses the same container. `status` then shows it as stopped, not absent.
+- **The volume is preserved.** `install` creates `dockhand_data` only if it is missing; it never rewrites an existing one.
 
-`.lock` means **PREPARED only**. It does not mean the Dockhand container is running or healthy.
-
-## Unattended preparation wrapper
-
-Run `./local-ai stack-50 install` from the repository root (as root for
-initial preparation). The wrapper invokes only the stack's `01-prepare.py`
-package module with closed stdin. Preparation may create the missing
-`dockhand_data` volume, as authorized, but preserves an existing volume.
-
-If `.lock` already exists, the wrapper changes nothing and explains the risk
-of manually removing it. After successful preparation, `install` shows how to
-run `./local-ai stack-50 start`; `install` never starts Dockhand itself.
-
-## Lifecycle behaviour
-
-From the repository root, `./local-ai stack-50 start` runs `docker compose up -d` after checking `.lock`. `./local-ai stack-50 stop` deliberately runs **`docker compose stop`**, unlike the `down` used by Stacks 10–40 and 60–70. It stops Dockhand but preserves the existing container and the external `dockhand_data` volume; a later `start` can reuse the container without needlessly recreating this optional, reconstructable management UI. Dockhand is ephemeral in the recovery sense—it is not a platform dependency or DR target—but its Docker volume holds runtime application state and must not be treated as disposable merely because the container is. `down` would also leave this external volume intact by default; preserving the container, not rescuing the volume from `down`, is the reason for this exception.
-
-Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
-
-`./local-ai stack-50 status` reports Dockhand's container state and local HTTP health. After `stop`, the preserved container appears stopped rather than absent. HTTP health does not prove that Dockhand can manage Docker or that its external volume is backed up; `status --deep` currently has no additional probe.
-
-The operator lifecycle is `./local-ai stack-50 start` / `stop`. Neither verb verifies Dockhand health or changes the preparation lock; use `status` separately. Dockhand must not become a hidden prerequisite for operating other stacks.
-
-## Security invariants
-
-- Stack5's Docker-management capability is intentionally separate from agent stacks; Hermes does not receive a Docker socket through Stack5.
-- The external volume is runtime-owned and not rewritten during PREPARE.
-- Dockhand does not define the platform management contract; each stack wrapper remains usable without it.
-
-Key implementation files: `docker-compose.yml` and `01-prepare.py`.
+Files: `docker-compose.yml`, `01-prepare.py`.

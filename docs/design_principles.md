@@ -4,72 +4,28 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Design Principles
+# Design principles
 
-## 1. Transparency
+The rules the code follows. Changes should keep them true.
 
-Wrappers must not change the observable behavior of the underlying tools. Command-line arguments, environment variables, exit codes, and stdout/stderr output should remain identical to what the original tool produces. A user or script calling a wrapped tool should not need to know a wrapper exists.
+## Operation
 
-## 2. Safety
+- **One stack, one owner.** A stack owns its Compose file, configuration, and runtime directories. Shared host resources (directories, network, CA, TLS) belong to Stack 00 alone.
+- **Explicit over automatic.** Each command acts on one stack and does one thing. Nothing starts dependencies, waits for readiness, or runs optional setup implicitly; those remain separate scripts.
+- **Prepared is not running.** `.lock` records a successful preparation. Liveness comes from `status`, never from the lock or from a successful `start`.
+- **Persistent state is never regenerated.** Preparation preserves PostgreSQL data, secrets, keys, and user-edited settings. A retry must be safe.
+- **Fail closed.** Unexpected state (symlinks where files belong, unknown schemas, mismatched secrets) stops the command with an explanation instead of being "repaired".
 
-All user-supplied inputs must be validated before being passed to the underlying tool. No `eval()` or unbounded `exec()` calls with user data. Wrappers enforce argument validation, path sanitization, and environment isolation where appropriate.
+## Security
 
-**No `__pycache__` generation.** Python wrappers must never produce local `__pycache__` directories. This is achieved by executing wrapper code through `exec(compile(source, "<wrapper>", "exec"))` rather than importing or running modules directly. The `__pycache__` folder stays clean — wrappers are self-contained scripts, not importable packages.
+- **Configured secrets live in one place.** The root `.env` (`root:root 0600`) holds every configured secret, and each stack links to it. Runtime-generated material (SSH keys, runner token) stays in the stack's runtime directory. Secrets are never printed and never written to Git-tracked files. A private backup is made before any change.
+- **Least privilege across boundaries.** AI consumers use scoped LiteLLM keys, never the master key or provider credentials. Hermes gets an SSH sandbox, not the Docker socket.
+- **No silent fallback.** A missing optional provider (for example local web search) leaves its feature disabled; it never switches to an undeclared external service.
 
-## 3. Graceful Degradation
+## Code
 
-Some tools in `tools/` exist only as compiled `.pyc` files with no accessible source code. Wrappers for these must detect the absence of source, report a clear and actionable message, and offer a recovery path (e.g., a stub or instructions to restore the original). The wrapper must never crash silently or produce cryptic errors.
-
-## 4. Zero Dependencies
-
-Wrappers must work with only what ships with a standard Python installation and a POSIX-compatible shell. No third-party packages, no virtual environments required for the wrapper layer itself. This ensures portability across development machines and CI pipelines.
-
-## 5. Single Entry Point
-
-A single CLI command (`tool <name>`) serves as the universal entry point. It discovers the requested tool, validates it exists, and delegates to the appropriate wrapper (shell or Python). Users interact with one interface regardless of what language a tool is written in.
-
----
-
-## Additional Principles
-
-### Complete Documentation
-
-Every wrapper must be fully documented with Markdown files in the `docs/` directory. Each tool gets a representative documentation file covering:
-
-- Purpose and description
-- Usage examples (command-line invocations)
-- Arguments and flags
-- Exit codes
-- Known limitations
-
-Documentation is not an afterthought — it is part of the deliverable.
-
-### Command-Line Help
-
-Every wrapper must provide built-in inline help accessible via `--help` or `-h`. This includes:
-
-- A brief description of what the tool does
-- Available arguments and flags with descriptions
-- Usage examples
-- Exit code documentation
-
-Users should never need to read source code to understand how to invoke a tool.
-
-### Stack Independence
-
-Existing stacks must continue to function independently, exactly as they do today — each runnable one at a time without requiring the wrapper. Auxiliary files placed in the `stack/` directory (if any are added to support wrapper functionality) are only meaningful when accessed through the wrapper. These files have no standalone purpose and should not be invoked directly.
-
-The wrapper layer is an enhancement, not a replacement. Existing workflows that call tools directly must continue to work unchanged.
-
-### Selective Testing
-
-A `tests/` directory exists at the project root, but tests are created only for code that meaningfully benefits from automated verification. No tests for the sake of having tests.
-
-Guidelines:
-
-- Prioritize quality over quantity. Ten well-designed, meaningful tests are preferred over four hundred superficial ones.
-- Test wrapper logic that validates input, handles errors, and manages delegation.
-- Do not test underlying tools — they have their own coverage (if any).
-- Skip tests for trivial wrappers that simply pass through arguments.
-
-The bar is: "Does this test catch a real bug or verify a real contract?" If the answer is no, skip it.
+- **Standard library only.** Wrappers and scripts need only Python 3 and Docker Compose.
+- **No bytecode in the checkout.** Every entry point sets `sys.dont_write_bytecode` and children run with `-B`.
+- **Pass-through CLI.** `./local-ai` forwards arguments and exit codes unchanged; every command has `--help`.
+- **Tests check contracts.** Tests mock Docker and the host, and exist where they catch a real bug or pin a real contract.
+- **MPL-2.0 headers** on every file, enforced in CI ([exceptions](license-header-exceptions.md)).

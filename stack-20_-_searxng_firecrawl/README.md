@@ -6,87 +6,32 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 20 — SearXNG + Firecrawl
 
-[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
+[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
 
-Stack2 provides local web search and page extraction. It is optional for AI consumers: Stack6 and Stack7 can operate without it, but web capabilities remain disabled rather than silently falling back to an external service.
+Local web search (SearXNG) and page extraction (Firecrawl), also exposed as MCP servers. It is optional: without it, consumers keep web tools disabled rather than falling back to an external service.
 
 ```mermaid
-flowchart LR
-    Consumer[Stack6 / Stack7] -->|web.search| SearXNG[SearXNG]
-    Consumer -->|web.extract| Firecrawl[Firecrawl API]
-    Firecrawl --> SearXNG
-    Firecrawl --> Playwright[Playwright]
-    Firecrawl --> Redis[Redis]
-    Firecrawl --> RabbitMQ[RabbitMQ]
-    Firecrawl --> PG[(Firecrawl PostgreSQL)]
-    Network[Stack0 redlocal] --- SearXNG
-    Network --- Firecrawl
+flowchart TB
+    Consumers["Hermes · Open WebUI · LiteLLM MCP"] --> SearXNG & API["Firecrawl API"]
+    API --> SearXNG
+    API --> Back["Playwright · Redis · RabbitMQ · PostgreSQL"]
 ```
 
-## Contract
+| | |
+| --- | --- |
+| Install requires | Stack 00; `FIRECRAWL_POSTGRES_ADMIN_PASSWORD` in `.env` (from `env bootstrap`) |
+| Containers | `searxng`, `searxng-mcp`, `firecrawl-mcp`, `firecrawl-api`, `firecrawl-playwright`, `firecrawl-redis`, `firecrawl-rabbitmq`, `firecrawl-postgres`. The two `*-mcp` containers expose search and extraction as MCP servers for the LiteLLM MCP gateway. |
+| Published at | `buscar.casa.lan` (SearXNG) through Stack 10 |
+| Runtime data | `${BASE_PATH}/service_-_searxng/{config,data}`, `service_-_firecrawl-{redis,rabbitmq,postgres}/data`; all reconstructable |
+| `status` | SearXNG `/healthz`; the other services check only TCP reachability or ping |
+| `status --deep` | `SELECT 1` as the `firecrawl` role, plus a JSON test search (Wikipedia only) |
 
-- **Requires:** Stack0.
-- **Provides:** `web.search` and `web.extract`.
-- **Optional consumers:** Stack6 and Stack7.
-- **DR:** reconstructable; caches, queue state and Firecrawl database state are not recovery artifacts.
-- **Network:** application services remain internal to `redlocal` unless explicitly exposed through Stack1.
+## Notes
 
-`.lock` means **PREPARED only**. Deployment and readiness are separate lifecycle states. The wrappers do not wait for provider endpoints or reconcile optional consumers automatically.
+- **Managed SearXNG config.** `settings.yml`, `limiter.toml`, and `favicons.toml` are copied from `config/searxng/`. With an existing `.lock`, `install` and `start` refuse to continue if the runtime copies are missing or differ. Restore them from the repository; do not delete the `.lock` to hide the problem.
+- **Proxy trust.** The limiter is off. `trusted_proxies` covers loopback and `172.16.0.0/12` so SearXNG sees the client IP forwarded by HAProxy. Any container in that range could forge that header.
+- **Two database identities.** `postgres` is the administrator, used for setup and `pg_cron`. `firecrawl` is the least-privilege application role, created by `config/postgres/020-firecrawl-app-role.sh`. The database stays `postgres` because the NuQ image requires it.
+- **PostgreSQL data is never reset.** `env bootstrap` refuses to generate a database password next to existing data; recover the original value instead. Nothing rotates database passwords.
+- **Readiness wait.** `python3 -B wait-ready.py` waits until the services answer after `start`. `start` does not run it for you.
 
-## Unattended preparation wrapper
-
-Run `./local-ai stack-20 install` from the repository root (as root for
-initial preparation). After checking Stack 00's lock, the wrapper creates
-only Stack 20's persistent directories using the scoped platform bootstrap,
-then invokes the stack's `01-prepare.py` package module with closed stdin,
-forwards its output, and requires a regular `.lock`
-after success. If the lock already exists, it does nothing and explains the
-risk of manually removing it before reconfiguration.
-
-The `install` verb prints `./local-ai stack-20 start` but never runs it.
-`wait-ready.py` is a separate check for after the containers are started; it
-is not part of unattended preparation.
-
-`./local-ai stack-20 start` runs `docker compose up -d` after checking `.lock`; `./local-ai stack-20 stop` runs `docker compose down` without `--volumes`. Stop removes this stack's containers, not its persistent bind-mounted data or Stack0's external network. Start does not run `wait-ready.py` or reconcile optional consumers; run those phases separately before claiming `web.search` or `web.extract` is READY.
-
-When the lock exists, `install` and `start` also verify that the managed SearXNG `settings.yml`, `limiter.toml`, and `favicons.toml` still match the repository. If a file is missing or replaced by the container's default template, they fail rather than silently treating the old lock as sufficient. Back up unexpected runtime files and restore the managed copies before starting; do not delete the lock merely to mask missing configuration. The favicon cache uses the persistent SearXNG data mount.
-
-The limiter is disabled. `trusted_proxies` includes loopback and the Docker `172.16.0.0/12` range so SearXNG accepts the browser's forwarded client IP from HAProxy on `redlocal`; LAN addresses are not trusted as proxies. Direct container requests without forwarded headers use their connection address and can still produce a missing-forwarded-header log message. Because the Docker range is trusted, any container in that range can forge a forwarded IP; restricting trust to HAProxy alone would require a stable proxy address or a separate network.
-
-Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
-
-`./local-ai stack-20 status` reports the state and health of all eight services. SearXNG checks `/healthz`; the Node-based MCP, Firecrawl API and Playwright healthchecks establish only local TCP reachability, not a successful search, scrape or MCP request. `status --deep` additionally runs an authenticated, read-only `SELECT 1` inside `firecrawl-postgres` using its application role and makes a JSON test search through SearXNG restricted to Wikipedia to avoid probing every search engine. It does not wait or alter the database.
-
-## PostgreSQL identity model
-
-Stack2 uses one PostgreSQL cluster and keeps the database name `postgres` because the pinned NuQ image configures `pg_cron` against it. Security separation is therefore performed with roles rather than by moving Firecrawl to another database.
-
-Two identities are intentionally distinct:
-
-- `postgres` — administrative/bootstrap identity used for initialization, ownership, extensions and cron management. `FIRECRAWL_POSTGRES_ADMIN_PASSWORD` lives in the protected root `.env` and is passed into PostgreSQL by Compose; no password file is mounted.
-- `firecrawl` — least-privilege application login used by Firecrawl during normal operation. Its credential is installation-owned configuration.
-
-The bootstrap grants only the schema/table/sequence access needed by the application and establishes default privileges for future NuQ objects created by the administrative role.
-
-## Persistent runtime invariants
-
-Persistent directories include SearXNG state and the Firecrawl Redis, RabbitMQ and PostgreSQL runtime areas. PREPARE must preserve existing persistent state. In particular, an initialized PostgreSQL data directory is runtime-owned and must not be recursively `chown`ed, permission-normalized or recreated as a routine repair action.
-
-Run `sudo ./local-ai env bootstrap` from the repository root before preparation. It generates a password for a new runtime or adopts the existing runtime password into `.env`. Preparation checks that the two copies match and never rotates either one. Rotating only one side of a persistent database credential contract is not a supported configuration change.
-
-## Capability behaviour
-
-Stack 20 is a provider, not a hard dependency of Stacks 60 or 70. If it is absent or not READY, consumers must keep web tools explicitly disabled. Once it becomes READY, consumer capability configuration can be reconciled separately.
-
-`start` and `status` do not change consumer configuration; inspect each consumer's README for its separate reconciliation phase.
-
-## Security invariants
-
-- PostgreSQL is reachable through Docker networking, not by an unnecessary host `5432` publication.
-- Administrative and application database identities remain separate.
-- The administrative database secret stays outside Git; `.env` and its private backup contain the canonical value.
-- Existing PGDATA metadata is preserved during PREPARE.
-- Missing Stack2 capability never enables an undeclared external web fallback.
-- The operator entry point is `./local-ai stack-20`; it does not automate capability reconciliation.
-
-Key implementation files: `docker-compose.yml`, `config/searxng/`, `config/postgres/020-firecrawl-app-role.sh`, `01-prepare.py`, and `wait-ready.py`.
+Files: `docker-compose.yml`, `config/searxng/`, `config/postgres/`, `01-prepare.py`, `wait-ready.py`.

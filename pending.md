@@ -6,19 +6,14 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Pending work
 
-[Current state](current-state.md)
+Only open items. Finished work belongs in Git history.
 
-Only active or intentionally deferred work belongs here. Completed work and implementation chronology belong in Git history; durable behaviour belongs in architecture, specification, user/developer documentation and qualification evidence.
+## Operations
 
-## P0 — Operational hardening
+- **Memory-sync SSH bootstrap.** `prepare-maintenance-sidecars.py` expects `ssh_config`, `id_ed25519`, and `known_hosts` in `${MEMORY_SYNC_SERVICE}/ssh`, but nothing creates or documents them. Package that step.
+- **Backup and restore.** No tooling exists. Data to protect: LiteLLM PostgreSQL, `service_-_gitea`, `service_-_open-webui/data`, Hermes memory repository, and the root `.env`.
 
-- Package and document the external Stack6 memory-sync SSH bootstrap required when the configured Git origin needs that credential.
+## Code inconsistencies found during the documentation review (2026-10-02)
 
-## P0 — Upgrade engine hardening
-
-- The `postgres-major-upgrade` apply recipe (`src/local_ai_cli/upgrade/_postgres_major_upgrade.py`, used by Stack3 `postgresql`) has been exercised only against mocked subprocess/Docker calls (`tests/upgrade/test_postgres_major_upgrade.py`). It has never run against a real deployment. Real-runtime qualification — a representative PostgreSQL major-version transition on real infrastructure, per [upgrade executor qualification](devel-docs/upgrade-qualification.md) gate 11 — is required before this recipe is trusted in production. See [PostgreSQL DR qualification](dr/postgres.md#major-version-upgrade) for what the mechanism does and what it deliberately does not clean up automatically.
-
-## P1 — Engine hardening
-
-- Reject boolean `schema_version` explicitly rather than accepting Python's `True == 1` equivalence.
-- Ensure every adapter completes fallible integrity checks before te
+- **Open WebUI default model.** `DEFAULT_MODELS=basic_autorouter`, and `reconcile-model-policy.py` creates that entry with no base model, yet LiteLLM only publishes `mlx/local-{general,agent,coding}`. Confirm where `basic_autorouter` comes from.
+- **`pyproject.toml`** declares the package `local_ai_cli` under `src/`, which does not exist.

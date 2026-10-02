@@ -6,94 +6,52 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack 60 — Hermes
 
-[Stack operations](../docs/operations.md) · [All stacks](../README.md#stacks-and-dependencies)
+[Operations](../docs/operations.md) · [All stacks](../README.md#stacks)
 
-Stack6 is the agent runtime. It combines Hermes with isolated command execution, local-first AI access through Stack3, optional Stack2 web capabilities and portable Git-backed user memory.
+The Hermes agent. It reaches models through LiteLLM, runs commands in an isolated SSH sandbox, and can optionally use web search and a Git-backed memory.
 
 ```mermaid
 flowchart LR
-    User["Human / configured channel"] --> Hermes["Stack6 Hermes"]
-    Hermes --> LiteLLM["Stack3 LiteLLM"]
-    Hermes --> Sandbox["Isolated SSH sandbox"]
-    Hermes -.->|optional web.search / web.extract| Web["Stack2"]
-    Memory["MEMORY.md + USER.md"] <--> Sync["Memory sync"]
-    Sync -.->|optional git.remote| Git["Configured Git remote / Stack4"]
-    Cleaner["Sandbox cleanup sidecar"] --> Sandbox
+    User --> Hermes
+    Hermes --> LiteLLM["30 · LiteLLM"]
+    Hermes -->|SSH| Sandbox["sandbox + cleanup"]
+    Hermes -.-> Web["20 · Search"]
+    Hermes -.-> Sync["memory-sync"] -.-> Git["Git remote"]
 ```
 
-## Contract
+| | |
+| --- | --- |
+| Install requires | Stacks 00 and 30 (`LITELLM_API_KEY`, `LITELLM_MCP_API_KEY` in `.env`) |
+| Containers | `hermes`, `hermes-sandbox`, `hermes-sandbox-cleanup`; optional `hermes-memory-sync` (Compose project `Stack6 - Hermes`) |
+| Published at | `norai.casa.lan` → dashboard on port 9119, with basic auth (`HERMES_DASHBOARD_*`) |
+| Runtime data | `${BASE_PATH}/${HERMES_SERVICE}`, `${HERMES_MEMORY_SERVICE}`, `${MEMORY_SYNC_SERVICE}`, `${SANDBOX_SERVICE}` |
+| `status` | Hermes `/health`, sandbox `sshd`, cleanup state files; memory-sync (if active) has a Git checkout |
 
-- **Requires:** Stack0 and Stack3.
-- **Optional:** Stack2 `web.search` / `web.extract`; configured Git remote, commonly Stack4.
-- **Owns:** Hermes runtime, sandbox execution surface and Stack6 maintenance sidecars.
-- **DR:** runtime and sandbox are reconstructable. Durable user memory is the Git-backed `MEMORY.md` + `USER.md` contract and is verified as an external prerequisite rather than copied as arbitrary container state.
+## Lifecycle specifics
 
-Stack 20 is deliberately optional. When its provider capabilities are absent or not READY, Hermes web tools must remain disabled. Capability reconciliation is a separate action after the provider is proven ready.
+- **`start`** builds the local images (`up -d --build`). Before that, it repairs two kinds of drift: values in Hermes' runtime `data/.env` that would override the root `.env`, and literal LiteLLM settings saved into `config.yaml`. When it changes something, it stops Hermes, backs the files up, and recreates the container.
+- **`stop`** includes the `git-memory` profile, so the memory-sync container is removed as well. A plain `docker compose down` would leave it running.
+- **Isolation.** Hermes has no Docker socket. Commands run in the sandbox, which is attached only to the private `hermes-exec` network.
 
-## Isolation boundary
+## Optional features (manual scripts)
 
-Hermes does **not** receive the Docker socket. Arbitrary command execution crosses a dedicated SSH boundary into the sandbox rather than becoming platform-level Docker control. The sandbox is attached to its private execution network and is not promoted to the shared service network merely for convenience.
+Run them from this directory as root, after `install`. None of them runs automatically.
 
-Maintenance sidecars operate on Stack6-owned state only. Sandbox cleanup and reset semantics remain deterministic and do not grant Hermes broader platform administration.
+- **Web tools:** start Stack 20, then run `reconcile-capabilities.py --restart`.
+- **Git memory:** run in order `prepare-git-memory.py` (with Hermes stopped), then `prepare-maintenance-sidecars.py` (after placing the SSH key in `${MEMORY_SYNC_SERVICE}/ssh`), then `reconcile-capabilities.py --enable-git-memory --restart`.
 
-The model/provider boundary is also externalized: Hermes talks to Stack3 through dedicated least-privilege gateway credentials instead of carrying provider master credentials itself.
+| Script | Purpose |
+| --- | --- |
+| `reconcile-capabilities.py [--restart] [--enable-git-memory\|--disable-git-memory]` | Turn web tools on when `searxng` and `firecrawl-api` are reachable (off otherwise), and record the Git-memory choice |
+| `prepare-git-memory.py` | Adopt the Git working tree (`GITMEM_REPOSITORY`, `GITMEM_BRANCH`) as memory without overwriting local changes |
+| `prepare-maintenance-sidecars.py` | Check the memory-sync SSH material (`ssh_config`, `id_ed25519`, `known_hosts`) and its directories |
+| `install-buzz.py` | Build and install the pinned Buzz CLI into Hermes' persistent data |
+| `apply-terminal-timeout-workaround.py` | Patch a known Hermes terminal-timeout issue in the runtime code |
+| `wait-ready.py` | Wait until the containers are ready after `start` |
+| `cleanup.py [--reset-sandbox\|--reset-state\|--factory-reset] [--dry-run] [--yes]` | Clean up the runtime; the reset modes are destructive and ask for confirmation |
 
-## Preparation and convergence
+## Memory sync rules
 
-The complete Stack 60 deployment involves separate phases because filesystem ownership, managed configuration, SSH isolation, generation state and Git-backed memory have different failure and security properties. The `install` wrapper runs only `01-prepare.py`, not this entire sequence.
+The sidecar uses its own SSH identity, never force-pushes, stops when the branch has diverged, and commits only `MEMORY.md` and `USER.md`. That Git repository is the durable copy of the agent's memory; everything else in the sandbox can be rebuilt.
 
-```mermaid
-flowchart TD
-    PRE["PREPARE"] --> FS["Prepare persistent filesystem"]
-    FS --> CFG["Install / reconcile managed configuration"]
-    CFG --> SSH["Prepare SSH sandbox boundary"]
-    SSH --> GEN["Initialize generation/state contract"]
-    GEN --> MEM["Validate / reconcile Git-backed memory"]
-    MEM --> DEP["DEPLOY"]
-    DEP --> READY["READY"]
-    READY --> CAP["RECONCILE optional capabilities"]
-    CAP --> CHG{"Runtime changed?"}
-    CHG -- Yes --> READY2["Re-establish READY"]
-    CHG -- No --> VER["VERIFY"]
-    READY2 --> VER
-```
-
-Generation/state initialization is fail-closed: an incomplete or inconsistent sandbox generation is not treated as prepared merely because files exist. Capability reconciliation can restart runtime when configuration changes; recheck readiness after such a restart.
-
-A `.lock` means **PREPARED only**. It says nothing about Hermes health, sandbox readiness or optional capability convergence.
-
-## Unattended preparation wrapper
-
-Run `./local-ai stack-60 install` from the repository root (as root for
-initial preparation). It invokes only the stack's `01-prepare.py` package
-module with closed stdin, forwards the preparation audit, and checks for a
-regular `.lock` on success. An existing lock is reported without changing
-configuration or removing it.
-
-`install` never starts containers or executes Buzz installation, Git-memory
-adoption, sidecar setup, capability reconciliation, workaround, readiness,
-or cleanup. Those operations belong to a later, separately scoped phase.
-
-`./local-ai stack-60 start` runs `docker compose up -d --build` after checking `.lock`; `./local-ai stack-60 stop` runs `docker compose --profile git-memory down` without `--volumes`. The profile is enabled only for shutdown, so the optional `hermes-memory-sync` container is removed even when a default-profile-only `up` started the other services. Stop preserves bind-mounted memory and runtime state, the external shared network and `.lock`. Neither verb runs `wait-ready.py`, adopts Git memory, reconciles optional capabilities or performs cleanup. The default Compose profile determines which services start.
-
-Before `start`, the wrapper removes any runtime `.env` assignments shadowing the protected root `.env` and restores managed LiteLLM gateway settings in the bind-mounted `config.yaml` to environment references. When needed, it stops Hermes, creates private backups of only the changed runtime files, and recreates the service from the protected root `.env`. Other runtime settings and memory are preserved. This does not invoke Hermes `/setup` or grant MCP access; assign MCP permissions in LiteLLM separately.
-
-Use `./local-ai stack-60 stop` from the repository root; it enables the `git-memory` profile for shutdown so the optional memory-sync service is removed too. Plain `docker compose down` from the stack directory omits that service.
-
-Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
-
-`./local-ai stack-60 status` reports Hermes, sandbox and cleanup-sidecar health; an absent `git-memory` profile is shown as optional, not failed. The memory-sync healthcheck confirms a Git checkout is mounted, not that its last synchronization succeeded. The cleanup healthcheck confirms its state DB and generation marker exist, not that a sweep succeeded. These workers expose no independent readiness endpoint, so `status --deep` currently has no additional probe and must not claim those background jobs completed.
-
-## Memory contract
-
-Portable durable memory consists of the user-owned Git-backed files `MEMORY.md` and `USER.md`. Generated sandbox state, transient sessions and reconstructable runtime are not promoted to DR artifacts merely because they exist on disk.
-
-Memory synchronization may use Stack4 Gitea when configured, but Stack6 does not require Stack4. The sync process uses its dedicated Git/SSH identity, does not force-push, fails on divergence, permits only the expected memory files to be dirty, and fast-forwards a clean working tree when the remote is ahead. These constraints preserve the Git repository as user-owned durable state rather than treating synchronization as authority to rewrite history.
-
-With Hermes stopped and Stack6 prepared, adopt or validate the memory working tree using `python3 ./prepare-git-memory.py` from this directory. The command preserves local memory and audits the configured remote, branch, ownership and file changes before enabling the optional `git-memory` profile.
-
-## Deferred agent work
-
-Hermes native Cron is the agentic deferred-work mechanism. A future Cron execution starts in a fresh session, so a scheduled prompt carries the context required to perform that future task. Deterministic housekeeping such as sandbox cleanup and Git-memory synchronization remains in dedicated sidecars rather than being delegated to agentic Cron.
-
-Key implementation files include `docker-compose.yml`, `config/hermes/config.yaml`, sandbox and maintenance configuration, `01-prepare.py`, `wait-ready.py`, and `reconcile-capabilities.py`. The wrapper does not run the latter two phases automatically.
+Files: `docker-compose.yml`, `config/` (Hermes config, sandbox, cleanup and memory-sync images, Buzz build), `01-prepare.py`, and the scripts above.

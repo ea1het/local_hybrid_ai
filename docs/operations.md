@@ -4,38 +4,111 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 -->
 
-# Stack operations
+# Operations
 
-Run commands from the repository root. First run `sudo ./local-ai env bootstrap` to create or complete the protected root `.env` from [`.env.template`](../.env.template). This command generates missing local secrets, including PostgreSQL administrator passwords, directly in `.env`. PostgreSQL receives its password from `.env`, with no password-file mount. The command preserves existing values, never prints secret values, and creates `.env-backup-YYMMDD-HHMMSS` before changing an existing file. Keep those backups private. Stack 00 creates per-stack `.env` links. Use `sudo` for preparation and container lifecycle operations. `./local-ai stack-NN <verb> [parameters]` dispatches to `wrapper/bin/stack-NN.py` with arguments unchanged; direct invocation of the Python wrapper still works.
+Run every command as root from the repository root. Each stack is managed on its own: `./local-ai` never starts, stops, or installs another stack for you.
 
-The root environment bootstrap generates LiteLLM administrative credentials and salt but cannot generate the Mac mini's oMLX API key. Copy that key into `OMLX_API_KEY` and adjust the `OMLX_MODEL_*` profiles if needed before Stack 30 install. The installer uses LiteLLM's management API to create the `oMLX` credential and three public model aliases in its database before issuing consumer keys. Existing names are preserved, so the models remain editable in the Admin UI; `config.yaml` does not declare them. The Hermes MCP key initially has no server grants; configure MCP registrations and permissions in LiteLLM later. Installation does not test inference or end-to-end MCP calls.
+## Stack lifecycle
 
-| Stack | `install` | `start` | `stop` | `status --deep` |
-|---|---|---|---|---|
-| 00 | Reconcile bootstrap, network, CA, TLS, then verify and lock | Not applicable | Not applicable | Read-only platform verifier (root required) |
-| 10 | HAProxy/Web prepare | Compose `up -d` | Compose `down` | No extra probe |
-| 20 | Search/Firecrawl prepare | Compose `up -d` | Compose `down` | Firecrawl PostgreSQL `SELECT 1` |
-| 30 | Prepare, provision PostgreSQL, create editable oMLX credential/models, then issue minimal keys in a disposable LiteLLM container | Compose `up -d` | Compose `down` | LiteLLM PostgreSQL `SELECT 1` |
-| 40 | Prepare and initialize the administrator in disposable Gitea containers | Compose `up -d` | Compose `down` | No extra probe |
-| 50 | Check shared network and prepare Dockhand volume; no Stack 00 lock required | Compose `up -d` | Compose **`stop`** | No extra probe |
-| 60 | Hermes prepare only | Compose `up -d --build` | Compose `down` | No extra probe |
-| 70 | Bootstrap local config, then prepare using the Stack 30-issued LiteLLM key | Compose `up -d` | Compose `down` | No extra probe |
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Unprepared
+    Unprepared --> Prepared: install
+    Prepared --> Running: start
+    Running --> Prepared: stop
+    Prepared --> Unprepared: rm .lock (manual)
+```
 
-Every wrapper has `install` and `status`; Stacks 10–70 also have `start` and `stop`. Run `sudo ./local-ai stack-NN <verb>` with an available two-digit stack number. `./local-ai --help` lists the current names; an unknown stack is rejected. The wrappers use closed stdin for preparation; they forward output and propagate errors rather than prompting. `stop` is available without a lock; `start` requires one. Neither verb removes persistent bind mounts or the preparation lock. Stack 50's `stop` preserves its existing container and external `dockhand_data` volume; the volume contains runtime state even though Dockhand is reconstructable as a service.
+- **`.lock` means prepared, nothing more.** It does not mean running or healthy. While it exists, `install` does nothing (except in Stack 00, see below).
+- **`install`** writes configuration and runtime directories, then the `.lock`. It never leaves services running.
+- **`start`** runs `docker compose up -d` and requires the `.lock`. A successful `start` does not mean the stack is ready; check with `status`.
+- **`stop`** runs `docker compose down` and works without a `.lock`. Persistent data, the `.lock`, and the network are kept.
+- **`status`** is read-only and works in any state.
 
-Stack 60 `start` removes stale LiteLLM overrides from Hermes' ephemeral runtime `.env` and restores environment references in its managed configuration before Compose starts; unrelated runtime settings remain. Stack 70 `start` synchronizes only the saved LiteLLM connection key in Open WebUI's SQLite configuration from the root `.env`, preserving other Admin UI settings. These changes occur only when values differ, with private backups of the affected files. Neither operation runs Hermes `/setup` or resets all Open WebUI persistent configuration.
+Wrappers run their phases with closed stdin and never prompt. On a terminal they show an elapsed-time activity bar.
 
-Stack command output begins and ends with a blank line. Installation phases, Compose results, next steps, and status sections are separated by blank lines; this framing leaves room for a future terminal footer without changing command behavior or exit codes.
+## Installation order
 
-An existing Stack 10–70 `.lock` makes `install` a no-op. Never remove it simply to rerun a command: backup and assess what re-preparation may overwrite first. Stack 00 differs: every `install` audits/repairs platform and Stack 10 prerequisite directories, not other unlocked application directories, and only leaves a lock after successful verification. A direct `stack-00_-_platform/00-bootstrap.py` invocation without `--platform-only` still reconciles all unlocked stacks; review live runtime state first. Certificate rotation is a separate explicit action.
+```mermaid
+flowchart TB
+    env["env bootstrap<br/>OMLX_API_KEY<br/>certificates"] --> s00["00 · Platform"]
+    s00 --> s30["30 · LiteLLM"]
+    s00 --> rest["10 · HAProxy<br/>20 · Search<br/>40 · Gitea"]
+    s00 -.->|network only| s50["50 · Dockhand"]
+    s30 --> s60["60 · Hermes"] & s70["70 · Open WebUI"]
+```
 
-## First deployment and follow-up
+An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* while it installs. Start Stack 30 before using Stacks 60 or 70.
 
-1. Prepare Stack 00 and verify with `status --deep` for stacks that require its full platform contract. Supply mkcert source files only if installed certificates are missing or invalid, or when intentionally rotating them. Stack 50 is an exception: its installer checks the existing shared bridge network directly and does not require Stack 00's lock or CA.
-2. Set `OMLX_API_KEY` in `.env` before Stack 30 install. Stack 30 installs PostgreSQL and the minimum gateway credentials without leaving its services running. Stack 40 initializes Gitea's administrator during install without starting its long-lived services.
-3. Start Stack 30 before consumers. Register optional MCP servers and grant Hermes access in LiteLLM yourself; the installed MCP key starts with no grants. Stack 70 uses the key Stack 30 placed in `.env`; its own bootstrap only backs up and fills local defaults or signing identity.
-4. Start applications, inspect `status`, and perform any application-specific readiness or policy checks. Stack 20's `wait-ready.py`, Stack 60's memory/capability setup, and Stack 70's model-policy reconciliation are not automatically run by `start`.
+## What each verb does per stack
 
-`status` reports preparation separately from live Docker state. It discovers containers by their Compose working-directory label, including former stack directory names. If the checkout moved, it can identify a Compose project through a known container name. It does not read the local Compose file or `.env` link. A missing `.lock` therefore reports `preparation=UNPREPARED` while still showing any running containers and their health; `overall` remains `NOT READY` until preparation is verified. A required container that is running without a healthy healthcheck is `RUNNING`, not `READY`. Stopped, partially started, and unhealthy services are not ready. Optional Compose profiles, such as Stack 60 Git-memory sync, do not count as failures when inactive. A return code of 0 means the wrapper's implemented checks passed; it does **not** prove real search, inference, runner jobs, memory sync, policy convergence, or public TLS routing. `status --deep` is read-only and adds only the probes shown in the table. Docker access is required; an unavailable Docker daemon reports `UNKNOWN`, not `STOPPED`.
+| Stack | `install` phases | `start` | `stop` | `status --deep` adds |
+| --- | --- | --- | --- | --- |
+| 00 | bootstrap → prepare → CA → TLS → verify → `.lock` | — | — | platform `verify.py` |
+| 10 | prepare | `up -d` | `down` | — |
+| 20 | dirs → prepare | checks SearXNG config, `up -d` | `down` | PostgreSQL `SELECT 1`, SearXNG test search |
+| 30 | dirs → prepare → provision PostgreSQL → models and keys | `up -d` | `down` | PostgreSQL `SELECT 1` |
+| 40 | dirs → prepare → create admin | `up -d` | `down` | — |
+| 50 | create `dockhand_data` volume | `up -d` | **`stop`** (keeps container) | — |
+| 60 | dirs → prepare | syncs runtime config, `up -d --build` | `down` incl. `git-memory` profile | — |
+| 70 | dirs → bootstrap `.env` → prepare | syncs saved LiteLLM key, `up -d` | `down` | — |
 
-The dispatcher and wrappers are per-stack operations, not a dependency scheduler, upgrade engine, or disaster-recovery interface. Consult the [stack READMEs](../README.md#stacks-and-dependencies) before running first-time or destructive procedures.
+*dirs* = `stack-00_-_platform/00-bootstrap.py --stack NN`, which creates only that stack's runtime directories. The stack READMEs explain the stack-specific phases.
+
+**Stack 00 is different.** It has no containers. Its `install` is a repeatable audit: every run checks and repairs the platform, then keeps or rewrites the `.lock`. If a phase fails, the `.lock` is removed.
+
+## Reading `status`
+
+```text
+Stack 30: preparation=PREPARED
+  litellm-postgres: running / healthy
+  litellm: running / healthy
+runtime=READY
+overall=READY
+```
+
+| `runtime` | Meaning |
+| --- | --- |
+| `READY` | Every required container is running and healthy |
+| `RUNNING (health pending or unavailable)` | Running, but some healthcheck has not passed yet or does not exist |
+| `PARTIAL` | Some required containers are not running |
+| `DEGRADED` | A container is unhealthy or exited with an error |
+| `STOPPED` | No required container is running |
+| `UNKNOWN` | Docker could not be queried |
+
+`overall=READY` (exit 0) requires `PREPARED`, `READY`, and any `--deep` checks to pass. Otherwise exit 1; exit 2 means Docker is unavailable. `status` finds containers by their Compose labels, so it also reports a running stack whose `.lock` is missing.
+
+Healthchecks prove that processes are alive, not that search, inference, runner jobs, or memory sync work end to end.
+
+Stack 00 `status` reports only the `.lock`. Use `status --deep` to run the platform verifier.
+
+## Reconfiguring a prepared stack
+
+`install` will not touch a stack that has a `.lock`. To prepare it again:
+
+1. `./local-ai stack-NN stop` and back up its runtime data under `BASE_PATH`.
+2. Read the stack README: some state is never regenerated (PostgreSQL data, secrets, Gitea admin).
+3. Remove `stack-NN_-_*/.lock`, then run `install` and `start`.
+
+## Shell completion
+
+```bash
+./local-ai completion zsh install   # or bash
+./local-ai completion zsh status
+```
+
+`install` writes the completion file where the shell loads it automatically: system-wide as root, under `~/.local/share` otherwise. Startup files are never edited. `status` opens a login shell and reports what is still missing (for example `fpath`, `compinit`, or `bash-completion`). For a single session, run `eval "$(./local-ai completion zsh)"` instead.
+
+## Maintenance tools
+
+| Command | Purpose |
+| --- | --- |
+| `./local-ai env bootstrap` | Create or complete `.env` from `.env.template`. Generates missing local secrets, never rotates existing ones, and backs up to `.env-backup-YYMMDD-HHMMSS`. Lists external credentials still pending (for example `OMLX_API_KEY`). |
+| `python3 -B wrapper/stubs/sync_envs.py [--check\|--dry-run]` | Add new template variables to `.env`, keeping local values. |
+| `python3 -B wrapper/stubs/upgrade.py check` | Compare image tags in `.env` with their registries and write the plan `.env--upgrading`. |
+| `python3 -B wrapper/stubs/upgrade.py apply` | Apply the plan after confirming each change. Then `stop` and `start` the affected stacks. |
+
+`.env` must be `root:root 0600`. Keep its backups just as private.
+
+Certificate rotation is described in [Stack 00](../stack-00_-_platform/README.md#certificates).

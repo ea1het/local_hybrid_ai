@@ -6,10 +6,12 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Stack tests
 
-Tests are grouped by stack (`stack_00` through `stack_70`). They exercise every
-Python module in the stack directories with temporary files and
-mocked external operations; they do not deploy containers or modify a live
-server.
+`stack_00` … `stack_70` test each stack's Python modules. The top-level
+`test_*.py` files cover the shared pieces: the `local-ai` dispatcher and shell
+completion, the wrappers, `status`, `env bootstrap`, the progress bar, Compose
+healthchecks, MPL headers, shebangs, and the absence of `__pycache__`. All
+tests use temporary files and mocked external operations; they do not deploy
+containers or modify a live server.
 
 Run the complete suite from the repository root:
 
