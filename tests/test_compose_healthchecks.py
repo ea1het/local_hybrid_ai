@@ -53,3 +53,27 @@ def test_every_compose_service_has_healthcheck(number):
     expected = set(REQUIRED_SERVICES[number]) | set(OPTIONAL_SERVICES.get(number, ()))
     assert set(services) == expected
     assert all(service.get("healthcheck", {}).get("test") for service in services.values())
+
+
+def test_searxng_mcp_uses_pinned_http_image():
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose CLI unavailable")
+    result = subprocess.run(
+        ["docker", "compose", "--env-file", str(ROOT / ".env.template"),
+         "-f", str(ROOT / STACK_DIRS["20"] / "docker-compose.yml"),
+         "config", "--format", "json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        pytest.fail(result.stderr)
+    service = json.loads(result.stdout)["services"]["searxng-mcp"]
+    assert service["image"] == "isokoliuk/mcp-searxng:2.5.0"
+    assert service["environment"] == {
+        "SEARXNG_URL": "http://searxng:8080",
+        "MCP_HTTP_PORT": "3000",
+        "MCP_HTTP_HOST": "0.0.0.0",
+        "SEARXNG_LITE_TOOLS": "true",
+    }
+    assert service.get("command") is None
+    assert "ports" not in service
+    assert "/health" in service["healthcheck"]["test"][-1]
