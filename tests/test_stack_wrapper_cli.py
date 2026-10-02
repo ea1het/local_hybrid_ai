@@ -84,7 +84,9 @@ STACK_NUMBERS = ("10", "20", "30", "40", "50", "60", "70")
 
 def stub_clean_consumer_runtime(number, wrapper, root, monkeypatch):
     """Keep lifecycle tests focused on Compose when runtime secrets are current."""
-    if number == "60":
+    if number == "20":
+        monkeypatch.setattr(wrapper, "configuration_error", lambda: None)
+    elif number == "60":
         monkeypatch.setattr(wrapper, "protected_text", lambda _: (
             f"BASE_PATH={root / 'runtime'}\nHERMES_SERVICE=service_-_hermes\n"))
         monkeypatch.setattr(wrapper, "needs_update", lambda *args: False)

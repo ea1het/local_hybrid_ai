@@ -117,6 +117,21 @@ def test_stack_20_deep_status_detects_search_failure(tmp_path, monkeypatch, caps
     assert "overall=NOT READY" in output
 
 
+@pytest.mark.parametrize("exit_code,expected", [(0, True), (1, False)])
+def test_searxng_search_probe_reports_http_result(monkeypatch, exit_code, expected):
+    """Run a local JSON search without emitting response data or credentials."""
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=exit_code)
+
+    monkeypatch.setattr(stack_status.subprocess, "run", fake_run)
+    assert stack_status.searxng_search_probe() is expected
+    assert calls[0][:4] == ["docker", "exec", "searxng", "python3"]
+    assert "format=json" in calls[0][-1]
+
+
 def test_deep_query_failure_does_not_report_ready(tmp_path, monkeypatch, capsys):
     """Keep a database authentication error separate from container health."""
     stack_dir, lock_file = stack_paths(tmp_path)

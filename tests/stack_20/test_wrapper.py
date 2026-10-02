@@ -145,14 +145,30 @@ def test_managed_config_must_match_prepared_files(tmp_path, monkeypatch):
     assert "limiter.toml" in wrapper.configuration_error()
 
 
+def test_existing_lock_does_not_hide_missing_config(tmp_path, monkeypatch, capsys):
+    """A lock cannot certify files that have since disappeared."""
+    wrapper = load_wrapper()
+    lock = tmp_path / ".lock"
+    lock.touch()
+    monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
+    monkeypatch.setattr(wrapper, "configuration_error", lambda: "missing limiter.toml")
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.main(["install"]) == 1
+    assert "missing limiter.toml" in capsys.readouterr().err
+
+
 def test_start_rejects_stale_managed_config(tmp_path, monkeypatch, capsys):
     """Never launch containers behind a valid lock with missing config."""
     wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack-20_-_searxng_firecrawl"
+    stack_dir.mkdir()
     (tmp_path / ".env").write_text("BASE_PATH=/tmp/runtime\n")
-    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
-    (tmp_path / ".lock").touch()
-    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
-    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    (stack_dir / ".env").symlink_to("../.env")
+    (stack_dir / "docker-compose.yml").write_text("services: {}\n")
+    (stack_dir / ".lock").touch()
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", stack_dir / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
     monkeypatch.setattr(wrapper, "configuration_error", lambda: "missing settings.yml")
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
