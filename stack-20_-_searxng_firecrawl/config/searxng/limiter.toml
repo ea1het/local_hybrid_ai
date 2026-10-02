@@ -2,37 +2,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-# Configuración de botdetection / limiter de SearXNG.
-# 01-prepare.py la instala en ${BASE_PATH}/service_-_searxng/config/limiter.toml.
+# Configuratio for botdetection / limiter in SearXNG.
+# 01-prepare.py install this in ${BASE_PATH}/service_-_searxng/config/limiter.toml.
 #
-# Verificado contra SearXNG 2026.9.30-a9d990033 (searx/limiter.toml como esquema).
-# Solo se sobrescriben valores; lo no indicado toma el valor por defecto.
-#
-# Este fichero se lee SIEMPRE, aunque server.limiter sea false:
-# botdetection.trusted_proxies determina la IP real del cliente detrás de
-# HAProxy (la usa, p. ej., el plugin self_info: buscar "ip").
-#
-# AVISO sobre redes: redlocal se crea sin subred explícita, así que Docker
-# elige una. 172.16.0.0/12 cubre los pools por defecto de Docker (172.17-31).
-# Comprobar y, si no encaja, sustituir en las dos listas de abajo:
-#   docker network inspect redlocal -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
-# Un valor que no sea una red IP válida en trusted_proxies rompe las peticiones.
+# Verified against SearXNG 2026.9.30-a9d990033 (searx/limiter.toml as schema).
+# Only values are overwritten; rest get default values.
 
 [botdetection]
 
 ipv4_prefix = 32
 ipv6_prefix = 48
 
-# Si la petición llega desde una IP de esta lista, la IP del cliente se toma
-# de X-Forwarded-For (HAProxy tiene "option forwardfor"). SearXNG recorre XFF
-# de derecha a izquierda y usa la primera IP NO confiable, así que un
-# X-Forwarded-For falsificado por el cliente no sirve para suplantar.
-# Las listas se AÑADEN a las del esquema por defecto (que ya incluye
-# 127.0.0.0/8 y ::1), por eso aquí solo va redlocal.
-trusted_proxies = [
-    '172.16.0.0/12',  # redlocal (HAProxy)
-    '192.168.0.0/16', # redlocal (ejemplo de red local de usuario)
-]
+trusted_proxies = ['127.0.0.0/8', '::1', '172.16.0.0/12']
 
 [botdetection.ip_limit]
 
@@ -45,7 +26,7 @@ link_token = false
 
 pass_ip = [
     '172.16.0.0/12',  # redlocal: contenedores que llaman directo a searxng:8080
-    '192.168.0.0/16', # redlocal: usuarios que llaman directo a searxng:8080
+    '192.168.0.0/16', # typical LAN subnet
 ]
 
 block_ip = []

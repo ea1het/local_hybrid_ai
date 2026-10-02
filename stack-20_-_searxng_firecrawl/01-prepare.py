@@ -97,8 +97,9 @@ def main():
     stack0_lock = Path(stacks_root) / "stack-00_-_platform/.lock"
     settings = STACK_DIR / "config/searxng/settings.yml"
     limiter = STACK_DIR / "config/searxng/limiter.toml"
+    favicons = STACK_DIR / "config/searxng/favicons.toml"
     postgres_init = STACK_DIR / "config/postgres/020-firecrawl-app-role.sh"
-    for path in (stack0_lock, settings, limiter, postgres_init):
+    for path in (stack0_lock, settings, limiter, favicons, postgres_init):
         if not path.is_file():
             die(f"missing {path}" + ("; prepare Stack 00 first" if path == stack0_lock else ""))
     searxng_service = Path(base_path) / "service_-_searxng"
@@ -125,12 +126,12 @@ def main():
     log("directories and permissions managed by Stack 00")
 
     step("SearXNG configuration")
-    for source in (settings, limiter):
+    for source in (settings, limiter, favicons):
         target = searxng_config / source.name
         if target.is_dir() and not target.is_symlink():
             die(f"configuration path cannot be a directory: {target}")
     owner, group = searxng_config.stat().st_uid, searxng_config.stat().st_gid
-    for source in (settings, limiter):
+    for source in (settings, limiter, favicons):
         subprocess.run(["install", "-m", "0644", "-o", str(owner), "-g", str(group),
                         str(source), str(searxng_config / source.name)], check=True)
     log("bind-mounted directory preserved; only managed files reconciled")

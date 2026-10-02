@@ -31,6 +31,7 @@ def test_prepare_uses_env_password_without_file_and_installs_config(tmp_path, mo
         (base / path).mkdir(parents=True)
     for path in (stack_dir / "config/searxng/settings.yml",
                  stack_dir / "config/searxng/limiter.toml",
+                 stack_dir / "config/searxng/favicons.toml",
                  stack_dir / "config/postgres/020-firecrawl-app-role.sh",
                  tmp_path / "stack-00_-_platform/.lock"):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +65,7 @@ def test_prepare_uses_env_password_without_file_and_installs_config(tmp_path, mo
 
     assert not (base / "service_-_firecrawl-postgres/secret").exists()
     assert module.LOCK_FILE.read_text().startswith("stack=stack-20_-_searxng_firecrawl\n")
-    assert [command[0] for command in commands].count("install") == 2
+    assert [command[0] for command in commands].count("install") == 3
     assert any(command[:2] == ["docker", "compose"] and "config" in command for command in commands)
 
 

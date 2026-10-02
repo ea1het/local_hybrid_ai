@@ -49,7 +49,9 @@ is not part of unattended preparation.
 
 `./local-ai stack-20 start` runs `docker compose up -d` after checking `.lock`; `./local-ai stack-20 stop` runs `docker compose down` without `--volumes`. Stop removes this stack's containers, not its persistent bind-mounted data or Stack0's external network. Start does not run `wait-ready.py` or reconcile optional consumers; run those phases separately before claiming `web.search` or `web.extract` is READY.
 
-When the lock exists, `install` and `start` also verify that the managed SearXNG `settings.yml` and `limiter.toml` still match the repository. If either file is missing or replaced by the container's default template, they fail rather than silently treating the old lock as sufficient. Back up unexpected runtime files and restore the managed copies before starting; do not delete the lock merely to mask missing configuration.
+When the lock exists, `install` and `start` also verify that the managed SearXNG `settings.yml`, `limiter.toml`, and `favicons.toml` still match the repository. If a file is missing or replaced by the container's default template, they fail rather than silently treating the old lock as sufficient. Back up unexpected runtime files and restore the managed copies before starting; do not delete the lock merely to mask missing configuration. The favicon cache uses the persistent SearXNG data mount.
+
+The limiter is disabled. `trusted_proxies` includes loopback and the Docker `172.16.0.0/12` range so SearXNG accepts the browser's forwarded client IP from HAProxy on `redlocal`; LAN addresses are not trusted as proxies. Direct container requests without forwarded headers use their connection address and can still produce a missing-forwarded-header log message. Because the Docker range is trusted, any container in that range can forge a forwarded IP; restricting trust to HAProxy alone would require a stable proxy address or a separate network.
 
 Run both lifecycle verbs as root; `stop` remains available if `.lock` is missing.
 

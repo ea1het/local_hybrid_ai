@@ -133,7 +133,7 @@ def test_managed_config_must_match_prepared_files(tmp_path, monkeypatch):
     target_dir.mkdir(parents=True)
     monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
     monkeypatch.setattr(wrapper, "protected_text", lambda path: f"BASE_PATH={tmp_path / 'runtime'}\n")
-    for name in ("settings.yml", "limiter.toml"):
+    for name in ("settings.yml", "limiter.toml", "favicons.toml"):
         (source_dir / name).write_text("managed")
         (target_dir / name).write_text("managed")
 
@@ -143,6 +143,9 @@ def test_managed_config_must_match_prepared_files(tmp_path, monkeypatch):
     (target_dir / "settings.yml").write_text("managed")
     (target_dir / "limiter.toml").unlink()
     assert "limiter.toml" in wrapper.configuration_error()
+    (target_dir / "limiter.toml").write_text("managed")
+    (target_dir / "favicons.toml").unlink()
+    assert "favicons.toml" in wrapper.configuration_error()
 
 
 def test_existing_lock_does_not_hide_missing_config(tmp_path, monkeypatch, capsys):

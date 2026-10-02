@@ -43,7 +43,7 @@ def configuration_error() -> str | None:
         if not base_path.startswith("/"):
             return "BASE_PATH is missing or not absolute in .env"
         config_dir = Path(base_path) / "service_-_searxng/config"
-        for name in ("settings.yml", "limiter.toml"):
+        for name in ("settings.yml", "limiter.toml", "favicons.toml"):
             source = STACK_DIR / "config/searxng" / name
             target = config_dir / name
             if (not source.is_file() or source.is_symlink() or not target.is_file()
