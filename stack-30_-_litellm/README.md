@@ -43,7 +43,7 @@ sequenceDiagram
 ```
 
 - **Models are database-managed.** The three public aliases map to `OMLX_MODEL_GENERAL`, `OMLX_MODEL_AGENT`, and `OMLX_MODEL_CODING` (default `qwen36:*`). They are not in `config.yaml`, so you can edit them in the Admin UI. `install` never overwrites an existing credential or model.
-- **Keys.** Hermes gets an inference key (`LITELLM_API_KEY`) and an MCP key with no MCP grants yet (`LITELLM_MCP_API_KEY`). Open WebUI gets an inference key (`OPENWEBUI_LITELLM_API_KEY`). On a retry, a key already in `.env` is reused if it is still valid and replaced if the database lost it. Keys are never printed.
+- **Keys.** Hermes gets an inference key (`LITELLM_API_KEY`) and an MCP key with no MCP grants yet (`LITELLM_MCP_API_KEY`). Open WebUI gets an inference key (`OPENWEBUI_LITELLM_API_KEY`). Inference keys start with the three oMLX models and only `llm_api_routes`, so their model selection remains editable in LiteLLM. On a retry, an active editable key in `.env` retains the operator's model selection; a missing or legacy key with `info_routes` is replaced. Keys are never printed.
 - **No inference test.** `install` does not call oMLX; check a real completion after `start`.
 
 ## Notes

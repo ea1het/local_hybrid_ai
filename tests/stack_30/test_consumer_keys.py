@@ -203,6 +203,42 @@ def test_checks_existing_key_by_hash_without_exposing_secret(monkeypatch, capsys
     assert "sk-consumer" not in requests[0].full_url
 
 
+def test_existing_inference_key_keeps_operator_model_selection(monkeypatch, capsys):
+    """A valid editable key need not retain the installer's initial model list."""
+    import urllib.request
+
+    module = load_module("stack-30_-_litellm", "issue-consumer-keys.py")
+
+    def fake_open(request, timeout):
+        return io.BytesIO(json.dumps({"info": {"status": "active", "models": ["my-auto-router"],
+                                           "allowed_routes": ["llm_api_routes"]}}).encode())
+
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-admin")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("sk-consumer"))
+    monkeypatch.setattr(sys, "argv", ["script", "webui-model"])
+    exec(module.CHECK_SCRIPT, {})
+    assert json.loads(capsys.readouterr().out) == {"valid": True}
+
+
+def test_existing_inference_key_with_info_routes_needs_replacement(monkeypatch, capsys):
+    """Do not retain a key whose route group disables model editing in LiteLLM."""
+    import urllib.request
+
+    module = load_module("stack-30_-_litellm", "issue-consumer-keys.py")
+
+    def fake_open(request, timeout):
+        return io.BytesIO(json.dumps({"info": {"status": "active", "models": module.MODELS,
+                                           "allowed_routes": ["llm_api_routes", "info_routes"]}}).encode())
+
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-admin")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("sk-consumer"))
+    monkeypatch.setattr(sys, "argv", ["script", "webui-model"])
+    exec(module.CHECK_SCRIPT, {})
+    assert json.loads(capsys.readouterr().out) == {"valid": False}
+
+
 def test_key_payloads_limit_models_and_start_without_mcp_grants(monkeypatch, capsys):
     """Give Hermes and WebUI fixed models but no implicit MCP permissions."""
     import urllib.request
@@ -228,7 +264,9 @@ def test_key_payloads_limit_models_and_start_without_mcp_grants(monkeypatch, cap
     for body in bodies:
         assert body["object_permission"]["mcp_servers"] == ["no-mcp-servers"]
     assert bodies[0]["models"] == list(module.MODELS)
+    assert bodies[0]["allowed_routes"] == ["llm_api_routes"]
     assert bodies[1]["allowed_routes"] == ["mcp_routes"]
     assert "models" not in bodies[1]
     assert bodies[2]["models"] == list(module.MODELS)
+    assert bodies[2]["allowed_routes"] == ["llm_api_routes"]
     assert capsys.readouterr().out.count("sk-issued") == 3

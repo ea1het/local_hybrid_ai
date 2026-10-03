@@ -88,11 +88,10 @@ except urllib.error.HTTPError as error:
     if error.code != 404:
         raise
     info = {}
-models = {"mlx/local-general", "mlx/local-agent", "mlx/local-coding"}
 routes = set(info.get("allowed_routes") or [])
 valid = info.get("status") == "active" and (
     "mcp_routes" in routes if role == "hermes-mcp" else
-    models.issubset(set(info.get("models") or [])) and "llm_api_routes" in routes)
+    "llm_api_routes" in routes and not routes.intersection({"info_routes", "management_routes"}))
 print(json.dumps({"valid": valid}))
 """
 
@@ -109,7 +108,7 @@ if role == "hermes-mcp":
     body["allowed_routes"] = ["mcp_routes"]
 else:
     body["models"] = models
-    body["allowed_routes"] = ["llm_api_routes", "info_routes"]
+    body["allowed_routes"] = ["llm_api_routes"]
 request = urllib.request.Request(base + "/key/generate", data=json.dumps(body).encode(),
                                  headers=headers, method="POST")
 with urllib.request.urlopen(request, timeout=20) as response:
