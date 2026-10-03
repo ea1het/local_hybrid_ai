@@ -77,3 +77,16 @@ def test_searxng_mcp_uses_pinned_http_image():
     assert service.get("command") is None
     assert "ports" not in service
     assert "/health" in service["healthcheck"]["test"][-1]
+
+
+def test_hermes_receives_telegram_allowlist():
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose CLI unavailable")
+    result = subprocess.run(
+        ["docker", "compose", "--env-file", str(ROOT / ".env.template"),
+         "-f", str(ROOT / STACK_DIRS["60"] / "docker-compose.yml"),
+         "config", "--format", "json"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "TELEGRAM_ALLOWED_USERS" in json.loads(result.stdout)["services"]["hermes"]["environment"]

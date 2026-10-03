@@ -224,3 +224,27 @@ def test_start_removes_stale_gateway_overrides_before_compose(tmp_path, monkeypa
     assert runtime_env.read_text() == "OTHER=keep\n"
     assert "${LITELLM_API_KEY}" in config.read_text()
     assert all("setup" not in command for command in calls)
+
+
+@pytest.mark.parametrize("allowed_users", ["", "*", "12345,", "user_name"])
+def test_start_rejects_telegram_without_valid_allowlist(tmp_path, monkeypatch, capsys, allowed_users):
+    """Fail before Docker or runtime edits when the bot has no numeric allowlist."""
+    wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack-60_-_hermes"
+    stack_dir.mkdir()
+    (stack_dir / ".env").symlink_to("../.env")
+    (tmp_path / ".env").write_text("protected\n")
+    (stack_dir / "docker-compose.yml").touch()
+    lock = stack_dir / ".lock"
+    lock.touch()
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+        "TELEGRAM_BOT_TOKEN=123456:abcdefghijklmnopqrstuvwxyzABCDE\n"
+        f"TELEGRAM_ALLOWED_USERS={allowed_users}\n"))
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
+    monkeypatch.setattr(wrapper, "run_with_progress", lambda *args, **kwargs: pytest.fail("must not run"))
+
+    assert wrapper.run_compose("up") == 1
+    assert "TELEGRAM_ALLOWED_USERS" in capsys.readouterr().err

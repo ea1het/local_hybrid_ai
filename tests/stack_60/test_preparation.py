@@ -42,7 +42,7 @@ def test_prepare_rejects_missing_dependency_before_writing(tmp_path, monkeypatch
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(tmp_path / "runtime"),
                API_SERVER_KEY="abcdefgh", LITELLM_MCP_API_KEY="abcdefgh",
                LITELLM_MCP_URL="http://litellm/mcp", HERMES_VERSION="v1",
-               TELEGRAM_BOT_TOKEN="",
+               TELEGRAM_BOT_TOKEN="", TELEGRAM_ALLOWED_USERS="",
                HERMES_SERVICE="service_-_hermes", HERMES_MEMORY_SERVICE="service_-_memory",
                MEMORY_SYNC_SERVICE="service_-_sync", SANDBOX_SERVICE="service_-_sandbox")
     env_file = stack / ".env"
@@ -54,6 +54,28 @@ def test_prepare_rejects_missing_dependency_before_writing(tmp_path, monkeypatch
         prepare.Prepare()
     assert "Stack 30 is not prepared" in capsys.readouterr().err
     assert sorted(path.name for path in stack.iterdir()) == [".env"]
+
+
+def test_prepare_rejects_telegram_token_without_allowed_users(tmp_path, monkeypatch, capsys):
+    """Do not prepare a bot that would reject every incoming user."""
+    stack = tmp_path / "stack-60_-_hermes"
+    stack.mkdir()
+    env = {key: "value" for key in prepare.ALL_KEYS}
+    env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(tmp_path / "runtime"),
+               API_SERVER_KEY="abcdefgh", LITELLM_MCP_API_KEY="abcdefgh",
+               LITELLM_MCP_URL="http://litellm/mcp", HERMES_VERSION="v1",
+               TELEGRAM_BOT_TOKEN="123456:abcdefghijklmnopqrstuvwxyzABCDE",
+               TELEGRAM_ALLOWED_USERS="",
+               HERMES_SERVICE="service_-_hermes", HERMES_MEMORY_SERVICE="service_-_memory",
+               MEMORY_SYNC_SERVICE="service_-_sync", SANDBOX_SERVICE="service_-_sandbox")
+    env_file = stack / ".env"
+    env_file.write_text("".join(f"{key}={value}\n" for key, value in env.items()))
+    monkeypatch.setattr(prepare, "STACK_DIR", stack)
+    monkeypatch.setattr(prepare, "ENV_FILE", env_file)
+
+    with pytest.raises(SystemExit, match="1"):
+        prepare.Prepare()
+    assert "TELEGRAM_ALLOWED_USERS" in capsys.readouterr().err
 
 
 def test_buzz_rejects_unsafe_base_before_install(tmp_path, monkeypatch, capsys):

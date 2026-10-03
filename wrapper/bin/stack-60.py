@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -144,6 +145,11 @@ def run_compose(action: str) -> int:
     if action == "up":
         try:
             values = assignments(protected_text(env_link.resolve()))
+            if values.get("TELEGRAM_BOT_TOKEN"):
+                if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]{30,}", values["TELEGRAM_BOT_TOKEN"]):
+                    raise RuntimeEnvironmentError("TELEGRAM_BOT_TOKEN does not match the expected BotFather format")
+                if not re.fullmatch(r"[1-9][0-9]*(?:,[1-9][0-9]*)*", values.get("TELEGRAM_ALLOWED_USERS", "")):
+                    raise RuntimeEnvironmentError("TELEGRAM_ALLOWED_USERS must list numeric user IDs when Telegram is enabled")
             base_path = values.get("BASE_PATH", "")
             service = values.get("HERMES_SERVICE", "")
             if (not base_path.startswith("/") or not service.startswith("service_-_")
