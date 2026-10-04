@@ -81,12 +81,12 @@ See [operations](docs/operations.md) for the full order, what each verb does, an
 ## The `local-ai` command
 
 ```text
-./local-ai stack-NN {install|start|stop|status [--deep]}
+./local-ai stack-NN {install|start|stop|status [--deep]|reconfig}
 ./local-ai env bootstrap
 ./local-ai completion {bash|zsh} [install|status]
 ```
 
-`./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. The command manages one stack at a time: it does not resolve dependencies, upgrade, or back up.
+`./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. `reconfig` delegates to the stack's own `reconfig.py`; it never starts or stops containers. Stack 40 does not have this verb yet.
 
 ## Repository map
 
@@ -94,7 +94,7 @@ See [operations](docs/operations.md) for the full order, what each verb does, an
 | --- | --- |
 | `local-ai` | Dispatcher and shell completion |
 | `stack-NN_-_*/` | Each stack's Compose file, configuration, and Python preparation scripts |
-| `wrapper/bin/` | One CLI per stack (`install`, `start`, `stop`, `status`) plus `env.py` |
+| `wrapper/bin/` | One CLI per stack (`install`, `start`, `stop`, `status`, and where supported `reconfig`) plus `env.py` |
 | `wrapper/lib/` | Shared helpers: status reporting, progress bar, runtime-config synchronization for Stacks 60/70 |
 | `wrapper/stubs/` | `.env` tools: bootstrap, template sync, and image upgrades ([operations](docs/operations.md#maintenance-tools)) |
 | `.env.template` | The documented variable contract; copy it to the protected `.env` |

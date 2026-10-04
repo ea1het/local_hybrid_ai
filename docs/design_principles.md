@@ -29,5 +29,6 @@ The rules the code follows. Changes should keep them true.
 - **Standard library only.** Wrappers and scripts need only Python 3 and Docker Compose.
 - **No bytecode in the checkout.** Every entry point sets `sys.dont_write_bytecode` and children run with `-B`.
 - **Pass-through CLI.** `./local-ai` forwards arguments and exit codes unchanged; every command has `--help`.
+- **Stack-owned reconfiguration.** A stack's `reconfig.py` owns configuration changes and can run directly. The wrapper only delegates; `reconfig` never changes container lifecycle state.
 - **Tests check contracts.** Tests mock Docker and the host, and exist where they catch a real bug or pin a real contract.
 - **MPL-2.0 headers** on every file, enforced in CI ([exceptions](license-header-exceptions.md)).

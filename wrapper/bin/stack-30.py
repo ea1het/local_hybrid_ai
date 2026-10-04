@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.progress import run_with_progress
+from wrapper.lib.reconfig_dispatch import run_reconfig
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-30_-_litellm"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -187,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-30", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("reconfig", help="Report that Stack 30 reconfiguration is under development").set_defaults(
+        handler=lambda: run_reconfig(STACK_DIR)
+    )
     commands.add_parser("install", help="Provision PostgreSQL and minimal LiteLLM access").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")

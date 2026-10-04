@@ -31,6 +31,7 @@ from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.hermes_runtime_env import (RuntimeEnvironmentError, config_needs_update,
                                             needs_update, reconcile, reconcile_config)
 from wrapper.lib.progress import run_with_progress
+from wrapper.lib.reconfig_dispatch import run_reconfig
 from wrapper.lib.stack_status import report_status
 from wrapper.stubs.bootstrap_env import BootstrapError, assignments, protected_text
 STACK_DIR = ROOT / "stack-60_-_hermes"
@@ -58,8 +59,7 @@ def install() -> int:
             return 1
         print(f"Stack 60 already has a preparation lock: {LOCK_FILE}")
         print("No configuration was changed; bootstrap and prepare were not run.")
-        print("Removing .lock manually would permit reconfiguration, which may overwrite")
-        print("runtime configuration or disrupt a running service. Review first.")
+        print("Use ./local-ai stack-60 reconfig to stage managed configuration safely.")
         show_next_steps()
         return 0
 
@@ -220,6 +220,9 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-60", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("reconfig", help="Apply configuration without changing container state").set_defaults(
+        handler=lambda: run_reconfig(STACK_DIR)
+    )
     commands.add_parser("install", help="Prepare without starting services").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")

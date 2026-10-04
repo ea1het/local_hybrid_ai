@@ -42,7 +42,7 @@ def test_existing_lock_skips_preparation_and_optional_actions(tmp_path, monkeypa
 
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
-    assert "Removing .lock manually" in output
+    assert "./local-ai stack-60 reconfig" in output
     assert "./local-ai stack-60 start" in output
     assert "cleanup are separate operations" in output
 

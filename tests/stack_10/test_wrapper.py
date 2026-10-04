@@ -44,7 +44,7 @@ def test_existing_lock_is_informational_only(tmp_path, monkeypatch, capsys):
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "No configuration was changed" in output
-    assert "Removing .lock manually" in output
+    assert "./local-ai stack-10 reconfig" in output
     assert "\n\nStack 10 is PREPARED" in output
     assert "./local-ai stack-10 start" in output
 

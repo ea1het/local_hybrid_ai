@@ -69,7 +69,9 @@ def test_preserves_wrapper_error_and_rejects_missing_command():
 @pytest.mark.parametrize("words,expected", [
     ([], "stack-60"),
     (["stack-00", ""], "status"),
+    (["stack-00", ""], "reconfig"),
     (["stack-60", ""], "start"),
+    (["stack-60", ""], "reconfig"),
     (["stack-60", "status", ""], "--deep"),
     (["env", ""], "bootstrap"),
     (["completion", ""], "zsh"),
@@ -98,9 +100,10 @@ def test_completion_scripts_are_valid_shell(shell):
 
 
 @pytest.mark.parametrize("number,verbs", [
-    ("00", ("install", "status")),
-    *((number, ("install", "start", "stop", "status"))
-      for number in ("10", "20", "30", "40", "50", "60", "70")),
+    ("00", ("install", "status", "reconfig")),
+    *((number, ("install", "start", "stop", "status", "reconfig"))
+      for number in ("10", "20", "30", "50", "60", "70")),
+    ("40", ("install", "start", "stop", "status")),
 ])
 def test_completion_matches_stack_parser_options(number, verbs):
     """Reject completion metadata that invents a verb or omits its options."""
@@ -115,6 +118,14 @@ def test_completion_matches_stack_parser_options(number, verbs):
             assert option in help_result.stdout
         if verb == "status":
             assert "--deep" in candidates.stdout.splitlines()
+
+
+def test_reconfig_help_has_no_lifecycle_options():
+    """Expose reconfiguration without implying automatic container changes."""
+    result = subprocess.run([ROOT / "local-ai", "stack-60", "reconfig", "--help"],
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 0
+    assert "--restart" not in result.stdout
 
 
 def load_dispatcher():

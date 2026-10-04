@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.progress import run_with_progress
+from wrapper.lib.reconfig_dispatch import run_reconfig
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-10_-_haproxy_web"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -51,8 +52,7 @@ def install() -> int:
             return 1
         print(f"Stack 10 already has a preparation lock: {LOCK_FILE}")
         print("No configuration was changed and 01-prepare.py was not run.")
-        print("Removing .lock manually would permit reconfiguration, which may overwrite")
-        print("runtime configuration or disrupt a running service. Review first.")
+        print("Use ./local-ai stack-10 reconfig to stage managed configuration safely.")
         show_start_instructions()
         return 0
 
@@ -147,6 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-10", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("reconfig", help="Apply configuration without changing container state").set_defaults(
+        handler=lambda: run_reconfig(STACK_DIR)
+    )
     commands.add_parser("install", help="Prepare without starting services").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")

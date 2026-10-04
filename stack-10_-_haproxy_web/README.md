@@ -31,7 +31,7 @@ The routing table is in the [main README](../README.md#architecture). Host names
 ## Notes
 
 - **Missing backends are tolerated.** HAProxy starts even if a routed stack is down; that route fails until the backend appears.
-- **Changes need a restart.** After editing `haproxy.cfg` or rotating certificates, run `docker compose restart haproxy`; `start` does not reload a running container.
+- **`reconfig` stages managed HAProxy and web files.** It validates Compose, backs up changed runtime files, and never changes container state. Apply staged changes with `./local-ai stack-10 stop` and `./local-ai stack-10 start`. Certificate rotation remains a Stack 00 operation.
 - **Certificates belong to Stack 00.** `01-prepare.py` checks the TLS pair but never creates or replaces it.
 - **Keep backends private.** Application stacks should publish through HAProxy, not through their own host ports. The one exception is Gitea SSH.
 

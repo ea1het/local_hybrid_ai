@@ -30,7 +30,7 @@ flowchart LR
 ## Lifecycle specifics
 
 - **Telegram.** Set `TELEGRAM_BOT_TOKEN` and a comma-separated `TELEGRAM_ALLOWED_USERS` list of numeric user IDs in the protected root `.env`, then run `./local-ai stack-60 start`. `start` rejects a token without an allowlist before changing the runtime. No interactive Hermes setup or inbound webhook is needed; verify with a message from an allowed user.
-- **`start`** builds the local images (`up -d --build`). Before that, it repairs two kinds of drift: values in Hermes' runtime `data/.env` that would override the root `.env`, and literal LiteLLM settings saved into `config.yaml`. When it changes something, it stops Hermes, backs the files up, and recreates the container.
+- **`reconfig`** stages the managed `config.yaml` from `.env` (including `HERMES_MODEL`), preserves the current web-tool choice, and removes stale central overrides from runtime `data/.env`. It backs up changed files but never changes container state. Apply with `./local-ai stack-60 stop` and `./local-ai stack-60 start`. `start` retains its existing gateway-drift safety check.
 - **`stop`** includes the `git-memory` profile, so the memory-sync container is removed as well. A plain `docker compose down` would leave it running.
 - **Isolation.** Hermes has no Docker socket. Commands run in the sandbox, which is attached only to the private `hermes-exec` network.
 

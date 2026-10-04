@@ -27,7 +27,7 @@ sys.dont_write_bytecode = True
 
 SCRIPT = Path(__file__).resolve()
 BIN_DIR = SCRIPT.parent / "wrapper" / "bin"
-STACK_VERBS = ("install", "start", "stop", "status")
+STACK_VERBS = ("install", "start", "stop", "status", "reconfig")
 HELP_OPTIONS = ("-h", "--help")
 COMPLETION_SHELLS = ("bash", "zsh")
 COMPLETION_ACTIONS = ("install", "status")
@@ -231,7 +231,9 @@ def completion_candidates(words: list[str], commands: dict[str, Path]) -> list[s
         return []
     if len(words) == 2:
         verbs = ("bootstrap",) if command == "env" else (
-            ("install", "status") if command == "stack-00" else STACK_VERBS
+            ("install", "status", "reconfig") if command == "stack-00" else (
+                ("install", "start", "stop", "status") if command == "stack-40" else STACK_VERBS
+            )
         )
         return [*verbs, *HELP_OPTIONS]
     verb = words[1]

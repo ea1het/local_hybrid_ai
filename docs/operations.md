@@ -58,6 +58,22 @@ An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* 
 
 *dirs* = `stack-00_-_platform/00-bootstrap.py --stack NN`, which creates only that stack's runtime directories. The stack READMEs explain the stack-specific phases.
 
+## Reconfiguration
+
+`./local-ai stack-NN reconfig` delegates to `stack-NN_-_*/reconfig.py`, which can also be run directly from its stack directory. It does not start, stop, or restart containers. Changed runtime files are backed up inside runtime; the command prints the explicit `local-ai stop` and `start` commands needed to apply staged changes. A preparation `.lock` is never removed or rewritten.
+
+| Stack | `reconfig` behavior |
+| --- | --- |
+| 00, 50 | Reports that nothing is available to reconfigure |
+| 10 | Stages the managed HAProxy and web files |
+| 20 | Stages the three managed SearXNG files |
+| 30 | Reports that LiteLLM reconfiguration is under development (nonzero exit) |
+| 40 | Not implemented yet; administrator password rotation is part of the next phase |
+| 60 | Updates the managed Hermes model/config and removes stale runtime environment overrides |
+| 70 | Synchronizes the LiteLLM key only while Open WebUI is stopped; updates model policy only while running |
+
+For Stack 70, if the key is stale while Open WebUI runs, `reconfig` refuses to edit SQLite. Run `stack-70 stop`, `stack-70 reconfig`, `stack-70 start`, then `stack-70 reconfig` again for the policy after the first administrator exists. All commands in this sequence are prefixed with `./local-ai` from the repository root.
+
 **Stack 00 is different.** It has no containers. Its `install` is a repeatable audit: every run checks and repairs the platform, then keeps or rewrites the `.lock`. If a phase fails, the `.lock` is removed.
 
 ## Reading `status`

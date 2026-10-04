@@ -28,7 +28,7 @@ flowchart TB
 
 ## Notes
 
-- **Managed SearXNG config.** `settings.yml`, `limiter.toml`, and `favicons.toml` are copied from `config/searxng/`. With an existing `.lock`, `install` and `start` refuse to continue if the runtime copies are missing or differ. Restore them from the repository; do not delete the `.lock` to hide the problem.
+- **Managed SearXNG config.** `settings.yml`, `limiter.toml`, and `favicons.toml` are copied from `config/searxng/`. With an existing `.lock`, `install` and `start` refuse to continue if the runtime copies are missing or differ. Run `./local-ai stack-20 reconfig` to stage and back up changed copies; it does not change container state. Then run `./local-ai stack-20 stop` and `./local-ai stack-20 start` when ready.
 - **Proxy trust.** The limiter is off. `trusted_proxies` covers loopback and `172.16.0.0/12` so SearXNG sees the client IP forwarded by HAProxy. Any container in that range could forge that header.
 - **SearXNG MCP.** `isokoliuk/mcp-searxng:2.5.0` serves Streamable HTTP at `http://searxng-mcp:3000/mcp` on `redlocal`, without a host port. Lite tool schemas reduce context overhead; no additional MCP environment variables or secrets are required for this internal connection. The healthcheck probes its `/health` endpoint.
 - **Two database identities.** `postgres` is the administrator, used for setup and `pg_cron`. `firecrawl` is the least-privilege application role, created by `config/postgres/020-firecrawl-app-role.sh`. The database stays `postgres` because the NuQ image requires it.

@@ -30,6 +30,7 @@ flowchart TB
 
 - **`install`** runs `00-bootstrap.py` first. It fills only missing Open WebUI values in `.env` (for example the signing key), after a private backup. It never creates LiteLLM keys.
 - **`start`** keeps the saved LiteLLM key in sync. Open WebUI stores its connection key in `webui.db`, and that stored key overrides Compose. If it differs from `.env`, `start` stops the container, backs up `webui.db`, replaces only that key, and starts again. An unknown database layout stops the start instead of resetting settings.
+- **`reconfig`** never stops or starts containers. With Open WebUI stopped, it backs up `webui.db` and synchronizes a changed LiteLLM key from `.env`; with Open WebUI running and the key already current, it reconciles the model policy through the application's ORM. If a running instance has a stale key, it refuses the database update and asks for `./local-ai stack-70 stop`, `./local-ai stack-70 reconfig`, `./local-ai stack-70 start`, then another `reconfig` for the policy.
 
 ## Model policy
 

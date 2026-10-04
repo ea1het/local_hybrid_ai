@@ -53,7 +53,7 @@ def test_existing_lock_skips_bootstrap_and_prepare(tmp_path, monkeypatch, capsys
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
     assert "bootstrap and prepare were not run" in output
-    assert "Removing .lock manually" in output
+    assert "./local-ai stack-70 reconfig" in output
     assert "\n\nStack 70 is PREPARED" in output
     assert "./local-ai stack-70 start" in output
 
