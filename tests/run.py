@@ -23,4 +23,4 @@ import pytest
 
 
 if __name__ == "__main__":
-    raise SystemExit(pytest.main(["-q", "-p", "no:cacheprovider", str(ROOT / "tests")]))
+    raise SystemExit(pytest.main(["-q", "-rs", "-p", "no:cacheprovider", str(ROOT / "tests")]))
