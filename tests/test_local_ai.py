@@ -48,6 +48,22 @@ def test_headless_suppresses_banner_without_changing_stack_arguments(arguments):
     assert result.returncode == 0
     assert "usage: ./local-ai stack-20 status" in result.stdout
     assert "Version:" not in result.stdout
+    assert result.stdout.endswith("\n\n")
+
+
+def test_footer_follows_root_usage_and_stack_errors():
+    """Leave a blank line after local and delegated failures, even headlessly."""
+    usage = subprocess.run([ROOT / "local-ai", "--headless"], stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT, text=True, check=False)
+    assert usage.returncode == 2
+    assert usage.stdout.endswith("\n\n")
+
+    rejected = subprocess.run([ROOT / "local-ai", "--headless", "stack-10", "invalid"],
+                              capture_output=True, text=True, check=False)
+    assert rejected.returncode == 2
+    assert rejected.stdout.endswith("\n\n")
+    assert "Version:" not in rejected.stdout
+    assert "invalid choice" in rejected.stderr
 
 
 def test_banner_and_project_metadata_share_one_version():
@@ -111,6 +127,7 @@ def test_completion_candidates(words, expected):
     assert result.returncode == 0
     assert expected in result.stdout.splitlines()
     assert "Version:" not in result.stdout
+    assert not result.stdout.endswith("\n\n")
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -122,6 +139,7 @@ def test_completion_scripts_are_valid_shell(shell):
                             text=True, check=False)
     assert result.returncode == 0
     assert "Version:" not in result.stdout
+    assert not result.stdout.endswith("\n\n")
     checked = subprocess.run([shell, "-n"], input=result.stdout, capture_output=True,
                              text=True, check=False)
     assert checked.returncode == 0, checked.stderr
