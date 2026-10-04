@@ -95,6 +95,12 @@ See [operations](docs/operations.md) for the full order, what each verb does, an
 
 The command displays a customizable banner from `wrapper/stubs/header.py`, using the version in `version.py` (also used by `pyproject.toml`). Add `--headless` anywhere in the command to suppress the banner, for example `./local-ai --headless stack-20 status` or `./local-ai stack-20 status --headless`. Shell-completion output never includes the banner.
 
+## Releases
+
+Starting with v0.8.0, the project uses [GitHub Releases](https://github.com/ea1het/local_hybrid_ai/releases) to identify published versions. Earlier development focused on stabilizing the foundation and moving from shell scripts to a predominantly Python codebase.
+
+Each Release provides a snapshot of the source code as a ZIP or tar.gz download. It is not a packaged installer, binary, or container image. Changes to the project are tested automatically and publishing a Release triggers another test run and license-compliance audit for that version. The results are visible in GitHub Actions.
+
 ## Repository map
 
 | Path | Content |

@@ -1,0 +1,60 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Tests and release audit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test source and audit published release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependency
+        run: python3 -m pip install pytest==9.0.3
+
+      - name: Run tests
+        run: python3 -B tests/run.py
+
+      - name: Audit release tag and ancestry
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          expected="v$(python3 -B -c 'from version import __version__; print(__version__)')"
+          if [[ "$GITHUB_REF_NAME" != "$expected" ]]; then
+            echo "Release tag $GITHUB_REF_NAME does not match version.py ($expected)." >&2
+            exit 1
+          fi
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          tag_commit="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+            echo "Release tag $GITHUB_REF_NAME does not point to a commit on main." >&2
+            exit 1
+          fi
+
+      - name: Audit release license headers
+        if: github.event_name == 'release'
+        run: |
+          python3 -B .github/workflows/gha_apply_python_shebangs.py --check
+          python3 -B .github/workflows/gha_apply_mpl_headers.py --check
