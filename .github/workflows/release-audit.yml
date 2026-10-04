@@ -2,13 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-name: Tests and release audit
+name: Release audit
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
   release:
     types:
       - published
@@ -18,7 +14,7 @@ permissions:
 
 jobs:
   verify:
-    name: Test source and audit published release
+    name: Verify published release
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -38,7 +34,6 @@ jobs:
         run: python3 -B tests/run.py
 
       - name: Audit release tag and ancestry
-        if: github.event_name == 'release'
         shell: bash
         run: |
           expected="v$(python3 -B -c 'from version import __version__; print(__version__)')"
@@ -54,7 +49,6 @@ jobs:
           fi
 
       - name: Audit release license headers
-        if: github.event_name == 'release'
         run: |
           python3 -B .github/workflows/gha_apply_python_shebangs.py --check
           python3 -B .github/workflows/gha_apply_mpl_headers.py --check
