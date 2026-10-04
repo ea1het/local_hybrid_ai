@@ -3,13 +3,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Install Stack 30, including PostgreSQL and minimal LiteLLM access.
+"""Install Stack 30 with PostgreSQL and LiteLLM administrator access.
 
 Install creates Stack 30's service directories, prepares configuration,
-provisions the database and editable oMLX models, issues three
-least-privilege consumer keys in a disposable LiteLLM container, and writes
-.lock only after every phase succeeds. It stops PostgreSQL if install started
-it. Start and stop remain explicit; install never tests model inference.
+provisions the database, and writes .lock only after both phases succeed.
+It stops PostgreSQL if install started it. Models, provider credentials,
+virtual keys, and MCP permissions are not injected by install.
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ STACK_DIR = ROOT / "stack-30_-_litellm"
 LOCK_FILE = STACK_DIR / ".lock"
 PREPARE_MODULE = "stack-30_-_litellm.01-prepare"
 PROVISION_MODULE = "stack-30_-_litellm.provision-postgres"
-KEYS_MODULE = "stack-30_-_litellm.issue-consumer-keys"
 
 
 def show_next_steps() -> None:
@@ -41,11 +39,11 @@ def show_next_steps() -> None:
     print()
     print("Stack 30 is INSTALLED; no services were started for ongoing operation.")
     print("Start with: ./local-ai stack-30 start")
-    print("Model inference and oMLX reachability remain for a later verify phase.")
+    print("Configure or restore LiteLLM models and consumer keys before starting dependent stacks.")
 
 
 def install() -> int:
-    """Complete preparation, provisioning, and key setup before locking."""
+    """Complete preparation and database provisioning before locking."""
     if LOCK_FILE.is_symlink():
         print(f"ERROR: {LOCK_FILE} is a symbolic link; review it manually.", file=sys.stderr)
         return 1
@@ -95,7 +93,7 @@ def install() -> int:
     phase_exit = 0
     stop_failed = False
     try:
-        for module in (PREPARE_MODULE, PROVISION_MODULE, KEYS_MODULE):
+        for module in (PREPARE_MODULE, PROVISION_MODULE):
             if module == PROVISION_MODULE:
                 provision_attempted = True
             if module != PREPARE_MODULE:
@@ -188,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="./local-ai stack-30", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     add_reconfig_command(commands, STACK_DIR)
-    commands.add_parser("install", help="Provision PostgreSQL and minimal LiteLLM access").set_defaults(handler=install)
+    commands.add_parser("install", help="Provision PostgreSQL and prepare LiteLLM").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")
     )

@@ -131,7 +131,6 @@ def test_webui_running_with_stale_key_requests_manual_stop(tmp_path, monkeypatch
     monkeypatch.setattr(module, "container_running", lambda _: True)
     monkeypatch.setattr(module, "needs_update", lambda *args: True)
     monkeypatch.setattr(module, "reconcile", lambda *args: pytest.fail("must not write a live database"))
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run policy"))
     assert module.main(True) == 1
     assert "./local-ai stack-70 stop" in capsys.readouterr().out
 
@@ -146,12 +145,11 @@ def test_webui_preview_with_stale_key_is_read_only(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "container_running", lambda _: True)
     monkeypatch.setattr(module, "needs_update", lambda *args: True)
     monkeypatch.setattr(module, "reconcile", lambda *args: pytest.fail("preview must not write"))
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("no policy mutation"))
     assert module.main() == 0
 
 
-def test_webui_running_with_current_key_reconciles_policy(tmp_path, monkeypatch):
-    """Only the already-running application's ORM policy script is invoked."""
+def test_webui_running_with_current_key_needs_no_reconfiguration(tmp_path, monkeypatch, capsys):
+    """Leave an already-current connection and its application settings unchanged."""
     module = load_module("stack-70_-_open-webui", "reconfig.py")
     monkeypatch.setattr(module, "environment", lambda _: {
         "BASE_PATH": str(tmp_path), "OPENWEBUI_LITELLM_BASE_URL": "http://litellm:4000/v1",
@@ -159,16 +157,13 @@ def test_webui_running_with_current_key_reconciles_policy(tmp_path, monkeypatch)
     })
     monkeypatch.setattr(module, "container_running", lambda _: True)
     monkeypatch.setattr(module, "needs_update", lambda *args: False)
-    calls = []
-    monkeypatch.setattr(module.subprocess, "run", lambda command, **kwargs: (
-        calls.append(command) or SimpleNamespace(returncode=0)
-    ))
+    monkeypatch.setattr(module, "reconcile", lambda *args: pytest.fail("current key must not be rewritten"))
     assert module.main(True) == 0
-    assert len(calls) == 1 and calls[0][-1].endswith("reconcile-model-policy.py")
+    assert "LiteLLM connection unchanged" in capsys.readouterr().out
 
 
 def test_webui_stopped_updates_key_without_starting(tmp_path, monkeypatch, capsys):
-    """Offline SQLite synchronization remains separate from model policy."""
+    """Synchronize a stale SQLite connection only while Open WebUI is stopped."""
     module = load_module("stack-70_-_open-webui", "reconfig.py")
     database = tmp_path / "service_-_open-webui/data/webui.db"
     database.parent.mkdir(parents=True)
@@ -181,7 +176,6 @@ def test_webui_stopped_updates_key_without_starting(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(module, "needs_update", lambda *args: True)
     changed = []
     monkeypatch.setattr(module, "reconcile", lambda *args: changed.append(args) or True)
-    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not use Docker"))
     assert module.main(True) == 0
     assert len(changed) == 1
     assert "./local-ai stack-70 start" in capsys.readouterr().out

@@ -263,7 +263,7 @@ def bootstrap(root: Path) -> tuple[list[str], list[str], Path | None, bool]:
 
         updated = render(text, replacements) if replacements else text
         backup = save(env_path, old, updated) if old is None or updated != old else None
-        pending = [key for key in ("OMLX_API_KEY", "TELEGRAM_BOT_TOKEN", "BUZZ_PRIVATE_KEY", "BUZZ_RELAY_URL",
+        pending = [key for key in ("TELEGRAM_BOT_TOKEN", "BUZZ_PRIVATE_KEY", "BUZZ_RELAY_URL",
                                    "LITELLM_API_KEY", "LITELLM_MCP_API_KEY", "OPENWEBUI_LITELLM_API_KEY")
                    if missing(values.get(key))]
         return list(replacements), pending, backup, old is None or updated != old

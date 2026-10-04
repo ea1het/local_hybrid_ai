@@ -67,6 +67,7 @@ def test_fresh_stack_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "OPENWEBUI_LITELLM_API_KEY=sk-webui\n")
     calls = []
 
     def fake_run(command, **kwargs):
@@ -98,6 +99,7 @@ def test_failure_stops_without_startup_guidance(tmp_path, monkeypatch, capsys, f
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "OPENWEBUI_LITELLM_API_KEY=sk-webui\n")
     calls = []
 
     def fake_run(command, **kwargs):
@@ -126,6 +128,21 @@ def test_missing_prerequisite_lock_stops_before_bootstrap(tmp_path, monkeypatch)
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
 
     assert wrapper.main(["install"]) == 1
+
+
+def test_install_requires_litellm_key_before_bootstrap(tmp_path, monkeypatch, capsys):
+    """Refuse an unconfigured key before creating directories or secrets."""
+    wrapper = load_wrapper()
+    prepare_prerequisite_locks(tmp_path)
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+        "OPENWEBUI_LITELLM_API_KEY=PUT_YOUR_OPENWEBUI_LITELLM_API_KEY_HERE\n"))
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not bootstrap"))
+    assert wrapper.main(["install"]) == 1
+    assert "OPENWEBUI_LITELLM_API_KEY" in capsys.readouterr().err
 
 
 def test_symlink_lock_is_rejected(tmp_path, monkeypatch):
@@ -183,3 +200,25 @@ def test_start_updates_only_stale_litellm_key_before_compose(tmp_path, monkeypat
         assert json.loads(connection.execute("SELECT value FROM config WHERE key='openai.api_keys'").fetchone()[0]) == ["new"]
         assert json.loads(connection.execute("SELECT value FROM config WHERE key='web.search'").fetchone()[0]) == {
             "enabled": True}
+
+
+@pytest.mark.parametrize("key", ["", "PUT_YOUR_OPENWEBUI_LITELLM_API_KEY_HERE"])
+def test_start_requires_litellm_key(tmp_path, monkeypatch, capsys, key):
+    """Reject a missing key before touching SQLite or invoking Docker."""
+    wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack-70_-_open-webui"
+    stack_dir.mkdir()
+    (stack_dir / ".env").symlink_to("../.env")
+    (tmp_path / ".env").write_text("protected\n")
+    (stack_dir / "docker-compose.yml").touch()
+    lock = stack_dir / ".lock"
+    lock.touch()
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+        f"BASE_PATH={tmp_path / 'runtime'}\nOPENWEBUI_LITELLM_BASE_URL=http://litellm:4000/v1\n"
+        f"OPENWEBUI_LITELLM_API_KEY={key}\n"))
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run Docker"))
+    assert wrapper.run_compose("up") == 1
+    assert "OPENWEBUI_LITELLM_API_KEY" in capsys.readouterr().err

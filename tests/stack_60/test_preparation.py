@@ -78,6 +78,22 @@ def test_prepare_rejects_telegram_token_without_allowed_users(tmp_path, monkeypa
     assert "TELEGRAM_ALLOWED_USERS" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("name", ["LITELLM_API_KEY", "LITELLM_MCP_API_KEY"])
+def test_prepare_rejects_placeholder_litellm_keys(tmp_path, monkeypatch, capsys, name):
+    """Reject an unconfigured consumer key before preparing Hermes runtime."""
+    stack = tmp_path / "stack-60_-_hermes"
+    stack.mkdir()
+    env = {key: "value" for key in prepare.ALL_KEYS}
+    env.update(LITELLM_API_KEY="sk-model", LITELLM_MCP_API_KEY="sk-mcp")
+    env[name] = f"PUT_YOUR_{name}_HERE"
+    env_file = stack / ".env"
+    env_file.write_text("".join(f"{key}={value}\n" for key, value in env.items()))
+    monkeypatch.setattr(prepare, "ENV_FILE", env_file)
+    with pytest.raises(SystemExit, match="1"):
+        prepare.Prepare()
+    assert name in capsys.readouterr().err
+
+
 def test_buzz_rejects_unsafe_base_before_install(tmp_path, monkeypatch, capsys):
     """Reject a root runtime path before installing Buzz."""
     env_file = tmp_path / ".env"

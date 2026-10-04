@@ -33,7 +33,6 @@ services:
 
       # Fresh-instance UI defaults. Persistent ConfigVar values still win after
       # an instance has been initialized; we intentionally do not disable them.
-      DEFAULT_MODELS: "basic_autorouter"
       ENABLE_EVALUATION_ARENA_MODELS: "false"
       DEFAULT_INTERFACE_SETTINGS: '{"webSearch":"always"}'
 

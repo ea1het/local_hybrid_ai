@@ -32,8 +32,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Protected backup: {backup}")
         if pending:
             print("External or service-issued credentials still pending: " + ", ".join(pending))
-        if "OMLX_API_KEY" in pending:
-            print("ACTION REQUIRED before Stack 30 install: set OMLX_API_KEY in protected .env.")
         return 0
     return 2
 

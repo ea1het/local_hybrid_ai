@@ -2,16 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Reconcile Open WebUI's LiteLLM connection and model policy when safe.
+"""Reconcile Open WebUI's LiteLLM connection when safe.
 
-Without --apply this command reports connection and model-policy drift.
-With --apply it updates a stale key only while stopped, or reconciles policy
-through the running application's ORM. It never manages container lifecycle.
+Without --apply this command reports connection drift. With --apply it updates
+a stale key only while stopped. It never manages container lifecycle.
 """
 
 from __future__ import annotations
 
-import subprocess
 import argparse
 import sys
 from pathlib import Path
@@ -26,19 +24,6 @@ from wrapper.lib.reconfig_runtime import (ReconfigError, container_running, envi
 from wrapper.stubs.bootstrap_env import missing
 
 STACK_DIR = Path(__file__).resolve().parent
-
-
-def policy_status() -> str:
-    """Probe model policy through the application's read-only verifier."""
-    result = subprocess.run(
-        [sys.executable, "-B", str(STACK_DIR / "verify-model-policy.py")],
-        cwd=STACK_DIR, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False,
-    )
-    if result.returncode == 0 and "PASS" in result.stdout:
-        return "current"
-    if result.returncode == 0 and "DEFER" in result.stdout:
-        return "deferred until the first administrator exists"
-    return "would reconcile or requires review"
 
 
 def main(apply: bool = False) -> int:
@@ -58,24 +43,12 @@ def main(apply: bool = False) -> int:
             print("Run ./local-ai stack-70 stop, then ./local-ai stack-70 reconfig --apply, then ./local-ai stack-70 start.")
             return 1 if apply else 0
         if not apply:
-            if running:
-                print(f"Stack 70 plan: model policy {policy_status()}.")
-            else:
-                print("Stack 70 plan: model policy deferred until Open WebUI is running.")
             print("Preview only; run ./local-ai stack-70 reconfig --apply to apply this plan.")
             return 0
         if stale_key:
             reconcile(database, endpoint, key)
             print("Stack 70 LiteLLM connection updated.")
             lifecycle_hint("70")
-        if running:
-            result = subprocess.run(
-                [sys.executable, "-B", str(STACK_DIR / "reconcile-model-policy.py")],
-                cwd=STACK_DIR, stdin=subprocess.DEVNULL, check=False,
-            )
-            return result.returncode
-        print("DEFER: model policy needs a running Open WebUI and its first administrator.")
-        print("After ./local-ai stack-70 start, run ./local-ai stack-70 reconfig and then --apply if needed.")
         return 0
     except (ReconfigError, ConnectionError, OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)

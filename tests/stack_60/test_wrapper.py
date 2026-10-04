@@ -58,6 +58,7 @@ def test_missing_lock_bootstraps_then_prepares(tmp_path, monkeypatch, capsys):
     platform.mkdir()
     (platform / ".lock").write_text("prepared")
     monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "LITELLM_API_KEY=sk-model\nLITELLM_MCP_API_KEY=sk-mcp\n")
     calls = []
 
     def fake_run(command, **kwargs):
@@ -89,6 +90,7 @@ def test_prepare_failure_does_not_claim_hermes_ready(tmp_path, monkeypatch, caps
     platform.mkdir()
     (platform / ".lock").write_text("prepared")
     monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "LITELLM_API_KEY=sk-model\nLITELLM_MCP_API_KEY=sk-mcp\n")
     calls = []
 
     def fake_run(command, **kwargs):
@@ -117,6 +119,7 @@ def test_bootstrap_failure_does_not_run_prepare(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
     monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "LITELLM_API_KEY=sk-model\nLITELLM_MCP_API_KEY=sk-mcp\n")
     calls = []
 
     def fake_run(command, **kwargs):
@@ -141,6 +144,26 @@ def test_missing_platform_lock_stops_before_bootstrap(tmp_path, monkeypatch):
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
 
     assert wrapper.main(["install"]) == 1
+
+
+@pytest.mark.parametrize("name", ["LITELLM_API_KEY", "LITELLM_MCP_API_KEY"])
+def test_install_requires_litellm_keys_before_bootstrap(tmp_path, monkeypatch, capsys, name):
+    """Leave the runtime untouched when a scoped key is not configured."""
+    wrapper = load_wrapper()
+    platform = tmp_path / "stack-00_-_platform"
+    platform.mkdir()
+    (platform / ".lock").touch()
+    monkeypatch.setattr(wrapper, "ROOT", tmp_path)
+    monkeypatch.setattr(wrapper, "STACK_DIR", tmp_path)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", tmp_path / ".lock")
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    values = {"LITELLM_API_KEY": "sk-model", "LITELLM_MCP_API_KEY": "sk-mcp"}
+    values[name] = "PUT_YOUR_KEY_HERE"
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "".join(
+        f"{key}={value}\n" for key, value in values.items()))
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not bootstrap"))
+    assert wrapper.main(["install"]) == 1
+    assert name in capsys.readouterr().err
 
 
 def test_symlink_lock_is_rejected_without_execution(tmp_path, monkeypatch):
@@ -207,7 +230,8 @@ def test_start_removes_stale_gateway_overrides_before_compose(tmp_path, monkeypa
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
     monkeypatch.setattr(wrapper, "protected_text", lambda _: (
-        f"BASE_PATH={tmp_path / 'runtime'}\nHERMES_SERVICE=service_-_hermes\nHERMES_CONTAINER=hermes\n"))
+        f"BASE_PATH={tmp_path / 'runtime'}\nHERMES_SERVICE=service_-_hermes\nHERMES_CONTAINER=hermes\n"
+        "LITELLM_API_KEY=sk-model\nLITELLM_MCP_API_KEY=sk-mcp\n"))
     calls = []
 
     def fake_run(command, **kwargs):
@@ -241,6 +265,7 @@ def test_start_rejects_telegram_without_valid_allowlist(tmp_path, monkeypatch, c
     monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
     monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
     monkeypatch.setattr(wrapper, "protected_text", lambda _: (
+        "LITELLM_API_KEY=sk-model\nLITELLM_MCP_API_KEY=sk-mcp\n"
         "TELEGRAM_BOT_TOKEN=123456:abcdefghijklmnopqrstuvwxyzABCDE\n"
         f"TELEGRAM_ALLOWED_USERS={allowed_users}\n"))
     monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run"))
@@ -248,3 +273,31 @@ def test_start_rejects_telegram_without_valid_allowlist(tmp_path, monkeypatch, c
 
     assert wrapper.run_compose("up") == 1
     assert "TELEGRAM_ALLOWED_USERS" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name,value", [
+    ("LITELLM_API_KEY", ""),
+    ("LITELLM_API_KEY", "PUT_YOUR_LITELLM_API_KEY_HERE"),
+    ("LITELLM_MCP_API_KEY", ""),
+    ("LITELLM_MCP_API_KEY", "PUT_YOUR_HERMES_MCP_API_KEY_HERE"),
+])
+def test_start_requires_both_litellm_keys(tmp_path, monkeypatch, capsys, name, value):
+    """Reject absent consumer keys before editing runtime files or starting Docker."""
+    wrapper = load_wrapper()
+    stack_dir = tmp_path / "stack-60_-_hermes"
+    stack_dir.mkdir()
+    (stack_dir / ".env").symlink_to("../.env")
+    (tmp_path / ".env").write_text("protected\n")
+    (stack_dir / "docker-compose.yml").touch()
+    lock = stack_dir / ".lock"
+    lock.touch()
+    monkeypatch.setattr(wrapper, "STACK_DIR", stack_dir)
+    monkeypatch.setattr(wrapper, "LOCK_FILE", lock)
+    monkeypatch.setattr(wrapper.os, "geteuid", lambda: 0)
+    values = {"LITELLM_API_KEY": "sk-model", "LITELLM_MCP_API_KEY": "sk-mcp"}
+    values[name] = value
+    monkeypatch.setattr(wrapper, "protected_text", lambda _: "".join(
+        f"{key}={secret}\n" for key, secret in values.items()))
+    monkeypatch.setattr(wrapper.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run Docker"))
+    assert wrapper.run_compose("up") == 1
+    assert name in capsys.readouterr().err

@@ -8,10 +8,10 @@
 On a fresh installation, this entrypoint creates Stack 70's service directories,
 then calls the stack package's 00-bootstrap and 01-prepare modules in order.
 Bootstrap backs up the root
-.env before changes; the Stack 30-issued LiteLLM key is required by prepare.
+.env before changes; a LiteLLM consumer key is required by prepare.
 An existing preparation lock skips both modules.
 Install reports manual startup instructions; separate start and stop verbs
-change Compose state without verifying application or model-policy readiness.
+change Compose state without verifying application readiness.
 """
 
 from __future__ import annotations
@@ -37,6 +37,12 @@ STACK_DIR = ROOT / "stack-70_-_open-webui"
 LOCK_FILE = STACK_DIR / ".lock"
 BOOTSTRAP_MODULE = "stack-70_-_open-webui.00-bootstrap"
 PREPARE_MODULE = "stack-70_-_open-webui.01-prepare"
+
+
+def require_litellm_key(values: dict[str, str]) -> None:
+    """Require a scoped LiteLLM key before preparing or starting Open WebUI."""
+    if missing(values.get("OPENWEBUI_LITELLM_API_KEY")):
+        raise ConnectionError("OPENWEBUI_LITELLM_API_KEY must be configured in .env before using Stack 70")
 
 
 def show_next_steps() -> None:
@@ -73,6 +79,11 @@ def install() -> int:
         if prerequisite_lock.is_symlink() or not prerequisite_lock.is_file():
             print(f"ERROR: prerequisite stack is not prepared: {prerequisite_lock}", file=sys.stderr)
             return 1
+    try:
+        require_litellm_key(assignments(protected_text(ROOT / ".env")))
+    except (BootstrapError, ConnectionError, OSError, ValueError, UnicodeError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
 
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -140,8 +151,9 @@ def run_compose(action: str) -> int:
             endpoint = values.get("OPENWEBUI_LITELLM_BASE_URL", "")
             key = values.get("OPENWEBUI_LITELLM_API_KEY", "")
             base_path = values.get("BASE_PATH", "")
-            if not endpoint or missing(key) or not base_path.startswith("/"):
-                raise ConnectionError("LiteLLM URL, key, or BASE_PATH is missing from .env")
+            require_litellm_key(values)
+            if not endpoint or not base_path.startswith("/"):
+                raise ConnectionError("LiteLLM URL or BASE_PATH is missing from .env")
             database = Path(base_path) / "service_-_open-webui/data/webui.db"
             if needs_update(database, endpoint, key):
                 state = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}} {{.State}}"],

@@ -48,7 +48,7 @@ def test_existing_lock_prevents_prepare_and_describes_next_steps(tmp_path, monke
 
 
 def test_missing_lock_runs_all_install_phases(tmp_path, monkeypatch, capsys):
-    """Provision and issue keys before creating the installation lock."""
+    """Provision PostgreSQL without injecting models or keys before locking."""
     wrapper = load_wrapper()
     platform = tmp_path / "stack-00_-_platform"
     platform.mkdir()
@@ -74,7 +74,7 @@ def test_missing_lock_runs_all_install_phases(tmp_path, monkeypatch, capsys):
     assert options["cwd"] == tmp_path
     assert str(tmp_path) in options["env"]["PYTHONPATH"].split(wrapper.os.pathsep)
     assert [command[3] for command, _ in calls if command[0] == sys.executable and "-m" in command] == [
-        wrapper.PREPARE_MODULE, wrapper.PROVISION_MODULE, wrapper.KEYS_MODULE]
+        wrapper.PREPARE_MODULE, wrapper.PROVISION_MODULE]
     assert lock.is_file()
     assert "Stack 30 is INSTALLED" in capsys.readouterr().out
 

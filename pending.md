@@ -12,10 +12,10 @@ Only open items. Finished work belongs in Git history.
 
 ## Operations
 
-- **Memory-sync SSH bootstrap.** `prepare-maintenance-sidecars.py` expects `ssh_config`, `id_ed25519`, and `known_hosts` in `${MEMORY_SYNC_SERVICE}/ssh`, but nothing creates or documents them. Package that step.
-- **Backup and restore.** No tooling exists. Data to protect: LiteLLM PostgreSQL, `service_-_gitea`, `service_-_open-webui/data`, Hermes memory repository, and the root `.env`.
+- **Memory-sync SSH bootstrap.** `prepare-maintenance-sidecars.py` expects `ssh_config`, `id_ed25519`, and `known_hosts` in `${MEMORY_SYNC_SERVICE}/ssh`. The Stack 60 README says to place the key manually, but no secure bootstrap process creates and validates all three files. Package that step.
+- **Backup and restore.** Individual reconfiguration steps make local backups, but no coordinated backup and restore tooling covers LiteLLM PostgreSQL, `service_-_gitea`, `service_-_open-webui/data`, the Hermes memory repository, and the root `.env`.
+- **LiteLLM configuration snapshot.** Produce and validate a compatible PostgreSQL snapshot of the operator-approved models, provider credentials, virtual keys, and MCP grants. Define a safe restore process that preserves the original `LITELLM_SALT_KEY`, reconciles consumer keys in `.env`, and does not overwrite a populated installation without explicit approval. No snapshot is included yet.
 
-## Code inconsistencies found during the documentation review (2026-10-02)
+## Packaging
 
-- **Open WebUI default model.** `DEFAULT_MODELS=basic_autorouter`, and `reconcile-model-policy.py` creates that entry with no base model, yet LiteLLM only publishes `mlx/local-{general,agent,coding}`. Confirm where `basic_autorouter` comes from.
-- **`pyproject.toml`** declares the package `local_ai_cli` under `src/`, which does not exist.
+- **`pyproject.toml`.** The project metadata is named `local_ai_cli`, but the build includes only `version.py`; the operational CLI remains a source-tree entry point. Decide whether to package the full CLI or document this as version metadata only.

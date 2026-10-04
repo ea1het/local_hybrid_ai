@@ -89,7 +89,8 @@ def stub_clean_consumer_runtime(number, wrapper, root, monkeypatch):
         monkeypatch.setattr(wrapper, "configuration_error", lambda: None)
     elif number == "60":
         monkeypatch.setattr(wrapper, "protected_text", lambda _: (
-            f"BASE_PATH={root / 'runtime'}\nHERMES_SERVICE=service_-_hermes\n"))
+            f"BASE_PATH={root / 'runtime'}\nHERMES_SERVICE=service_-_hermes\n"
+            "LITELLM_API_KEY=sk-model\nLITELLM_MCP_API_KEY=sk-mcp\n"))
         monkeypatch.setattr(wrapper, "needs_update", lambda *args: False)
         monkeypatch.setattr(wrapper, "config_needs_update", lambda _: False)
     elif number == "70":

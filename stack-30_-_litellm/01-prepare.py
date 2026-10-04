@@ -8,7 +8,7 @@
 The entrypoint verifies Stack 0 prerequisites, the service source files,
 and pre-created runtime directories. It installs configuration while
 preserving the PostgreSQL data directory. The install wrapper provisions
-the database, issues consumer keys, and writes .lock after all phases.
+the database and writes .lock after both phases.
 Importing this module has no side effects."""
 
 import os
@@ -89,13 +89,9 @@ def main():
             "LITELLM_POSTGRES_IMAGE "
             "LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
             "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
-            "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY")
+            "LITELLM_POSTGRES_ADMIN_PASSWORD")
     if env["LITELLM_POSTGRES_ADMIN_PASSWORD"].startswith("PUT_YOUR_"):
         die("PostgreSQL administrator password is a placeholder; run ./local-ai env bootstrap")
-    if env["OMLX_API_KEY"].startswith("PUT_YOUR_"):
-        die("OMLX_API_KEY is required before Stack 30 install; copy the key from the oMLX server into .env")
-    if not env["OMLX_BASE_URL"].startswith("https://"):
-        die("OMLX_BASE_URL must use HTTPS")
     stacks_root = env["STACKS_ROOT"].rstrip("/")
     base_path = env["BASE_PATH"].rstrip("/")
     if not env["STACKS_ROOT"].startswith("/") or not env["BASE_PATH"].startswith("/"):
@@ -146,7 +142,7 @@ def main():
     run(["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE_FILE), "config", "--quiet"], env=env)
     log("Docker Compose configuration valid")
     step("Preparation complete")
-    log("PostgreSQL provisioning and consumer credentials are the next install steps")
+    log("PostgreSQL provisioning is the next install step")
     log("PostgreSQL is managed by Stack 30")
 
 

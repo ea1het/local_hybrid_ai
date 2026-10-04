@@ -16,7 +16,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.helpers import load_module
+from tests.helpers import ROOT, load_module
+
+
+def test_clean_litellm_install_does_not_inject_models_or_provider_credentials():
+    """Keep provider setup in LiteLLM's database, not source configuration."""
+    stack = ROOT / "stack-30_-_litellm"
+    config = (stack / "config/litellm/config.yaml").read_text()
+    compose = (stack / "docker-compose.yml").read_text()
+    assert "model_list:" not in config
+    assert "credential_list:" not in config
+    assert "OMLX_" not in compose
 
 
 def test_prepare_uses_env_password_without_lock(tmp_path, monkeypatch):
@@ -42,12 +52,11 @@ def test_prepare_uses_env_password_without_lock(tmp_path, monkeypatch):
     env = {key: "fixture" for key in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_POSTGRES_IMAGE "
            "LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
-           "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY").split()}
+           "LITELLM_POSTGRES_ADMIN_PASSWORD").split()}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(base), NETWORK_NAME="shared",
                LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_POSTGRES_IMAGE="postgres:18.6-alpine3.24",
                LITELLM_DB_NAME="litellm",
-               LITELLM_DB_USER="app_user", LITELLM_POSTGRES_ADMIN_PASSWORD="generated-secret",
-               OMLX_BASE_URL="https://mlx.example/v1", OMLX_API_KEY="upstream-secret")
+               LITELLM_DB_USER="app_user", LITELLM_POSTGRES_ADMIN_PASSWORD="generated-secret")
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(module, "load_env", lambda: env)
@@ -98,11 +107,10 @@ def test_prepare_rejects_unsafe_settings(tmp_path, monkeypatch, key, value, mess
     env = {name: "fixture" for name in ("STACKS_ROOT BASE_PATH NETWORK_NAME LITELLM_IMAGE LITELLM_POSTGRES_IMAGE "
            "LITELLM_VERSION LITELLM_MASTER_KEY LITELLM_SALT_KEY UI_USERNAME UI_PASSWORD "
            "STORE_MODEL_IN_DB LITELLM_DB_NAME LITELLM_DB_USER LITELLM_DB_PASSWORD "
-           "LITELLM_POSTGRES_ADMIN_PASSWORD OMLX_BASE_URL OMLX_API_KEY").split()}
+           "LITELLM_POSTGRES_ADMIN_PASSWORD").split()}
     env.update(STACKS_ROOT=str(tmp_path), BASE_PATH=str(tmp_path / "runtime"),
                LITELLM_IMAGE="litellm", LITELLM_VERSION="1.0", LITELLM_POSTGRES_IMAGE="postgres:18.6-alpine3.24",
-               LITELLM_DB_USER="app_user",
-               OMLX_BASE_URL="https://mlx.example/v1", OMLX_API_KEY="upstream-secret")
+               LITELLM_DB_USER="app_user")
     env[key] = value
     for name, item in env.items():
         monkeypatch.setenv(name, item)

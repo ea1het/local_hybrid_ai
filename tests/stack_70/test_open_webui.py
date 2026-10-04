@@ -2,12 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Test Open WebUI bootstrap, preparation, and model-policy wrappers.
+"""Test Open WebUI bootstrap, preparation, and readiness.
 
 Cases use temporary environment files and mocked container calls to verify
-secret preservation, readiness, and policy-script wiring. They never
-issue LiteLLM keys or modify Open WebUI. Importing this module only
-defines tests."""
+secret preservation and readiness. They never issue LiteLLM keys or modify
+Open WebUI. Importing this module only defines tests."""
 
 import sys
 
@@ -158,7 +157,8 @@ def test_prepare_validates_gateway_and_writes_lock(tmp_path, monkeypatch):
     assert "stack=stack-70_-_open-webui" in (stack_dir / ".lock").read_text()
 
 
-def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch):
+@pytest.mark.parametrize("name", ["OPENWEBUI_LITELLM_API_KEY", "OPENWEBUI_SECRET_KEY"])
+def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch, name):
     """Reject placeholder secrets before inspecting Docker state."""
     module = load_module(STACK, "01-prepare.py")
     stack_dir = tmp_path / STACK
@@ -167,7 +167,7 @@ def test_prepare_rejects_placeholder_before_docker_inspect(tmp_path, monkeypatch
     (stack_dir / ".env").symlink_to("../.env")
     (stack_dir / "docker-compose.yml").touch()
     env = {key: "configured" for key in module.REQUIRED_KEYS}
-    env["OPENWEBUI_SECRET_KEY"] = "PUT_YOUR_KEY_HERE"
+    env[name] = "PUT_YOUR_KEY_HERE"
     calls = []
 
     def fake_run(command, **kwargs):
@@ -224,47 +224,3 @@ def test_wait_ready_rejects_invalid_timeout(monkeypatch, timeout):
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("unexpected Docker call"))
     with pytest.raises(module.WaitError, match="invalid"):
         module.main()
-
-
-@pytest.mark.parametrize("filename", ["reconcile-model-policy.py", "verify-model-policy.py"])
-def test_policy_wrapper_requires_running_container(filename, monkeypatch, capsys):
-    """Refuse policy operations when the container is stopped."""
-    module = load_module(STACK, filename)
-    commands = []
-
-    def fake_run(command, **kwargs):
-        """Report that the policy container is stopped."""
-        commands.append(command)
-        return SimpleNamespace(returncode=0, stdout="false\n")
-
-    monkeypatch.setattr(module.subprocess, "run", fake_run)
-    assert module.main() == 1
-    assert len(commands) == 1
-    assert "not running" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("filename", ["reconcile-model-policy.py", "verify-model-policy.py"])
-def test_policy_wrapper_executes_expected_inner_script(filename, monkeypatch):
-    """Execute the matching inner policy script and return its exit code."""
-    module = load_module(STACK, filename)
-    calls = []
-
-    def fake_run(command, **kwargs):
-        """Pass inspection and return the inner script's failure code."""
-        calls.append((command, kwargs))
-        if command[1] == "inspect":
-            return SimpleNamespace(returncode=0, stdout="true\n")
-        return SimpleNamespace(returncode=7)
-
-    monkeypatch.setattr(module.subprocess, "run", fake_run)
-    assert module.main() == 7
-    assert calls[1][0] == ["docker", "exec", "-i", "open-webui", "python", "-"]
-    script = calls[1][1]["input"]
-    assert "basic_autorouter" in script
-    assert "web_search" in script
-    if filename.startswith("reconcile"):
-        assert "grant_access" in script
-        assert "await db.commit()" in script
-    else:
-        assert "get_grants_by_resource" in script
-        assert "await db.commit()" not in script

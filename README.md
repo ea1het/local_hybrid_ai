@@ -60,7 +60,7 @@ HAProxy routes by host name below `ROOT_HOSTNAME` (default `casa.lan`). The subd
 | [00 · Platform](stack-00_-_platform/README.md) | Host directories, `redlocal` network, CA trust, HAProxy TLS | `.env` |
 | [10 · HAProxy + Web](stack-10_-_haproxy_web/README.md) | HTTPS ingress and landing page | 00 |
 | [20 · SearXNG + Firecrawl](stack-20_-_searxng_firecrawl/README.md) | Optional local web search and extraction | 00 |
-| [30 · LiteLLM](stack-30_-_litellm/README.md) | AI gateway and model credentials | 00, `OMLX_API_KEY` |
+| [30 · LiteLLM](stack-30_-_litellm/README.md) | Empty AI gateway with administrator access | 00 |
 | [40 · Gitea](stack-40_-_gitea/README.md) | Git server and Actions runner | 00 |
 | [50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker management UI | `redlocal` network only |
 | [60 · Hermes](stack-60_-_hermes/README.md) | Agent with SSH sandbox | 00, 30 |
@@ -72,12 +72,13 @@ On the server, as root, from the checkout (`STACKS_ROOT`, default `/opt/docker/s
 
 ```bash
 ./local-ai env bootstrap          # create .env from .env.template and generate local secrets
-# edit .env: set OMLX_API_KEY and review hostnames and paths
+# review hostnames and paths in .env
 # copy rootCA.pem, tls.crt, and tls.key to the paths set in .env (see the mkcert guide)
 ./local-ai stack-00 install
 ./local-ai stack-00 status --deep
 ./local-ai stack-10 install && ./local-ai stack-10 start
 ./local-ai stack-30 install && ./local-ai stack-30 start
+# configure LiteLLM or restore a compatible snapshot, then place consumer keys in .env
 # then, in any order: stack-20, 40, 50, 60, 70 (install, then start)
 ```
 

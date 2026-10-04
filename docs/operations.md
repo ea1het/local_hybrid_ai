@@ -34,14 +34,15 @@ Wrappers run their phases with closed stdin and never prompt. On a terminal they
 
 ```mermaid
 flowchart TB
-    env["env bootstrap<br/>OMLX_API_KEY<br/>certificates"] --> s00["00 · Platform"]
+    env["env bootstrap<br/>certificates"] --> s00["00 · Platform"]
     s00 --> s30["30 · LiteLLM"]
     s00 --> rest["10 · HAProxy<br/>20 · Search<br/>40 · Gitea"]
     s00 -.->|network only| s50["50 · Dockhand"]
-    s30 --> s60["60 · Hermes"] & s70["70 · Open WebUI"]
+    s30 --> config["Configure LiteLLM or restore state<br/>place consumer keys in .env"]
+    config --> s60["60 · Hermes"] & s70["70 · Open WebUI"]
 ```
 
-An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* while it installs. Start Stack 30 before using Stacks 60 or 70.
+An arrow means "must be installed first". Stack 30 starts with no models or consumer keys. Configure LiteLLM or restore compatible database state, then place scoped consumer keys in `.env` before installing Stacks 60 or 70. Stack 70 also needs LiteLLM *running* while it installs.
 
 ## What each verb does per stack
 
@@ -50,7 +51,7 @@ An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* 
 | 00 | bootstrap → prepare → CA → TLS → verify → `.lock` | — | — | platform `verify.py` |
 | 10 | prepare | `up -d` | `down` | — |
 | 20 | dirs → prepare | checks SearXNG config, `up -d` | `down` | PostgreSQL `SELECT 1`, SearXNG test search |
-| 30 | dirs → prepare → provision PostgreSQL → models and keys | `up -d` | `down` | PostgreSQL `SELECT 1` |
+| 30 | dirs → prepare → provision PostgreSQL | `up -d` | `down` | PostgreSQL `SELECT 1` |
 | 40 | dirs → prepare → create admin | `up -d` | `down` | — |
 | 50 | create `dockhand_data` volume | `up -d` | **`stop`** (keeps container) | — |
 | 60 | dirs → prepare | syncs runtime config, `up -d --build` | `down` incl. `git-memory` profile | — |
@@ -70,9 +71,9 @@ An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* 
 | 30 | Reports that LiteLLM reconfiguration is under development (nonzero exit) |
 | 40 | Stages Gitea/runner files and rotates the initial administrator password via the running Gitea admin CLI, with a private database backup |
 | 60 | Updates the managed Hermes model/config and removes stale runtime environment overrides |
-| 70 | Synchronizes the LiteLLM key only while Open WebUI is stopped; updates model policy only while running |
+| 70 | Synchronizes the LiteLLM key only while Open WebUI is stopped; model selection remains in the application |
 
-For Stack 70, if the key is stale while Open WebUI runs, `reconfig --apply` refuses to edit SQLite. Run `stack-70 stop`, preview and apply `stack-70 reconfig`, then `stack-70 start`; preview and apply `stack-70 reconfig` again for the policy after the first administrator exists. All commands in this sequence are prefixed with `./local-ai` from the repository root.
+For Stack 70, if the key is stale while Open WebUI runs, `reconfig --apply` refuses to edit SQLite. Run `stack-70 stop`, preview and apply `stack-70 reconfig`, then `stack-70 start`. All commands in this sequence are prefixed with `./local-ai` from the repository root.
 
 For Stack 40, the initial administrator username remains the installation identity. The first `reconfig --apply` on an installation without a runtime fingerprint reapplies the password from `.env` once; later runs are idempotent. Gitea must already be running for that phase. No password is printed or saved in the runtime fingerprint. File changes are staged and require an explicit `stack-40 stop` followed by `stack-40 start`.
 
@@ -124,7 +125,7 @@ Stack 00 `status` reports only the `.lock`. Use `status --deep` to run the platf
 
 | Command | Purpose |
 | --- | --- |
-| `./local-ai env bootstrap` | Create or complete `.env` from `.env.template`. Generates missing local secrets, never rotates existing ones, and backs up to `.env-backup-YYMMDD-HHMMSS`. Lists external credentials still pending (for example `OMLX_API_KEY`). |
+| `./local-ai env bootstrap` | Create or complete `.env` from `.env.template`. Generates missing local secrets, never rotates existing ones, and backs up to `.env-backup-YYMMDD-HHMMSS`. Lists external or service-issued credentials still pending, such as consumer keys. |
 | `python3 -B wrapper/stubs/sync_envs.py [--check\|--dry-run]` | Add new template variables to `.env`, keeping local values. |
 | `python3 -B wrapper/stubs/upgrade.py check` | Compare image tags in `.env` with their registries and write the plan `.env--upgrading`. |
 | `python3 -B wrapper/stubs/upgrade.py apply` | Apply the plan after confirming each change. Then `stop` and `start` the affected stacks. |

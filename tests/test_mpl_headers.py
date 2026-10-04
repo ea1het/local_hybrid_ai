@@ -37,7 +37,7 @@ def test_supported_comments_and_true_exceptions():
     module = load_script()
     assert module.classify(ROOT / "program_configs/inference_server/caddy/Caddyfile", "site {}").style == "hash"
     assert module.classify(ROOT / "program_configs/workstations/opencode/opencode.jsonc", "{}").style == "slash"
-    for filename in ("LICENSE", "Todo.json", "rootCA.pem", "litellm.key"):
+    for filename in ("LICENSE", "example.json", "rootCA.pem", "litellm.key"):
         assert module.classify(ROOT / filename, "content").style is None
 
 
@@ -46,7 +46,7 @@ def test_check_requires_exact_exception_report(tmp_path, monkeypatch, capsys):
     module = load_script()
     source = tmp_path / "source.py"
     source.write_text("print('hello')\n")
-    json_file = tmp_path / "Todo.json"
+    json_file = tmp_path / "example.json"
     json_file.write_text("{}\n")
     report = tmp_path / "docs/license-header-exceptions.md"
     monkeypatch.setattr(module, "ROOT", tmp_path)
@@ -57,7 +57,7 @@ def test_check_requires_exact_exception_report(tmp_path, monkeypatch, capsys):
     assert "source.py" in capsys.readouterr().out
     assert module.scan(False) == 0
     assert source.read_text().startswith("# This Source Code Form")
-    assert "Todo.json" in report.read_text()
+    assert "example.json" in report.read_text()
     assert module.scan(True) == 0
 
     report.write_text(report.read_text() + "stale\n")

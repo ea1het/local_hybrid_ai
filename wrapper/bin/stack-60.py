@@ -33,10 +33,17 @@ from wrapper.lib.hermes_runtime_env import (RuntimeEnvironmentError, config_need
 from wrapper.lib.progress import run_with_progress
 from wrapper.lib.reconfig_dispatch import add_reconfig_command
 from wrapper.lib.stack_status import report_status
-from wrapper.stubs.bootstrap_env import BootstrapError, assignments, protected_text
+from wrapper.stubs.bootstrap_env import BootstrapError, assignments, missing, protected_text
 STACK_DIR = ROOT / "stack-60_-_hermes"
 LOCK_FILE = STACK_DIR / ".lock"
 PREPARE_MODULE = "stack-60_-_hermes.01-prepare"
+
+
+def require_litellm_keys(values: dict[str, str]) -> None:
+    """Require both scoped LiteLLM keys before preparing or starting Hermes."""
+    for name in ("LITELLM_API_KEY", "LITELLM_MCP_API_KEY"):
+        if missing(values.get(name)):
+            raise RuntimeEnvironmentError(f"{name} must be configured in .env before using Stack 60")
 
 
 def show_next_steps() -> None:
@@ -72,6 +79,11 @@ def install() -> int:
     platform_lock = ROOT / "stack-00_-_platform" / ".lock"
     if platform_lock.is_symlink() or not platform_lock.is_file():
         print(f"ERROR: Stack 00 is not prepared: {platform_lock}", file=sys.stderr)
+        return 1
+    try:
+        require_litellm_keys(assignments(protected_text(ROOT / ".env")))
+    except (BootstrapError, RuntimeEnvironmentError, OSError, ValueError, UnicodeError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
     environment = os.environ.copy()
@@ -145,6 +157,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         try:
             values = assignments(protected_text(env_link.resolve()))
+            require_litellm_keys(values)
             if values.get("TELEGRAM_BOT_TOKEN"):
                 if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]{30,}", values["TELEGRAM_BOT_TOKEN"]):
                     raise RuntimeEnvironmentError("TELEGRAM_BOT_TOKEN does not match the expected BotFather format")
