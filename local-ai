@@ -7,8 +7,9 @@
 
 The executable name omits the wrapper's .py suffix. Arguments after the name
 are passed through unchanged, so each stack wrapper retains ownership of its
-own verbs, options, output, and exit status. The completion command emits
-Bash or Zsh integration for the currently supported verbs and options, installs
+own verbs, options, output, and exit status. A root-level --headless flag
+suppresses the customizable banner without reaching stack wrappers. The
+completion command emits Bash or Zsh integration for supported verbs and options, installs
 it where the shell autoloads completions, and verifies that a login shell
 actually activates it. Installation never edits shell startup files.
 """
@@ -24,6 +25,9 @@ import tempfile
 from pathlib import Path
 
 sys.dont_write_bytecode = True
+
+from version import __version__
+from wrapper.stubs.header import render_header
 
 SCRIPT = Path(__file__).resolve()
 BIN_DIR = SCRIPT.parent / "wrapper" / "bin"
@@ -220,8 +224,9 @@ def available_commands() -> dict[str, Path]:
 
 def completion_candidates(words: list[str], commands: dict[str, Path]) -> list[str]:
     """Return safe, current CLI names for the word being completed."""
+    words = [word for word in words if word != "--headless"]
     if len(words) <= 1:
-        return sorted((*commands, "completion", *HELP_OPTIONS))
+        return sorted((*commands, "completion", "--headless", *HELP_OPTIONS))
     command = words[0]
     if command == "completion":
         if len(words) == 2:
@@ -233,16 +238,16 @@ def completion_candidates(words: list[str], commands: dict[str, Path]) -> list[s
         verbs = ("bootstrap",) if command == "env" else (
             ("install", "status", "reconfig") if command == "stack-00" else STACK_VERBS
         )
-        return [*verbs, *HELP_OPTIONS]
+        return [*verbs, "--headless", *HELP_OPTIONS]
     verb = words[1]
     if verb == "status" and command != "env":
-        return [*HELP_OPTIONS, "--deep"]
+        return [*HELP_OPTIONS, "--deep", "--headless"]
     if verb == "reconfig" and command != "env":
-        return [*HELP_OPTIONS, "--apply"]
+        return [*HELP_OPTIONS, "--apply", "--headless"]
     if (command == "env" and verb == "bootstrap") or (
         command == "stack-00" and verb == "install"
     ) or (command not in {"env", "stack-00"} and verb in STACK_VERBS):
-        return list(HELP_OPTIONS)
+        return [*HELP_OPTIONS, "--headless"]
     return []
 
 
@@ -262,6 +267,12 @@ def completion_command(arguments: list[str]) -> int:
 def main(arguments: list[str] | None = None) -> int:
     """Show available commands or replace this process with the chosen wrapper."""
     arguments = sys.argv[1:] if arguments is None else arguments
+    headless = "--headless" in arguments
+    arguments = [argument for argument in arguments if argument != "--headless"]
+    if not headless and not (arguments and (arguments[0] == "__complete" or
+                          (arguments[0] == "completion" and len(arguments) == 2 and
+                           arguments[1] in COMPLETION_SHELLS))):
+        print(render_header(__version__), end="", flush=True)
     commands = available_commands()
     if arguments and arguments[0] == "__complete":
         print("\n".join(completion_candidates(arguments[1:], commands)))
@@ -269,8 +280,10 @@ def main(arguments: list[str] | None = None) -> int:
     if arguments and arguments[0] == "completion":
         return completion_command(arguments[1:])
     if not arguments or arguments[0] in {"-h", "--help"}:
-        print("Usage: ./local-ai <command> [parameters]", file=sys.stderr if not arguments else sys.stdout)
+        print("Usage: ./local-ai [--headless] <command> [parameters]", file=sys.stderr if not arguments else sys.stdout)
         print("Available commands: " + ", ".join(sorted((*commands, "completion"))),
+              file=sys.stderr if not arguments else sys.stdout)
+        print("--headless suppresses the banner and may appear anywhere in the command.",
               file=sys.stderr if not arguments else sys.stdout)
         return 2 if not arguments else 0
 

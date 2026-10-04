@@ -93,15 +93,18 @@ See [operations](docs/operations.md) for the full order, what each verb does, an
 
 `./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. `reconfig` previews by default; only `reconfig --apply` delegates changes to the stack's own `reconfig.py`. Neither starts nor stops containers.
 
+The command displays a customizable banner from `wrapper/stubs/header.py`, using the version in `version.py` (also used by `pyproject.toml`). Add `--headless` anywhere in the command to suppress the banner, for example `./local-ai --headless stack-20 status` or `./local-ai stack-20 status --headless`. Shell-completion output never includes the banner.
+
 ## Repository map
 
 | Path | Content |
 | --- | --- |
 | `local-ai` | Dispatcher and shell completion |
+| `version.py` | Single source of truth for the CLI and package version |
 | `stack-NN_-_*/` | Each stack's Compose file, configuration, and Python preparation scripts |
 | `wrapper/bin/` | One CLI per stack (`install`, `start`, `stop`, `status`, and where supported `reconfig`) plus `env.py` |
 | `wrapper/lib/` | Shared helpers: status reporting, progress bar, runtime-config synchronization for Stacks 60/70 |
-| `wrapper/stubs/` | `.env` tools: bootstrap, template sync, and image upgrades ([operations](docs/operations.md#maintenance-tools)) |
+| `wrapper/stubs/` | Customizable CLI banner and `.env` tools: bootstrap, template sync, and image upgrades ([operations](docs/operations.md#maintenance-tools)) |
 | `.env.template` | The documented variable contract; copy it to the protected `.env` |
 | `program_configs/` | Setup guides for the other hosts (Mac mini, workstations) |
 | `tests/` | Automated tests ([tests/README.md](tests/README.md)) |

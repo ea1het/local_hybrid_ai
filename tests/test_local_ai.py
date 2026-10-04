@@ -21,6 +21,8 @@ sys.dont_write_bytecode = True
 import pytest
 
 from tests.helpers import ROOT
+from version import __version__
+from wrapper.stubs.header import render_header
 
 
 def test_help_lists_available_wrappers():
@@ -32,6 +34,28 @@ def test_help_lists_available_wrappers():
         assert f"stack-{number}" in result.stdout
         assert f"stack-{number}.py" not in result.stdout
     assert "env" in result.stdout
+    assert f"Version: {__version__}" in result.stdout
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--headless", "stack-20", "status", "--help"],
+    ["stack-20", "status", "--help", "--headless"],
+])
+def test_headless_suppresses_banner_without_changing_stack_arguments(arguments):
+    """Accept the root option anywhere while preserving stack-owned help."""
+    result = subprocess.run([ROOT / "local-ai", *arguments], capture_output=True,
+                            text=True, check=False)
+    assert result.returncode == 0
+    assert "usage: ./local-ai stack-20 status" in result.stdout
+    assert "Version:" not in result.stdout
+
+
+def test_banner_and_project_metadata_share_one_version():
+    """Keep the editable banner and package metadata tied to version.py."""
+    assert f"Version: {__version__}" in render_header(__version__)
+    project = (ROOT / "pyproject.toml").read_text()
+    assert 'version = { attr = "version.__version__" }' in project
+    assert 'py-modules = ["version"]' in project
 
 
 def test_environment_bootstrap_help():
@@ -86,6 +110,7 @@ def test_completion_candidates(words, expected):
                             text=True, check=False)
     assert result.returncode == 0
     assert expected in result.stdout.splitlines()
+    assert "Version:" not in result.stdout
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -96,6 +121,7 @@ def test_completion_scripts_are_valid_shell(shell):
     result = subprocess.run([ROOT / "local-ai", "completion", shell], capture_output=True,
                             text=True, check=False)
     assert result.returncode == 0
+    assert "Version:" not in result.stdout
     checked = subprocess.run([shell, "-n"], input=result.stdout, capture_output=True,
                              text=True, check=False)
     assert checked.returncode == 0, checked.stderr
@@ -115,8 +141,9 @@ def test_completion_matches_stack_parser_options(number, verbs):
         candidates = subprocess.run([ROOT / "local-ai", "__complete", command, verb, ""],
                                     capture_output=True, text=True, check=False)
         assert help_result.returncode == candidates.returncode == 0
+        assert "--headless" in candidates.stdout.splitlines()
         for option in candidates.stdout.splitlines():
-            assert option in help_result.stdout
+            assert option == "--headless" or option in help_result.stdout
         if verb == "status":
             assert "--deep" in candidates.stdout.splitlines()
 

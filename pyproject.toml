@@ -16,10 +16,7 @@ license = { text = "MPL-2.0" }
 dependencies = []
 
 [tool.setuptools.dynamic]
-version = { attr = "local_ai_cli.__version__" }
+version = { attr = "version.__version__" }
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-local_ai_cli = ["*.json", "*.schema.json"]
+[tool.setuptools]
+py-modules = ["version"]
