@@ -12,11 +12,24 @@ import sys
 
 sys.dont_write_bytecode = True
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from tests.helpers import load_module
+
+
+def test_hermes_desktop_port_uses_tls_and_private_backend():
+    """Expose Hermes Desktop through HAProxy without publishing Hermes itself."""
+    stack_dir = Path(__file__).resolve().parents[2] / "stack-10_-_haproxy_web"
+    compose = (stack_dir / "docker-compose.yml").read_text()
+    config = (stack_dir / "config/haproxy/haproxy.cfg").read_text()
+    assert '"0.0.0.0:9119:9119"' in compose
+    frontend = config.split("frontend fe_hermes_harness\n", 1)[1].split("# WEB PRINCIPAL", 1)[0]
+    assert 'bind :9119 ssl crt "@localtls/certs"' in frontend
+    assert "default_backend be_norai" in frontend
+    assert 'server hermes "${NORAI_TARGET}"' in config
 
 
 def test_sourced_environment_rejects_redacted_values(tmp_path, monkeypatch, capsys):

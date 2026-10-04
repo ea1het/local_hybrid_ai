@@ -22,7 +22,7 @@ flowchart TB
 | --- | --- |
 | Install requires | Stack 00 |
 | Containers | `haproxy`, `web` (Compose project `Stack1 - HAProxy + Web`) |
-| Ports | host `HAPROXY_HTTP_PORT` (80) and `HAPROXY_HTTPS_PORT` (443) |
+| Ports | host `HAPROXY_HTTP_PORT` (80), `HAPROXY_HTTPS_PORT` (443), and HTTPS 9119 for Hermes Desktop |
 | Runtime data | `${BASE_PATH}/service_-_haproxy/config` (`haproxy.cfg` next to the TLS pair), `service_-_web` |
 | `status` | `haproxy -c` config check; `web` homepage fetch |
 
@@ -34,5 +34,6 @@ The routing table is in the [main README](../README.md#architecture). Host names
 - **`reconfig` previews managed HAProxy and web files.** Use `reconfig --apply` to back up and stage changed copies; neither command changes container state. Activate staged changes with `./local-ai stack-10 stop` and `./local-ai stack-10 start`. Certificate rotation remains a Stack 00 operation.
 - **Certificates belong to Stack 00.** `01-prepare.py` checks the TLS pair but never creates or replaces it.
 - **Keep backends private.** Application stacks should publish through HAProxy, not through their own host ports. The one exception is Gitea SSH.
+- **Hermes Desktop.** Connect to `https://<haproxy-hostname>:9119` using a name that resolves to the HAProxy host from the Desktop machine and is covered by the TLS certificate. This dedicated listener does not route by hostname; it forwards to `hermes:9119` over `redlocal`. Hermes dashboard authentication remains in force.
 
 Files: `docker-compose.yml`, `config/haproxy/haproxy.cfg`, `config/web/index.html`, `01-prepare.py`.
