@@ -81,12 +81,12 @@ See [operations](docs/operations.md) for the full order, what each verb does, an
 ## The `local-ai` command
 
 ```text
-./local-ai stack-NN {install|start|stop|status [--deep]|reconfig}
+./local-ai stack-NN {install|start|stop|status [--deep]|reconfig [--apply]}
 ./local-ai env bootstrap
 ./local-ai completion {bash|zsh} [install|status]
 ```
 
-`./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. `reconfig` delegates to the stack's own `reconfig.py`; it never starts or stops containers.
+`./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. `reconfig` previews by default; only `reconfig --apply` delegates changes to the stack's own `reconfig.py`. Neither starts nor stops containers.
 
 ## Repository map
 

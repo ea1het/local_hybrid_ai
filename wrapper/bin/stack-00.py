@@ -83,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
     status_parser = commands.add_parser("status", help="Report preparation and container health")
     status_parser.add_argument("--deep", action="store_true", help="Run additional read-only checks")
     options = parser.parse_args(argv)
+    if options.command == "reconfig":
+        return options.handler(options.apply)
     if options.command == "status":
         return report_platform_status(STACK_DIR, LOCK_FILE, deep=options.deep)
     return options.handler()

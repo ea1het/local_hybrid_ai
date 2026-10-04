@@ -36,7 +36,7 @@ This initializes a **fresh** installation. Importing or upgrading an older Gitea
 
 ## Reconfiguration
 
-Run `./local-ai stack-40 reconfig` to stage changes to managed `app.ini` and runner configuration. It also applies `GITEA_ADMIN_PASSWORD` to the initial administrator through the running Gitea admin CLI, with a private SQLite backup first. A root-only fingerprint in `service_-_gitea/config` makes repeated calls idempotent; the first call after installation applies the configured password once. The username is the original installation identity, not a rename operation. No password is printed, and no container is started or stopped. If files changed, apply them with `./local-ai stack-40 stop` and `./local-ai stack-40 start`.
+Run `./local-ai stack-40 reconfig` to preview changes to managed `app.ini`, runner configuration, and the initial administrator password. Only `./local-ai stack-40 reconfig --apply` changes them. Password rotation uses the running Gitea admin CLI after a private SQLite backup. A root-only fingerprint in `service_-_gitea/config` makes repeated applications idempotent; the first application after installation sets the configured password once. The username is the original installation identity, not a rename operation. No password is printed, and no container is started or stopped. If files changed, activate them with `./local-ai stack-40 stop` and `./local-ai stack-40 start`.
 
 ## Notes
 

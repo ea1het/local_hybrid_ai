@@ -1,8 +1,12 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Stage Hermes' central environment and managed model configuration.
 
-The root environment determines the selected model and gateway connection.
-The current web-tool choice is preserved; optional Git-memory setup remains
-separate. This module changes files only and never stops or starts Hermes.
+Without --apply this command reports model/config and runtime override drift.
+With --apply it stages those changes. The current web-tool choice is
+preserved; optional Git-memory setup and container lifecycle remain separate.
 """
 
 from __future__ import annotations
@@ -17,14 +21,14 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from wrapper.lib.hermes_runtime_env import RuntimeEnvironmentError, reconcile
+from wrapper.lib.hermes_runtime_env import RuntimeEnvironmentError, needs_update, reconcile
 from wrapper.lib.reconfig_runtime import (ReconfigError, compose_config, environment,
                                           lifecycle_hint, sync_content)
 
 STACK_DIR = Path(__file__).resolve().parent
 
 
-def main() -> int:
+def main(apply: bool = False) -> int:
     try:
         values = environment(STACK_DIR)
         model = values.get("HERMES_MODEL", "")
@@ -51,14 +55,22 @@ def main() -> int:
         capabilities = importlib.import_module("stack-60_-_hermes.reconcile-capabilities")
         compose_config(STACK_DIR)
         rendered = capabilities.render_config(model, disabled[0] == "[]")
-        changed_config = sync_content(rendered, config)
-        changed_env = reconcile(runtime_env, frozenset(values))
-        print(f"Stack 60: managed configuration {'updated' if changed_config else 'unchanged'}; "
-              f"runtime overrides {'removed' if changed_env else 'absent'}.")
-        if changed_config or changed_env:
+        changed_config = rendered != config.read_bytes()
+        changed_env = needs_update(runtime_env, frozenset(values))
+        print(f"Stack 60 plan: managed configuration {'update' if changed_config else 'unchanged'}; "
+              f"runtime overrides {'remove' if changed_env else 'absent'}.")
+        if not apply:
+            print("Preview only; run ./local-ai stack-60 reconfig --apply to apply this plan.")
+        elif changed_config or changed_env:
+            if changed_config:
+                sync_content(rendered, config)
+            if changed_env:
+                reconcile(runtime_env, frozenset(values))
+            print("Stack 60 managed changes applied.")
             lifecycle_hint("60")
         else:
-            print("If Compose-only values changed in .env, run ./local-ai stack-60 stop and ./local-ai stack-60 start.")
+            print("Nothing to apply.")
+        print("Compose-only .env changes are not tracked; if changed, run ./local-ai stack-60 stop and ./local-ai stack-60 start.")
         print("Optional Git memory and provider reconciliation remain separate operations.")
         return 0
     except (ReconfigError, RuntimeEnvironmentError, OSError, ValueError, UnicodeError) as error:
@@ -67,5 +79,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--apply", action="store_true", help="Apply the displayed reconfiguration plan")
+    raise SystemExit(main(parser.parse_args().apply))

@@ -1,8 +1,12 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Stage the three managed SearXNG files without changing container state.
 
-The repository owns settings, limiter, and favicon configuration. Changed
-runtime copies are backed up before replacement, while database state and
-container lifecycle remain untouched for explicit operator action later.
+Without --apply this command reports differences only. With --apply it backs
+up changed runtime copies and installs repository-owned settings, limiter,
+and favicon files. Database state and container lifecycle remain untouched.
 """
 
 from __future__ import annotations
@@ -16,13 +20,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from wrapper.lib.reconfig_runtime import (ReconfigError, compose_config, environment,
-                                          lifecycle_hint, sync_managed, validate_managed)
+                                          lifecycle_hint, managed_needs_update, sync_managed)
 
 STACK_DIR = Path(__file__).resolve().parent
 NAMES = ("settings.yml", "limiter.toml", "favicons.toml")
 
 
-def main() -> int:
+def main(apply: bool = False) -> int:
     try:
         values = environment(STACK_DIR)
         base_path = values.get("BASE_PATH", "")
@@ -31,17 +35,18 @@ def main() -> int:
         runtime = Path(base_path) / "service_-_searxng/config"
         compose_config(STACK_DIR)
         files = tuple((STACK_DIR / "config/searxng" / name, runtime / name) for name in NAMES)
-        for source, target in files:
-            validate_managed(source, target)
-        changed = []
-        for source, target in files:
-            if sync_managed(source, target):
-                changed.append(target.name)
-        print(f"Stack 20: {'updated ' + ', '.join(changed) if changed else 'managed files unchanged'}.")
-        if changed:
+        changes = [(source, target) for source, target in files if managed_needs_update(source, target)]
+        print(f"Stack 20 plan: {'update ' + ', '.join(target.name for _, target in changes) if changes else 'no managed file changes'}.")
+        if not apply:
+            print("Preview only; run ./local-ai stack-20 reconfig --apply to apply this plan.")
+        elif changes:
+            for source, target in changes:
+                sync_managed(source, target)
+            print("Stack 20 managed files updated.")
             lifecycle_hint("20")
         else:
-            print("If Compose variables changed in .env, run ./local-ai stack-20 stop and ./local-ai stack-20 start.")
+            print("Nothing to apply.")
+        print("Compose-only .env changes are not tracked; if changed, run ./local-ai stack-20 stop and ./local-ai stack-20 start.")
         return 0
     except (ReconfigError, OSError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
@@ -49,5 +54,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--apply", action="store_true", help="Apply the displayed reconfiguration plan")
+    raise SystemExit(main(parser.parse_args().apply))

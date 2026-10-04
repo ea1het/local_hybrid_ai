@@ -237,6 +237,8 @@ def completion_candidates(words: list[str], commands: dict[str, Path]) -> list[s
     verb = words[1]
     if verb == "status" and command != "env":
         return [*HELP_OPTIONS, "--deep"]
+    if verb == "reconfig" and command != "env":
+        return [*HELP_OPTIONS, "--apply"]
     if (command == "env" and verb == "bootstrap") or (
         command == "stack-00" and verb == "install"
     ) or (command not in {"env", "stack-00"} and verb in STACK_VERBS):

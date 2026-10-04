@@ -42,7 +42,7 @@ def test_existing_lock_prevents_prepare_and_describes_next_steps(tmp_path, monke
 
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
-    assert "Removing .lock manually" in output
+    assert "reconfiguration is under development" in output
     assert "\n\nStack 30 is INSTALLED" in output
     assert "./local-ai stack-30 start" in output
 

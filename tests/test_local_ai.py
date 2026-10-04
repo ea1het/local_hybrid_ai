@@ -73,6 +73,7 @@ def test_preserves_wrapper_error_and_rejects_missing_command():
     (["stack-00", ""], "reconfig"),
     (["stack-60", ""], "start"),
     (["stack-60", ""], "reconfig"),
+    (["stack-60", "reconfig", ""], "--apply"),
     (["stack-60", "status", ""], "--deep"),
     (["env", ""], "bootstrap"),
     (["completion", ""], "zsh"),
@@ -129,6 +130,7 @@ def test_reconfig_help_uses_stack_docstring(number):
     stack_dir = next(ROOT.glob(f"stack-{number}_-_*"))
     description = ast.get_docstring(ast.parse((stack_dir / "reconfig.py").read_text()))
     assert description.splitlines()[0] in result.stdout
+    assert "--apply" in result.stdout
     assert "--restart" not in result.stdout
 
 

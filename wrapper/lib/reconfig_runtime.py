@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Shared filesystem and read-only preflight helpers for stack reconfiguration."""
 
 from __future__ import annotations
@@ -65,6 +69,12 @@ def sync_managed(source: Path, target: Path) -> bool:
     """Back up and atomically replace one stack-owned runtime file if changed."""
     validate_managed(source, target)
     return sync_content(source.read_bytes(), target)
+
+
+def managed_needs_update(source: Path, target: Path) -> bool:
+    """Compare a managed source with runtime without creating a backup."""
+    validate_managed(source, target)
+    return not target.exists() or source.read_bytes() != target.read_bytes()
 
 
 def validate_managed(source: Path, target: Path) -> None:

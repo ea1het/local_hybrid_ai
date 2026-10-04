@@ -8,8 +8,8 @@
 The wrapper creates only Stack 20's platform-owned directories, then calls
 the SearXNG/Firecrawl package's preparation module and
 relays its output to the operator. An existing regular .lock prevents any
-preparation attempt; removing it for reconfiguration is an explicit manual
-decision. A successful run must create a regular lock. The wrapper only
+preparation attempt; reconfiguration uses the separate stack-owned verb.
+A successful run must create a regular lock. The wrapper only
 prints the subsequent Docker Compose start command without running it; the
 separate start and stop verbs operate on containers without checking readiness.
 """
@@ -78,7 +78,7 @@ def install() -> int:
             return 1
         print(f"Stack 20 already has a preparation lock: {LOCK_FILE}")
         print("No configuration was changed and 01-prepare.py was not run.")
-        print("Use ./local-ai stack-20 reconfig to stage managed configuration safely.")
+        print("Use ./local-ai stack-20 reconfig to preview managed configuration changes.")
         show_start_instructions()
         return 0
 
@@ -149,7 +149,7 @@ def run_compose(action: str) -> int:
     if action == "up":
         error = configuration_error()
         if error:
-            print(f"ERROR: {error}; run ./local-ai stack-20 reconfig before starting Stack 20.",
+            print(f"ERROR: {error}; preview with ./local-ai stack-20 reconfig, then apply with --apply before starting Stack 20.",
                   file=sys.stderr)
             return 1
 
@@ -199,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
     status_parser = commands.add_parser("status", help="Report preparation and container health")
     status_parser.add_argument("--deep", action="store_true", help="Run additional read-only checks")
     options = parser.parse_args(argv)
+    if options.command == "reconfig":
+        return options.handler(options.apply)
     if options.command == "status":
         return report_status("20", STACK_DIR, LOCK_FILE, deep=options.deep)
     return options.handler()

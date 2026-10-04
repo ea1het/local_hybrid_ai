@@ -60,7 +60,7 @@ An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* 
 
 ## Reconfiguration
 
-`./local-ai stack-NN reconfig` delegates to `stack-NN_-_*/reconfig.py`, which can also be run directly from its stack directory. It does not start, stop, or restart containers. Changed runtime files are backed up inside runtime; the command prints the explicit `local-ai stop` and `start` commands needed to apply staged changes. A preparation `.lock` is never removed or rewritten.
+`./local-ai stack-NN reconfig` shows a read-only plan. Review it, then run `./local-ai stack-NN reconfig --apply` to make the reported changes. Both delegate to `stack-NN_-_*/reconfig.py`, which accepts the same `--apply` option directly. Neither starts, stops, nor restarts containers. Applying changed runtime files creates backups inside runtime and prints the explicit `local-ai stop` and `start` commands needed to activate staged changes. A preparation `.lock` is never removed or rewritten. Compose-only `.env` changes are not tracked by the file comparison; the plan says so rather than claiming they are unchanged.
 
 | Stack | `reconfig` behavior |
 | --- | --- |
@@ -72,9 +72,9 @@ An arrow means "must be installed first". Stack 70 also needs LiteLLM *running* 
 | 60 | Updates the managed Hermes model/config and removes stale runtime environment overrides |
 | 70 | Synchronizes the LiteLLM key only while Open WebUI is stopped; updates model policy only while running |
 
-For Stack 70, if the key is stale while Open WebUI runs, `reconfig` refuses to edit SQLite. Run `stack-70 stop`, `stack-70 reconfig`, `stack-70 start`, then `stack-70 reconfig` again for the policy after the first administrator exists. All commands in this sequence are prefixed with `./local-ai` from the repository root.
+For Stack 70, if the key is stale while Open WebUI runs, `reconfig --apply` refuses to edit SQLite. Run `stack-70 stop`, preview and apply `stack-70 reconfig`, then `stack-70 start`; preview and apply `stack-70 reconfig` again for the policy after the first administrator exists. All commands in this sequence are prefixed with `./local-ai` from the repository root.
 
-For Stack 40, the initial administrator username remains the installation identity. The first `reconfig` on an installation without a runtime fingerprint reapplies the password from `.env` once; later runs are idempotent. Gitea must already be running for that phase. No password is printed or saved in the runtime fingerprint. File changes are staged and require an explicit `stack-40 stop` followed by `stack-40 start`.
+For Stack 40, the initial administrator username remains the installation identity. The first `reconfig --apply` on an installation without a runtime fingerprint reapplies the password from `.env` once; later runs are idempotent. Gitea must already be running for that phase. No password is printed or saved in the runtime fingerprint. File changes are staged and require an explicit `stack-40 stop` followed by `stack-40 start`.
 
 **Stack 00 is different.** It has no containers. Its `install` is a repeatable audit: every run checks and repairs the platform, then keeps or rewrites the `.lock`. If a phase fails, the `.lock` is removed.
 

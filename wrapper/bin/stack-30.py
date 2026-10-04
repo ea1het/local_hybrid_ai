@@ -55,8 +55,7 @@ def install() -> int:
             return 1
         print(f"Stack 30 already has a preparation lock: {LOCK_FILE}")
         print("No configuration was changed.")
-        print("Removing .lock manually would permit reconfiguration, which may overwrite")
-        print("runtime configuration or disrupt a running service. Review first.")
+        print("Stack 30 reconfiguration is under development; do not remove .lock to retry installation.")
         show_next_steps()
         return 0
 
@@ -199,6 +198,8 @@ def main(argv: list[str] | None = None) -> int:
     status_parser = commands.add_parser("status", help="Report preparation and container health")
     status_parser.add_argument("--deep", action="store_true", help="Run additional read-only checks")
     options = parser.parse_args(argv)
+    if options.command == "reconfig":
+        return options.handler(options.apply)
     if options.command == "status":
         return report_status("30", STACK_DIR, LOCK_FILE, deep=options.deep)
     return options.handler()

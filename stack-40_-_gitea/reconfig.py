@@ -1,10 +1,13 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Reconfigure managed Gitea files and the initial administrator password.
 
-The repository owns the rendered server and runner configuration. The
-protected root .env owns the initial administrator's password; a private
-runtime fingerprint records the last successfully applied value. Changing
-that password requires an already running Gitea and uses its admin CLI via
-docker exec. No container is started, stopped, or restarted by this module.
+Without --apply this command only reports configuration and password drift.
+With --apply it stages managed files and, if needed, updates the initial
+administrator password through the already running Gitea admin CLI. A private
+SQLite backup precedes rotation. No container lifecycle action is performed.
 """
 
 from __future__ import annotations
@@ -113,7 +116,7 @@ def rotate_password(container: str, username: str, password: str) -> None:
                             "the command output was withheld to protect secrets")
 
 
-def main() -> int:
+def main(apply: bool = False) -> int:
     try:
         values = environment(STACK_DIR)
         required = (*APP_KEYS, "BASE_PATH", "GITEA_DOCKER_NETWORK", "NETWORK_NAME",
@@ -145,17 +148,29 @@ def main() -> int:
         state = service / "config/.admin-password-reconfig"
         expected = fingerprint(values)
         password_changed = saved_fingerprint(state) != expected
+        changed_app = app_content != app_target.read_bytes()
+        changed_runner = runner_content != runner_target.read_bytes()
+        print(f"Stack 40 plan: app.ini {'update' if changed_app else 'unchanged'}; "
+              f"runner config {'update' if changed_runner else 'unchanged'}; "
+              f"administrator password {'rotate' if password_changed else 'unchanged'}.")
+        if not apply:
+            if password_changed:
+                print("Password rotation requires an already running Gitea; the first application rotates once.")
+            print("Preview only; run ./local-ai stack-40 reconfig --apply to apply this plan.")
+            return 0
         if password_changed:
             container = values["GITEA_CONTAINER_NAME"]
             if not container_running(container):
                 raise ReconfigError("Gitea must already be running to update its administrator password; "
-                                    "run ./local-ai stack-40 start, then ./local-ai stack-40 reconfig")
+                                    "run ./local-ai stack-40 start, then ./local-ai stack-40 reconfig --apply")
             backup_database(service / "data/gitea.db")
             rotate_password(container, values["GITEA_ADMIN_USERNAME"], values["GITEA_ADMIN_PASSWORD"])
             save_fingerprint(state, expected)
             print("Gitea administrator password updated; the new value is active without a restart.")
-        changed_app = sync_content(app_content, app_target)
-        changed_runner = sync_content(runner_content, runner_target)
+        if changed_app:
+            sync_content(app_content, app_target)
+        if changed_runner:
+            sync_content(runner_content, runner_target)
         print(f"Stack 40: app.ini {'updated' if changed_app else 'unchanged'}; "
               f"runner config {'updated' if changed_runner else 'unchanged'}.")
         if changed_app or changed_runner:
@@ -169,5 +184,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--apply", action="store_true", help="Apply the displayed reconfiguration plan")
+    raise SystemExit(main(parser.parse_args().apply))

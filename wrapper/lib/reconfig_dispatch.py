@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Delegate reconfiguration to a stack-owned, directly runnable module."""
 
 from __future__ import annotations
@@ -23,10 +27,11 @@ def add_reconfig_command(commands: argparse._SubParsersAction, stack_dir: Path) 
         "reconfig", help=description.splitlines()[0], description=description,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.set_defaults(handler=lambda: run_reconfig(stack_dir))
+    parser.add_argument("--apply", action="store_true", help="Apply the displayed reconfiguration plan")
+    parser.set_defaults(handler=lambda apply=False: run_reconfig(stack_dir, apply=apply))
 
 
-def run_reconfig(stack_dir: Path) -> int:
+def run_reconfig(stack_dir: Path, apply: bool = False) -> int:
     """Relay the stack module's output and exit status without changing containers."""
     module = stack_dir / "reconfig.py"
     if module.is_symlink() or not module.is_file():
@@ -34,9 +39,12 @@ def run_reconfig(stack_dir: Path) -> int:
         return 1
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    command = [sys.executable, "-B", str(module)]
+    if apply:
+        command.append("--apply")
     result = run_with_progress(
         f"Reconfiguring {stack_dir.name}",
-        [sys.executable, "-B", str(module)],
+        command,
         cwd=stack_dir,
         env=environment,
         stdin=subprocess.DEVNULL,

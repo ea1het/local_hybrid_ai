@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Exercise stack-owned reconfiguration without changing real containers."""
 
 from __future__ import annotations
@@ -42,7 +46,7 @@ def test_file_stacks_only_stage_managed_files(stack, files, tmp_path, monkeypatc
     base.mkdir()
     monkeypatch.setattr(module, "environment", lambda _: {"BASE_PATH": str(base)})
     monkeypatch.setattr(module, "compose_config", lambda _: None)
-    monkeypatch.setattr(module, "validate_managed", lambda *args: None)
+    monkeypatch.setattr(module, "managed_needs_update", lambda source, target: True)
     changed = []
     monkeypatch.setattr(module, "sync_managed", lambda source, target: changed.append(target.name) or True)
     if files[0] == "haproxy.cfg":
@@ -50,7 +54,7 @@ def test_file_stacks_only_stage_managed_files(stack, files, tmp_path, monkeypatc
         config.mkdir(parents=True)
         (config / "tls.crt").write_text("cert")
         (config / "tls.key").write_text("key")
-    assert module.main() == 0
+    assert module.main(True) == 0
     assert tuple(changed) == files
     output = capsys.readouterr().out
     assert "./local-ai" in output
@@ -72,6 +76,17 @@ def test_managed_file_validation_rejects_symlinks(tmp_path):
     assert outside.read_text() == "private"
 
 
+def test_file_stack_preview_does_not_write(tmp_path, monkeypatch, capsys):
+    """A bare reconfig shows the plan but never copies or backs up files."""
+    module = load_module("stack-20_-_searxng_firecrawl", "reconfig.py")
+    monkeypatch.setattr(module, "environment", lambda _: {"BASE_PATH": str(tmp_path)})
+    monkeypatch.setattr(module, "compose_config", lambda _: None)
+    monkeypatch.setattr(module, "managed_needs_update", lambda *args: True)
+    monkeypatch.setattr(module, "sync_managed", lambda *args: pytest.fail("preview must not write"))
+    assert module.main() == 0
+    assert "Preview only" in capsys.readouterr().out
+
+
 def test_hermes_reconfig_preserves_web_state_and_never_restarts(tmp_path, monkeypatch):
     """Render the new model without changing the operator's web/Git intent."""
     module = load_module("stack-60_-_hermes", "reconfig.py")
@@ -84,9 +99,26 @@ def test_hermes_reconfig_preserves_web_state_and_never_restarts(tmp_path, monkey
     captured = []
     monkeypatch.setattr(module, "sync_content", lambda content, path: captured.append(content) or True)
     monkeypatch.setattr(module, "reconcile", lambda path, keys: False)
-    assert module.main() == 0
+    assert module.main(True) == 0
     assert b"default: router" in captured[0]
     assert b"disabled_toolsets: []" in captured[0]
+
+
+def test_hermes_preview_does_not_rewrite_runtime(tmp_path, monkeypatch, capsys):
+    """Detected model and override drift remains read-only by default."""
+    module = load_module("stack-60_-_hermes", "reconfig.py")
+    config = tmp_path / "service_-_hermes/config/config.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("disabled_toolsets: [web]\n")
+    monkeypatch.setattr(module, "environment", lambda _: {
+        "BASE_PATH": str(tmp_path), "HERMES_SERVICE": "service_-_hermes", "HERMES_MODEL": "router",
+    })
+    monkeypatch.setattr(module, "compose_config", lambda _: None)
+    monkeypatch.setattr(module, "needs_update", lambda *args: True)
+    monkeypatch.setattr(module, "sync_content", lambda *args: pytest.fail("preview must not write"))
+    monkeypatch.setattr(module, "reconcile", lambda *args: pytest.fail("preview must not remove overrides"))
+    assert module.main() == 0
+    assert "runtime overrides remove" in capsys.readouterr().out
 
 
 def test_webui_running_with_stale_key_requests_manual_stop(tmp_path, monkeypatch, capsys):
@@ -100,8 +132,22 @@ def test_webui_running_with_stale_key_requests_manual_stop(tmp_path, monkeypatch
     monkeypatch.setattr(module, "needs_update", lambda *args: True)
     monkeypatch.setattr(module, "reconcile", lambda *args: pytest.fail("must not write a live database"))
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not run policy"))
-    assert module.main() == 1
+    assert module.main(True) == 1
     assert "./local-ai stack-70 stop" in capsys.readouterr().out
+
+
+def test_webui_preview_with_stale_key_is_read_only(tmp_path, monkeypatch):
+    """A running WebUI only reports its stale key until --apply is requested."""
+    module = load_module("stack-70_-_open-webui", "reconfig.py")
+    monkeypatch.setattr(module, "environment", lambda _: {
+        "BASE_PATH": str(tmp_path), "OPENWEBUI_LITELLM_BASE_URL": "http://litellm:4000/v1",
+        "OPENWEBUI_LITELLM_API_KEY": "sk-new",
+    })
+    monkeypatch.setattr(module, "container_running", lambda _: True)
+    monkeypatch.setattr(module, "needs_update", lambda *args: True)
+    monkeypatch.setattr(module, "reconcile", lambda *args: pytest.fail("preview must not write"))
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("no policy mutation"))
+    assert module.main() == 0
 
 
 def test_webui_running_with_current_key_reconciles_policy(tmp_path, monkeypatch):
@@ -117,7 +163,7 @@ def test_webui_running_with_current_key_reconciles_policy(tmp_path, monkeypatch)
     monkeypatch.setattr(module.subprocess, "run", lambda command, **kwargs: (
         calls.append(command) or SimpleNamespace(returncode=0)
     ))
-    assert module.main() == 0
+    assert module.main(True) == 0
     assert len(calls) == 1 and calls[0][-1].endswith("reconcile-model-policy.py")
 
 
@@ -136,7 +182,7 @@ def test_webui_stopped_updates_key_without_starting(tmp_path, monkeypatch, capsy
     changed = []
     monkeypatch.setattr(module, "reconcile", lambda *args: changed.append(args) or True)
     monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: pytest.fail("must not use Docker"))
-    assert module.main() == 0
+    assert module.main(True) == 0
     assert len(changed) == 1
     assert "./local-ai stack-70 start" in capsys.readouterr().out
 
@@ -187,7 +233,7 @@ def test_gitea_reconfig_rotates_only_when_running(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "container_running", lambda _: False)
     monkeypatch.setattr(module, "backup_database", lambda _: pytest.fail("must not back up"))
     monkeypatch.setattr(module, "rotate_password", lambda *args: pytest.fail("must not rotate"))
-    assert module.main() == 1
+    assert module.main(True) == 1
 
 
 def test_gitea_reconfig_rotates_and_stages_without_lifecycle(tmp_path, monkeypatch):
@@ -200,7 +246,7 @@ def test_gitea_reconfig_rotates_and_stages_without_lifecycle(tmp_path, monkeypat
     monkeypatch.setattr(module, "rotate_password", lambda *args: calls.append(("rotate", args)))
     monkeypatch.setattr(module, "save_fingerprint", lambda *args: calls.append(("save", args)))
     monkeypatch.setattr(module, "sync_content", lambda content, path: calls.append(("stage", path)) or True)
-    assert module.main() == 0
+    assert module.main(True) == 0
     assert [name for name, _ in calls] == ["backup", "rotate", "save", "stage", "stage"]
     assert calls[1][1] == ("gitea", "admin", values["GITEA_ADMIN_PASSWORD"])
 
@@ -217,6 +263,20 @@ def test_gitea_password_transport_uses_stdin_not_argv(monkeypatch):
     assert command[:3] == ["docker", "exec", "-i"]
     assert "supersecret" not in " ".join(command)
     assert "supersecret" in kwargs["input"]
+
+
+def test_gitea_preview_never_backs_up_or_rotates(tmp_path, monkeypatch, capsys):
+    """A password difference is displayed, not applied, without --apply."""
+    module, _ = gitea_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(module, "saved_fingerprint", lambda _: None)
+    monkeypatch.setattr(module, "container_running", lambda _: pytest.fail("preview need not inspect Gitea"))
+    monkeypatch.setattr(module, "backup_database", lambda _: pytest.fail("preview must not back up"))
+    monkeypatch.setattr(module, "rotate_password", lambda *args: pytest.fail("preview must not rotate"))
+    monkeypatch.setattr(module, "sync_content", lambda *args: pytest.fail("preview must not stage"))
+    assert module.main() == 0
+    output = capsys.readouterr().out
+    assert "password rotate" in output
+    assert "new-secret" not in output
 
 
 def test_gitea_password_fingerprint_is_keyed_and_secret_free():
@@ -256,6 +316,25 @@ def test_wrapper_reconfig_only_delegates(number, monkeypatch):
     spec.loader.exec_module(wrapper)
     called = []
     from wrapper.lib import reconfig_dispatch
-    monkeypatch.setattr(reconfig_dispatch, "run_reconfig", lambda stack_dir: called.append(stack_dir) or 0)
+    monkeypatch.setattr(reconfig_dispatch, "run_reconfig", lambda stack_dir, apply=False: (
+        called.append((stack_dir, apply)) or 0
+    ))
     assert wrapper.main(["reconfig"]) == 0
-    assert called == [wrapper.STACK_DIR]
+    assert wrapper.main(["reconfig", "--apply"]) == 0
+    assert called == [(wrapper.STACK_DIR, False), (wrapper.STACK_DIR, True)]
+
+
+def test_dispatch_forwards_apply_only_when_explicit(tmp_path, monkeypatch):
+    """The wrapper never turns a preview into an application implicitly."""
+    from wrapper.lib import reconfig_dispatch
+
+    module = tmp_path / "reconfig.py"
+    module.write_text('"""Test module."""\n')
+    commands = []
+    monkeypatch.setattr(reconfig_dispatch, "run_with_progress", lambda label, command, **kwargs: (
+        commands.append(command) or SimpleNamespace(returncode=0, stdout="", stderr="")
+    ))
+    assert reconfig_dispatch.run_reconfig(tmp_path) == 0
+    assert reconfig_dispatch.run_reconfig(tmp_path, apply=True) == 0
+    assert commands[0][-1] == str(module)
+    assert commands[1][-2:] == [str(module), "--apply"]

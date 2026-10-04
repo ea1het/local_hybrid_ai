@@ -42,7 +42,7 @@ def test_existing_lock_explains_state_without_running_prepare(tmp_path, monkeypa
 
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
-    assert "Removing .lock manually" in output
+    assert "leave .lock in place" in output
     assert "./local-ai stack-50 start" in output
 
 
