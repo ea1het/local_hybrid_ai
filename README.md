@@ -12,6 +12,8 @@ New to the project? Follow the [reading guide](#reading-guide).
 
 ## Architecture
 
+![Local Hybrid AI architecture](docs/images/local_hybrid_ai.png)
+
 ```mermaid
 flowchart TB
     Clients["Browser · opencode"]
