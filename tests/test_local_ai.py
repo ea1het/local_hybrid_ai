@@ -8,6 +8,7 @@ Help and argument errors are safe subprocesses: they prove the executable
 selects real stack wrappers and preserves their CLI behavior and exit codes.
 """
 
+import ast
 import importlib.machinery
 import importlib.util
 import os
@@ -102,8 +103,7 @@ def test_completion_scripts_are_valid_shell(shell):
 @pytest.mark.parametrize("number,verbs", [
     ("00", ("install", "status", "reconfig")),
     *((number, ("install", "start", "stop", "status", "reconfig"))
-      for number in ("10", "20", "30", "50", "60", "70")),
-    ("40", ("install", "start", "stop", "status")),
+      for number in ("10", "20", "30", "40", "50", "60", "70")),
 ])
 def test_completion_matches_stack_parser_options(number, verbs):
     """Reject completion metadata that invents a verb or omits its options."""
@@ -120,11 +120,15 @@ def test_completion_matches_stack_parser_options(number, verbs):
             assert "--deep" in candidates.stdout.splitlines()
 
 
-def test_reconfig_help_has_no_lifecycle_options():
-    """Expose reconfiguration without implying automatic container changes."""
-    result = subprocess.run([ROOT / "local-ai", "stack-60", "reconfig", "--help"],
+@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70"))
+def test_reconfig_help_uses_stack_docstring(number):
+    """Expose substantive stack-owned help without inventing lifecycle options."""
+    result = subprocess.run([ROOT / "local-ai", f"stack-{number}", "reconfig", "--help"],
                             capture_output=True, text=True, check=False)
     assert result.returncode == 0
+    stack_dir = next(ROOT.glob(f"stack-{number}_-_*"))
+    description = ast.get_docstring(ast.parse((stack_dir / "reconfig.py").read_text()))
+    assert description.splitlines()[0] in result.stdout
     assert "--restart" not in result.stdout
 
 

@@ -42,8 +42,7 @@ def test_install_is_required_subcommand(number):
     assert f"stack-{number}.py" not in help_result.stdout
     assert "install" in help_result.stdout
     assert "status" in help_result.stdout
-    if number != "40":
-        assert "reconfig" in help_result.stdout
+    assert "reconfig" in help_result.stdout
     if number != "00":
         assert "start" in help_result.stdout
         assert "stop" in help_result.stdout

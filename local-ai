@@ -231,9 +231,7 @@ def completion_candidates(words: list[str], commands: dict[str, Path]) -> list[s
         return []
     if len(words) == 2:
         verbs = ("bootstrap",) if command == "env" else (
-            ("install", "status", "reconfig") if command == "stack-00" else (
-                ("install", "start", "stop", "status") if command == "stack-40" else STACK_VERBS
-            )
+            ("install", "status", "reconfig") if command == "stack-00" else STACK_VERBS
         )
         return [*verbs, *HELP_OPTIONS]
     verb = words[1]

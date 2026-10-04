@@ -86,7 +86,7 @@ See [operations](docs/operations.md) for the full order, what each verb does, an
 ./local-ai completion {bash|zsh} [install|status]
 ```
 
-`./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. `reconfig` delegates to the stack's own `reconfig.py`; it never starts or stops containers. Stack 40 does not have this verb yet.
+`./local-ai stack-NN …` runs `wrapper/bin/stack-NN.py`, passing the arguments and exit code through unchanged. `reconfig` delegates to the stack's own `reconfig.py`; it never starts or stops containers.
 
 ## Repository map
 

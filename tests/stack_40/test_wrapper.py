@@ -42,7 +42,7 @@ def test_existing_lock_is_explained_without_running_prepare(tmp_path, monkeypatc
 
     assert wrapper.main(["install"]) == 0
     output = capsys.readouterr().out
-    assert "Removing .lock manually" in output
+    assert "./local-ai stack-40 reconfig" in output
     assert "\n\nStack 40 is INSTALLED" in output
     assert "./local-ai stack-40 start" in output
 

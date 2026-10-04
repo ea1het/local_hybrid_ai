@@ -34,6 +34,10 @@ flowchart TB
 
 This initializes a **fresh** installation. Importing or upgrading an older Gitea is a manual procedure.
 
+## Reconfiguration
+
+Run `./local-ai stack-40 reconfig` to stage changes to managed `app.ini` and runner configuration. It also applies `GITEA_ADMIN_PASSWORD` to the initial administrator through the running Gitea admin CLI, with a private SQLite backup first. A root-only fingerprint in `service_-_gitea/config` makes repeated calls idempotent; the first call after installation applies the configured password once. The username is the original installation identity, not a rename operation. No password is printed, and no container is started or stopped. If files changed, apply them with `./local-ai stack-40 stop` and `./local-ai stack-40 start`.
+
 ## Notes
 
 - **Backups.** Back up `service_-_gitea` with Gitea stopped, or use `gitea dump`. The runner can be re-registered, so it needs no backup.

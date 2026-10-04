@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from wrapper.lib.cli_output import spaced_output
 from wrapper.lib.progress import run_with_progress
-from wrapper.lib.reconfig_dispatch import run_reconfig
+from wrapper.lib.reconfig_dispatch import add_reconfig_command
 from wrapper.lib.stack_status import report_status
 STACK_DIR = ROOT / "stack-10_-_haproxy_web"
 LOCK_FILE = STACK_DIR / ".lock"
@@ -147,9 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch the required stack operation."""
     parser = argparse.ArgumentParser(prog="./local-ai stack-10", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("reconfig", help="Apply configuration without changing container state").set_defaults(
-        handler=lambda: run_reconfig(STACK_DIR)
-    )
+    add_reconfig_command(commands, STACK_DIR)
     commands.add_parser("install", help="Prepare without starting services").set_defaults(handler=install)
     commands.add_parser("start", help="Run Docker Compose up in detached mode").set_defaults(
         handler=lambda: run_compose("up")
