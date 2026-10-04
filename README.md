@@ -16,7 +16,7 @@ New to the project? Follow the [reading guide](#reading-guide).
 
 ```mermaid
 flowchart TB
-    Clients["Browser · opencode"]
+    Clients["Browser · Desktop harness"]
     subgraph server["Stacks server · Docker network redlocal"]
         HAProxy["10 · HAProxy (TLS)"]
         WebUI["70 · Open WebUI"]
@@ -24,7 +24,8 @@ flowchart TB
         Others["20 · Search<br/>40 · Gitea<br/>50 · Dockhand"]
         LiteLLM["30 · LiteLLM"]
     end
-    oMLX["Mac mini · Caddy → oMLX"]
+    oMLX["Mac Mini M5 Pro 
+    Caddy → oMLX"]
     Clients -->|HTTPS| HAProxy
     HAProxy --> WebUI & Hermes & Others
     WebUI & Hermes --> LiteLLM
