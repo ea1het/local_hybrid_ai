@@ -6,7 +6,9 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Local Hybrid AI
 
-Local-first AI infrastructure: eight Docker Compose stacks on one Linux server, using a Mac mini running oMLX for inference. One command, `./local-ai`, prepares, starts, stops, and inspects each stack.
+Local-first AI infrastructure: eight Docker Compose stacks on one Linux server, using a Mac Mini M5 Pro running oMLX for inference. 
+
+One command, `./local-ai`, prepares, starts/stops, reconfigures and inspects each stack.
 
 New to the project? Follow the [reading guide](#reading-guide).
 
