@@ -40,7 +40,7 @@ sequenceDiagram
 
 - **Administrative access.** After `./local-ai stack-30 start`, use the LiteLLM Admin UI with `UI_USERNAME` and `UI_PASSWORD` from the protected `.env`. The master key is also in `.env`. Keep both private. `status` verifies containers and PostgreSQL, not a UI login.
 - **Empty by default.** `install` creates no models, provider credentials, virtual keys, MCP registrations, or access grants. `config.yaml` has no `model_list`; the database is the source of truth. Existing database state is preserved, not reset by `install`.
-- **Next step.** Configure providers, models, and scoped consumer keys in LiteLLM, or restore a compatible database snapshot when one is available. Put the resulting Hermes/Open WebUI keys in `.env` before installing those stacks. A database dump alone does not supply the original encryption salt or plaintext virtual keys; preserve and reconcile the corresponding secrets separately.
+- **Next step.** Configure providers, models, and scoped consumer keys in the LiteLLM Admin UI. Put the resulting Hermes/Open WebUI keys in `.env` before installing those stacks. A reusable database snapshot and safe restore procedure are planned but not yet provided. A database dump alone does not supply the original encryption salt or plaintext virtual keys; preserve and reconcile the corresponding secrets separately.
 
 ## Notes
 

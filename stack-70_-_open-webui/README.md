@@ -20,7 +20,7 @@ flowchart TB
 
 | | |
 | --- | --- |
-| Install requires | Stacks 00 and 30 prepared, **`litellm` running**, and a dedicated `OPENWEBUI_LITELLM_API_KEY` placed in `.env` after configuring or restoring LiteLLM |
+| Install requires | Stacks 00 and 30 prepared, **`litellm` running**, and a dedicated `OPENWEBUI_LITELLM_API_KEY` placed in `.env` after configuring LiteLLM |
 | Containers | `open-webui` (Compose project `Stack7 - Open WebUI`) |
 | Published at | `chat.casa.lan` through Stack 10 |
 | Runtime data | `${BASE_PATH}/service_-_open-webui/data` (**back up**: users, chats, settings); `OPENWEBUI_SECRET_KEY` in `.env` |
@@ -28,7 +28,8 @@ flowchart TB
 
 ## Lifecycle specifics
 
-- **`install`** runs `00-bootstrap.py` first. It fills only missing Open WebUI values in `.env` (for example the signing key), after a private backup. It never creates LiteLLM keys.
+- **Gateway credential.** Create a scoped inference key in LiteLLM and place it in the protected root `.env` before `install`. The CLI rejects a missing or placeholder key before a fresh `install` or `start`, but does not test its permissions or model access. A locked `install` is a no-op; `start` still checks the key.
+- **`install`** checks the key, then runs directory bootstrap, `00-bootstrap.py`, and `01-prepare.py`. Bootstrap fills only missing Open WebUI values in `.env` (for example the signing key), after a private backup. It never creates LiteLLM keys.
 - **`start`** keeps the saved LiteLLM key in sync. Open WebUI stores its connection key in `webui.db`, and that stored key overrides Compose. If it differs from `.env`, `start` stops the container, backs up `webui.db`, replaces only that key, and starts again. An unknown database layout stops the start instead of resetting settings.
 - **`reconfig`** previews LiteLLM connection drift without changes. `reconfig --apply` never stops or starts containers: with Open WebUI stopped, it backs up `webui.db` and synchronizes a changed LiteLLM key from `.env`. If a running instance has a stale key, stop it manually, run `reconfig --apply`, then start it manually.
 

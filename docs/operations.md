@@ -38,11 +38,11 @@ flowchart TB
     s00 --> s30["30 · LiteLLM"]
     s00 --> rest["10 · HAProxy<br/>20 · Search<br/>40 · Gitea"]
     s00 -.->|network only| s50["50 · Dockhand"]
-    s30 --> config["Configure LiteLLM or restore state<br/>place consumer keys in .env"]
+    s30 --> config["Configure LiteLLM in the Admin UI<br/>place consumer keys in .env"]
     config --> s60["60 · Hermes"] & s70["70 · Open WebUI"]
 ```
 
-An arrow means "must be installed first". Stack 30 starts with no models or consumer keys. Configure LiteLLM or restore compatible database state, then place scoped consumer keys in `.env` before installing Stacks 60 or 70. Stack 70 also needs LiteLLM *running* while it installs.
+Arrows show the deployment sequence. Stack 30 starts with no models or consumer keys. Configure LiteLLM in its Admin UI, then place scoped consumer keys in `.env` before installing Stacks 60 or 70. Both require LiteLLM *running* during installation. A database snapshot and restore process are planned, not yet available.
 
 ## What each verb does per stack
 
@@ -54,10 +54,12 @@ An arrow means "must be installed first". Stack 30 starts with no models or cons
 | 30 | dirs → prepare → provision PostgreSQL | `up -d` | `down` | PostgreSQL `SELECT 1` |
 | 40 | dirs → prepare → create admin | `up -d` | `down` | — |
 | 50 | create `dockhand_data` volume | `up -d` | **`stop`** (keeps container) | — |
-| 60 | dirs → prepare | syncs runtime config, `up -d --build` | `down` incl. `git-memory` profile | — |
-| 70 | dirs → bootstrap `.env` → prepare | syncs saved LiteLLM key, `up -d` | `down` | — |
+| 60 | check LiteLLM keys → dirs → prepare | checks keys, syncs runtime config, `up -d --build` | `down` incl. `git-memory` profile | — |
+| 70 | check LiteLLM key → dirs → bootstrap `.env` → prepare | checks key, syncs saved LiteLLM key, `up -d` | `down` | — |
 
 *dirs* = `stack-00_-_platform/00-bootstrap.py --stack NN`, which creates only that stack's runtime directories. The stack READMEs explain the stack-specific phases.
+
+The Stack 60/70 key checks reject missing, empty, or template-placeholder values before a fresh `install` or `start`. They do not verify that LiteLLM accepts the keys, that permissions are sufficient, or that a model responds. An existing `.lock` makes `install` a no-op; `start` still checks the keys.
 
 ## Reconfiguration
 

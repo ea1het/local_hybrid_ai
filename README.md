@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Local Hybrid AI
 
-Local-first AI infrastructure: eight Docker Compose stacks on one Linux server, using a Mac Mini M5 Pro running oMLX for inference. 
+Local-first AI infrastructure: eight Docker Compose stacks on one Linux server. LiteLLM starts without models; a Mac Mini M5 Pro running oMLX is the preferred but optional inference provider.
 
 One command, `./local-ai`, prepares, starts/stops, reconfigures and inspects each stack.
 
@@ -15,6 +15,8 @@ New to the project? Follow the [reading guide](#reading-guide).
 ## Architecture
 
 ![Local Hybrid AI architecture](docs/images/local_hybrid_ai.png)
+
+The illustration shows a configured deployment; a fresh Stack 30 has no provider, model, or consumer key.
 
 ```mermaid
 flowchart TB
@@ -31,12 +33,12 @@ flowchart TB
     Clients -->|HTTPS| HAProxy
     HAProxy --> WebUI & Hermes & Others
     WebUI & Hermes --> LiteLLM
-    LiteLLM -->|HTTPS| oMLX
+    LiteLLM -.->|optional HTTPS| oMLX
 ```
 
 The diagram shows the main request path. Also:
 
-- AI consumers reach models only through LiteLLM (Stack 30), each with its own scoped key. HAProxy also publishes LiteLLM for external tools such as opencode.
+- After providers and models are configured, AI consumers reach them through LiteLLM (Stack 30), each with its own scoped key. HAProxy also publishes LiteLLM for external tools such as opencode.
 - Hermes and Open WebUI use Stack 20 for web search when it is running. Hermes can keep its memory in a Git repository, for example on Gitea.
 - Git clients reach Gitea over SSH directly on port 2222.
 - Stack 00 has no containers: it prepares the host (directories, network, CA trust, and TLS certificates).
@@ -63,8 +65,8 @@ HAProxy routes by host name below `ROOT_HOSTNAME` (default `casa.lan`). The subd
 | [30 · LiteLLM](stack-30_-_litellm/README.md) | Empty AI gateway with administrator access | 00 |
 | [40 · Gitea](stack-40_-_gitea/README.md) | Git server and Actions runner | 00 |
 | [50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker management UI | `redlocal` network only |
-| [60 · Hermes](stack-60_-_hermes/README.md) | Agent with SSH sandbox | 00, 30 |
-| [70 · Open WebUI](stack-70_-_open-webui/README.md) | Chat UI | 00, 30 and LiteLLM running |
+| [60 · Hermes](stack-60_-_hermes/README.md) | Agent with SSH sandbox | 00, 30 running and two scoped LiteLLM keys in `.env` |
+| [70 · Open WebUI](stack-70_-_open-webui/README.md) | Chat UI | 00, 30 running and a scoped LiteLLM key in `.env` |
 
 ## Quick start
 
@@ -78,9 +80,13 @@ On the server, as root, from the checkout (`STACKS_ROOT`, default `/opt/docker/s
 ./local-ai stack-00 status --deep
 ./local-ai stack-10 install && ./local-ai stack-10 start
 ./local-ai stack-30 install && ./local-ai stack-30 start
-# configure LiteLLM or restore a compatible snapshot, then place consumer keys in .env
-# then, in any order: stack-20, 40, 50, 60, 70 (install, then start)
+# independent stacks 20, 40, and 50 can be installed and started at any time
+# configure LiteLLM models and scoped consumer keys in the Admin UI
+# set LITELLM_API_KEY, LITELLM_MCP_API_KEY, and OPENWEBUI_LITELLM_API_KEY in .env
+# then install and start stacks 60 and 70 in either order
 ```
+
+Stack 30 does not create models or consumer keys. A database snapshot and restore procedure are planned but not yet provided; see [pending work](pending.md).
 
 See [operations](docs/operations.md) for the full order, what each verb does, and how to read `status`.
 
@@ -146,7 +152,7 @@ All documentation, in the suggested reading order. Each step builds on the previ
 
 ### 3. Prepare the hosts around the server
 
-Read these before your first deployment. They set up the Mac mini and the certificates that Stacks 00 and 30 need.
+Read the certificate guides before your first deployment: Stack 00 needs the local CA and TLS material. The oMLX and Caddy guides are optional until you choose oMLX as a LiteLLM provider.
 
 | # | Document | What you learn |
 | --- | --- | --- |

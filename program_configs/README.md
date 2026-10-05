@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [Reading guide](../README.md#reading-guide) · Next: [oMLX](inference_server/omlx/README.md)
 
-Setup guides for the hosts around the stacks server. Nothing here is installed by `./local-ai`.
+Setup guides for the hosts around the stacks server. Nothing here is installed by `./local-ai`. The certificate material is needed for Stack 00; oMLX and Caddy are optional until LiteLLM is configured to use that provider.
 
 ```mermaid
 flowchart TB

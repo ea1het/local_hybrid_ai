@@ -21,7 +21,7 @@ flowchart LR
 
 | | |
 | --- | --- |
-| Install requires | Stacks 00 and 30 (`LITELLM_API_KEY`, `LITELLM_MCP_API_KEY` in `.env`) |
+| Install requires | Stacks 00 and 30, **`litellm` running**, and dedicated `LITELLM_API_KEY` and `LITELLM_MCP_API_KEY` in `.env` |
 | Containers | `hermes`, `hermes-sandbox`, `hermes-sandbox-cleanup`; optional `hermes-memory-sync` (Compose project `Stack6 - Hermes`) |
 | Published at | `norai.casa.lan` → dashboard on port 9119, with basic auth (`HERMES_DASHBOARD_*`) |
 | Runtime data | `${BASE_PATH}/${HERMES_SERVICE}`, `${HERMES_MEMORY_SERVICE}`, `${MEMORY_SYNC_SERVICE}`, `${SANDBOX_SERVICE}` |
@@ -29,6 +29,7 @@ flowchart LR
 
 ## Lifecycle specifics
 
+- **Gateway credentials.** Create an inference key and a separate MCP key in LiteLLM, grant each the required access, and place both in the protected root `.env` before `install`. Set `HERMES_MODEL` to a model name actually exposed by LiteLLM; the template value is only an example. The CLI rejects missing or placeholder keys before a fresh `install` or `start`, but does not test their permissions or a model completion. A locked `install` is a no-op; `start` still checks the keys.
 - **Telegram.** Set `TELEGRAM_BOT_TOKEN` and a comma-separated `TELEGRAM_ALLOWED_USERS` list of numeric user IDs in the protected root `.env`, then run `./local-ai stack-60 start`. `start` rejects a token without an allowlist before changing the runtime. No interactive Hermes setup or inbound webhook is needed; verify with a message from an allowed user.
 - **`reconfig`** previews managed `config.yaml` and runtime environment drift. `reconfig --apply` stages changes from `.env` (including `HERMES_MODEL`), preserves the current web-tool choice, and removes stale central overrides from runtime `data/.env`. It backs up changed files but never changes container state. Activate with `./local-ai stack-60 stop` and `./local-ai stack-60 start`. `start` retains its existing gateway-drift safety check.
 - **`stop`** includes the `git-memory` profile, so the memory-sync container is removed as well. A plain `docker compose down` would leave it running.

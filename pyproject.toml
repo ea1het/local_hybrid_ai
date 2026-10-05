@@ -7,9 +7,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "local_ai_cli"
+name = "local_hybrid_ai"
 dynamic = ["version"]
-description = "Private management CLI implementation behind the ./local-ai entry point for Local Hybrid AI."
+description = "Local Hybrid AI stack implementation behind the ./local-ai entry point script."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MPL-2.0" }
