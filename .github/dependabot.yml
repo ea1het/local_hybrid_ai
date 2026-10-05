@@ -1,0 +1,93 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # pip dependencies (pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "pip"
+
+  # Docker Compose files (8 stacks)
+  - package-ecosystem: "docker"
+    directory: "/stack-00_-_platform"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-00"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-10_-_haproxy_web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-10"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-20_-_searxng_firecrawl"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-20"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-30_-_litellm"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-30"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-40_-_gitea"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-40"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-50_-_dockhand"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-50"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-60_-_hermes"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-60"
+
+  - package-ecosystem: "docker"
+    directory: "/stack-70_-_open-webui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "docker-stack-70"
+
+  # GitHub Actions workflows (.github/workflows/)
+  - package-ecosystem: "github-actions"
+    directory: "/.github/workflows"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "github-actions"
