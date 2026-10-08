@@ -19,6 +19,7 @@ services:
     restart: unless-stopped
 
     environment:
+      PROXY_BASE_URL: "https://${GWIA_HOSTNAME}.${ROOT_HOSTNAME}"
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${LITELLM_POSTGRES_ADMIN_PASSWORD:?Set LITELLM_POSTGRES_ADMIN_PASSWORD in .env}
       POSTGRES_DB: postgres
