@@ -19,7 +19,6 @@ services:
     restart: unless-stopped
 
     environment:
-      PROXY_BASE_URL: "https://${GWIA_HOSTNAME}.${ROOT_HOSTNAME}"
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${LITELLM_POSTGRES_ADMIN_PASSWORD:?Set LITELLM_POSTGRES_ADMIN_PASSWORD in .env}
       POSTGRES_DB: postgres
@@ -55,6 +54,7 @@ services:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/casa-ca-bundle.pem:ro
 
     environment:
+      PROXY_BASE_URL: "https://${GWIA_HOSTNAME}.${ROOT_HOSTNAME}"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
       LITELLM_SALT_KEY: "${LITELLM_SALT_KEY}"
       UI_USERNAME: "${UI_USERNAME}"
