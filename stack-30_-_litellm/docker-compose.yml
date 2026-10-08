@@ -54,7 +54,7 @@ services:
       - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/casa-ca-bundle.pem:ro
 
     environment:
-      PROXY_BASE_URL: "https://${GWIA_HOSTNAME}.${GWIA_ROOT_EXTERNAL_HOSTNAME}"
+      PROXY_BASE_URL: "https://${GWIA_HOSTNAME:?Set GWIA_HOSTNAME in .env}.${GWIA_ROOT_EXTERNAL_HOSTNAME:?Set GWIA_ROOT_EXTERNAL_HOSTNAME in .env}"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
       LITELLM_SALT_KEY: "${LITELLM_SALT_KEY}"
       UI_USERNAME: "${UI_USERNAME}"
