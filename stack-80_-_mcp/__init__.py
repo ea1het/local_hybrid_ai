@@ -4,5 +4,9 @@
 
 """Stack 80: independently configured, self-hosted MCP servers.
 
-No imports or automatic registration in LiteLLM. CLI integration is deferred.
+No automatic registration in LiteLLM. CLI integration is deferred.
 """
+
+import sys
+
+sys.dont_write_bytecode = True

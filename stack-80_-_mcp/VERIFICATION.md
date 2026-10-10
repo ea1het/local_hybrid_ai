@@ -4,57 +4,63 @@
 
 # Verification · October 10, 2026
 
-The stack was verified without modifying or registering services in LiteLLM
-and without using real Google credentials.
+These checks validate the new container-managed Google authentication flow.
+No real Google credentials or LiteLLM configuration were used or changed.
 
 ## Completed checks
 
-- Docker Compose v5.3.1 renders and validates the file with test settings.
-- Bootstrap selects one MCP or all of them, preserves existing values on
-  subsequent runs, and generates separate keys with `0600` permissions.
-- The stack environment is a symlink to `../.env`; bootstrap and validation
-  leave the global file unchanged. Bootstrap rejects an old local `.env`
-  without overwriting it and does not create a missing global environment.
-- `01-prepare.py` generates internal settings and keys without requiring
-  bootstrap first. The Client ID is declared once in the global environment,
-  and Compose passes it to all three instances. Obsolete local copies are
-  removed while signing keys are preserved. This preparation is tested with
-  mocked Docker operations.
-- All three services use only the external network, publish no ports, have
-  separate directories, and force the Google Client Secret to an empty value.
-- The build references the `v2.1.0` release tag of `google_workspace_mcp`;
-  `GOOGLE_WORKSPACE_MCP_VERSION` lets the operator change the version.
-- The upstream project was installed in a temporary Python 3.11 environment
-  using its `uv.lock` (`uv sync --frozen --no-dev --extra disk`), without
-  changing its source.
-- Each HTTP server was started with the Compose arguments and environment,
-  replacing storage paths and addresses with temporary values.
-- `/health/ready` returns 200, and `/mcp` returns 401 for missing or rejected
-  tokens. The MCP client performs `initialize` and `tools/list` with a test
-  token: 13 Drive tools, 8 Gmail tools, and 7 Calendar tools, without mixing
-  service tool sets.
-- The real external provider converts the bearer token into credentials
-  containing the same token, without a Google Client Secret or refresh token.
-- Python syntax, MPL headers, and the scope of changes were checked:
-  `stack-80_-_mcp/`, its tests in `tests/stack_80/`, and the stack 80 section
-  of the global `.env.template`.
+- Docker Compose renders and validates all three services with fixture values,
+  with version `2.1.0`, no published ports, and only the existing `redlocal`
+  network. Credential stores remain separate persistent bind mounts.
+- Client ID, matching secret, and account email are declared only in the central
+  environment. Per-service files contain no repeated Google settings.
+- Bootstrap and preparation preserve the central file, create the canonical
+  symlink, preserve service-specific settings, remove obsolete OAuth signing
+  keys and local Google copies, and remain idempotent. Existing independent
+  stack environment files are rejected without being overwritten.
+- Preparation creates private runtime directories using mocked Docker checks.
+  Per-service environment files have `0600` permissions.
+- Callback tests reject wrong destinations, wrong/missing/duplicate state,
+  duplicate codes, declined consent, and fragments before code exchange.
+- Stack scripts disable Python bytecode before local imports. Preparation
+  preserves Python source content and modes; bootstrap does not create
+  `__pycache__` artifacts. The project's bytecode, shebang, and Compose
+  healthcheck tests pass, alongside the focused stack tests.
+- Isolated tests run the actual upstream `v2.1.0` server and dependencies in a
+  temporary environment, using the Compose arguments with local test addresses.
+- The actual Google OAuth library builds an offline consent URL with PKCE
+  (`S256`), exchanges a fixture authorization code, and stores a verified
+  account's credentials with private permissions. Only Google's HTTPS token
+  transport and userinfo response are mocked; no real Google request is made.
+  Wrong-account consent and grants without a refresh token are rejected
+  without replacing previously stored credentials.
+- Upstream's real credential lookup and google-auth refresh implementation
+  refresh an expired fixture access token. The rotated refresh token and access
+  token are saved and read back from disk. A lookup for a different account does
+  not fall back to the stored account.
+- Each server returns 200 from `/health/ready`. An MCP client without an OAuth
+  header initializes and lists 13 Drive tools, 8 Gmail tools, and 7 Calendar
+  tools. The Google email is not required in tool arguments, and
+  `start_google_auth` is absent from all three tool lists.
+- The focused pytest suite passes. Tests live only in `tests/stack_80/` at the
+  repository root. Stack scripts, tests, and documentation retain MPL headers.
 
-The HTTP tests mock only Google's `userinfo` response. The test token is not
-a real authorization. No Drive, Gmail, or Calendar API calls, email sending,
-write operations, or deletions were performed.
+No Google API read/write operations, email sending, or remote deployment were
+performed. The refresh and initial authorization results use simulated Google
+responses; they do not prove a real account grant succeeds.
 
 ## Repeating the checks
 
-From the repository root, check the Compose and bootstrap contracts with
-Docker Compose installed (no Docker daemon required):
+From the repository root, run the focused tests and Compose checks (Docker
+Compose CLI required, without a running Docker daemon):
 
 ```bash
-python3 -B tests/stack_80/verify.py
 python3 -B -m pytest -q -p no:cacheprovider tests/stack_80
+python3 -B tests/stack_80/verify.py
 ```
 
-For the additional upstream test, use a temporary directory outside the
-repository:
+For isolated upstream HTTP, authorization, and refresh checks, use a temporary
+checkout and its dependency environment outside the repository:
 
 ```bash
 git clone --depth 1 --branch v2.1.0 \
@@ -68,14 +74,15 @@ uv sync --project /tmp/workspace-mcp-check --frozen --no-dev --extra disk
 
 ## Pending checks on the deployment host
 
-The Docker daemon was not running in this environment. **The image was not
-built, and containers were not started**; the Python test does not replace
-that verification. OAuth was not completed through the LiteLLM interface.
+The new configuration has not been deployed on m92p. Follow the README's
+migration steps, authorize the dedicated account with the Desktop OAuth App,
+and run `python3 authorize.py --check`. Recreate a container and repeat that
+check to confirm credentials survive the deployed mount and ownership setup.
 
-On the Docker host, complete the settings and follow the README's startup
-steps. The user must then register all three MCPs manually, authorize the
-personal account, and verify real searches in Drive, Gmail, and Calendar,
-write operations using test data, and token refresh through LiteLLM.
-The documented OAuth field configuration is a proposal based on LiteLLM's
-documentation and the external provider's source, pending that complete
-integration test.
+The operator must manually change the three LiteLLM registrations to upstream
+Authentication None and verify that the existing virtual keys discover and
+invoke the Google tools. No new LiteLLM user or administrator is required by
+this container-managed flow. Verify real searches, calendar reads, authorized
+test writes, and email sending separately, then check real token refresh after
+expiry. Google account restrictions and revoked/expired refresh tokens still
+apply.

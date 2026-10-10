@@ -5,6 +5,10 @@
 
 """Check readiness inside selected containers; does not authorize Google."""
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import time
 
 from stack_env import compose, parser, selected

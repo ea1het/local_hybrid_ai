@@ -2,11 +2,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Offline contract checks; optional upstream HTTP smoke tests with mocked identity.
+"""Offline contracts; optional upstream HTTP and refresh tests with mocked Google.
 
 Run with Python from the upstream venv for --upstream checks. No real Google
 credentials, Docker containers, LiteLLM registrations or Google API writes.
 """
+
+import sys
+
+sys.dont_write_bytecode = True
 
 import argparse
 import asyncio
@@ -16,13 +20,11 @@ from pathlib import Path
 import shutil
 import socket
 import subprocess
-import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2] / "stack-80_-_mcp"
 SERVICES = ("mcp-gdrive", "mcp-gmail", "mcp-gcalendar")
 CLIENT_ID = "stack80-fixture.apps.googleusercontent.com"
-TOKEN = "ya29.stack80-test-only"
 
 
 def compose_checks(directory):
@@ -32,6 +34,8 @@ def compose_checks(directory):
     central.write_text(f"BASE_PATH={directory / 'data'}\nNETWORK_NAME=redlocal\n"
                        f"GOOGLE_WORKSPACE_MCP_VERSION=2.1.0\n"
                        f"MCP_GOOGLE_OAUTH_CLIENT_ID={CLIENT_ID}\n"
+                       "MCP_GOOGLE_OAUTH_CLIENT_SECRET=fixture-secret\n"
+                       "MCP_GOOGLE_EMAIL=agent@example.com\n"
                        f"MCP_UID={os.getuid()}\nMCP_GID={os.getgid()}\n")
     central.chmod(0o600)
     central_before = central.read_bytes()
@@ -47,6 +51,7 @@ def compose_checks(directory):
     subprocess.run(bootstrap, check=True, capture_output=True)
     assert all(path.read_bytes() == value for path, value in before.items())
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in before)
+    assert not list(stack.rglob("__pycache__"))
     env = stack / ".env"
     for name in SERVICES:
         settings = stack / "config" / name / ".env"
@@ -56,64 +61,35 @@ def compose_checks(directory):
     config = json.loads(result.stdout)
     assert set(config["services"]) == set(SERVICES)
     assert config["networks"]["redlocal"]["external"]
-    keys, paths = set(), set()
+    paths = set()
     for name, service in config["services"].items():
         assert not service.get("ports")
         assert set(service["networks"]) == {"redlocal"}
         assert service["container_name"] == name
-        assert service["environment"]["EXTERNAL_OAUTH21_PROVIDER"] == "true"
-        assert service["environment"]["GOOGLE_OAUTH_CLIENT_SECRET"] == ""
+        assert service["environment"]["EXTERNAL_OAUTH21_PROVIDER"] == "false"
+        assert service["environment"]["MCP_ENABLE_OAUTH21"] == "false"
+        assert service["environment"]["GOOGLE_OAUTH_CLIENT_SECRET"] == "fixture-secret"
         assert service["environment"]["GOOGLE_OAUTH_CLIENT_ID"] == CLIENT_ID
-        assert service["environment"]["MCP_SINGLE_USER_MODE"] == "false"
+        assert service["environment"]["USER_GOOGLE_EMAIL"] == "agent@example.com"
+        assert service["environment"]["MCP_SINGLE_USER_MODE"] == "1"
+        assert service["environment"]["WORKSPACE_MCP_STATELESS_MODE"] == "false"
         assert service["build"]["context"].endswith("#v2.1.0")
         assert service["image"].endswith(":2.1.0")
-        keys.add(service["environment"]["FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY"])
+        assert "FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY" not in service["environment"]
+        helper = service["volumes"][1]
+        assert helper["read_only"] and helper["target"] == "/opt/stack80/google-oauth.py"
+        assert "start_google_auth" in service["command"]
         paths.add(service["volumes"][0]["source"])
-    assert len(keys) == len(paths) == 3
+    assert len(paths) == 3
     subprocess.run([sys.executable, str(stack / "01-prepare.py"), "--validate-only"], check=True)
     assert central.read_bytes() == central_before
     assert "calendar:full" in config["services"]["mcp-gcalendar"]["command"]
     assert "complete" in config["services"]["mcp-gcalendar"]["command"]
-    assert "--disabled-tools" not in config["services"]["mcp-gcalendar"]["command"]
-    print("PASS: bootstrap selection/idempotence, private settings, versioned Compose, network and data separation")
+    assert config["services"]["mcp-gcalendar"]["command"][-2:] == ["--disabled-tools", "start_google_auth"]
+    print("PASS: bootstrap selection/idempotence, central Google settings, versioned Compose, network and data separation")
     return config
 
 
-RUNNER = '''
-import asyncio
-import os
-import sys
-sys.path.insert(0, os.environ["STACK80_TEST_UPSTREAM"])
-from auth import google_auth
-from auth.external_oauth_provider import ExternalOAuthProvider
-
-# Only Google userinfo is mocked. The real external provider validates the
-# bearer header and constructs the credentials used by service decorators.
-def fixture_userinfo(credentials, **kwargs):
-    if credentials.token == "ya29.stack80-test-only":
-        return {"email": "agent@example.com", "id": "stack80-test"}
-    return None
-google_auth.get_user_info = fixture_userinfo
-
-async def check_credentials():
-    provider = ExternalOAuthProvider(
-        client_id=os.environ["GOOGLE_OAUTH_CLIENT_ID"], client_secret=None,
-        base_url="http://localhost:8000",
-        jwt_signing_key=os.environ["FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY"],
-    )
-    try:
-        token = await provider.verify_token("ya29.stack80-test-only")
-        assert token.email == "agent@example.com"
-        from auth.oauth21_session_store import ensure_session_from_access_token
-        credentials = await ensure_session_from_access_token(token, token.email)
-        assert credentials.token == "ya29.stack80-test-only"
-        assert credentials.refresh_token is None and not credentials.client_secret
-    finally:
-        provider.close()
-asyncio.run(check_credentials())
-import main
-main.main()
-'''
 
 
 async def upstream_checks(upstream, config, directory):
@@ -124,8 +100,7 @@ async def upstream_checks(upstream, config, directory):
     version = subprocess.run(["git", "-C", str(upstream), "describe", "--tags", "--exact-match"],
                             check=True, capture_output=True, text=True).stdout.strip()
     assert version == "v2.1.0"
-    runner = directory / "runner.py"
-    runner.write_text(RUNNER)
+    runner = Path(__file__).with_name("upstream_runner.py")
     for name, service in config["services"].items():
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
@@ -138,7 +113,9 @@ async def upstream_checks(upstream, config, directory):
                "ALLOWED_FILE_DIRS": str(home / "attachments"),
                "WORKSPACE_MCP_BASE_URI": "http://127.0.0.1",
                "WORKSPACE_MCP_HOST": "127.0.0.1", "WORKSPACE_MCP_PORT": str(port),
-               "STACK80_TEST_UPSTREAM": str(upstream)}
+               "STACK80_TEST_UPSTREAM": str(upstream),
+               "STACK80_TEST_HELPER": str(ROOT / "google-oauth.py"),
+               "STACK80_TEST_SERVICE": name}
         log_path = directory / f"{name}.log"
         with log_path.open("w") as log:
             process = subprocess.Popen([sys.executable, str(runner), *service["command"]],
@@ -158,13 +135,14 @@ async def upstream_checks(upstream, config, directory):
                     await asyncio.sleep(0.25)
                 else:
                     raise RuntimeError("Upstream startup timed out")
-                assert (await client.post(url + "/mcp", json={})).status_code == 401
-                assert (await client.post(url + "/mcp", json={}, headers={"Authorization": "Bearer ya29.invalid-fixture"})).status_code == 401
-            async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {TOKEN}"}) as client:
+            # No upstream OAuth header or LiteLLM user identity is needed for discovery.
+            async with httpx2.AsyncClient() as client:
                 async with streamable_http_client(url + "/mcp", http_client=client) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
-                        tools = {tool.name for tool in (await session.list_tools()).tools}
+                        listing = (await session.list_tools()).tools
+                        tools = {tool.name for tool in listing}
+                        assert all("user_google_email" not in tool.input_schema.get("required", []) for tool in listing)
             if name == "mcp-gdrive":
                 assert {"search_drive_files", "create_drive_file", "list_drive_items", "update_drive_file"} <= tools
                 assert not any("gmail" in tool or tool.startswith("import_to_google") for tool in tools)
@@ -175,7 +153,9 @@ async def upstream_checks(upstream, config, directory):
                 assert {"list_calendars", "get_events", "manage_event", "create_calendar",
                         "query_freebusy", "manage_out_of_office", "manage_focus_time"} == tools
             assert "start_google_auth" not in tools
-            print(f"PASS: {name}, readiness, missing/invalid token rejection, bearer-to-credentials forwarding, {len(tools)} scoped tools")
+            assert "PASS: real OAuth code exchange" in log_path.read_text()
+            assert "PASS: real upstream refresh" in log_path.read_text()
+            print(f"PASS: {name}, readiness, header-free discovery, persistent refresh, {len(tools)} scoped tools")
         finally:
             process.terminate()
             try:

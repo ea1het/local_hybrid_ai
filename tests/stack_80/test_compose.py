@@ -4,9 +4,12 @@
 
 """Check the three MCP configurations without deploying containers."""
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import shutil
 import subprocess
-import sys
 
 import pytest
 

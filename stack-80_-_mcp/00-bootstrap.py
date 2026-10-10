@@ -3,7 +3,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Link the central environment and create per-MCP settings/signing keys."""
+"""Link the central environment and create private per-MCP settings."""
+
+import sys
+
+sys.dont_write_bytecode = True
 
 from stack_env import parser, prepare_settings, selected
 
@@ -11,7 +15,7 @@ from stack_env import parser, prepare_settings, selected
 def main():
     args = parser(__doc__).parse_args()
     prepare_settings(selected(args))
-    print("Central .env preserved. Client ID is read once from the global environment.")
+    print("Central .env preserved. Google settings are read from the global environment.")
 
 
 if __name__ == "__main__":

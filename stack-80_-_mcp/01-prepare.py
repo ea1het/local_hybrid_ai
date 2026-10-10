@@ -5,6 +5,10 @@
 
 """Validate settings, the existing network, and per-MCP data directories."""
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import json
 import os
 from pathlib import Path
@@ -27,10 +31,12 @@ def main():
         env = service["environment"]
         if not env.get("GOOGLE_OAUTH_CLIENT_ID", "").endswith(".apps.googleusercontent.com"):
             raise RuntimeError("Set MCP_GOOGLE_OAUTH_CLIENT_ID once in the central .env.")
-        if len(env.get("FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY", "")) < 32:
-            raise RuntimeError(f"{name}: run 01-prepare.py to generate a signing key.")
-        if env.get("GOOGLE_OAUTH_CLIENT_SECRET"):
-            raise RuntimeError(f"{name}: the Google client secret belongs in the external client.")
+        secret = env.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+        if not secret or secret.startswith("PUT_YOUR_"):
+            raise RuntimeError("Set MCP_GOOGLE_OAUTH_CLIENT_SECRET once in the central .env.")
+        email = env.get("USER_GOOGLE_EMAIL", "")
+        if "@" not in email or email != email.strip() or email.startswith("PUT_YOUR_"):
+            raise RuntimeError("Set MCP_GOOGLE_EMAIL once in the central .env.")
         source = Path(service["volumes"][0]["source"])
         if not source.is_absolute():
             raise RuntimeError("BASE_PATH must be absolute.")

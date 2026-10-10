@@ -31,15 +31,16 @@ x-workspace: &workspace
 x-environment: &environment
   HOME: /data
   PYTHONDONTWRITEBYTECODE: "1"
-  MCP_ENABLE_OAUTH21: "true"
-  EXTERNAL_OAUTH21_PROVIDER: "true"
-  MCP_SINGLE_USER_MODE: "false"
+  MCP_ENABLE_OAUTH21: "false"
+  EXTERNAL_OAUTH21_PROVIDER: "false"
+  MCP_SINGLE_USER_MODE: "1"
   WORKSPACE_MCP_STATELESS_MODE: "false"
   WORKSPACE_MCP_HOST: "0.0.0.0"
   WORKSPACE_MCP_PORT: "8000"
-  # Google authorization and refresh are performed by the external client.
+  # Each MCP persists and refreshes its own Google credentials.
   GOOGLE_OAUTH_CLIENT_ID: ${MCP_GOOGLE_OAUTH_CLIENT_ID:?Set MCP_GOOGLE_OAUTH_CLIENT_ID once in central .env}
-  GOOGLE_OAUTH_CLIENT_SECRET: ""
+  GOOGLE_OAUTH_CLIENT_SECRET: ${MCP_GOOGLE_OAUTH_CLIENT_SECRET:?Set MCP_GOOGLE_OAUTH_CLIENT_SECRET once in central .env}
+  USER_GOOGLE_EMAIL: ${MCP_GOOGLE_EMAIL:?Set MCP_GOOGLE_EMAIL once in central .env}
   GOOGLE_MCP_CREDENTIALS_DIR: /data/credentials
   WORKSPACE_ATTACHMENT_DIR: /data/attachments
   ALLOWED_FILE_DIRS: /data/attachments
@@ -62,6 +63,7 @@ services:
       - --tool-tier
       - complete
       - --disabled-tools
+      - start_google_auth
       - import_to_google_doc
       - import_to_google_sheets
       - import_to_google_slides
@@ -69,6 +71,12 @@ services:
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in central .env}/service_-_mcp-gdrive/data
         target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./google-oauth.py
+        target: /opt/stack80/google-oauth.py
+        read_only: true
         bind:
           create_host_path: false
 
@@ -101,6 +109,12 @@ services:
         target: /data
         bind:
           create_host_path: false
+      - type: bind
+        source: ./google-oauth.py
+        target: /opt/stack80/google-oauth.py
+        read_only: true
+        bind:
+          create_host_path: false
 
   mcp-gcalendar:
     <<: *workspace
@@ -117,10 +131,18 @@ services:
       - calendar:full
       - --tool-tier
       - complete
+      - --disabled-tools
+      - start_google_auth
     volumes:
       - type: bind
         source: ${BASE_PATH:?Set BASE_PATH in central .env}/service_-_mcp-gcalendar/data
         target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./google-oauth.py
+        target: /opt/stack80/google-oauth.py
+        read_only: true
         bind:
           create_host_path: false
 
