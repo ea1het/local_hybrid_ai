@@ -8,7 +8,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 [Reading guide](../README.md#reading-guide) · Next: [Pending work](../pending.md)
 
-`stack_00` … `stack_70` test each stack's Python modules. The top-level
+`stack_00` … `stack_80` test each stack's Python modules. The top-level
 `test_*.py` files cover the shared pieces: the `local-ai` dispatcher and shell
 completion, the wrappers, `status`, `env bootstrap`, the progress bar, Compose
 healthchecks, MPL headers, shebangs, and the absence of `__pycache__`. All

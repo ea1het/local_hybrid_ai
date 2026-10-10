@@ -1,0 +1,131 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Stack8 - MCP
+
+x-workspace: &workspace
+  image: local/google-workspace-mcp:${GOOGLE_WORKSPACE_MCP_VERSION:?Set GOOGLE_WORKSPACE_MCP_VERSION in central .env}
+  build:
+    # Release version selected explicitly by the operator.
+    context: https://github.com/taylorwilsdon/google_workspace_mcp.git#v${GOOGLE_WORKSPACE_MCP_VERSION:?Set GOOGLE_WORKSPACE_MCP_VERSION in central .env}
+  restart: unless-stopped
+  init: true
+  user: "${MCP_UID:?Set MCP_UID in central .env}:${MCP_GID:?Set MCP_GID in central .env}"
+  # Replace upstream's shell entrypoint with explicit argv.
+  entrypoint: ["/app/.venv/bin/python", "/app/main.py"]
+  networks: [redlocal]
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "--silent", "--max-time", "5", "http://127.0.0.1:8000/health/ready"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+      compress: "true"
+
+x-environment: &environment
+  HOME: /data
+  PYTHONDONTWRITEBYTECODE: "1"
+  MCP_ENABLE_OAUTH21: "true"
+  EXTERNAL_OAUTH21_PROVIDER: "true"
+  MCP_SINGLE_USER_MODE: "false"
+  WORKSPACE_MCP_STATELESS_MODE: "false"
+  WORKSPACE_MCP_HOST: "0.0.0.0"
+  WORKSPACE_MCP_PORT: "8000"
+  # Google authorization and refresh are performed by the external client.
+  GOOGLE_OAUTH_CLIENT_ID: ${MCP_GOOGLE_OAUTH_CLIENT_ID:?Set MCP_GOOGLE_OAUTH_CLIENT_ID once in central .env}
+  GOOGLE_OAUTH_CLIENT_SECRET: ""
+  GOOGLE_MCP_CREDENTIALS_DIR: /data/credentials
+  WORKSPACE_ATTACHMENT_DIR: /data/attachments
+  ALLOWED_FILE_DIRS: /data/attachments
+  WORKSPACE_MCP_LOG_LEVEL: INFO
+
+services:
+  mcp-gdrive:
+    <<: *workspace
+    container_name: mcp-gdrive
+    env_file: ./config/mcp-gdrive/.env
+    environment:
+      <<: *environment
+      WORKSPACE_MCP_BASE_URI: http://mcp-gdrive
+      WORKSPACE_MCP_BRAND_NAME: mcp-gdrive
+    command:
+      - --transport
+      - streamable-http
+      - --permissions
+      - drive:full
+      - --tool-tier
+      - complete
+      - --disabled-tools
+      - import_to_google_doc
+      - import_to_google_sheets
+      - import_to_google_slides
+    volumes:
+      - type: bind
+        source: ${BASE_PATH:?Set BASE_PATH in central .env}/service_-_mcp-gdrive/data
+        target: /data
+        bind:
+          create_host_path: false
+
+  mcp-gmail:
+    <<: *workspace
+    container_name: mcp-gmail
+    env_file: ./config/mcp-gmail/.env
+    environment:
+      <<: *environment
+      WORKSPACE_MCP_BASE_URI: http://mcp-gmail
+      WORKSPACE_MCP_BRAND_NAME: mcp-gmail
+    command:
+      - --transport
+      - streamable-http
+      - --permissions
+      - gmail:send
+      - --tool-tier
+      - complete
+      - --disabled-tools
+      - start_google_auth
+      - modify_gmail_message_labels
+      - batch_modify_gmail_message_labels
+      - list_gmail_labels
+      - manage_gmail_label
+      - list_gmail_filters
+      - manage_gmail_filter
+    volumes:
+      - type: bind
+        source: ${BASE_PATH:?Set BASE_PATH in central .env}/service_-_mcp-gmail/data
+        target: /data
+        bind:
+          create_host_path: false
+
+  mcp-gcalendar:
+    <<: *workspace
+    container_name: mcp-gcalendar
+    env_file: ./config/mcp-gcalendar/.env
+    environment:
+      <<: *environment
+      WORKSPACE_MCP_BASE_URI: http://mcp-gcalendar
+      WORKSPACE_MCP_BRAND_NAME: mcp-gcalendar
+    command:
+      - --transport
+      - streamable-http
+      - --permissions
+      - calendar:full
+      - --tool-tier
+      - complete
+    volumes:
+      - type: bind
+        source: ${BASE_PATH:?Set BASE_PATH in central .env}/service_-_mcp-gcalendar/data
+        target: /data
+        bind:
+          create_host_path: false
+
+# No published ports. These endpoints are reachable only on this Docker network.
+networks:
+  redlocal:
+    external: true
+    name: ${NETWORK_NAME:-redlocal}
