@@ -15,6 +15,7 @@ model:
   provider: custom
   base_url: ${LITELLM_BASE_URL}
   api_key: ${LITELLM_API_KEY}
+  context_length: 131072
 
 agent:
   # Safe minimum: web tools are disabled until the optional web.search and
