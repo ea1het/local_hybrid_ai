@@ -34,6 +34,7 @@ flowchart LR
 - **`reconfig`** previews managed `config.yaml` and runtime environment drift. `reconfig --apply` stages changes from `.env` (including `HERMES_MODEL`), preserves the current web-tool choice, and removes stale central overrides from runtime `data/.env`. It backs up changed files but never changes container state. Activate with `./local-ai stack-60 stop` and `./local-ai stack-60 start`. `start` retains its existing gateway-drift safety check.
 - **`stop`** includes the `git-memory` profile, so the memory-sync container is removed as well. A plain `docker compose down` would leave it running.
 - **Isolation.** Hermes has no Docker socket. Commands run in the sandbox, which is attached only to the private `hermes-exec` network.
+- **Sandbox file writes.** Compose sets `HERMES_WRITE_SAFE_ROOT=/opt/data:/workspace` in Hermes so the file-tool guard permits the SSH workspace as well as Hermes' existing state root. `/workspace` is writable in the sandbox; file tools use the configured SSH backend. After recreating Hermes, verify a file with `write_file` and `read_file` in a new session. Writing through `terminal` alone does not verify the file-tool guard.
 
 ## Optional features (manual scripts)
 

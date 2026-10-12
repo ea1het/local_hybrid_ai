@@ -32,6 +32,8 @@ services:
       HERMES_UID: ${HERMES_UID}
       HERMES_GID: ${HERMES_GID}
       HERMES_MODEL: ${HERMES_MODEL}
+      # File-tool guards run in Hermes, but SSH targets /workspace in the sandbox.
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace
       LITELLM_BASE_URL: ${LITELLM_BASE_URL}
       LITELLM_API_KEY: ${LITELLM_API_KEY}
       LITELLM_MCP_URL: ${LITELLM_MCP_URL:?Set LITELLM_MCP_URL in .env}
