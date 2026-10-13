@@ -18,14 +18,21 @@ model:
   context_length: 131072
 
 agent:
-  # The agent's default behavior is to use the configured model for all 
-  # reasoning and tool use. If tool_use_enforcement is true, the agent will 
-  # only use the model for reasoning and will require explicit approval to 
-  # use any tools.
+  # Detect assistant responses that announce an action without
+  # actually invoking a tool. Request continuation instead of
+  # accepting the response as a completed turn.
+  # true: enabled for all API modes, including chat_completions.
+  intent_ack_continuation: true
+
+  # Reinforce tool usage when a task requires external actions.
+  # Discourage announcing actions without executing the tools.
+  # This does not change tool permissions or approval requirements.
   tool_use_enforcement: true
-  # Safe minimum: web tools are disabled until the optional web.search and
-  # web.extract capabilities are both verified. reconcile-capabilities.py
-  # is the only Stack6 operation allowed to switch this managed value to [].
+
+  # Safe minimum: web tools are disabled until the optional web.search
+  # and web.extract capabilities are both verified.
+  # reconcile-capabilities.py is the only Stack6 operation allowed
+  # to switch this managed value to [].
   disabled_toolsets: [web]
   system_prompt: |
     <execution_policy>
