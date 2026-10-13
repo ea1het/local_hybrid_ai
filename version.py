@@ -4,4 +4,4 @@
 
 """Single source of truth for the Local Hybrid AI CLI version."""
 
-__version__ = "0.8.0"
+__version__ = "0.8.2"
