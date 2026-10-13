@@ -83,7 +83,7 @@ def test_environment_bootstrap_help():
     assert "issue-litellm-keys" not in result.stdout
 
 
-@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70"))
+@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70", "80"))
 def test_forwards_stack_help(number):
     """Route to each stack binary and preserve its own verb help."""
     result = subprocess.run([ROOT / "local-ai", f"stack-{number}", "status", "--help"],

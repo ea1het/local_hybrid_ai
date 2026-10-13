@@ -6,8 +6,9 @@
 
 This Compose file runs independent MCP servers. Docker services, containers,
 and manual client registrations use `mcp-XXX` names. The stack does not
-configure, modify, or register anything in LiteLLM. Integration with `local-ai`
-is pending; current operations use Docker Compose directly.
+configure, modify, or register anything in LiteLLM. `local-ai` manages
+preparation, adoption, lifecycle, status, and reconfiguration. Google consent
+and LiteLLM registrations remain explicit operator actions.
 
 | Service | Endpoint on `redlocal` | Features |
 | --- | --- | --- |
@@ -36,6 +37,7 @@ stack-80_-_mcp/
 ├── __init__.py
 ├── 00-bootstrap.py                  # optional settings preparation
 ├── 01-prepare.py                    # settings, validation, and directories
+├── reconfig.py                      # preview/apply private settings maintenance
 ├── authorize.py                     # manual Google consent or credential check
 ├── google-oauth.py                  # helper executed inside each MCP
 ├── docker-compose.yml
@@ -93,6 +95,61 @@ and [HTTP authentication configuration](https://github.com/taylorwilsdon/google_
 
 ## Preparation and startup
 
+From the repository root on the Docker host, as root:
+
+```bash
+./local-ai stack-80 install
+./local-ai stack-80 start
+python3 stack-80_-_mcp/wait-ready.py
+./local-ai stack-80 status --deep
+```
+
+Stack 00 must be prepared first. Stack 80 requires the existing bridge network,
+not a running LiteLLM instance. `install` prepares directories through Stack 00,
+initializes private settings, validates configuration and runtime ownership,
+and records `.lock` only after all checks succeed. It never starts containers
+or initiates Google consent. A regular existing lock makes `install` a no-op.
+`start` runs Compose `up -d --build`; readiness remains a separate check.
+`stop` runs Compose `down`, retaining data, credentials, and the preparation lock.
+
+### Adopting the existing deployment
+
+After updating the checkout, run `./local-ai stack-80 install`. When private
+settings, runtime directories, and ownership already match, installation
+adopts the deployment by creating only `.lock`; containers and saved tokens
+are left untouched. No repeated consent or LiteLLM registration is needed.
+If running containers need settings maintenance, installation refuses to
+change files: stop Stack 80 explicitly and run `install` again. Existing data
+ownership and mode mismatches require manual review; installation does not
+recursively repair or replace deployed stores.
+
+### Status and reconfiguration
+
+`status` separates preparation state from Docker container state and health.
+`status --deep` initializes an MCP session and lists tools inside each running
+container. It invokes no Google tools and does not check or refresh Google
+credentials. `authorize.py --check` remains separate because it can refresh
+and save tokens.
+
+```bash
+./local-ai stack-80 reconfig
+./local-ai stack-80 stop
+./local-ai stack-80 reconfig --apply
+./local-ai stack-80 start
+python3 stack-80_-_mcp/wait-ready.py
+```
+
+Preview does not write. Apply removes obsolete local Google settings and OAuth
+signing keys while preserving other per-service settings; changed files receive
+private backups. Settings changes require stopped containers. Reconfiguration
+does not alter container state, the central `.env`, Google tokens, or LiteLLM.
+Compose and central `.env` changes are not tracked as runtime file differences;
+recreate through `stop`/`start` to activate them. OAuth app, account, or scope
+changes may require renewed manual consent. Changing `BASE_PATH`, `MCP_UID`,
+or `MCP_GID` requires an explicit data/ownership migration.
+
+### Direct scripts
+
 Prepare the central `.env` using the platform's procedure and section 80 of
 `.env.template`. Use the Desktop App credentials, replacing the Web App Client
 ID previously used for LiteLLM's OAuth flow. Do not repeat `BASE_PATH` or
@@ -114,7 +171,12 @@ Preparation preserves service-specific settings and removes obsolete OAuth
 signing keys and local copies of Google Client ID, Client Secret, and email;
 the central Google values are authoritative.
 Per-MCP settings have `0600` permissions and runtime directories have `0700`.
-Preparation changes ownership only for newly created directories.
+Preparation changes ownership only for newly created directories. Existing
+private data directories must already have the configured UID/GID and `0700`
+mode; mismatches are reported without silently changing deployed permissions.
+Preparing all services records `.lock`; selecting a subset does not mark the
+whole stack prepared. `--adopt` validates the full existing deployment and
+creates only the preparation lock.
 
 An existing bridge `redlocal` network is required. Google must be reachable
 over HTTPS from the containers. Set `MCP_UID`/`MCP_GID` to the intended container

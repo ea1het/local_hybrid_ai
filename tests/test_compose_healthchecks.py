@@ -13,6 +13,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 
 sys.dont_write_bytecode = True
 
@@ -30,6 +31,7 @@ STACK_DIRS = {
     "50": "stack-50_-_dockhand",
     "60": "stack-60_-_hermes",
     "70": "stack-70_-_open-webui",
+    "80": "stack-80_-_mcp",
 }
 
 
@@ -41,6 +43,16 @@ def test_every_compose_service_has_healthcheck(number):
     version = subprocess.run(["docker", "compose", "version"], capture_output=True, check=False)
     if version.returncode:
         pytest.skip("Docker Compose CLI unavailable")
+
+    if number == "80":
+        # Private env_file inputs must be fixtures, never the operator's files.
+        from tests.stack_80.verify import compose_checks
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            services = compose_checks(Path(directory))["services"]
+        assert set(services) == set(REQUIRED_SERVICES[number])
+        assert all(service.get("healthcheck", {}).get("test") for service in services.values())
+        return
 
     command = ["docker", "compose", "--env-file", str(ROOT / ".env.template"),
                "-f", str(ROOT / STACK_DIRS[number] / "docker-compose.yml")]

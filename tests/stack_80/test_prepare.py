@@ -46,7 +46,7 @@ def test_prepare_initializes_settings_without_bootstrap(tmp_path, monkeypatch):
         } for name in SERVICES},
     }
     monkeypatch.setattr(prepare, "configuration", lambda: config)
-    monkeypatch.setattr(prepare.subprocess, "run", lambda *args, **kwargs:
+    monkeypatch.setattr(helper.subprocess, "run", lambda *args, **kwargs:
                         subprocess.CompletedProcess(args, 0, json.dumps([{"Driver": "bridge"}])))
     monkeypatch.setattr(sys, "argv", ["01-prepare.py"])
     prepare.main()

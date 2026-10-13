@@ -3,13 +3,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Link the central environment and create private per-MCP settings."""
+"""Link the central environment and create private per-MCP settings.
+
+Importing this module does not prepare directories, change containers, or
+perform Google authorization. Operations run only through explicit entrypoints.
+"""
 
 import sys
 
 sys.dont_write_bytecode = True
 
-from stack_env import parser, prepare_settings, selected
+if __package__:
+    from .stack_env import parser, prepare_settings, selected
+else:
+    from stack_env import parser, prepare_settings, selected
 
 
 def main():

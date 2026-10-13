@@ -28,6 +28,9 @@ CLIENT_ID = "stack80-fixture.apps.googleusercontent.com"
 
 
 def compose_checks(directory):
+    # macOS exposes its temporary directory through /var -> /private/var.
+    # Use the physical fixture root so managed-path guards still reject links.
+    directory = directory.resolve()
     stack = directory / "stack"
     shutil.copytree(ROOT, stack, ignore=shutil.ignore_patterns(".env", "__pycache__"))
     central = directory / ".env"

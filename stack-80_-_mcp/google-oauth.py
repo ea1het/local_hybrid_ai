@@ -3,7 +3,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Container-only Desktop OAuth bootstrap; runtime refresh belongs to upstream."""
+"""Container-only Desktop OAuth bootstrap; runtime refresh belongs to upstream.
+
+Importing this module does not prepare directories, change containers, or
+perform Google authorization. Operations run only through explicit entrypoints.
+"""
 
 import sys
 

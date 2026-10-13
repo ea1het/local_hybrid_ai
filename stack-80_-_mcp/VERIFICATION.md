@@ -2,7 +2,24 @@
      License, v. 2.0. If a copy of the MPL was not distributed with this
      file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
 
-# Verification · October 10, 2026
+# Verification · Stack 80
+
+## Management integration · October 13, 2026
+
+The repository now provides `local-ai stack-80 install/start/stop/status/reconfig`.
+Local automated checks cover the platform directory map, adoption of compatible
+running containers, preparation locks, private backups, refusal of unsafe paths
+and permission drift, and read-only reconfiguration previews. Tests also check
+that lifecycle commands neither authorize Google nor modify LiteLLM. The deep
+status client initializes an MCP session and lists tools; its client sequence is
+tested with fixture transports, without calling Google tools or refreshing tokens.
+
+The operator previously confirmed that all three deployed MCPs work and appear
+healthy in LiteLLM. That deployment confirmation is separate from automated
+fixture tests. The new management integration has not yet been exercised on
+m92p; adoption and `status --deep` remain manual deployment checks.
+
+## Authentication verification · October 10, 2026
 
 These checks validate the new container-managed Google authentication flow.
 No real Google credentials or LiteLLM configuration were used or changed.
@@ -72,17 +89,17 @@ uv sync --project /tmp/workspace-mcp-check --frozen --no-dev --extra disk
   --upstream /tmp/workspace-mcp-check
 ```
 
-## Pending checks on the deployment host
+## Deployment verification
 
-The new configuration has not been deployed on m92p. Follow the README's
-migration steps, authorize the dedicated account with the Desktop OAuth App,
-and run `python3 authorize.py --check`. Recreate a container and repeat that
-check to confirm credentials survive the deployed mount and ownership setup.
+The operator has confirmed successful deployment and container-managed Google
+authorization on m92p. Do not repeat the earlier OAuth migration solely to adopt
+the deployment into `local-ai`. Follow the README's adoption procedure first,
+then check `./local-ai stack-80 status --deep`. When explicitly recreating a
+container, repeat `python3 authorize.py --check` to verify persisted credentials;
+that command can refresh and save tokens.
 
-The operator must manually change the three LiteLLM registrations to upstream
-Authentication None and verify that the existing virtual keys discover and
-invoke the Google tools. No new LiteLLM user or administrator is required by
-this container-managed flow. Verify real searches, calendar reads, authorized
-test writes, and email sending separately, then check real token refresh after
-expiry. Google account restrictions and revoked/expired refresh tokens still
-apply.
+LiteLLM registration and Google access remain operator-managed. The management
+integration does not change registrations, users, virtual keys, or Google grants.
+Real searches, calendar reads, authorized test writes, email sending, and real
+token refresh are separate checks from MCP readiness. Google account restrictions
+and revoked/expired refresh tokens still apply.

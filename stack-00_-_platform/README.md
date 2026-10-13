@@ -31,6 +31,7 @@ flowchart TB
 - **`install` always audits.** An existing `.lock` does not skip it. Missing or invalid state is repaired, valid state is kept, and the `.lock` is (re)written only after `verify.py` passes. A failed phase removes the `.lock`.
 - **Valid certificates are kept.** The source files in `LOCAL_CA_SOURCE_PATH`, `TLS_CERT_SOURCE_PATH`, and `TLS_KEY_SOURCE_PATH` are read only when the installed material is missing or invalid. The scripts never delete those source files.
 - **Application directories.** Each application stack creates its own directories during its `install` (`00-bootstrap.py --stack NN`). Running `00-bootstrap.py` without `--platform-only` or `--stack` visits every unlocked stack, so use `--dry-run` first.
+- **Stack 80.** `--stack 80` creates the three MCP service stores using central `MCP_UID`/`MCP_GID`. Existing stores are preserved without changing ownership, permissions, or credentials. Stack 80 validates these separately before adoption or startup.
 
 ## Certificates
 

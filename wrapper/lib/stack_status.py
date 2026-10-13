@@ -32,6 +32,7 @@ REQUIRED_SERVICES = {
     "50": ("dockhand",),
     "60": ("hermes", "hermes-sandbox", "hermes-sandbox-cleanup"),
     "70": ("open-webui",),
+    "80": ("mcp-gdrive", "mcp-gmail", "mcp-gcalendar"),
 }
 OPTIONAL_SERVICES = {"60": ("hermes-memory-sync",)}
 ANCHOR_CONTAINERS = {
@@ -42,6 +43,7 @@ ANCHOR_CONTAINERS = {
     "50": "dockhand",
     "60": "hermes-sandbox",
     "70": "open-webui",
+    "80": "mcp-gdrive",
 }
 DATABASE_PROBES = {
     "20": (
@@ -211,13 +213,47 @@ def report_status(number: str, stack_dir: Path, lock_file: Path, *, deep: bool =
         print(f"  SearXNG JSON search: {'OK' if search_ok else 'FAILED'}")
         deep_ok &= search_ok
 
+    if deep and number == "80":
+        for service in REQUIRED_SERVICES["80"]:
+            ok = False
+            if rows.get(service, {}).get("State") == "running":
+                try:
+                    ok = mcp_probe(service)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            print(f"  {service}: MCP initialization/tool discovery {'OK' if ok else 'FAILED'}")
+            deep_ok &= ok
+        print("  Google authorization/access: NOT CHECKED (authorize.py --check is separate)")
+
     print()
     print(f"runtime={runtime}")
-    if deep and number not in DATABASE_PROBES:
+    if deep and number not in DATABASE_PROBES and number != "80":
         print("deep=No additional read-only probe is defined for this stack")
     overall_ready = prepared == "PREPARED" and runtime == "READY" and deep_ok
     print(f"overall={'READY' if overall_ready else 'NOT READY'}")
     return 0 if overall_ready else 1
+
+
+def mcp_probe(service: str) -> bool:
+    """Initialize a local MCP session and list tools; never invoke Google tools."""
+    script = """import asyncio
+import httpx2
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+async def check():
+    async with httpx2.AsyncClient(timeout=10) as client:
+        async with streamable_http_client('http://127.0.0.1:8000/mcp', http_client=client) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.list_tools()
+                if not result.tools:
+                    raise RuntimeError('No MCP tools discovered')
+asyncio.run(check())
+"""
+    result = subprocess.run(["docker", "exec", service, "/app/.venv/bin/python", "-B", "-c", script],
+                            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                            timeout=30, check=False)
+    return result.returncode == 0
 
 
 def report_platform_status(stack_dir: Path, lock_file: Path, *, deep: bool = False) -> int:

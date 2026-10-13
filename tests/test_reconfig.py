@@ -298,7 +298,7 @@ def test_gitea_sqlite_backup_is_consistent_and_private(tmp_path):
         assert connection.execute("SELECT name FROM users").fetchone() == ("admin",)
 
 
-@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70"))
+@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70", "80"))
 def test_wrapper_reconfig_only_delegates(number, monkeypatch):
     """The wrapper owns no stack-specific reconfiguration behavior."""
     import importlib.util

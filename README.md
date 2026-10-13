@@ -67,6 +67,7 @@ HAProxy routes by host name below `ROOT_HOSTNAME` (default `casa.lan`). The subd
 | [50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker management UI | `redlocal` network only |
 | [60 · Hermes](stack-60_-_hermes/README.md) | Agent with SSH sandbox | 00, 30 running and two scoped LiteLLM keys in `.env` |
 | [70 · Open WebUI](stack-70_-_open-webui/README.md) | Chat UI | 00, 30 running and a scoped LiteLLM key in `.env` |
+| [80 · MCP](stack-80_-_mcp/README.md) | Self-hosted Drive, Gmail, and Calendar MCP servers | 00, central Google settings; consent and LiteLLM registration remain manual |
 
 ## Quick start
 
@@ -176,13 +177,14 @@ First the core path that every AI request follows, from the bottom up. Then the 
 | 14 | [Stack 20 · SearXNG + Firecrawl](stack-20_-_searxng_firecrawl/README.md) | Optional web search used by 60 and 70 |
 | 15 | [Stack 40 · Gitea](stack-40_-_gitea/README.md) | Optional Git server, also for Hermes memory |
 | 16 | [Stack 50 · Dockhand](stack-50_-_dockhand/README.md) | Optional Docker UI |
+| 17 | [Stack 80 · MCP](stack-80_-_mcp/README.md) | Self-hosted MCP services and container-managed Google authorization |
 
 ### 5. Contribute
 
 | # | Document | What you learn |
 | --- | --- | --- |
-| 17 | [Tests](tests/README.md) | How to run and extend the test suite |
-| 18 | [MPL header exceptions](docs/license-header-exceptions.md) | Files exempt from license headers (generated) |
-| 19 | [Pending work](pending.md) | Open items and known inconsistencies |
+| 18 | [Tests](tests/README.md) | How to run and extend the test suite |
+| 19 | [MPL header exceptions](docs/license-header-exceptions.md) | Files exempt from license headers (generated) |
+| 20 | [Pending work](pending.md) | Open items and known inconsistencies |
 
 Optional workstation setup: [Syncthing for an Obsidian vault](program_configs/workstations/syncthing/README.md) and the [opencode configuration](program_configs/workstations/opencode/opencode.jsonc).

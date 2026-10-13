@@ -347,6 +347,17 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
             Dir(openwebui / "data", 0o750),
         ]
 
+    def stack8() -> list[Dir]:
+        """Create private MCP stores without changing existing deployment data."""
+        owner = (require_int(env, "MCP_UID"), require_int(env, "MCP_GID"))
+        paths = []
+        for name in ("mcp-gdrive", "mcp-gmail", "mcp-gcalendar"):
+            service = svc(f"service_-_{name}")
+            paths.append(Dir(service, 0o750, create_only=True))
+            for suffix in ("data", "data/credentials", "data/attachments"):
+                paths.append(Dir(service / suffix, 0o700, *owner, create_only=True))
+        return paths
+
     return [
         ("stack-00_-_platform", stack0),
         ("stack-10_-_haproxy_web", stack1),
@@ -355,6 +366,7 @@ def build_layout(env: dict[str, str]) -> list[tuple[str, Callable[[], list[Dir]]
         ("stack-40_-_gitea", stack4),
         ("stack-60_-_hermes", stack6),
         ("stack-70_-_open-webui", stack7),
+        ("stack-80_-_mcp", stack8),
     ]
 
 
@@ -366,7 +378,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="show actions without applying them")
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--platform-only", action="store_true", help="limit changes to Stack 0 and Stack 10 prerequisites")
-    scope.add_argument("--stack", choices=("20", "30", "40", "60", "70"),
+    scope.add_argument("--stack", choices=("20", "30", "40", "60", "70", "80"),
                        help="reconcile only the selected application stack directories")
     return parser.parse_args()
 

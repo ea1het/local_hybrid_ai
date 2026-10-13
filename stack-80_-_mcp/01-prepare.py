@@ -3,66 +3,61 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Validate settings, the existing network, and per-MCP data directories."""
+"""Prepare MCP settings or adopt an existing deployment without changing data.
+
+Importing this module does not prepare directories, change containers, or
+perform Google authorization. Operations run only through explicit entrypoints.
+"""
 
 import sys
-
 sys.dont_write_bytecode = True
-
-import json
 import os
 from pathlib import Path
-import subprocess
 
-from stack_env import configuration, parser, prepare_settings, selected
+if __package__:
+    from .stack_env import (SERVICES, configuration, parser, prepare_settings, selected,
+                           settings_changes, runtime_directories, validate_configuration, validate_network)
+else:
+    from stack_env import (SERVICES, configuration, parser, prepare_settings, selected,
+                           settings_changes, runtime_directories, validate_configuration, validate_network)
+
+
+def write_lock():
+    """Mark full preparation only after all checks succeed."""
+    path = Path(__file__).resolve().parent / ".lock"
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise RuntimeError("Invalid Stack 80 preparation lock.")
+    if not path.exists():
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as output:
+            output.write("Stack 80 prepared; Google authorization remains manual.\n")
 
 
 def main():
     options = parser(__doc__)
     options.add_argument("--validate-only", action="store_true",
-                         help="Validate configuration without a Docker daemon or writes.")
+                         help="Validate configuration without runtime checks or writes.")
+    options.add_argument("--adopt", action="store_true",
+                         help="Validate existing runtime and write only the full-stack preparation lock.")
     args = options.parse_args()
+    if args.adopt and (args.validate_only or args.mcp):
+        options.error("--adopt requires the full stack and cannot use --validate-only")
     services = selected(args)
-    if not args.validate_only:
+    if not args.validate_only and not args.adopt:
         prepare_settings(services)
     config = configuration()
-    for name in services:
-        service = config["services"][name]
-        env = service["environment"]
-        if not env.get("GOOGLE_OAUTH_CLIENT_ID", "").endswith(".apps.googleusercontent.com"):
-            raise RuntimeError("Set MCP_GOOGLE_OAUTH_CLIENT_ID once in the central .env.")
-        secret = env.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
-        if not secret or secret.startswith("PUT_YOUR_"):
-            raise RuntimeError("Set MCP_GOOGLE_OAUTH_CLIENT_SECRET once in the central .env.")
-        email = env.get("USER_GOOGLE_EMAIL", "")
-        if "@" not in email or email != email.strip() or email.startswith("PUT_YOUR_"):
-            raise RuntimeError("Set MCP_GOOGLE_EMAIL once in the central .env.")
-        source = Path(service["volumes"][0]["source"])
-        if not source.is_absolute():
-            raise RuntimeError("BASE_PATH must be absolute.")
+    validate_configuration(config, services)
     if args.validate_only:
         print("Selected MCP settings and Compose validated; runtime not checked.")
         return
-    network = config["networks"]["redlocal"]["name"]
-    result = subprocess.run(["docker", "network", "inspect", network],
-                            capture_output=True, text=True, check=False)
-    if result.returncode or json.loads(result.stdout)[0]["Driver"] != "bridge":
-        raise RuntimeError("An existing bridge redlocal network and running Docker daemon are required.")
+    validate_network(config)
+    if args.adopt and settings_changes(services):
+        raise RuntimeError("Settings need maintenance; stop Stack 80 and run preparation before adoption.")
+    runtime_directories(config, services, create=not args.adopt)
+    if set(services) == set(SERVICES):
+        write_lock()
     for name in services:
-        service = config["services"][name]
-        uid, gid = (int(value) for value in service["user"].split(":"))
-        if os.getuid() != 0 and (uid, gid) != (os.getuid(), os.getgid()):
-            raise RuntimeError("Run preparation as root or as the configured MCP_UID/MCP_GID.")
-        data = Path(service["volumes"][0]["source"])
-        for path in (data, data / "credentials", data / "attachments"):
-            existed = path.exists()
-            path.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if not existed and os.getuid() == 0:
-                os.chown(path, uid, gid)
-            if path.stat().st_uid != uid:
-                raise RuntimeError(f"{name}: data directory has a different owner.")
-            path.chmod(0o700)
-        print(f"{name}: prepared.")
+        print(f"{name}: {'adopted' if args.adopt else 'prepared'}; credentials preserved.")
 
 
 if __name__ == "__main__":

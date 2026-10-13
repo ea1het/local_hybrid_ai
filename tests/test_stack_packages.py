@@ -27,6 +27,7 @@ STACKS = (
     "stack-50_-_dockhand",
     "stack-60_-_hermes",
     "stack-70_-_open-webui",
+    "stack-80_-_mcp",
 )
 ROOT = Path(__file__).resolve().parents[1]
 STACK_MODULES = tuple(

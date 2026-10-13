@@ -29,7 +29,7 @@ def load_wrapper(number):
     return module
 
 
-@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70"))
+@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70", "80"))
 def test_install_is_required_subcommand(number):
     """Reject a missing or unknown verb and advertise supported commands."""
     script = ROOT / "wrapper" / "bin" / f"stack-{number}.py"
@@ -68,7 +68,7 @@ def test_install_is_required_subcommand(number):
     assert "--deep" in status_help.stdout
 
 
-@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70"))
+@pytest.mark.parametrize("number", ("00", "10", "20", "30", "40", "50", "60", "70", "80"))
 def test_status_dispatches_read_only_reporter(number, monkeypatch):
     """Pass --deep to the appropriate reporter without invoking Compose here."""
     wrapper = load_wrapper(number)

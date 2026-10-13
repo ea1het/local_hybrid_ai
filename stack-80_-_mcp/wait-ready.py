@@ -3,7 +3,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Check readiness inside selected containers; does not authorize Google."""
+"""Check readiness inside selected containers; does not authorize Google.
+
+Importing this module does not prepare directories, change containers, or
+perform Google authorization. Operations run only through explicit entrypoints.
+"""
 
 import sys
 
@@ -11,7 +15,10 @@ sys.dont_write_bytecode = True
 
 import time
 
-from stack_env import compose, parser, selected
+if __package__:
+    from .stack_env import compose, parser, selected
+else:
+    from stack_env import compose, parser, selected
 
 
 def main():
