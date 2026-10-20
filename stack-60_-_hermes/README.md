@@ -36,6 +36,65 @@ flowchart LR
 - **Isolation.** Hermes has no Docker socket. Commands run in the sandbox, which is attached only to the private `hermes-exec` network.
 - **Sandbox file writes.** Compose sets `HERMES_WRITE_SAFE_ROOT=/opt/data:/workspace` in Hermes so the file-tool guard permits the SSH workspace as well as Hermes' existing state root. `/workspace` is writable in the sandbox; file tools use the configured SSH backend. After recreating Hermes, verify a file with `write_file` and `read_file` in a new session. Writing through `terminal` alone does not verify the file-tool guard.
 
+## Gitea credentials in the SSH sandbox
+
+Set these in the protected root `.env` (the URL defaults to Stack 40's
+`GITEA_ROOT_URL`; the username and PAT are optional):
+
+```dotenv
+GITEA_URL=${GITEA_ROOT_URL}
+GITEA_USERNAME=your-service-user
+GITEA_TOKEN=your-scoped-personal-access-token
+```
+
+Compose supplies them to **Hermes**, whose native `terminal.env_passthrough`
+forwards them using SSH `SendEnv`. The sandbox's `sshd` accepts exactly these
+three Gitea names with `AcceptEnv`. This keeps `terminal.backend: ssh` and
+requires no Hermes code or installation changes. Commands in the sandbox can
+read the PAT; grant only the permissions they need. This exposes credentials
+to tools, but does not automatically configure Git HTTPS authentication.
+Git-memory synchronization continues to use its separate SSH identity.
+
+The managed agent config is `${BASE_PATH}/${HERMES_SERVICE}/config/config.yaml`,
+mounted at `/opt/data/config.yaml` in Hermes. The sandbox home is
+`${BASE_PATH}/${SANDBOX_SERVICE}/data/home`, mounted at `/home/agent`; with the
+template defaults its `.hermes` directory is
+`/opt/docker/runtime/service_-_hermes-sandbox/data/home/.hermes` on the host.
+Hermes uses that remote directory for skills and other execution assets.
+Placing a `config.yaml` there does not configure the agent. Likewise,
+`docker_forward_env` applies to Hermes' Docker backend, not this SSH backend.
+
+For an existing deployment, update the checkout on the container host, add the
+variables to its `.env`, then run as root from the checkout:
+
+```sh
+./local-ai stack-60 reconfig
+./local-ai stack-60 reconfig --apply
+./local-ai stack-60 stop
+./local-ai stack-60 start
+```
+
+`reconfig --apply` stages the managed config; `start` builds the changed sandbox
+image and recreates containers as needed. A locked `install` does not apply
+these changes. No additional sandbox config file is needed.
+
+Verify from a **Hermes terminal tool call** in a fresh session, rather than
+`docker exec` (the values arrive over SSH). Check only that all three variables
+are nonempty; never print the PAT. Then make an authenticated request to
+`${GITEA_URL%/}/api/v1/user` and confirm the returned login matches
+`GITEA_USERNAME`, without logging the token. Git operations need a separate
+authentication check. The sandbox only joins `hermes-exec`, so use an endpoint
+reachable from that network; the `gitea` container name on `redlocal` will not
+resolve through the sandbox's network. For HTTPS, the sandbox must trust the
+server certificate; install the local CA through a managed image or mount if
+needed, and keep certificate verification enabled.
+
+Implementation verified against the pinned release's
+[SSH backend](https://github.com/NousResearch/hermes-agent/blob/v2026.9.21/tools/environments/ssh.py)
+and [passthrough configuration loader](https://github.com/NousResearch/hermes-agent/blob/v2026.9.21/tools/env_passthrough.py).
+Live SSH forwarding, Gitea authentication, DNS/routing and TLS trust must still
+be verified on the container host.
+
 ## Optional features (manual scripts)
 
 Run them from this directory as root, after `install`. None of them runs automatically.

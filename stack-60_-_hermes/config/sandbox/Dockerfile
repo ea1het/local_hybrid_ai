@@ -89,6 +89,7 @@ RUN apt-get update \
         'X11Forwarding no' \
         'PermitTunnel no' \
         'PermitUserEnvironment no' \
+        'AcceptEnv GITEA_URL GITEA_USERNAME GITEA_TOKEN' \
         'ClientAliveInterval 120' \
         'ClientAliveCountMax 2' \
         > /etc/ssh/sshd_config.d/hermes-sandbox.conf \
