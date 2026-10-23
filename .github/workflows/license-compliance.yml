@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Verify executable Python shebangs
         run: python3 .github/workflows/gha_apply_python_shebangs.py --check
